@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–31 APPROVED; Section 32 (Error Handling and Recovery Rules) pending
+> **Status:** In Progress — Sections 1–32 APPROVED; Section 33 pending
 
 ---
 
@@ -9124,3 +9124,177 @@ The following events are captured (attributes per 31.6):
 ---
 
 *End of Section 31 — Audit Log Requirements. **APPROVED.** Section 32 — Error Handling and Recovery Rules follows.*
+
+---
+
+## Section 32 — Error Handling and Recovery Rules
+
+### 32.1 Purpose of the Error Handling and Recovery Rules Section
+
+This section owns **failure classification, user-facing error behavior, safe retry, rollback, recovery queues, duplicate prevention, partial-success handling, degraded-mode operation, and operational incident recovery** for Version 1 (MineFlow). It protects the integrity guarantees of Sections 28–29 when things fail.
+
+This section stays at the requirements level. It defines no monitoring provider, backup schedule, recovery-time/point guarantee, automatic failover, final queue/status names, support SLA, automatic data repair, or vendor-outage guarantee. It introduces no new roles, permissions, Owner-only approvals, automatic business actions, integrations, accounting rules, or production guarantees beyond approved Sections 1–31, and it does not silently resolve any To-be-confirmed item.
+
+### 32.2 Core Principle
+
+**A failed, timed-out, retried, duplicated, unauthorized, or interrupted action must never silently create:** duplicate Pending Claims · duplicate Confirmed Claims · duplicate reservations · duplicate Invoice Draft links · duplicate Official Orders · duplicate invoice/order numbers · duplicate verified payments · duplicate message-send records · duplicate inventory deductions · duplicate fulfillment releases · duplicate Owner-approved actions · duplicate stock returns.
+
+### 32.3 Governing Recovery Rules
+
+1. **Retry reuses the existing business operation where possible.**
+2. **Retry must not recreate the Official Order.**
+3. **Retry must not re-reserve inventory.**
+4. **Reprint must not create a new claim or reservation.**
+5. **Message retry must not create another Official Order.**
+6. **Payment-verification retry must not duplicate verification.**
+7. **Owner-approval retry must not execute the action twice.**
+8. **Partial success must be visible and recoverable.**
+9. **Failed external integration must preserve manual fallback.**
+10. **Failed printer operation must preserve the Confirmed Claim and label job.**
+11. **Failed message sending must preserve the Official Order.**
+12. **Failed payment-evidence upload must not mark payment verified.**
+13. **Failed fulfillment release must not mark fulfillment completed.**
+14. **Failed migration must not silently create partial historical facts without a recoverable batch state.**
+15. **Unauthorized attempts must not change business records.**
+16. **Stale updates must not overwrite newer valid state.**
+17. **No automatic stock return, transfer, cancellation, forfeiture, or fulfillment release may occur as an error-recovery shortcut.**
+18. **Recovery actions must be attributable.**
+19. **User-facing messages must not leak secrets or unnecessary sensitive data.**
+20. **Critical unresolved failures must remain visible in a queue or blocked state.**
+
+### 32.4 Error Classification
+
+Categories analyzed: **validation · permission/authorization · stale-record conflict · duplicate submission · network interruption · timeout · partial success · database failure · file-upload failure · integration unavailable · Pancake/Meta failure · printer unavailable · print failure · message-generation failure · message-send failure · payment-verification conflict · wrong-record association · inventory conflict · concurrent claim confirmation · Official Order creation conflict · approval-state conflict · fulfillment conflict · migration/import failure · export failure · session expiry · security incident · corrupted/inconsistent record · offline/mobile interruption.**
+
+- Errors are **recoverable** (retry/queue/manual review) or **non-recoverable** (blocked, surfaced for review); **either way the state stays valid and non-duplicated.**
+
+### 32.5 User-Facing Message vs Technical Diagnostic
+
+- Users see a **clear, actionable message**; a **technical diagnostic reference** supports troubleshooting **without leaking secrets/sensitive data** (rule 19).
+- **Business errors** (e.g., "payment not verified") differ from **technical errors** (e.g., timeout) (Section 29.6).
+
+### 32.6 Validation, Unauthorized, and Stale-Record Responses
+
+- **Validation errors** give specific feedback and **write nothing**.
+- **Unauthorized attempts change no business record** (rule 15) and are logged where appropriate (Section 30–31).
+- **Stale-record conflicts are rejected or returned for review; newer valid state is never overwritten** (rule 16; Section 29.8).
+
+### 32.7 Retry, Safe Retry, and Idempotency
+
+- **Retry reuses the existing operation** (rule 1) and is **idempotent** for critical writes (Section 29.7): it never recreates an order, re-reserves inventory, duplicates verification, or re-executes an approval (rules 2–7).
+
+### 32.8 Atomic Boundaries, Rollback, and Compensation
+
+- Multi-step critical writes are **atomic**; a failure **rolls back to the prior valid state** with **no partial order/reservation** (Section 29.9).
+- Where a step cannot be transactionally rolled back, a **compensation/recovery step** is surfaced for review — never an automatic business shortcut (rule 17).
+
+### 32.9 Partial Success, Recovery Queue, Blocked Record, Manual Review
+
+- **Partial success is visible and recoverable** (rule 8); the affected record enters a **recovery queue or blocked state** (rule 20) for **manual review**.
+- **Final recovery-queue/status names remain To be confirmed.**
+
+### 32.10 Duplicate Warning and Concurrent Users
+
+- Duplicate-submission risk is **warned/deduplicated**, never silently duplicated (Section 32.2).
+- **Concurrent users** are governed by last-valid-state and stale-record rejection (Section 11.42); **completed critical actions do not repeat.**
+
+### 32.11 Network Loss, Offline Entry, Session Expiry, App Restart
+
+- **Network loss / offline / mobile interruption** must not create duplicates on reconnect; **manual entry remains available** (rule 9).
+- **Session expiry and application restart** return the user to a safe state; unsaved work is not falsely committed. **Offline sync behavior remains To be confirmed.**
+
+### 32.12 Domain Recovery
+
+- **File upload:** failed upload does not attach a partial file or mark anything verified (rule 12); retry re-attempts the upload.
+- **Printer:** failed printer operation **preserves the Confirmed Claim and label job**; the job stays Pending/Failed in the Print Queue (rule 10; Section 24).
+- **Message:** failed send **preserves the Official Order** and never creates a second one (rules 5, 11); manual copy/send fallback remains (Section 26).
+- **Payment:** failed verification/upload **does not mark payment verified** (rule 12); wrong-record association is corrected via the controlled Payment Correction path (Section 16.12).
+- **Inventory:** no **automatic** stock return/transfer as recovery (rule 17); freed items route to **manual Returned-to-Stock Review** (Section 19).
+- **Owner approval:** approval retry **does not execute twice** (rule 7); execution re-validates state (Section 29.8).
+- **Fulfillment:** failed release **does not mark fulfillment completed** (rule 13).
+- **Migration:** failed migration leaves a **recoverable batch state**, not silent partial facts (rule 14).
+- **Export:** failed export produces no partial/leaky file; retry re-runs within Export Data / Reports permission.
+
+### 32.13 Service/Infrastructure Outage and Backup/Restore Boundary
+
+- **Database / Supabase / Vercel / external-vendor outages** are handled as **degraded-mode concepts**: the system avoids duplicate/partial writes, preserves manual fallback where possible, and surfaces unresolved work.
+- **Backup and restore** exist as a **boundary**; **backup frequency, restore testing, RTO/RPO, and automatic failover are not guaranteed here and remain To be confirmed.**
+
+### 32.14 Data-Corruption Response and Incident Escalation
+
+- A **corrupted/inconsistent record** is **flagged and blocked for review**, not auto-repaired (no automatic data repair asserted).
+- **Incident escalation** is acknowledged; **severity levels and escalation recipients remain To be confirmed.**
+
+### 32.15 Communication Boundary and Security Incident
+
+- **Staff/customer communication during incidents** is a **boundary** (no automatic customer contact introduced); **security incidents** follow Section 30.17 and are recorded (Section 31).
+
+### 32.16 Audit and Monitoring/Alerting Boundary
+
+- **Recovery actions are attributable** (rule 18; Section 31); failures are logged as failures, not false successes.
+- **Monitoring/alerting is a boundary concept**; **provider and alert channels remain To be confirmed.**
+
+### 32.17 Critical-Workflow Recovery
+
+| Workflow | Expected recovery |
+|---|---|
+| Create Pending Claim | retry re-attempts; **no duplicate Pending Claim**; failure creates nothing |
+| Confirm Claim & Print Label | **one Confirmed Claim + one reservation**; print failure keeps claim + label job (rules 3–4, 10) |
+| Approve & Send Invoice | **idempotent — one Official Order**; atomic; failure → no partial order/reservation (rules 2–3) |
+| Submit / Verify Payment | failed submit/verify **does not mark verified**; retry **no duplicate verified payment** (rules 6, 12) |
+| Create / Update Layaway | failure leaves prior valid state; installment/verification distinct |
+| Owner approval action | retry **executes once**; state re-validated (rule 7) |
+| Fulfillment release | failure **does not mark completed**; **no auto release** (rules 13, 17) |
+| Returned-to-Stock approval | manual; **no automatic stock return** on failure (rule 17) |
+| Print / reprint | **no new claim/reservation**; failed job stays in queue (rules 4, 10) |
+| Message send / retry | **no second Official Order**; order preserved; manual fallback (rules 5, 9, 11) |
+| Import / migration | **recoverable batch state**; no silent partial facts (rule 14) |
+
+### 32.18 Testing
+
+- Error/recovery paths are **tested** (duplicate-submit, stale-record, retry, partial success, integration/printer failure) before production reliance; **restore testing schedule remains To be confirmed.**
+
+### 32.19 Error-Message Data Leakage
+
+- **User-facing messages never leak secrets or unnecessary sensitive data** (rule 19; Section 30.18); diagnostics are internal.
+
+### 32.20 Edge Cases
+
+- duplicate Approve & Send Invoice submit · retried Confirm on one claim · print failure after confirmation · message failure after order creation · payment upload failure · stale approval on changed state · concurrent fulfillment release · migration interrupted mid-batch · export interrupted · session expiry mid-action · offline entry reconnecting · corrupted record flagged · integration/vendor outage · unauthorized retry.
+
+### 32.21 Section Boundaries
+
+- **Section 32** owns error/recovery requirements.
+- **Section 29** owns idempotency/transaction contracts. **Section 28** owns integrity model. **Section 30** owns security incidents. **Section 31** owns audit of recovery. **Section 26** owns message delivery/retry mechanics.
+
+### 32.22 Open / To-Be-Confirmed Items
+
+- retry limits
+- timeout values
+- user-facing error codes
+- recovery queue names
+- escalation recipients
+- incident severity levels
+- backup frequency
+- restore testing schedule
+- RTO/RPO
+- offline sync behavior
+- monitoring provider
+- alert channels
+- support ownership
+- data-repair authority
+- disaster-recovery environment
+- vendor outage procedures
+
+### 32.23 Section 32 Summary
+
+- **No failed, retried, duplicated, unauthorized, or interrupted action ever silently creates a duplicate** of any critical record (claims, reservations, orders, numbers, verified payments, messages, deductions, releases, approvals, stock returns).
+- **Retry reuses the existing operation and is idempotent; critical writes are atomic with rollback; partial success is visible and recoverable in a queue or blocked state.**
+- **Failures preserve the anchor records:** printer failure keeps the Confirmed Claim + label job; message failure keeps the Official Order; upload/verify failure never marks payment verified; release failure never marks fulfillment completed; migration failure leaves a recoverable batch.
+- **No automatic stock return, transfer, cancellation, forfeiture, or release is used as a recovery shortcut; stale updates never overwrite newer state; unauthorized attempts change nothing.**
+- **Recovery actions are attributable; error messages never leak secrets; manual fallback and degraded-mode operation keep the system usable.**
+- **Retry/timeout limits, queue names, backup/restore, RTO/RPO, monitoring, offline sync, and vendor-outage procedures remain To be confirmed.**
+
+---
+
+*End of Section 32 — Error Handling and Recovery Rules. **APPROVED.** Section 33 to follow.*
