@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–29 APPROVED; Section 30 pending
+> **Status:** In Progress — Sections 1–30 APPROVED; Section 31 (Audit Log Requirements) pending
 
 ---
 
@@ -8758,4 +8758,179 @@ Common to all: **authorization checked server-side; attributable; idempotent whe
 
 ---
 
-*End of Section 29 — API Design. **APPROVED.** Section 30 to follow.*
+*End of Section 29 — API Design. **APPROVED.** Section 30 — Security Rules follows.*
+
+---
+
+## Section 30 — Security Rules
+
+### 30.1 Purpose of the Security Rules Section
+
+This section owns **authentication, authorization, session protection, permission enforcement, business-data isolation, credential handling, sensitive-data access, security-monitoring boundaries, and production-security requirements** for Version 1 (MineFlow). It enforces the reconciled authority model of Sections 4–5 at the technical trust boundary.
+
+This section stays at the requirements/boundary level. It defines no final authentication provider, MFA provider, password-policy values, session durations, encryption algorithm, RLS policies/SQL, credential-vault product, compliance certification, legal claims, penetration-test guarantees, or customer login. It introduces no new roles, permissions, Owner-only approvals, customer-facing access, automatic actions, integrations, accounting rules, or production guarantees beyond approved Sections 1–29, and it does not silently resolve any To-be-confirmed item.
+
+### 30.2 Governing Authority Model
+
+- **Owner is the highest authority.** Selected Admin and Staff use **granular permissions** (Section 5.6, 5.13).
+- **Role title does not grant authority; assignment ≠ permission; visibility ≠ action authority; no permission silently includes another.**
+- **Unauthorized actions must not change records.**
+- **Owner-only approvals cannot be delegated in V1**; **Owner self-action is allowed but fully audited**.
+- **Selected Admin status and permissions may be changed only by the Owner** (Section 5.13 item 10).
+
+### 30.3 Governing Security Rules
+
+1. **All authorization is enforced at the trusted server/data boundary.**
+2. **UI hiding or disabling is not sufficient security.**
+3. **Permission checks apply to every sensitive write.**
+4. **Record visibility is independently scoped.**
+5. **Owner-only approvals cannot be performed by Selected Admin or Staff.**
+6. **Owner self-action must remain attributable.**
+7. **Account reassignment must not erase historical actor identity.**
+8. **Notes cannot alter permission or record state.**
+9. **External integrations cannot bypass MineFlow security.**
+10. **Printer connection cannot grant business authority.**
+11. **Export permission is separate from report visibility.**
+12. **Migration access is limited to Owner or explicitly authorized Selected Admin.**
+13. **Payment Correction after verification requires Owner approval.**
+14. **Sensitive files must not be publicly accessible by default.**
+15. **Production secrets must not be stored in source code.**
+16. **Test users and test data must be isolated from production.**
+17. **Disabled or removed users lose future access without erasing history.**
+18. **A security failure must not silently complete a business action.**
+19. **Unauthorized attempts should be logged where appropriate.**
+20. **Customer-facing authentication must not be introduced.**
+
+### 30.4 Internal-Staff-Only Access
+
+- MineFlow is an **internal staff system**; **customers have no login** and no self-service access (Section 5.10, rule 20).
+- **Customer activity is recorded by staff**; customers never authenticate.
+
+### 30.5 Authentication and Account Lifecycle
+
+- **Individual accounts only; no shared logins** (Section 5.11). Each staff member has their own credentials.
+- **The Owner creates and configures accounts** and assigns permission toggles; **account activation/deactivation** is Owner-controlled.
+- The **specific authentication method / identity-provider boundary** (e.g., password vs. IdP, MFA) **remains To be confirmed**; **no provider, MFA product, or password-policy value is fixed here.**
+
+### 30.6 Session Management
+
+- Sessions cover **sign-in, sign-out, expired-session handling, concurrent sessions, and session revocation**.
+- **Deactivated/removed users lose future session access immediately** (rule 17) while **history is preserved** (rule 7).
+- **Forgotten-access/recovery** exists as a controlled flow (Section 8.18); **exact session timeout, concurrent-session limits, device/session management, recovery process, and Owner emergency access remain To be confirmed.**
+
+### 30.7 Account Protection
+
+- **Owner account** is the highest-value account and warrants the strongest protection (specifics TBC).
+- **Selected Admin** accounts are managed **only by the Owner** (grant/remove/modify status and permissions).
+- **Staff** accounts hold only their assigned toggles; **title grants nothing** (Section 5).
+
+### 30.8 Authorization Enforcement
+
+- Every sensitive action re-checks the **exact Section 5 permission** and **shop/page scope** at the **server/data boundary** (rules 1–3; Section 29.3–29.4).
+- **UI hiding/disabling is a convenience, never the control** (rule 2); an unauthorized write is **denied and changes no record** (rule 18).
+- **Privilege escalation is prevented** — assignment, role title, printer connection, or integration access never elevate authority (rules 8–10).
+
+### 30.9 Owner-Only Approval and No-Delegation Enforcement
+
+- The **six Owner-approval-required actions** are enforced Owner-only and **non-delegable in V1**: Official Order cancellation, layaway forfeiture, price override, exceptional fulfillment release, **Live Batch reopen**, and **verified wrong-payment-to-order correction** (Section 5.13 item 12).
+- **Creating an Owner Approval Request does not itself perform the action** (Section 22.14); **execution re-validates current state** at approval time (Section 29.8).
+- **Owner self-action is permitted and fully audited** (rule 6; Section 31).
+
+### 30.10 Record and Shop/Page Visibility Scope
+
+- **Row/record visibility is scoped independently of action authority** (rule 4) by permission and **shop/page access** (Section 11.6).
+- **Seeing a record never authorizes acting on it** (visibility ≠ action authority).
+
+### 30.11 Sensitive Data and File Handling
+
+- **Sensitive customer data, payment evidence, shipping/contact details, attachments, migration files, and exported data** are access-scoped to the user's permission and shop/page (rule 4, 14).
+- **Sensitive files are not publicly accessible by default** (rule 14); **attachment/export-file protection specifics remain To be confirmed.**
+- **Data minimization** applies — only necessary data is exposed (30.18).
+
+### 30.12 Credentials, Secrets, and Device Trust
+
+- **Production secrets are never stored in source code** (rule 15); **secrets-management implementation remains To be confirmed.**
+- **Pancake/Meta credentials** (where an integration is later validated) are handled as **controlled, authorized setup**, never ordinary staff data (Section 14.10); **storage remains To be confirmed.**
+- **Printer/device connection is a trust boundary that grants no business authority** (rule 10; Section 27).
+
+### 30.13 File Upload Validation
+
+- Uploads are **validated for type/size**; **malicious or unsupported files are rejected** (Section 29.11).
+- **No OCR/auto-execution of uploaded content** (Section 13); **exact attachment scanning remains To be confirmed.**
+
+### 30.14 Rate Limiting and Brute-Force Concepts
+
+- **Rate limiting and brute-force/login-attempt protection** are acknowledged as concepts; **exact thresholds and mechanisms remain To be confirmed.**
+
+### 30.15 Account Removal, Device Loss, Shared-Device Risks
+
+- **Disabled/removed users lose future access while history is preserved** (rule 17).
+- **Lost/stolen device and shared-device risks** warrant session revocation and re-authentication; **exact device/session controls remain To be confirmed.**
+
+### 30.16 Environment Separation
+
+- **Development, test, and production data are separated**; **test users and test data are isolated from production** (rule 16).
+- **Production access and backup-access boundaries** are restricted; **exact production admin access remains To be confirmed.**
+
+### 30.17 Security Monitoring and Incident Boundary
+
+- **Security-relevant events** (and **unauthorized attempts where appropriate**) are logged (rule 19; audit detail → Section 31).
+- **Incident response** is acknowledged at a boundary level; **incident-response contacts and procedures remain To be confirmed** (recovery → Section 32).
+
+### 30.18 Least Privilege, Data Minimization, Privacy, Error Leakage
+
+- **Least privilege** — accounts receive only the toggles their duty requires.
+- **Data minimization and privacy boundaries** apply to storage, display, and export.
+- **Error messages must not leak secrets or unnecessary sensitive data** (Section 32.19); **privacy/legal requirements remain To be confirmed.**
+
+### 30.19 Mobile Security Expectations
+
+- MineFlow is **mobile-first** (Section 8.2); mobile use assumes device-level care, session protection, and safe handling of on-screen sensitive data; **exact mobile controls remain To be confirmed.**
+
+### 30.20 Security Testing and Production-Readiness Criteria
+
+- Security is **validated before production reliance**: authorization enforced server-side, sensitive files non-public, secrets out of source, environments separated, and unauthorized actions proven non-mutating.
+- **No compliance certification, legal claim, or penetration-test guarantee is asserted**; **security testing scope remains To be confirmed.**
+
+### 30.21 Edge Cases
+
+- unauthorized write attempt via API · privilege-escalation attempt via assignment/title · Selected Admin attempting to grant Selected Admin · Owner-only approval attempted by non-Owner · deactivated user with an open session · lost device · shared device · integration attempting to bypass authorization · printer connection assumed as authority · export attempted without Export permission · migration attempted by normal Staff · verified-payment correction attempted without Owner approval · sensitive file requested outside scope.
+
+### 30.22 Section Boundaries
+
+- **Section 30** owns security requirements/boundaries.
+- **Section 5** owns roles/permissions. **Section 28** owns the data model (RLS target). **Section 29** owns API authorization boundary. **Section 31** owns audit. **Section 32** owns error/recovery.
+
+### 30.23 Open / To-Be-Confirmed Items
+
+- final authentication method
+- MFA requirement and scope
+- password policy
+- session timeout
+- concurrent-session limits
+- device/session management
+- login-attempt thresholds
+- recovery process
+- Owner emergency access
+- IP/device restrictions
+- exact data-retention/security policy
+- exact attachment scanning
+- export-file protection
+- production admin access
+- Supabase RLS implementation
+- secrets-management implementation
+- incident-response contacts
+- privacy/legal requirements
+
+### 30.24 Section 30 Summary
+
+- **Authorization is enforced at the trusted server/data boundary; UI hiding is never the control; every sensitive write is permission-checked and record visibility is independently scoped.**
+- **The reconciled authority model holds:** Owner-only approvals are non-delegable, Owner self-action is audited, only the Owner manages Selected Admin, and no permission silently includes another.
+- **Integrations and printer connections cannot bypass security or grant authority; export is separate from report visibility; migration is Owner/authorized-Selected-Admin only; verified-payment correction requires Owner approval.**
+- **Customers never authenticate; sensitive files are non-public by default; secrets stay out of source; environments and test data are isolated; disabled users lose access without erasing history.**
+- **A security failure never silently completes a business action; unauthorized attempts are logged where appropriate.**
+- **Providers, MFA, password/session policy, RLS/secrets implementation, and privacy/legal specifics remain To be confirmed.**
+
+---
+
+*End of Section 30 — Security Rules. **APPROVED.** Section 31 — Audit Log Requirements follows.*
