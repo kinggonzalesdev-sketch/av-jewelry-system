@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–15 APPROVED; Section 16 (Payment Workflow) pending
+> **Status:** In Progress — Sections 1–16 APPROVED; Section 17 (Layaway Workflow) pending
 
 ---
 
@@ -6231,3 +6231,178 @@ Prepare → Preview → Copy → staff manually sends via approved channel → s
 ---
 
 *End of Section 15 — Invoice Workflow. **APPROVED.** Section 16 — Payment Workflow follows.*
+
+---
+
+## Section 16 — Payment Workflow
+
+### 16.1 Purpose of the Payment Workflow Section
+
+This section owns **payment evidence, payment submission, the Unverified state, required payment/deposit verification, payment history, correction boundaries**, and the relationship between payment and Official Orders, layaway, and fulfillment in Version 1 (MineFlow).
+
+**Governing scope statements:**
+- **Payment belongs to an Official Order** (Section 6.10).
+- **Recording evidence is not verification** (Section 11.21–11.22).
+- **Required Payment / Deposit Verified does not automatically mean Paid in Full** (Section 6.10).
+
+This section stays business-focused. It does not define database schema, APIs, code, payment-gateway behavior, OCR, accounting/bookkeeping, refund/reversal internals, or final status-transition logic. It introduces no new permissions, roles, statuses, high-risk categories, automatic behavior, accounting rules, payment methods, integrations, or customer-facing features beyond approved Sections 1–15, and it does not silently resolve any To-be-confirmed item.
+
+### 16.2 Governing Payment Rules
+
+1. Payment belongs to an **Official Order**.
+2. Payment **evidence may be recorded before it is verified**.
+3. **Payment evidence recorded by** and **payment verified by** are distinct.
+4. **Payment Submitted / Unverified is not verified payment.**
+5. **Payment Verification permission is required to verify payment.**
+6. **Customer Support cannot verify payment.**
+7. **Layaway Monitoring alone cannot verify payment.**
+8. **Required Payment / Deposit Verified does not automatically mean Paid in Full.**
+9. **Paid in Full remains To be confirmed.**
+10. **Outstanding Balance remains To be confirmed.**
+11. **Payment records must not be silently moved between Official Orders.**
+12. **Wrong-payment-to-order correction requires a controlled path.**
+13. **Original evidence, verification state, performer, date, and affected orders remain traceable.**
+14. **No reversal, refund, void, transfer, chargeback, accounting, or bookkeeping behavior is invented** unless already approved.
+15. **Payment retry or duplicated submission must not create duplicate verified payments.**
+16. **Payment verification does not automatically release fulfillment** unless release conditions and permissions are satisfied.
+17. **Payment verification does not automatically approve layaway forfeiture.**
+18. **Payment verification does not automatically cancel an order.**
+19. **Visibility does not equal verification authority.**
+
+### 16.3 Payment Record Definition
+
+- A payment record is **tied to one Official Order** and may include: payment method, amount, reference number, proof-of-payment image, date, time, customer name, related order/invoice, and staff notes (Section 2.6).
+- **Accepted payment methods remain To be confirmed** (Section 2.8-C).
+
+### 16.4 Payment Evidence
+
+- Staff may **record or attach payment evidence** before verification (Section 11.21).
+- **Recording evidence does not verify the payment** (rule 3).
+- **Source/channel reference may be recorded where approved**; exact fields **remain To be confirmed**.
+
+### 16.5 Payment Submission and Unverified State
+
+- A submitted payment first enters **Payment Submitted / Unverified** (Section 6.10).
+- **A submitted payment is never automatically treated as verified** (Section 2.6).
+
+### 16.6 Verifier Queue and Evidence Review
+
+- Payments awaiting verification appear in the **Payment Submitted / Unverified** queue for users with **Payment Verification** (Section 7.8).
+- The verifier reviews evidence against customer, order/invoice, amount due, method, reference, and date/time (Section 2.6).
+
+### 16.7 Required Amount and Verification Outcome
+
+- Verification confirms the **amount required at the current lifecycle stage** (Section 6.10) — **not necessarily the full item price**.
+- A payment is marked **verified only by an authorized staff member** (Section 4.12.4).
+- **Rejected, insufficient, or unclear evidence** are handled as **concepts here, not final statuses** — **status names owned by Section 22.**
+
+### 16.8 Multiple, Partial, and Arrangement-Specific Payments
+
+- An order may have **multiple payments** and **partial payments**.
+- **Layaway installments** follow Section 17; **shipping deposit + COD** follow Section 18 and the shipping rule below.
+- **Exact partial-payment, overpayment, and underpayment behavior remain To be confirmed.**
+
+### 16.9 Shipping Deposit and COD (Business Rule)
+
+- For shipping, **the required deposit is at least ₱1,000**, with an **approved COD balance** that may remain (Section 4.12.2, Section 6.12).
+- **Exact category/application rules follow approved business rules and any standing reconciliation** (Section 6.21).
+- **This is not redefined as Paid in Full.**
+
+### 16.10 Verification Date and Attribution
+
+- Verification records the **date/time and the verifying staff account** (Section 11.43).
+- **Attribution belongs to the action; reassignment does not erase it; Section 31 owns audit.**
+
+### 16.11 Duplicate Evidence and Retry
+
+- **Duplicate evidence or a retried submission must not create duplicate verified payments** (rule 15).
+- Duplicate risk is **surfaced for review, not auto-resolved** (Section 12.30).
+
+### 16.12 Wrong-Order Attachment and Controlled Correction
+
+- **Payment records must not be silently moved between orders** (rule 11).
+- Correction follows a **controlled path** initiated by **Payment Verification or a later-approved payment-correction authority**; Customer Support and Layaway-Monitoring-alone cannot perform it (Section 11.23).
+- **Original evidence, verification state, performer, date, and affected orders remain traceable.**
+- **Whether Owner approval is required remains To be confirmed**; **no reversal/refund/void/transfer method is defined here** (Section 11.23).
+
+### 16.13 Payment History
+
+- Payment history is visible on the **Official Order** and in the **customer profile** (Section 8.6, Section 10.18).
+- **Viewing history does not grant verification authority** (rule 19).
+
+### 16.14 Dependencies (Fulfillment / Layaway / Cancellation)
+
+- **Verification does not automatically release fulfillment** (rule 16, Section 18).
+- **Verification does not automatically approve forfeiture** (rule 17, Section 17).
+- **Verification does not automatically cancel an order** (rule 18).
+- **Payment must be verified before an item is shipped or released for pickup** (Section 4.12.5).
+
+### 16.15 Payment Note Boundary
+
+- Notes are **staff-attributed** and **do not change** payment state, verification, balances, order, or permissions (Section 10.24, Section 11.38).
+
+### 16.16 Unauthorized Actions
+
+- Unauthorized payment actions may be **hidden, disabled, blocked, or escalated**; **attempts change no record** (Section 11.45). Detailed security → Sections 30, 32.
+
+### 16.17 Error and Retry
+
+- **No failed action silently creates duplicates**; **unresolved failures remain visible**; **exact technical retry/recovery belongs to Section 32.**
+
+### 16.18 Concurrent Verification
+
+- The **same payment must not be verified twice**; **latest valid state respected**; **warn on stale records** (Section 11.42). Technical concurrency → Sections 28–32.
+
+### 16.19 Imported / Migrated Payment History
+
+- Migrated payment history **preserves actual historical values and dates** and is **not recalculated by current rules** (Section 6.20).
+- **Migrated-payment correction rules remain To be confirmed.**
+
+### 16.20 Reporting Boundaries
+
+- **Payment summaries may appear in basic reports** (Section 8.15); **formal reporting/reconciliation belongs to Section 25.**
+- **Outstanding Balance appears only once defined** — **To be confirmed.**
+
+### 16.21 Edge Cases
+
+- evidence recorded but unverified · partial payment · overpayment/underpayment · multiple payments on one order · duplicate evidence · retried submission · payment attached to wrong order · unclear/insufficient evidence · verification attempted without permission · migrated payment needing correction · verified deposit that is not Paid in Full · COD balance outstanding at fulfillment.
+
+### 16.22 Section Boundaries
+
+- **Section 16** owns payment evidence and verification.
+- **Section 15** invoice. **Section 17** layaway. **Section 18** fulfillment. **Section 19** inventory.
+- **Section 22** statuses. **Section 25** reporting. **Section 26** reminder delivery. **Sections 28–32** integrity/security/audit/recovery.
+
+### 16.23 Open / To-Be-Confirmed Items
+
+- Paid in Full definition/state
+- Outstanding Balance definition
+- payment status vocabulary
+- accepted payment methods
+- evidence requirements by payment method
+- exact partial-payment behavior
+- exact overpayment/underpayment behavior
+- wrong-payment-to-order correction authority
+- whether Owner approval is required for some corrections
+- refund/reversal/void behavior
+- payment receipt behavior
+- payment reference format
+- payment reconciliation/reporting rules
+- migrated-payment correction rules
+- exact Section 4–5 reconciliation
+
+### 16.24 Section 16 Summary
+
+- **Payment belongs to an Official Order; recording evidence is not verification.**
+- **Only Payment Verification may verify; Customer Support and Layaway-Monitoring-alone cannot.**
+- **Required/Deposit Verified ≠ Paid in Full**, which remains To be confirmed alongside Outstanding Balance.
+- **Payments are never silently moved between orders; wrong-order correction is a controlled, traceable path.**
+- **Duplicate/retried submissions never create duplicate verified payments.**
+- **Verification never auto-releases fulfillment, approves forfeiture, or cancels an order.**
+- **Shipping uses ≥ ₱1,000 deposit + approved COD, not redefined as Paid in Full.**
+- **No refund/reversal/void/accounting behavior is invented; migrated history is preserved.**
+- **Methods, vocabulary, correction authority, and reconciliation remain To be confirmed.**
+
+---
+
+*End of Section 16 — Payment Workflow. **APPROVED.** Section 17 — Layaway Workflow follows.*
