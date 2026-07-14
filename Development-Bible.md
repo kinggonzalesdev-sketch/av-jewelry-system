@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–6 APPROVED (Project Vision; Business Workflow; Current Pain Points; Business Rules; User Roles & Permissions; Complete Order Lifecycle); Section 7 (Dashboard Workflow) pending
+> **Status:** In Progress — Sections 1–7 APPROVED (Project Vision; Business Workflow; Current Pain Points; Business Rules; User Roles & Permissions; Complete Order Lifecycle; Dashboard Workflow); Section 8 (Screen Map) pending
 
 ---
 
@@ -1599,4 +1599,299 @@ Section 6 defines the operational stages; **Section 22 will define the strict al
 
 ---
 
-*End of Section 6 — Complete Order Lifecycle. **APPROVED.** Section 7 — Dashboard Workflow to follow.*
+*End of Section 6 — Complete Order Lifecycle. **APPROVED.** Section 7 — Dashboard Workflow follows.*
+
+---
+
+## Section 7 — Dashboard Workflow
+
+### 7.1 Purpose of the Dashboard Workflow Section
+
+The dashboard is the **operational command center** and **work-queue hub** of Version 1 (MineFlow). Its job is to let each user see what needs action now and go straight to it.
+
+- It is **action-focused, not a full analytics platform**.
+- It **surfaces the lifecycle queues from Section 6** as actionable cards.
+- **Visibility is filtered by role, permissions, and operational relevance** (Section 5).
+- **Visibility does not automatically grant action authority** — status-changing actions remain gated by the exact required permission.
+
+This section stays business-focused and operational. It does not discuss database schema, APIs, hosting, code, or implementation details. It introduces no new metrics, permissions, rules, alerts, or actions beyond approved Sections 1–6, and it does not silently resolve any To-be-confirmed item.
+
+### 7.2 Shared Dashboard Model
+
+- Version 1 uses **one shared dashboard structure**.
+- Cards are **filtered and prioritized by role, assigned permissions, and operational relevance**.
+- **Do not create separate dashboard products** for Owner, Selected Admin, and Staff.
+- The **Owner sees all cards**.
+- **Selected Admin and Staff see only relevant queues**.
+- **Action buttons remain permission-gated.**
+
+### 7.3 Queue Visibility Versus Action Authority
+
+**Governing rule:** a user may **see** a queue because it is relevant to their assigned work, but may **perform only the actions allowed by their exact permissions**.
+
+Examples:
+- Fulfillment staff may see **Required Payment / Deposit Verified** orders (to prepare fulfillment) but **cannot edit or verify payment**.
+- Layaway staff may see **verified layaway deposits** but **cannot verify payment without Payment Verification**.
+- **Viewing a queue does not grant status-change authority.**
+
+### 7.4 Owner Dashboard View
+
+- **Full visibility of all operational bands.**
+- **Needs Owner Approval is pinned prominently at the top when non-empty** (but it is not the only content).
+- **Owner-visibility queues:**
+  - Payment Submitted / Unverified
+  - Awaiting Required Payment / Deposit
+  - Active / Overdue / Grace Layaways
+  - Item Monitoring
+  - Returned-to-Stock Review
+- **Compact summary metrics.**
+- **All migrated and new records visible where applicable.**
+
+### 7.5 Selected Admin Dashboard View
+
+- **Operational cards based on permissions.**
+- **Normal fulfillment approval queues.**
+- May **initiate high-risk actions only if Initiate High-Risk Action is enabled**.
+- **High-risk requests route to Needs Owner Approval.**
+- **No authority to approve their own high-risk action.**
+- **Existing / Migrated Records management only if the migration permission is enabled.**
+
+### 7.6 Staff Dashboard View
+
+- Staff see **only operational queues relevant to their assigned permissions**.
+- A card with **no operational relevance does not appear**.
+- **Actions inside visible cards remain permission-gated.**
+- Staff **cannot see Owner-only approval actions** unless a view is required for an action they initiated — and they **still cannot approve it**.
+
+### 7.7 Dashboard Operational Bands
+
+**A. Live & Claims**
+- Pending Claims / Needs Review
+- Confirmed Claims / For Invoice
+- 2nd-Miner / Waitlist Needs Staff Review
+
+**B. Invoicing**
+- Invoices Ready for Review
+
+**C. Payments**
+- Awaiting Required Payment / Deposit
+- Payment Submitted / Unverified
+- Required Payment / Deposit Verified
+
+**D. Reminders**
+- Day 1
+- Day 2
+- Day 3 Final
+
+**E. Layaway**
+- Active Layaways
+- Layaway Overdue / Grace Period
+- Forfeiture-Eligible
+
+**F. Fulfillment**
+- For Preparation
+- For Shipping
+- For Pickup
+- Approved for Release
+
+**G. Attention / Exception**
+- Exceptional Release / Needs Owner Approval
+- Returned-to-Stock Review
+- Expired Orders
+- Cancelled Orders
+
+**H. Records**
+- Existing / Migrated Records
+- Possible Duplicate Customers
+
+**I. Search & Quick Actions**
+
+### 7.8 Role and Permission Queue Matrix
+
+**Governing principle:** visibility follows operational relevance; the main action inside a card is gated by the exact permission. The **Owner** sees all cards and may perform all actions. A **Selected Admin** sees the bands their permissions enable and may approve normal fulfillment; high-risk actions may only be **initiated** (never self-approved) and only with the **Initiate High-Risk Action** permission.
+
+| Card / Queue | Visible to (operational relevance) | Main action | Permission to perform |
+|---|---|---|---|
+| Pending Claims / Needs Review | Claim Capture, Claim Review | Review; confirm | Review requires **Claim Review**; confirmation requires **Confirm Claim & Print Label** |
+| Confirmed Claims / For Invoice | Invoice Preparation | Prepare / group claims for invoice | **Invoice Preparation** |
+| Invoices Ready for Review | Invoice Preparation | Review grouped invoice / Approve & Send Invoice | **Invoice Preparation** |
+| Awaiting Required Payment / Deposit | Payment Verification, Layaway Monitoring, Shipping / Pickup Preparation | (waiting state — no direct status-changing action) | — |
+| Payment Submitted / Unverified | Payment Verification | Verify payment | **Payment Verification** |
+| Required Payment / Deposit Verified | Shipping / Pickup Preparation, Layaway Monitoring, Payment Verification | Prepare fulfillment | **Shipping / Pickup Preparation**; **payment cannot be edited without Payment Verification** |
+| Reminders (Day 1 / 2 / 3 Final) | Reminder Handling | Send / record reminder | **Reminder Handling** |
+| Active / Overdue Layaways | Layaway Monitoring | Monitor / record | **Layaway Monitoring**; **payment verification still requires Payment Verification** |
+| Forfeiture-Eligible | Layaway Monitoring, Owner | Initiate / approve forfeiture | Initiation requires **Initiate High-Risk Action**; **approval requires Owner** |
+| For Preparation / Shipping / Pickup / Approved for Release | Shipping / Pickup Preparation | Prepare / approve normal release | **Shipping / Pickup Preparation** |
+| Exceptional Release / Needs Owner Approval | Owner; initiating Selected Admin (status view) | Approve or reject | **Owner** approves/rejects; initiation requires **Initiate High-Risk Action** |
+| Expired / Cancelled / Returned-to-Stock | Inventory Monitoring, Owner (where relevant) | Return-to-stock review | **Inventory Monitoring**; **cancellation still follows high-risk authority** |
+| 2nd-Miner / Waitlist Needs Staff Review | Miner / Allocation Review, Claim Review | Sure-buyer check & allocate | **Miner / Allocation Review** |
+| Existing / Migrated Records management | Owner; Existing Record Entry / Migration holders | Add / migrate record | **Existing Record Entry / Migration** |
+| Possible Duplicate Customers | Owner; Existing Record Entry / Migration holders | Review duplicates | Existing Record Entry / Migration; **no automatic merge** |
+| Summary Metrics | View Reports holders | (read-only compact counts) | **View Reports** — operational queue counts do **not** require View Reports when the queue is part of the user's duty |
+
+### 7.9 Priority Work Queues
+
+Urgency order (visibility still depends on role and permissions):
+
+1. Needs Owner Approval
+2. 2nd-Miner / Waitlist Needs Staff Review
+3. Day 3 Final Reminders
+4. Payment Submitted / Unverified
+5. Confirmed Claims / For Invoice
+6. Forfeiture-Eligible
+7. For Preparation / Approved for Release
+8. Returned-to-Stock Review
+9. Possible Duplicate Customers
+
+**Visibility still depends on role and permissions** — a user sees a priority queue only when it is operationally relevant to them.
+
+### 7.10 Dashboard Count Definitions
+
+Each operational count is a **queue size** tied to a Section 6 stage:
+
+- **Pending Claims / Needs Review** — captured claims at the Raw Claim layer awaiting initial review.
+- **Confirmed Claims / For Invoice** — individual confirmed claims not currently included in an active invoice draft.
+- **Invoices Ready for Review** — prepared buyer-level invoice drafts / grouped claim sets awaiting Approve & Send Invoice. **The same claim must not be counted in both queues at the same time:** once a claim is added to an active invoice draft it no longer counts in Confirmed Claims / For Invoice; if the draft is rejected, dissolved, or the claim is removed before sending, the claim may return to Confirmed Claims / For Invoice. (Strict transition behavior is defined in Section 22.)
+- **Awaiting Required Payment / Deposit** — official orders in hold with no payment yet.
+- **Payment Submitted / Unverified** — payments received, not yet verified.
+- **Required Payment / Deposit Verified** — the required amount is verified (not necessarily Paid in Full).
+- **Day 1 / Day 2 / Day 3 Reminders** — orders in hold at each reminder day.
+- **Active Layaways** — layaways currently active.
+- **Layaway Overdue / Grace Period** — overdue layaways within the 10-day grace.
+- **Forfeiture-Eligible** — layaways past grace, awaiting Owner decision.
+- **For Preparation** — orders being prepared/checked.
+- **For Shipping** — orders at the shipping stage.
+- **For Pickup** — orders at the pickup stage.
+- **Approved for Release** — releases approved, awaiting dispatch/handover.
+- **Needs Owner Approval** — exceptional/high-risk items pending the Owner.
+- **Expired Orders** — orders whose hold lapsed without required payment/deposit.
+- **Cancelled Orders** — orders in the cancelled terminal state.
+- **Returned-to-Stock Review** — items awaiting stock-return review.
+- **2nd-Miner / Waitlist Needs Staff Review** — freed items needing a sure-buyer check.
+- **Existing / Migrated Records** — migrated records (flagged).
+- **Possible Duplicate Customers** — customers flagged for duplicate review.
+
+**Distinguish these metrics:**
+- **Total Claims**
+- **Total Official Orders**
+- **Active Layaways**
+- **Completed Orders**
+- **Cancelled Orders**
+- **Expired Orders**
+
+**Counting rules (per Section 6.20):**
+- **Claims are not orders.**
+- **Migrated claim-less records do not count as claims.**
+- **Migrated historical orders count as official orders.**
+- **Active layaways may already be included within total official orders and must not be added again as extra orders** (the metrics are not additive).
+
+### 7.11 Alerts and Attention Flags
+
+**Owner alerts:**
+- Needs Owner Approval
+- Forfeiture-Eligible
+
+**Time-sensitive:**
+- Day 3 Final Reminder
+- hold expiring today
+- layaway due / grace boundary
+
+**Review-needed:**
+- 2nd-Miner / Waitlist Needs Staff Review
+- Returned-to-Stock Review
+- Possible Duplicate Customers
+
+**Exception:**
+- Exceptional Release
+
+Alerts **link to their operational queue**. They are **in-app attention flags only**. **Section 26 owns notification delivery.**
+
+### 7.12 Migrated-Record Visibility
+
+- Migrated records **appear in operational queues based on their actual status**.
+- A migrated **Active Layaway** appears in **Active Layaways**.
+- A migrated **overdue record** appears in **Layaway Overdue / Grace**.
+- A migrated **pickup record** appears in **fulfillment** if action is still needed.
+- The **source marker remains visible everywhere** the record appears.
+- **Operational users do not need migration-entry permission merely to see migrated records relevant to their duty.**
+- The **management card remains restricted to migration-capable users** (Owner and Existing Record Entry / Migration holders).
+
+### 7.13 Search and Quick Actions
+
+**Search entry supports:**
+- complete customer name
+- Facebook name
+- claim/reference number
+- official order number
+- invoice number
+- item code
+- shipping number
+
+**Detailed search/filter rules belong to Section 23.**
+
+**Quick actions (permission-gated):**
+- Review Claim
+- Confirm Claim & Print Label
+- Approve & Send Invoice
+- Verify Payment
+- Send / Record Reminder
+- Prepare Item
+- Approve Normal Release
+- Initiate High-Risk Action
+- Add Existing / Migrated Record
+
+### 7.14 Dashboard Refresh Behavior
+
+For Version 1:
+- **refresh on page load**;
+- **refresh affected queues/counts after completed actions**;
+- include a **manual Refresh action**;
+- **do not promise real-time or near-live synchronization.**
+
+### 7.15 Dashboard Summary Metrics Boundary
+
+The dashboard may show **compact summary counts only**:
+- Total Official Orders
+- Active Layaways
+- Completed Orders
+- Cancelled Orders
+- Expired Orders
+- **Outstanding Balance — only after it is properly defined** (see 7.18)
+
+**Detailed trends, charts, exports, and performance analysis belong to Section 25.**
+
+**Operational queue counts do not require View Reports** when part of the user's assigned duty.
+
+### 7.16 Possible Duplicate Customer Workflow Entry
+
+- The attention card **appears prominently only when one or more possible duplicates exist**.
+- **Authorized users may still open the review page when the count is zero.**
+- **No automatic merge.**
+- The **exact merge workflow belongs to later customer/search sections**.
+
+### 7.17 Section Boundaries
+
+- **Section 7** owns dashboard workflow and operational queues.
+- **Section 22** owns strict status transitions.
+- **Section 23** owns detailed search and filters.
+- **Section 25** owns reporting and analytics.
+- **Section 26** owns notification and reminder delivery.
+
+### 7.18 Open / To-Be-Confirmed Dashboard Items
+
+- formal definition of **Outstanding Balance**
+- **straight-order payment labeling** until the full-payment rule is confirmed
+- whether **Customer Support** permission also grants duplicate-review access
+
+### 7.19 Section 7 Summary
+
+- **One shared filtered dashboard** — not three separate products.
+- **Operational queues by role and permission.**
+- **Visibility does not equal action authority.**
+- **Migrated records remain operationally visible** (with their source marker).
+- **High-risk approval stays with the Owner.**
+- **Compact counts only, not full reporting** (Section 25 owns reporting).
+
+---
+
+*End of Section 7 — Dashboard Workflow. **APPROVED.** Section 8 — Screen Map to follow.*
