@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–28 APPROVED; Section 29 (API Design) pending
+> **Status:** In Progress — Sections 1–29 APPROVED; Section 30 pending
 
 ---
 
@@ -8549,3 +8549,171 @@ All 30 approved integrity rules are honored by the model: claims ≠ orders (28.
 ---
 
 *End of Section 28 — Database Design. **APPROVED.** Section 29 — API Design follows.*
+
+---
+
+## Section 29 — API Design
+
+### 29.1 Purpose of the API Design Section
+
+This section owns the **system action contracts** of Version 1 (MineFlow): request/response boundaries, validation, authorization checks, idempotency, concurrency behavior, integration boundaries, performance expectations, and error-response principles. It expresses **logical action groups and contracts**, not final endpoint code.
+
+This section stays at the logical/contract level. It defines no final URL paths, HTTP method requirements, JSON schemas, Supabase function/webhook names, rate limits, timeout values, Pancake API details, printer SDK calls, or production secrets. It introduces no new roles, permissions, official statuses, automatic actions, integrations, accounting rules, or customer-facing access beyond approved Sections 1–28, and it does not silently resolve any To-be-confirmed item.
+
+### 29.2 Action-Oriented API Principles
+
+- APIs are **action-oriented** around approved business operations (Sections 15–27), operating on the logical model of Section 28.
+- **REST vs server actions vs RPC balance remains To be confirmed**; contracts here are transport-agnostic.
+- Every action defines **input, validation, permission, result, prohibited side effects, idempotency, and failure behavior** (29.21).
+
+### 29.3 Authentication and Authorization Boundary
+
+- **Authorization is enforced server-side / at the trusted data boundary** (rule 1); **UI visibility is never authorization** (rule 2).
+- **Assignment is not permission** (rule 3) — a user's assignment to a record does not grant an action its permission gates.
+- **Technical authentication/session mechanics belong to Section 30**; this section assumes an authenticated identity with resolved permissions and shop/page scope.
+
+### 29.4 Permission and Shop/Page Checks
+
+- Each action checks the **exact Section 5 permission** and **shop/page scope** before executing.
+- **Owner-only** actions (the four high-risk approvals) and **separated permissions** (Payment Verification vs Layaway Monitoring vs fulfillment) are enforced per Sections 5, 16–18.
+- **The exact permission schema remains To be confirmed pending the Section 4–5 reconciliation.**
+
+### 29.5 Request Validation and Response Structure
+
+- Inputs are **validated against business rules** (required fields, arrangement compatibility, state preconditions) before any write.
+- Responses distinguish **success, business rejection, and technical error** with **attributable, non-sensitive** payloads; **exact JSON schema is To be confirmed.**
+
+### 29.6 Business vs Technical Errors
+
+- **Business errors** (e.g., "claim already in an active draft", "payment not verified") are explicit, non-destructive, and actionable.
+- **Technical errors** are surfaced without corrupting state; **no failed action silently duplicates or deletes** (Section 11.42). Detailed recovery → Section 32.
+
+### 29.7 Idempotency
+
+- **Critical writes are idempotent** via proposed idempotency keys / business-unique constraints (Section 28.14): **Approve & Send Invoice** creates **one** Official Order (rule 6); **Confirm Claim & Print Label** creates **one** Confirmed Claim + **one** reservation (rules 7–8); **Verify Payment** yields **one** verified record (rule 11); **message/print retry** duplicates nothing (rules 10, 12).
+- **Exact idempotency-key generation is To be confirmed.**
+
+### 29.8 Concurrency and Stale-Version Handling
+
+- **Stale or conflicting updates are rejected or returned for review** (rule 15) — last-valid-state governs (Section 11.42).
+- **Approval execution re-validates current state** before performing the action (rule 14).
+- **Exact optimistic-locking/versioning method is To be confirmed.**
+
+### 29.9 Transaction, Atomicity, and Rollback Boundaries
+
+- Multi-step critical writes (e.g., **Approve & Send Invoice**: create order + order number + invoice number + start hold + commit reservation) are **atomic** — all-or-nothing — so a failure leaves **no partial order/reservation** (rules 5–6, 9).
+- **Rollback restores the prior valid state**; **exact transaction implementation is To be confirmed** (Supabase/technical).
+
+### 29.10 Pagination, Filtering, Sorting, Search
+
+- List/search actions support **pagination, filtering, and sorting** with **permission-scoped result visibility** (rule 20; Section 23).
+- **Exact pagination limits and indexing are To be confirmed** (Section 23/technical).
+
+### 29.11 File Upload and Attachment Validation
+
+- Upload actions **validate type/size** and attach files to their owning record with attribution (Section 28.22); item photo vs claim/message evidence stay distinguished.
+- **Exact upload limits/types are To be confirmed**; no OCR/auto-read (Section 13).
+
+### 29.12 Rate Limiting, Performance, Timeout, Retry
+
+- **Rate-limiting and performance expectations** are acknowledged as concepts; **final rate limits, timeout values, and retry values are To be confirmed.**
+- **Retry is safe by idempotency** (29.7); retries never duplicate critical records.
+
+### 29.13 Offline and Manual Fallback
+
+- **Manual fallback remains available** (rule 19): capture, manual entry, and manual copy/send work without integrations; **offline/background-job behavior is To be confirmed.**
+
+### 29.14 Integration Adapter Boundary (Pancake/Meta)
+
+- A **Pancake/Meta adapter** exists only as an **optional, unverified boundary** (rule 17; Section 14): it may assist intake or sending **only when validated**, **cannot bypass MineFlow lifecycle rules** (rule 16), and **Pancake-assisted intake creates Pending Claims first**.
+- **A message-send failure never creates a second Official Order** (rule 12); **Pancake/Meta adapter design is To be confirmed.**
+
+### 29.15 Printer Adapter Boundary
+
+- A **printer bridge/adapter** is **optional and hardware-dependent** (rule 18; Section 27): it prints label jobs where the device is available, **grants no permission**, and **retry/reprint duplicates no inventory effects** (rule 10).
+- **Printer bridge implementation is To be confirmed** (validated on hardware).
+
+### 29.16 Migration/Import Boundary
+
+- Migration actions **preserve historical data and source markers** (rule 21), **create no fake claims**, and **do not merge customers or reassign records automatically** (rule 22; Section 28.21).
+
+### 29.17 Reporting APIs
+
+- Reporting actions are **read-only, permission-scoped, non-additive** (Section 25) and **never alter records**; export scope/authority remains To be confirmed.
+
+### 29.18 Sensitive-Data Minimization and Observability
+
+- Responses apply **sensitive-data minimization** (no personal data in URLs/logs beyond need); **observability/logging depth is To be confirmed** and bounded by Sections 30–31.
+
+### 29.19 Versioning and Backward Compatibility
+
+- The API acknowledges **versioning and backward-compatibility** as principles; **exact versioning method is To be confirmed.**
+
+### 29.20 Core Action Groups
+
+authentication/session · user/permission lookup · customers · customer aliases & possible duplicates · Live Batches · items · Current Flex · claims · Claim Review · claim confirmation · label jobs · Print Queue · Invoice Drafts · Approve & Send Invoice · Official Orders · messages · payments · layaway · fulfillment · Owner Approval Center · inventory · Returned-to-Stock Review · notifications · reports · search · migration/import · audit/history · file upload · **printer bridge (where validated)** · **Pancake/Meta adapter (where validated)**.
+
+### 29.21 Major Critical Action Contracts
+
+Common to all: **authorization checked server-side; attributable; idempotent where critical; stale/conflicting state rejected; no prohibited side effect.**
+
+| Action | Permission | Key validation | Result | Prohibited side effects / Idempotency & failure |
+|---|---|---|---|---|
+| Create Pending Claim | Claim Capture | provisional data; Current Flex for during-live | one Pending Claim | **No reservation/confirm/print/invoice/order**; retry-safe; failure creates nothing |
+| Review Claim | Claim Review (+Item/Miner) | claim in review | corrected/ready claim | No customer switch by unauthorized; no state jump |
+| Confirm Claim & Print Label | Confirm Claim & Print Label | reviewed, ready | **one Confirmed Claim + one reservation (available qty −1×qty) + label job → For Invoice** | **Exactly one reservation (rule 8); no invoice/order; duplicate call → no second claim/reservation** |
+| Create/Update Invoice Draft | Invoice Preparation | same customer+payment+fulfillment; claim not in another active draft | draft with claim links | **One claim ≤ one active draft**; no reservation change |
+| Approve & Send Invoice | Invoice Preparation | complete grouped draft | **one Official Order + order no. + invoice no. + hold; reservation → committed** | **Idempotent: retry → same order, no second deduction; atomic; failure → no partial order** |
+| Submit Payment Evidence | recording authority | related order | payment evidence recorded | **Recording ≠ verify**; no inventory effect |
+| Verify Payment | Payment Verification | evidence vs order/amount | one verified payment record | **≠ Paid in Full; no inventory deduction; no auto release/forfeit/cancel; no duplicate verified record** |
+| Create/Update Layaway | Layaway Monitoring (+verified 20% DP) | order = layaway arrangement | Active Layaway | Not an extra order; installment ≠ verification |
+| Request / Approve Forfeiture | Initiate High-Risk Action / **Owner** | eligible; state re-validated | request → decision | **Eligibility ≠ approval; request performs nothing; no auto stock return** |
+| Prepare / Release Fulfillment | Shipping/Pickup Preparation | verified required payment; prepared | For Preparation → Approved for Release | **Normal release ≠ Owner-only; no inventory re-deduction** |
+| Request / Approve Exceptional Release | Initiate High-Risk Action / **Owner** | exception; state re-validated | request → decision | **Request does not release; Owner-approved** |
+| Request / Approve Official-Order Cancellation | Initiate High-Risk Action / **Owner** | order exists; re-validated | request → decision | **Customer Support cannot; no auto inventory return; item → Returned-to-Stock Review** |
+| Send to Returned-to-Stock Review | Inventory Monitoring | freed item | review record created | **No automatic available-stock restore** |
+| Approve/Reject Stock Return | Inventory Monitoring / Miner-Allocation | reviewed item | **available qty restored** or held | **No auto transfer/allocation; unique→2nd miner, multi→waitlist as review** |
+| Retry / Reprint | Confirm Claim & Print Label (reprint authority TBC) | existing job | reprint queued | **No duplicate claim/order/payment/inventory deduction** |
+| Send / Retry Customer Message | Invoice Preparation (send authority TBC) | invoice exists | message attempt recorded | **Copy≠Sent; failure ≠ second order; retry no duplicate order/claim; manual fallback stays** |
+| Import / Migrate Record | Owner / Existing Record Entry-Migration | historical data | source-marked migrated record | **No fake claim; no auto-merge/reassign; historical values preserved** |
+
+### 29.22 Edge Cases
+
+- duplicate Approve & Send Invoice submits · concurrent Confirm on one claim · claim added to two drafts · stale approval executing on changed state · payment re-verify attempt · message retry after order exists · reprint after failure · migration of claim-less record · integration timeout mid-send · upload oversize/invalid type · pagination on large permission-scoped sets.
+
+### 29.23 Open / To-Be-Confirmed Items
+
+- REST vs server actions vs RPC balance
+- final API versioning method
+- exact idempotency-key generation
+- exact optimistic-locking method
+- exact pagination limits
+- upload limits
+- timeout/retry values
+- rate limits
+- API logging depth
+- integration credential storage
+- exact search indexing
+- background-job mechanism
+- printer bridge implementation
+- Pancake/Meta adapter design
+- exact permission schema pending reconciliation
+- exact Supabase/Vercel deployment pattern
+
+### 29.24 Section Boundaries
+
+- **Section 29** owns action contracts and API boundaries.
+- **Section 28** owns the data model operated on. **Section 22** owns statuses. **Section 23** owns search behavior. **Section 30** owns authentication/security. **Section 31** owns audit. **Section 32** owns error handling/recovery.
+
+### 29.25 Section 29 Summary
+
+- APIs are **action-oriented contracts** over the Section 28 model, each specifying **input, validation, permission, result, prohibited side effects, idempotency, and failure behavior** — transport choice (REST/server actions/RPC) left To be confirmed.
+- **Authorization is server-side; UI visibility and assignment are never authorization.**
+- **Idempotency and atomicity are guaranteed for the spine:** one reservation at Confirm, one Official Order per send with no second deduction, one verified payment, and non-duplicating retries; **stale/conflicting writes are rejected and approvals re-validate state.**
+- **Integration and printer adapters are optional, unverified boundaries that cannot bypass the lifecycle; manual fallback always remains; a send failure never creates a second order.**
+- **Migration preserves history without fake claims; no action silently merges customers, transfers claims, returns stock, or reassigns payments.**
+- **Final URLs, methods, schemas, keys, limits, indexing, adapters, permission schema, and Supabase/Vercel patterns remain To be confirmed.**
+
+---
+
+*End of Section 29 — API Design. **APPROVED.** Section 30 to follow.*
