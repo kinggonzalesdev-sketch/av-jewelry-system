@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–14 APPROVED; Section 15 (Invoice Workflow) pending
+> **Status:** In Progress — Sections 1–15 APPROVED; Section 16 (Payment Workflow) pending
 
 ---
 
@@ -5976,3 +5976,258 @@ A Pancake capability may be considered production-ready **only when**:
 ---
 
 *End of Section 14 — Pancake Integration. **APPROVED.** Section 15 — Invoice Workflow to follow.*
+
+---
+
+## Section 15 — Invoice Workflow
+
+### 15.1 Purpose of the Invoice Workflow Section
+
+This section owns the complete **Invoice Preparation workflow** in Version 1 (MineFlow): from complete Confirmed Claims in For Invoice, through Invoice Draft building and grouping, customer-message preparation, **Approve & Send Invoice**, Official System Order creation, official references, the shared three-day hold, and send/manual-send handling.
+
+**Governing scope statements:**
+- **A Confirmed Claim is not an invoice or Official Order** (Section 4.8, Section 6.4).
+- **Approve & Send Invoice is the single Official Order creation point** (Section 4.10, Section 6.8).
+- **Message preparation lives here; message delivery/retry/status belongs to Section 26** (Section 12.61).
+
+This section stays business-focused. It does not define database schema, APIs, code, invoice-number generation internals, OCR, actual message-sending implementation, printer behavior, exact button behavior, or final status-transition logic. It introduces no new permissions, roles, statuses, high-risk categories, automatic behavior, accounting rules, payment methods, integrations, or customer-facing features beyond approved Sections 1–14, and it does not silently resolve any To-be-confirmed item.
+
+### 15.2 Governing Invoice Rules
+
+1. A Confirmed Claim is **not** an invoice or Official Order.
+2. Confirm Claim & Print Label routes the claim to **For Invoice only**.
+3. **For Invoice** contains complete Confirmed Claims ready for invoice review.
+4. Claims may group **only** when they share: **same customer, same payment arrangement, same fulfillment arrangement.**
+5. **Different arrangements require separate Invoice Drafts and Official Orders.**
+6. **One claim cannot exist in multiple active Invoice Drafts.**
+7. Invoice Preparation **consumes the customer association already resolved on the claim** (Section 10.14).
+8. Invoice Preparation **must not silently switch customer identity.**
+9. **Incorrect claims are removed from the draft and returned to the appropriate correction path.**
+10. Successful **Approve & Send Invoice** creates **one Official System Order, one official order number, one invoice number, and one shared three-day hold.**
+11. **Included claims retain their claim/reference numbers.**
+12. **Retrying the action must not create another Official Order.**
+13. **Claims included in the Official Order are not counted as additional orders** (Section 6.20, Section 10.28).
+14. **Before successful approval:** no Official Order, no order number, no invoice number, hold not started.
+15. **After successful approval:** official references exist, the hold starts, the final message may include official references.
+16. **Required Payment / Deposit Verified does not automatically mean Paid in Full.**
+17. Invoice Preparation permission is **separate from Payment Verification.**
+18. Invoice Preparation permission is **separate from fulfillment authority.**
+19. **Official-order cancellation remains high-risk and Owner-approved** (Section 5.8, Section 9.16).
+20. **No automatic** inventory return, claim transfer, payment verification, fulfillment release, or cancellation occurs.
+
+### 15.3 For Invoice Entry Criteria
+
+- A claim reaches **For Invoice** only after **Confirm Claim & Print Label** (Section 6.4).
+- **Complete** Confirmed Claims are eligible for invoice review; incomplete claims remain in For Invoice or return to correction.
+- For Invoice shows **individual confirmed claims not currently in an active Invoice Draft** (Section 7.10, Section 8.5-C).
+
+### 15.4 Invoice Draft Lifecycle
+
+Business stages (**status candidates only; Section 22 owns final names/transitions**):
+```
+For Invoice (individual confirmed claim)
+→ added to Invoice Draft (grouped)
+→ Invoice Review
+→ Approve & Send Invoice
+→ Official System Order
+```
+- An **Invoice Draft is not an Official Order** (Section 9.8).
+- An unsent draft may be **edited, have claims removed, or be dissolved**; removed/dissolved claims may return to For Invoice.
+
+### 15.5 Claim Selection and Grouping Rules
+
+- Staff select **complete Confirmed Claims** for one buyer.
+- **Grouping requires same customer + same payment arrangement + same fulfillment arrangement** (rule 4).
+- **Different arrangements → separate drafts/orders** (rule 5).
+- Grouped claims **retain their own claim/reference numbers** (Section 6.7).
+
+### 15.6 Mixed Live and Post-Live Claims
+
+- **Live and post-live Manual-Entry claims may be grouped together** when they share the same customer and the same payment and fulfillment arrangement (Section 12.34).
+- Source marker does not block grouping; **arrangement compatibility governs grouping**, not origin.
+
+### 15.7 Arrangement and Association Checks
+
+- **Customer association** must already be resolved on the claim (Section 10.14); Invoice Preparation **does not create or switch customer identity**.
+- **Payment arrangement** and **fulfillment arrangement** must match across grouped claims.
+- A claim with an inconsistent association or arrangement is **removed and returned to the pre-invoice correction path** (Section 10.15).
+
+### 15.8 Incomplete Claim Handling
+
+- **Complete claims may be invoiced while incomplete claims remain For Invoice** (Section 6.7).
+- Incomplete claims are **not silently added** to a draft.
+
+### 15.9 Duplicate Protection and One-Claim-One-Active-Draft
+
+- **A claim cannot appear in For Invoice and an active draft at the same time** (Section 7.10).
+- **A claim cannot be in two active drafts** (rule 6).
+- Claims removed from an unsent draft may return to For Invoice.
+
+### 15.10 Draft Editing, Removing, and Returning Claims
+
+- Authorized staff may **build, edit, add/remove, or dissolve** an unsent draft.
+- Removed or dissolved-unsent claims **return to the appropriate correction path or For Invoice**.
+- **No silent customer switch** during editing or at send (Section 10.15).
+
+### 15.11 Grouped Totals
+
+- The draft may show a **grouped total** derived from included claims' total price per piece × quantities.
+- **Price per gram is not used** (Section 4.4.2).
+- **Outstanding Balance appears only once formally defined** (Section 7.18) — **To be confirmed**.
+
+### 15.12 Invoice and Customer-Message Preview
+
+- Staff may **preview the grouped invoice** and **preview the customer message** before approval.
+- **Before approval, the preview shows no official references** (rule 14).
+
+### 15.13 Customer Message Contents and Actions
+
+Business-level actions (**exact button names not finalized**): **Prepare Message · Preview Message · Copy Message · Send Message (where validated) · Mark as Sent (where permitted) · Edit/Retry (where later approved).**
+
+The message may include: customer name · item description · item code · grams per piece · quantity · item amount · grouped total · payment arrangement · fulfillment arrangement · payment instructions · required deposit where applicable · hold deadline · approved business contact instructions · **order number and invoice number only after creation**.
+
+- **Detailed template belongs here/Section 15 planning but is not finalized; delivery belongs to Section 26.**
+
+### 15.14 Before vs After Official References
+
+- **Before Approve & Send Invoice:** message is **draft/preview**; **no order number, no invoice number, no hold**; **no false official references** (Section 12.63).
+- **After successful Approve & Send Invoice:** **one order number, one invoice number, hold started**; final message **may include** them (Section 12.64).
+
+### 15.15 Approve & Send Invoice
+
+- Requires **Invoice Preparation** authority (Section 5.6).
+- On success, creates **one Official System Order + one order number + one invoice number + one shared three-day hold**; included claims stay linked and retain their claim/reference numbers.
+- The approved term **Approve & Send Invoice** is retained; **button-label reconciliation remains To be confirmed** (Section 12.67).
+
+### 15.16 Duplicate-Submit Prevention and Official Order Creation
+
+- **A repeated Approve & Send Invoice action must not create a second Official Order** (rule 12, Section 11.18).
+- The Official Order is created **once**; retries re-reference the same order, they do not duplicate it.
+
+### 15.17 Hold Start
+
+- The **shared three-day hold starts after the invoice is successfully sent** (Section 6.9).
+- **All claims in the grouped invoice share one hold-start date and deadline**; separate invoices have separate holds.
+- **Day 1 / Day 2 / Day 3 reminders anchor to that hold** (Section 4.15) — delivery owned by Section 26.
+
+### 15.18 Manual-Send Mode (V1 Baseline)
+
+```
+Prepare → Preview → Copy → staff manually sends via approved channel → staff marks/records Sent where permitted
+```
+- **Copy does not mean Sent.**
+- **Mark as Sent does not prove delivery.**
+- **The system remains usable without any integration.**
+
+### 15.19 Conditional Direct-Send Mode
+
+- When a **validated integration** exists: create the Official Order and references, start the hold, attempt direct send, record success/failure, **preserve the manual fallback** (Section 12.66).
+- **Pancake/Meta direct send remains conditional and unverified** (Section 14).
+
+### 15.20 Mark-as-Sent Boundary
+
+- **Mark as Sent may be a staff confirmation only**; delivery/read confirmation requires supported integration (Section 12.68).
+- **Mark-as-Sent proof requirements remain To be confirmed.**
+
+### 15.21 Failed Send, Resend, and Retry
+
+- **A send failure does not create a second Official Order and does not erase the existing one** (Section 12.69).
+- **Retry re-attempts sending only**, it does not recreate the order.
+- **Resend/retry authority and mechanics remain To be confirmed** (Section 26).
+
+### 15.22 Invoice Correction Before Sending
+
+- Before Approve & Send Invoice, staff may **correct the draft** (add/remove/regroup) within Invoice Preparation authority.
+- **No silent customer switch** (Section 10.15).
+
+### 15.23 Correction After Official Order Creation
+
+- After the Official Order exists, invoice correction is **not an ordinary edit**.
+- **Original references, financial history, and customer association must not be silently reassigned** (Section 10.17).
+- **Whether Owner approval is required for specific post-order invoice corrections remains To be confirmed**; **Section 22 owns resulting status behavior; Section 31 owns audit.**
+
+### 15.24 Cancellation Boundary
+
+- **Cancelling an Official Order is high-risk and Owner-approved** (Section 5.8) — it is **not** part of ordinary Invoice Preparation.
+- **No automatic inventory return or claim transfer** on cancellation (Section 6.15).
+
+### 15.25 Staff Attribution
+
+- Records may show **invoice prepared by** and **invoice approved/sent by** (Section 11.43).
+- **Attribution belongs to the action; reassignment does not erase it; Section 31 owns audit history.**
+
+### 15.26 Permissions
+
+- **Invoice Preparation** governs draft building, review, and Approve & Send Invoice.
+- It is **separate from Payment Verification and from fulfillment authority** (rules 17–18).
+- **Message-send / Mark-as-Sent micro-authority and any Orders-manual-entry access require Section 4–5 reconciliation** (Section 12.43). **No new permission is silently added.**
+
+### 15.27 Unauthorized Actions
+
+- Unauthorized invoice actions may be **hidden, disabled, blocked, or routed to escalation**; **attempts change no record** (Section 11.45). Detailed security/error UI belongs to Sections 21, 30, 32.
+
+### 15.28 Error Handling
+
+- **No failed action silently creates duplicates** (Section 11.42).
+- **Unresolved failures remain visible.**
+- **Exact technical retry/recovery belongs to Section 32.**
+
+### 15.29 Concurrent Staff Work
+
+- Two staff must not create **duplicate Official Orders** from the same draft.
+- A claim already added to a draft must not be **double-added**.
+- **Latest valid state respected; warn on stale records** (Section 11.42). **Technical concurrency → Sections 28–32.**
+
+### 15.30 Shift Handoff
+
+- Unsent drafts, claims awaiting grouping, and orders awaiting send remain **visible in their queues** across shifts (Section 11.40).
+- **Handoff does not grant missing permission.**
+
+### 15.31 Reports and Count Boundaries
+
+- **Invoice/order counts must not be additive** (Section 7.10, Section 10.28): included claims are not counted as extra orders; claims are not orders.
+- **Formal reporting belongs to Section 25.**
+
+### 15.32 Edge Cases
+
+- claim incomplete at grouping · mixed live/post-live claims · inconsistent arrangement in a draft · one claim added to two drafts · customer mismatch discovered at review · repeated Approve & Send Invoice submit · send fails after order creation · references change by later correction · draft dissolved after partial grouping · post-order invoice correction request · Owner-approval requirement unclear for a correction.
+
+### 15.33 Section Boundaries
+
+- **Section 15** owns Invoice Preparation and message preparation.
+- **Section 16** owns payment. **Section 17** layaway. **Section 18** fulfillment. **Section 19** inventory.
+- **Section 21** buttons. **Section 22** statuses. **Section 25** reporting. **Section 26** message delivery/retry/state. **Sections 28–32** integrity/security/audit/recovery.
+
+### 15.34 Open / To-Be-Confirmed Items
+
+- exact Invoice Draft status names
+- exact invoice required fields
+- invoice number format
+- Official Order number format
+- exact message template
+- approved sending channels
+- exact meaning of Send without integration
+- Mark-as-Sent proof requirements
+- sent/delivered/read model
+- resend/retry authority
+- post-Official-Order invoice correction
+- whether Owner approval is required for specific invoice corrections
+- button-label reconciliation
+- Paid in Full definition
+- Outstanding Balance definition
+- exact Section 4–5 permission reconciliation
+
+### 15.35 Section 15 Summary
+
+- **For Invoice holds complete Confirmed Claims; grouping requires same customer + payment + fulfillment arrangement.**
+- **Live and post-live claims may group together; different arrangements need separate orders.**
+- **One claim, one active draft; no silent customer switch.**
+- **Approve & Send Invoice is the only Official Order creation point** — one order, one order number, one invoice number, one shared three-day hold.
+- **Retries never create a second order; included claims are never double-counted.**
+- **Manual copy/send is the V1 baseline; direct send is conditional and unverified; a send failure never creates or erases an order.**
+- **Invoice Preparation is separate from Payment Verification and fulfillment; cancellation stays high-risk and Owner-approved.**
+- **Exact fields, formats, template, delivery model, corrections, and permission reconciliation remain To be confirmed.**
+
+---
+
+*End of Section 15 — Invoice Workflow. **APPROVED.** Section 16 — Payment Workflow follows.*
