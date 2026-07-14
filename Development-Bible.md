@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–23 APPROVED; Section 24 (Print Queue and Reprint Workflow) pending
+> **Status:** In Progress — Sections 1–24 APPROVED; Section 25 (Reporting and Analytics) pending
 
 ---
 
@@ -7797,4 +7797,136 @@ Filters may include: **status** (per Section 22), **date/time ranges**, **source
 
 ---
 
-*End of Section 23 — Search and Filter Specifications. **APPROVED.** Section 24 — Print Queue and Reprint Workflow to follow.*
+*End of Section 23 — Search and Filter Specifications. **APPROVED.** Section 24 — Print Queue and Reprint Rules follows.*
+
+---
+
+## Section 24 — Print Queue and Reprint Rules
+
+### 24.1 Purpose of the Print Queue and Reprint Rules Section
+
+This section owns the **business workflow for label jobs**: Print Queue visibility, print attempts, retry, reprint, failure handling, duplicate prevention, attribution, and history in Version 1 (MineFlow). It builds on Confirm Claim & Print Label (Section 6.4, Section 13.33) and the Print Queue screen (Section 8.17); **printer hardware behavior belongs to Section 27**.
+
+This section stays business-focused. It defines no SDK calls, Bluetooth protocol, device pairing, hardware commands, automatic printer discovery, label dimensions beyond the approved target, or final print-status vocabulary beyond what is safely derived. It introduces no new permissions, roles, statuses, integrations, automatic actions, or customer-facing access beyond approved Sections 1–23, and it does not silently resolve any To-be-confirmed item.
+
+### 24.2 Governing Print Rules
+
+1. Confirm Claim & Print Label creates: **a Confirmed Claim; a label job; routing to For Invoice.**
+2. **Creating a label job does not guarantee a physical print.**
+3. **Failed printing does not reverse claim confirmation.**
+4. **Printer failure does not create another claim, invoice, or Official Order.**
+5. **Retry operates on the same label job** where appropriate.
+6. **Reprint must not create a duplicate claim or another inventory deduction.**
+7. **Print success, claim confirmation, invoice creation, and Official Order creation are separate events.**
+8. **Physical-label loss or damage may require an authorized reprint.**
+9. **Reprints remain traceable.**
+10. **Do not silently delete failed jobs.**
+11. **Printer availability does not grant permission to confirm claims or reprint labels.**
+12. **Manual workflow remains available when the printer is unavailable.**
+13. **Exact printer SDK and Bluetooth behavior belong to Section 27 and later technical sections.**
+
+### 24.3 Label Job Definition
+
+- A **label job** is created at **Confirm Claim & Print Label** and is tied to the Confirmed Claim and its claim/reference number (Section 22.7).
+- A label job is **not** a claim, invoice, or Official Order; it represents a request to print a physical label.
+
+### 24.4 Print Queue Entry and Statuses
+
+Statuses follow Section 22.7 (business concepts; final vocabulary partly To be confirmed):
+- **Pending Print** — job queued, not yet printed.
+- **Printing** — a print attempt is in progress.
+- **Printed** — the printer reported success.
+- **Failed Print** — the attempt failed.
+- **Reprint Requested** — an authorized reprint is queued.
+- **Cancelled/Invalid label job** — retained only as a **concept**; whether a job may be voided/cancelled, and by whom, **remains To be confirmed** (jobs are never silently deleted, rule 10).
+
+### 24.5 Retry
+
+- **Retry re-attempts the same label job** (rule 5); it does **not** create a new claim, job duplicate, or inventory effect.
+- Repeated taps must be **idempotent** — a duplicate tap does not create a second job (Section 11.42).
+
+### 24.6 Reprint
+
+- A **reprint** produces another physical label for an existing Confirmed Claim (e.g., physical-label loss or damage, rule 8).
+- **A reprint must not create a duplicate claim or another inventory deduction** (rule 6).
+- **Original vs reprint is distinguished** and **traceable** (rule 9); **reprint-reason requirement remains To be confirmed.**
+- **Reprint authority remains To be confirmed** (Section 4–5 reconciliation).
+
+### 24.7 Printer-Unavailable and Hardware-Issue Handling
+
+- If the printer is **unavailable, disconnected, out of paper/labels, or the wrong printer is selected**, the label job **remains Pending/Failed and visible** — the **Confirmed Claim still exists** (rules 2–3).
+- **Bluetooth disconnect / app interruption** do not reverse confirmation and do not duplicate records.
+- **Manual workflow remains available** (rule 12); staff may proceed and reprint later when the printer is restored.
+
+### 24.8 Duplicate Prevention
+
+- **Duplicate tap, stale job, or retry after interruption must not create duplicate jobs, claims, or inventory deductions** (rules 4, 6).
+- Duplicate-print risk is **surfaced/warned**; **exact duplicate-print safeguards remain To be confirmed.**
+
+### 24.9 Multiple Staff and Job Ownership
+
+- Where multiple staff share the Print Queue, a job may be **individually attributed or handled from a shared queue**; **job-ownership vs shared-queue model remains To be confirmed** (Section 11.40).
+- Opening a failed job does not automatically print (Section 11.37).
+
+### 24.10 Label Preview and Content Boundary
+
+- A **label preview** may be shown before/around printing.
+- Label content **prioritizes** (Section 4.6): claim/reference number, complete buyer name, mine date/time, item code, grams, total item price, claim position/allocation status.
+- **Exact label fields and layout remain To be confirmed**; the approved physical target is **40 × 30 mm** (Section 24.13).
+
+### 24.11 Print History and References
+
+- **Print history** records attempts, outcomes, reprints, reasons (where required), and the acting staff account (rules 9, attribution).
+- The label shows **claim/order references only as they exist** (a label at Confirm time carries the **claim/reference number**; official order/invoice numbers exist only after Approve & Send Invoice, Section 22.9).
+
+### 24.12 Unauthorized Behavior, Error, Attribution
+
+- Unauthorized print/reprint actions are **hidden, disabled, or blocked**; attempts change no record (Section 11.45).
+- **No failed job is silently deleted** (rule 10); unresolved failures remain visible; technical recovery → Section 32.
+- Print/reprint actions are **attributable to the account** (Section 11.43); detailed audit → Section 31.
+
+### 24.13 Approved Printer Target (Reference)
+
+- **Xprinter XP-236B Bluetooth**, label size **40 × 30 mm**.
+- **Hardware behavior is treated as technically unverified until tested** (Section 27); **printed-vs-physically-applied distinction remains To be confirmed.**
+
+### 24.14 Reporting and Count Boundary
+
+- Print counts (success/failure/reprint) are **operational**; a **printed label does not equal a fulfilled order** (Section 25.10-area).
+- **Formal reporting belongs to Section 25.**
+
+### 24.15 Edge Cases
+
+- printer unavailable at confirm · paper/label out · Bluetooth disconnect mid-print · wrong printer selected · duplicate tap · stale/failed job reopened · reprint after label loss · multiple staff printing · offline queue · print reported success but label not applied · reprint without reason.
+
+### 24.16 Section Boundaries
+
+- **Section 24** owns the label-job business workflow.
+- **Section 6/13** own Confirm Claim & Print Label. **Section 22** owns print statuses. **Section 25** reporting. **Section 27** printer hardware/SDK/Bluetooth. **Sections 28–32** integrity/security/audit/recovery.
+
+### 24.17 Open / To-Be-Confirmed Items
+
+- exact label fields
+- exact reprint authority
+- reprint-reason requirement
+- void/cancel label-job authority
+- printed-vs-physically-applied distinction
+- print-status names
+- queue prioritization
+- offline queue behavior
+- duplicate-print safeguards
+- supported printer fallback
+- exact Section 4–5 permission reconciliation
+
+### 24.18 Section 24 Summary
+
+- **Confirm Claim & Print Label creates a Confirmed Claim, a label job, and For-Invoice routing — creating a label job never guarantees a physical print.**
+- **Print success, claim confirmation, invoice creation, and Official Order creation are separate events; printer failure reverses none of them and creates no duplicate records or inventory deductions.**
+- **Retry works on the same job; reprint never duplicates a claim or deducts inventory and stays traceable; failed jobs are never silently deleted.**
+- **Manual workflow remains available when the printer is unavailable; printer availability grants no permission.**
+- **The approved target is Xprinter XP-236B, 40 × 30 mm, treated as unverified until tested; hardware behavior belongs to Section 27.**
+- **Label fields, reprint authority, status names, and duplicate-print safeguards remain To be confirmed.**
+
+---
+
+*End of Section 24 — Print Queue and Reprint Rules. **APPROVED.** Section 25 — Reporting and Analytics follows.*
