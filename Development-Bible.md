@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–33 APPROVED; Section 34 (Testing Plan) pending
+> **Status:** In Progress — Sections 1–34 APPROVED; Section 35 (Deployment Plan) pending
 
 ---
 
@@ -9461,3 +9461,122 @@ A feature is "done" only when it: **traces to an approved requirement; enforces 
 ---
 
 *End of Section 33 — Development Standards. **APPROVED.** Section 34 — Testing Plan follows.*
+
+---
+
+## Section 34 — Testing Plan
+
+### 34.1 Purpose of the Testing Plan Section
+
+This section owns the **complete validation plan** for Version 1 (MineFlow): documentation, code, database, permissions, workflows, devices, integrations, recovery, UAT, pilot, and production readiness. Its purpose is to prove the approved rules actually hold before reliance.
+
+This section stays at the plan level. It defines no test tool, automation framework, coverage number, device matrix, pilot dates, or sign-off authority as final. It introduces no new roles, permissions, Owner-only approvals, automatic actions, integrations, or production guarantees beyond approved Sections 1–33, and it does not silently resolve any To-be-confirmed item.
+
+### 34.2 Governing Testing Rules
+
+1. **A screen existing does not prove the feature works.**
+2. **Every workflow requires happy-path and failure-path testing.**
+3. **Unauthorized access must be tested.**
+4. **Double-click and repeated-request behavior must be tested.**
+5. **Concurrent staff behavior must be tested.**
+6. **Stale-record behavior must be tested.**
+7. **Duplicate critical records must never be accepted.**
+8. **Inventory must not be deducted twice.**
+9. **Message retry must not recreate the Official Order.**
+10. **Print retry must not recreate the claim or reservation.**
+11. **Payment retry must not duplicate verification.**
+12. **Owner approval must not execute twice.**
+13. **Manual fallback must be tested.**
+14. **Real printer testing is mandatory before printer readiness is claimed.**
+15. **Real Android/iOS behavior must be tested before compatibility is claimed.**
+16. **Pancake/Meta behavior must be tested before integration readiness is claimed.**
+17. **Test data must not contaminate production.**
+18. **Critical failures block production readiness.**
+19. **Staff UAT is required.**
+20. **A controlled pilot is required before full production launch.**
+
+### 34.3 Testing Stages
+
+1. **Development Bible consistency testing** — cross-section rule/terminology consistency.
+2. **Static code checks** — types, lint, format.
+3. **Unit testing** — business-logic units.
+4. **Integration testing** — module interactions.
+5. **Database integrity testing** — constraints, reservation model, idempotency (Section 28).
+6. **Permission and authorization testing** — every permission and Owner-only gate (Section 5, 30).
+7. **End-to-end workflow testing** — full lifecycle paths.
+8. **Concurrency and duplicate-submission testing** — rules 4–8.
+9. **Security testing** — authz boundary, unauthorized writes (Section 30).
+10. **Error and recovery testing** — Section 32 paths.
+11. **File/photo/upload testing** — validation, item-vs-evidence.
+12. **Printer and label testing** — real XP-236B, 40×30 mm (rule 14).
+13. **Mobile-device testing** — real Android/iOS (rule 15).
+14. **Pancake/Meta validation where available** — real behavior only (rule 16).
+15. **Performance testing** — under expected load.
+16. **Migration testing** — historical import fidelity, recoverable batches.
+17. **Staff UAT** — real staff, real scenarios (rule 19).
+18. **Controlled live-selling pilot** — bounded real operation (rule 20).
+19. **Regression testing** — before each release.
+20. **Production smoke testing** — post-deploy critical-path checks.
+
+### 34.4 Per-Test-Area Attributes
+
+Each test area defines: **objective · prerequisites · test data · test roles · steps · expected result · failure result · evidence · severity · retest requirement · pass/fail criteria · owner of test · environment.** These attributes apply uniformly; **specific tools, matrices, and participants remain To be confirmed.**
+
+### 34.5 Critical Workflows to Test
+
+Each of the following is tested happy-path **and** failure-path, with unauthorized, double-submit, concurrent, and stale-record variants where applicable:
+
+account access and deactivation · granular permissions · Live Batch lifecycle · Current Flex · manual/live Pending Claim creation · Claim Review · unique item 1st/2nd Miner · multi-stock and waitlist · **Confirm Claim & Print Label (one reservation)** · inventory reservation · Print Queue · Invoice Draft grouping · **Approve & Send Invoice (idempotent, one order)** · Official Order idempotency · manual message copy/send · conditional direct send · payment evidence and verification · layaway · shipping/pickup · normal release · exceptional release · Official Order cancellation · forfeiture · price override · Returned-to-Stock Review · migration · reports · notifications · audit logs · search/filter · export where approved · outage/recovery.
+
+**Key invariants under test:** no duplicate critical records (rule 7); no double inventory deduction (rule 8); message/print/payment/approval retries do not duplicate (rules 9–12); manual fallback works (rule 13).
+
+### 34.6 Readiness Categories
+
+- **Not Ready** — core functionality or critical tests incomplete/failing.
+- **Development Ready** — builds and passes unit/static checks.
+- **Internal Test Ready** — integration/permission/E2E paths pass in a test environment.
+- **Pilot Ready** — security, recovery, real-device and printer basics, and migration pass; manual fallback verified.
+- **Production Ready** — all of the above plus completed UAT and a successful controlled pilot.
+
+**Production Ready must NOT be declared while:** critical tests fail · real-device testing is incomplete · backup/restore is untested · security blockers remain · core permissions fail · duplicate prevention fails · the required pilot is incomplete (rules 14–20).
+
+### 34.7 Edge Cases
+
+- passing screens with broken logic · unauthorized write slipping through · double-click creating a second order · concurrent confirmation on one claim · stale approval executing · reprint duplicating a claim · payment re-verify duplicating · printer "success" without a physical label · message "sent" without delivery · migration partial without recoverable state · test data leaking to production.
+
+### 34.8 Section Boundaries
+
+- **Section 34** owns the testing plan.
+- **Section 29** idempotency contracts. **Section 30** security. **Section 31** audit. **Section 32** recovery. **Section 35** deployment gates. **Section 36** release criteria.
+
+### 34.9 Open / To-Be-Confirmed Items
+
+- test tools
+- automation framework
+- coverage threshold
+- test-device matrix
+- printer test devices
+- staff UAT participants
+- pilot duration
+- pilot transaction volume
+- defect severity definitions
+- release-blocking thresholds
+- performance targets
+- backup/restore test schedule
+- security-test scope
+- external penetration testing
+- Pancake test access
+- final sign-off authority
+
+### 34.10 Section 34 Summary
+
+- **Testing spans 20 stages** from Bible-consistency to production smoke testing, each critical workflow tested happy- and failure-path with unauthorized, double-submit, concurrent, and stale-record variants.
+- **The integrity invariants are proven:** no duplicate critical records, no double inventory deduction, and message/print/payment/approval retries never duplicate; manual fallback is tested.
+- **Real-hardware and real-device testing are mandatory** before printer/mobile/integration readiness is claimed; **test data never contaminates production.**
+- **Five readiness levels** gate progress; **Production Ready is blocked** by failing critical tests, incomplete real-device testing, untested backup/restore, security blockers, permission failures, duplicate-prevention failures, or an incomplete pilot.
+- **Staff UAT and a controlled pilot are required before full production.**
+- **Tools, matrices, thresholds, pilot parameters, and sign-off authority remain To be confirmed.**
+
+---
+
+*End of Section 34 — Testing Plan. **APPROVED.** Section 35 — Deployment Plan follows.*
