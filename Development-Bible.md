@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–32 APPROVED; Section 33 pending
+> **Status:** In Progress — Sections 1–33 APPROVED; Section 34 (Testing Plan) pending
 
 ---
 
@@ -9297,4 +9297,167 @@ Categories analyzed: **validation · permission/authorization · stale-record co
 
 ---
 
-*End of Section 32 — Error Handling and Recovery Rules. **APPROVED.** Section 33 to follow.*
+*End of Section 32 — Error Handling and Recovery Rules. **APPROVED.** Section 33 — Development Standards follows.*
+
+---
+
+## Section 33 — Development Standards
+
+### 33.1 Purpose of the Development Standards Section
+
+This section owns the **engineering standards** that govern implementation of the approved Development Bible for Version 1 (MineFlow). It ensures code faithfully realizes the approved business rules without redefining them.
+
+This section stays at the standards level. It defines no final folder structure, package versions, CI configuration, lint rules, browser-support list, deployment automation, branching model (if not yet chosen), or production SLA. It introduces no new roles, permissions, Owner-only approvals, customer-facing access, automatic actions, integrations, accounting rules, or production guarantees beyond approved Sections 1–32, and it does not silently resolve any To-be-confirmed item.
+
+### 33.2 Source-of-Truth Hierarchy and Traceability
+
+- **Development-Bible.md is the authoritative product specification and business source of truth** (rule 1).
+- **Every implemented feature must trace back to an approved requirement** (rule 20); implementation **must not silently redefine approved business rules** (rule 2).
+- Where a needed decision is missing, it stays **To be confirmed** — code must not invent it.
+
+### 33.3 Target Stack (Intended; Validation Allowed)
+
+- **Next.js, TypeScript, Tailwind CSS, shadcn/ui, Supabase, Vercel, GitHub** (per the project handoff).
+- The system is **mobile-first, internal-staff-only, no customer login, single business / single primary Facebook Page in V1**, for **Owner, Selected Admin, and Staff with granular permissions**.
+- **Exact framework/package versions remain To be confirmed**; technical validation is allowed where necessary.
+
+### 33.4 Governing Development Rules
+
+1. **Development-Bible.md is the business source of truth.**
+2. **Implementation must not silently redefine approved business rules.**
+3. **Authorization is enforced at the trusted server/data boundary.**
+4. **UI visibility is not authorization.**
+5. **Critical writes must be idempotent.**
+6. **Inventory reservation occurs once at Confirmed Claim.**
+7. **Official Order creation must not deduct inventory again.**
+8. **Retry must not duplicate claims, reservations, orders, payments, messages, releases, or stock returns.**
+9. **Audit attribution must be preserved.**
+10. **Notes cannot substitute for business state changes.**
+11. **External integrations remain adapters and cannot bypass the lifecycle.**
+12. **Pancake/Meta and printer capabilities remain unverified until tested.**
+13. **Test data must remain separate from production data.**
+14. **Secrets must not be committed.**
+15. **Database changes must use reviewed migrations.**
+16. **Destructive changes require explicit review and recovery planning.**
+17. **No customer-facing authentication may be introduced.**
+18. **No production deployment before required tests pass.**
+19. **Prototype code must not be treated as production-ready without review.**
+20. **Every implemented feature must trace back to an approved requirement.**
+
+### 33.5 Project Structure and Naming
+
+- A clear, conventional project structure with consistent **naming conventions** for files, components, and modules aligned to Sections 8–9.
+- **Final repository/folder structure remains To be confirmed.**
+
+### 33.6 TypeScript and Component Standards
+
+- **TypeScript** with strong typing for business entities (Section 28 model); avoid `any` for critical data.
+- **Component standards**: reusable, permission-aware components; visibility filtered by permission but **never relied on for authorization** (rule 4).
+
+### 33.7 Server/Client Boundary and Business-Logic Placement
+
+- **Business logic and authorization live server-side / at the trusted data boundary** (rule 3); the client renders and requests, it does not decide authority.
+- Sensitive computations (inventory reservation, order creation, verification) are **server-authoritative**.
+
+### 33.8 Authorization Enforcement and Validation
+
+- Every sensitive action **re-checks the exact Section 5 permission and shop/page scope server-side** (Section 29–30).
+- **Input is validated** against business rules before any write; invalid input writes nothing (Section 32.6).
+
+### 33.9 Data Access and Database Migrations
+
+- Data access respects the Section 28 model and Section 30 visibility scoping (RLS target).
+- **All schema changes use reviewed migrations** (rule 15); **destructive changes require explicit review and recovery planning** (rule 16); **no silent partial data** on failure (Section 32).
+
+### 33.10 API/Action Standards
+
+- Actions follow Section 29 contracts: **idempotency for critical writes** (rules 5, 8), **concurrency via stale-record rejection**, and **atomic transaction boundaries** (reservation once at Confirmed Claim — rule 6; order creation no second deduction — rule 7).
+
+### 33.11 Error Handling, Audit Events, Logging
+
+- Error handling follows Section 32 (no silent duplicates; visible, recoverable failures).
+- **Material actions create audit events** (Section 31) with preserved attribution (rule 9).
+- **Logging excludes secrets/sensitive data** (Section 30.18).
+
+### 33.12 Secrets and Environment Variables
+
+- **Secrets are never committed** (rule 14); configuration uses **environment variables**; production secrets are managed outside source (Section 30.12). **Secrets-management implementation remains To be confirmed.**
+
+### 33.13 File Uploads and Attachments
+
+- Uploads are **type/size validated**, scoped to their owning record, and distinguished (item photo vs claim/message evidence, Section 12.42); **no OCR/auto-execution** (Section 13); **exact limits remain To be confirmed.**
+
+### 33.14 UI Standards
+
+- **Responsive, mobile-first layouts** (Section 8.20); **accessibility** as a standard (target TBC).
+- Consistent **loading / empty / error states**; clear **form behavior**; **confirmation dialogs** for destructive/high-risk actions; **duplicate-submit prevention** on every critical action (rule 8; Section 21.2).
+
+### 33.15 Quality Gates
+
+- **Tests, code review, linting, formatting, type checking, and documentation** are standard practice; **exact lint rules, coverage thresholds, and code-review policy remain To be confirmed.**
+
+### 33.16 Git Workflow and Releases
+
+- **Git workflow** with a defined **branch strategy** and **commit standards**; **release versioning** reflects meaningful, tested releases (Section 36).
+- **Final branching model, branch protection, and release naming remain To be confirmed.**
+
+### 33.17 Dependency Management
+
+- Dependencies are managed deliberately; **package installation requires approval** (no unreviewed additions); **dependency-update policy remains To be confirmed.**
+
+### 33.18 Security Review, Performance, Support Boundaries
+
+- **Security review** accompanies sensitive changes (Section 30).
+- **Performance expectations** are acknowledged; **performance budgets and supported browsers/devices remain To be confirmed.**
+
+### 33.19 Technical Debt and Feature Flags
+
+- **Technical debt and known limitations are tracked** (feeds Section 36 register); **feature flags** may gate conditional/unvalidated capabilities (Pancake/printer); **feature-flag provider remains To be confirmed.**
+
+### 33.20 Prototype-vs-Production Separation and Prohibited Shortcuts
+
+- **Prototype code (the `ui-prototype-preview` mock) is not production-ready** and is not merged without review (rule 19).
+- **Prohibited shortcuts:** UI-only authorization; skipping idempotency; deducting inventory outside the reserve-at-Confirm model; treating a label job as a guaranteed print; treating a sent message as delivered; committing secrets; unreviewed destructive migrations; introducing customer login (rules 3–17).
+
+### 33.21 Definition of Done
+
+A feature is "done" only when it: **traces to an approved requirement; enforces authorization server-side; is idempotent for critical writes; preserves the inventory model and audit attribution; handles happy and failure paths; has appropriate tests, review, lint, and types; leaks no secrets; and is not merged prototype code.**
+
+### 33.22 Edge Cases
+
+- feature with no traceable requirement (blocked) · UI-only permission check (rejected) · non-idempotent critical write (rejected) · double inventory deduction (rejected) · secret in code (blocked) · destructive migration without recovery plan (blocked) · prototype merged unreviewed (blocked) · customer-login attempt (blocked).
+
+### 33.23 Section Boundaries
+
+- **Section 33** owns engineering standards.
+- **Section 28** data model. **Section 29** API contracts. **Section 30** security. **Section 31** audit. **Section 32** recovery. **Section 34** testing. **Section 35** deployment.
+
+### 33.24 Open / To-Be-Confirmed Items
+
+- exact framework/package versions
+- final repository structure
+- CI/CD configuration
+- exact code-review policy
+- branch protection
+- test coverage thresholds
+- supported browsers/devices
+- performance budgets
+- accessibility target
+- dependency update policy
+- release naming
+- feature-flag provider
+- monitoring provider
+- documentation tooling
+
+### 33.25 Section 33 Summary
+
+- **Development-Bible.md is the source of truth; every feature traces to an approved requirement and never silently redefines a business rule.**
+- **Authorization is server-side; UI visibility is not authorization; critical writes are idempotent; inventory reserves once at Confirmed Claim with no second deduction at the order.**
+- **Retry never duplicates critical records; audit attribution is preserved; notes never substitute for state changes.**
+- **Integrations are adapters that cannot bypass the lifecycle; Pancake/Meta and printer stay unverified until tested; no customer login is introduced.**
+- **Secrets are never committed; schema changes use reviewed migrations; destructive changes require recovery planning; prototype code is not production-ready.**
+- **Versions, CI, coverage, browsers, and tooling specifics remain To be confirmed.**
+
+---
+
+*End of Section 33 — Development Standards. **APPROVED.** Section 34 — Testing Plan follows.*
