@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–19 APPROVED; Section 20 pending
+> **Status:** In Progress — Sections 1–20 APPROVED; Section 21 (Button Functionality Matrix) pending
 
 ---
 
@@ -7022,4 +7022,266 @@ The exact point where stock becomes provisionally associated → reserved → co
 
 ---
 
-*End of Section 19 — Inventory Workflow. **APPROVED.** Section 20 to follow.*
+*End of Section 19 — Inventory Workflow. **APPROVED.** Section 20 — Feature Specifications follows.*
+
+---
+
+## Section 20 — Feature Specifications
+
+### 20.1 Purpose of the Feature Specifications Section
+
+This section gives the **business-level functional specification** of each Version 1 (MineFlow) feature/module — what it is for, who may use it, what it shows, and what it does — building on the modules of Section 9 and the screens of Section 8.
+
+This section stays business-focused. It defines no database schema, APIs, code, or UI implementation. It introduces no new permissions, roles, statuses, high-risk categories, automatic actions, payment/accounting rules, integrations, or customer-facing access beyond approved Sections 1–19, and it does not silently resolve any To-be-confirmed item.
+
+### 20.2 Common Specification Conventions
+
+Unless a feature states otherwise, the following apply to every feature below:
+
+- **Eligible users** are described by **existing Section 5 permissions and shop/page access** — **no new role or permission is created here**; the Owner has implicit access to all approved permissions.
+- **Visibility does not equal action authority** (Section 7.3); a user may see a queue but perform only permitted actions.
+- **Unauthorized behavior:** disallowed actions are **hidden, disabled with explanation, or blocked**; **attempts change no record** and may route to escalation (Section 11.45).
+- **Empty state:** a queue/list with no relevant items shows an empty state; **cards with no operational relevance do not appear** (Section 7.6).
+- **Error state:** failures are **visible and non-destructive**; **no failed action silently creates duplicates** (Section 11.42); technical recovery belongs to Section 32.
+- **Audit attribution:** material actions are **attributable to the individual account** (Section 11.43); detailed audit belongs to Section 31.
+- **Mobile-first:** primary actions are thumb-reachable; list → detail pattern; high-risk actions are never one-tap ordinary actions (Section 8.20).
+- **Handoff** flows follow the approved lifecycle; **Section 22 owns statuses**, **Section 21 owns exact buttons**.
+
+### 20.3 Approved Inventory Model (Reflected Throughout)
+
+Per the client-approved inventory decision, the following model is reflected wherever inventory is affected:
+- **Pending Claim:** no reservation, no decrease in available quantity.
+- **Confirmed Claim:** provisionally reserves the confirmed quantity and **decreases available quantity** (not yet an order or sale).
+- **Invoice Draft:** preserves the Confirmed-Claim reservation; **no additional reservation**.
+- **Approve & Send Invoice / Official Order:** converts the reservation to **committed inventory**; **no second deduction**.
+- **Payment verification / fulfillment:** **no further deduction**; fulfillment records operational release/completion.
+- **Cancelled / expired unpaid / withdrawn / rejected / forfeited:** **no automatic return**; route to **Returned-to-Stock Review** (manual).
+- **No automatic** 2nd-Miner transfer, waitlist allocation, stock return, shop/auction disposition, or forfeited-item disposition.
+
+### 20.4 Dashboard
+
+- **Purpose:** operational command center and work-queue hub (Section 7).
+- **Users:** all authenticated staff, filtered by permission/shop-page; Owner sees all.
+- **Entry:** primary bottom-nav.
+- **Inputs:** none direct; reads queue states.
+- **Displays:** permission-relevant queues, compact counts, alerts, quick actions; **Needs Owner Approval pinned for Owner when non-empty**.
+- **Actions:** open queue; permission-gated quick action; manual Refresh (Section 7.14).
+- **Result:** navigation into the owning module.
+- **Validation:** counts follow approved non-additive counting (Section 7.10).
+- **Handoff:** to every operational module.
+
+### 20.5 Live Batch
+
+- **Purpose:** prepare and operate one selling session (Section 12).
+- **Users:** Live Batch Item Entry, Claim Capture (batch-lifecycle authorities are a **Section 4–5 reconciliation item**, carried TBC).
+- **Entry:** Live nav → Live Batches → Live Batch Detail.
+- **Inputs:** batch reference/date/shop-page/notes (exact required fields TBC); items.
+- **Displays:** items, Current Flex Item, batch state, counts, unresolved work.
+- **Actions:** create/open batch; add/verify items; set/switch/clear Current Flex; start/pause/resume/end/close/reopen (authorities TBC).
+- **Result:** batch container with items; no Official Order (Section 12.3).
+- **Validation:** item fields per §4.4; **batch closure changes no inventory** (§20.3).
+- **Handoff:** Current Flex → Claim Capture; items → Inventory.
+
+### 20.6 Current Flex Item
+
+- **Purpose:** the single item being presented; item source for during-live capture (Section 12.15).
+- **Users:** live staff with the applicable authority.
+- **Displays:** photo, item code, grams/piece, total price/piece, quantity, **remaining quantity** (now reflecting Confirmed-Claim reservation per §20.3).
+- **Actions:** set/switch/clear.
+- **Result/Validation:** switching affects **future capture only**; existing claims keep their stored item (Section 12.17); no Current Flex blocks the Current-Flex capture action.
+
+### 20.7 Claim Capture
+
+- **Purpose:** turn live activity into a Pending Claim (Section 13).
+- **Users:** Claim Capture.
+- **Entry:** Live Batch Detail / Mobile Capture Entry.
+- **Inputs:** provisional buyer, comment/reference, evidence, entered/suggested position; item from Current Flex.
+- **Displays:** provisional claim summary.
+- **Actions:** capture / manual live entry / screenshot upload / iOS Share.
+- **Result:** **one Pending Claim; no reservation, confirm, print, invoice, or order** (§20.3, Section 13.17).
+- **Validation:** no OCR/auto-read/auto-match/auto-position.
+- **Handoff:** Claim Review.
+
+### 20.8 Manual Post-Live Entry
+
+- **Purpose:** new-claim intake for post-live message / private message / walk-in (Section 12.35).
+- **Users:** Claim Capture (post-live item-creation authority is a **Section 4–5 reconciliation item**, TBC).
+- **Entry:** **Orders workspace → + Manual Entry** (secondary entry points TBC).
+- **Inputs:** provisional customer; item (select existing or new-if-approved); source marker; photo/evidence; arrangement.
+- **Displays:** entered summary before save.
+- **Result:** **one Pending Claim, not an Official Order**; **no reservation at this point** (reservation occurs at Confirmed Claim).
+- **Handoff:** Claim Review.
+
+### 20.9 Claims Workspace
+
+- **Purpose:** list Pending and Confirmed claims (Section 8.5).
+- **Users:** Claim Capture, Claim Review.
+- **Displays:** Pending Claims / Needs Review; Confirmed Claims / For Invoice; 2nd-Miner/Waitlist Needs Staff Review.
+- **Actions:** open Claim Review; open For Invoice.
+- **Handoff:** Claim Review; Invoice Preparation.
+
+### 20.10 Claim Review
+
+- **Purpose:** resolve a Pending Claim to readiness (Section 6.4, Section 9.7).
+- **Users:** Claim Review; Item Correction; Miner/Allocation Review; Initiate High-Risk Action for price-override request only.
+- **Inputs/Displays:** buyer, item, photo, grams, total price, position, quantity, duplicate warning.
+- **Actions:** correct customer/item/miner/quantity; withdraw claim; switch item; reject capture; Confirm Claim & Print Label; initiate price-override request.
+- **Result:** a corrected, review-ready claim; **Customer Support alone cannot perform this** (Section 11.10).
+- **Handoff:** Confirm Claim & Print Label; withdrawn item → Returned-to-Stock Review.
+
+### 20.11 Confirm Claim & Print Label
+
+- **Purpose:** confirm a reviewed claim and queue its label (Section 6.4).
+- **Users:** Confirm Claim & Print Label.
+- **Result:** **Confirmed Claim + label job → For Invoice**; **quantity becomes provisionally reserved and available quantity decreases** (§20.3); **no invoice or Official Order**; **label job ≠ physical print** (Section 13.33).
+- **Handoff:** For Invoice; Print Queue.
+
+### 20.12 For Invoice
+
+- **Purpose:** hold complete Confirmed Claims ready for invoicing (Section 8.5-C).
+- **Users:** Invoice Preparation.
+- **Displays:** individual confirmed claims not in an active draft.
+- **Actions:** prepare/group claims for a draft.
+- **Validation:** a claim cannot be in For Invoice and an active draft simultaneously (Section 15.9).
+- **Handoff:** Invoice Draft.
+
+### 20.13 Invoice Draft
+
+- **Purpose:** group and review claims for one buyer/arrangement (Section 15).
+- **Users:** Invoice Preparation.
+- **Inputs/Actions:** build/edit/dissolve draft; add/remove claim; group by same customer + payment + fulfillment arrangement; Prepare/Preview/Copy customer message; Approve & Send Invoice.
+- **Displays:** grouped claims, grouped total, message preview (no official references pre-send).
+- **Result:** on Approve & Send Invoice → **one Official Order + order number + invoice number + shared 3-day hold**; **reservation preserved, no additional deduction** (§20.3); **retry never creates a second order**.
+- **Handoff:** Official Orders; Notifications (reminders); message delivery → Section 26.
+
+### 20.14 Official Orders
+
+- **Purpose:** central transaction hub (Section 8.6).
+- **Users:** operationally relevant, permission-gated.
+- **Displays:** claims/items, invoice, payment/deposit status, payment history, layaway, fulfillment, reminders, lifecycle/approval status, source marker.
+- **Actions:** open; navigate to Payment Review / Layaway Detail / Fulfillment Detail (no duplicate records).
+- **Result:** reservation is now **committed inventory**; **no second deduction**; cancellation is high-risk/Owner-approved.
+
+### 20.15 Payment Verification
+
+- **Purpose:** verify required payment/deposit (Section 16).
+- **Users:** Payment Verification (Owner always).
+- **Displays:** submitted evidence vs order/amount/method/reference/date.
+- **Actions:** verify; handle rejected/insufficient/unclear evidence (concepts; statuses per Section 22).
+- **Result:** **Required Payment/Deposit Verified ≠ Paid in Full**; **no inventory deduction**; **no auto-release/forfeiture/cancel** (§16.2).
+- **Handoff:** Official Order, Layaway, Fulfillment.
+
+### 20.16 Layaway Monitoring
+
+- **Purpose:** monitor active layaways, installments, overdue/grace, forfeiture eligibility, financer (Section 17).
+- **Users:** Layaway Monitoring; Payment Verification for verification; Initiate High-Risk Action for forfeiture request.
+- **Displays:** DP, balance, term, dates, grace, financer, migrated marker.
+- **Actions:** record installment activity; open payment verification; initiate forfeiture request.
+- **Result:** **recording installments ≠ verifying payment**; **forfeiture eligibility ≠ approval**; **forfeiture is Owner-approved**.
+
+### 20.17 Shipping and Pickup
+
+- **Purpose:** prepare and release fulfillment (Section 18).
+- **Users:** Shipping/Pickup Preparation; Initiate High-Risk Action for exceptional-release request.
+- **Displays:** preparation, payment/deposit state, courier/tracking/receiver or pickup details, release/exception state.
+- **Actions:** prepare; approve **normal release** (permission-based); record dispatch/handover; request **exceptional release** (Owner-approved).
+- **Result:** payment verified before release; **no inventory re-deduction**; **request alone never releases**.
+
+### 20.18 Owner Approval Center
+
+- **Purpose:** single high-risk approval gate (Section 9.16).
+- **Users:** Owner approves/rejects; Initiate High-Risk Action to create/view a request.
+- **Displays:** the four request types — official-order cancellation, forfeiture, price override, exceptional release — with reason/supporting info.
+- **Actions:** approve/reject; inspect record.
+- **Result:** outcome returns to source module; **no delegation; initiator cannot self-approve; request waits if Owner unavailable**.
+
+### 20.19 Inventory
+
+- **Purpose:** item/stock monitoring for unique and multi-stock items (Section 19).
+- **Users:** Inventory Monitoring; Miner/Allocation Review for allocation decisions.
+- **Displays:** availability, **available vs remaining quantity per §20.3**, associations, outcomes.
+- **Actions:** monitor; open Returned-to-Stock Review.
+- **Result:** reflects **decrement at Confirmed Claim, commitment at Official Order, no second deduction**; **no automatic return/transfer/allocation**.
+
+### 20.20 Returned-to-Stock Review
+
+- **Purpose:** manual review of withdrawn, approved-cancelled, expired unpaid (and, per disposition rules, other) items (Section 8.10, Section 19.16).
+- **Users:** Inventory Monitoring; Miner/Allocation Review.
+- **Displays:** recorded 2nd miner (unique) or next waitlist buyer (multi-stock); source of return.
+- **Actions:** authorized manual review → approve return (quantity becomes available again) or keep unavailable/controlled.
+- **Result:** **no automatic transfer/allocation**; **forfeited layaway excluded from automatic return**; outcomes/authority TBC.
+
+### 20.21 Customers
+
+- **Purpose:** staff-managed customer identity and combined history (Section 10).
+- **Users:** Customer Support and operationally relevant users.
+- **Displays:** identity, combined new+migrated history, counts (non-additive), source markers, possible-duplicate warning, Outstanding Balance only once defined (TBC).
+- **Actions:** view; maintain approved profile fields; add notes; see duplicate warning.
+- **Result:** **Customer Support alone cannot** verify payment, change claim association, invoice, release fulfillment, migrate, or resolve duplicates; **no customer login**.
+
+### 20.22 Print Queue
+
+- **Purpose:** show label-job activity created at Confirm Claim & Print Label (Section 8.17).
+- **Users:** Confirm Claim & Print Label; exact reprint permissions per Section 24.
+- **Displays:** pending/successful/failed jobs, reprint entry.
+- **Result:** **physical print success is separate from Confirmed Claim**; detailed reprint/failure rules → Sections 24/27.
+
+### 20.23 Reports
+
+- **Purpose:** basic compact summaries (Section 8.15).
+- **Users:** View Reports.
+- **Displays:** compact totals, date-range, order/payment/layaway summaries; **Outstanding Balance only once defined (TBC)**.
+- **Result:** **detailed analytics/exports → Section 25**; operational queue counts do not require View Reports when part of duty.
+
+### 20.24 Notifications
+
+- **Purpose:** operational reminder queues and in-app attention flags (Section 9.20).
+- **Users:** Reminder Handling.
+- **Displays:** Day 1/2/3 reminder queues; attention flags.
+- **Actions:** send/record reminder (staff-triggered in V1).
+- **Result:** **no automatic sending/platform/delivery assumed**; **delivery → Section 26**.
+
+### 20.25 Settings
+
+- **Purpose:** limited V1 settings entry (Section 8.14).
+- **Users:** Owner.
+- **Displays/Actions:** business/system name, invoice display, label/printing preferences, approved reminder defaults, printer/device setup entry.
+- **Result:** **exact fields TBC; no broad configuration invented**.
+
+### 20.26 Existing Record Migration
+
+- **Purpose:** manually enter historical records; manage duplicate review (Section 9.15).
+- **Users:** Owner; Existing Record Entry / Migration holders (**this permission remains a recorded Section 5 reconciliation**, not silently added).
+- **Inputs:** historical values/dates; source marker; optional photo.
+- **Actions:** add/migrate record; review possible duplicates.
+- **Result:** **historical values preserved; no retroactive rules; no auto-merge; migration separate from live/post-live intake**; migrated records enter operational modules by actual status.
+
+### 20.27 Audit / History Visibility
+
+- **Purpose:** surface staff attribution within records (Section 9.23).
+- **Users:** per record access; Owner sees all.
+- **Displays:** created/reviewed/confirmed/verified/released/approved-by and note attribution.
+- **Result:** **attribution belongs to the action; reassignment does not erase it**; **detailed audit retention/structure → Section 31**; no dedicated V1 screen required.
+
+### 20.28 Open / To-Be-Confirmed Items
+
+- batch-lifecycle, Current-Flex, item-withdrawal, post-live item-creation, and message-send authorities (Section 4–5 reconciliation)
+- exact required fields per feature (batch, customer, invoice, shipping, pickup, settings)
+- Paid in Full and Outstanding Balance definitions
+- message template, channels, delivery/status model
+- Returned-to-Stock Review outcomes and authority
+- forfeited-item disposition
+- exact reprint/print behavior (Section 24)
+- exact reporting definitions (Section 25)
+
+### 20.29 Section 20 Summary
+
+- Each feature is specified at the **business level** — purpose, permission-based users, entry, inputs, displays, actions, result, validation, and handoff — with **common conventions** (unauthorized/empty/error/audit/mobile) applied uniformly.
+- **No new roles, permissions, statuses, high-risk categories, integrations, or automatic actions are introduced.**
+- **The approved inventory model is reflected end to end:** no deduction at Pending Claim, reservation/decrement at Confirmed Claim, no second deduction at Invoice Draft or Official Order, and manual Returned-to-Stock Review.
+- **High-risk actions remain Owner-approved; Customer Support remains bounded; customers have no login.**
+- **Unresolved details remain explicitly To be confirmed.**
+
+---
+
+*End of Section 20 — Feature Specifications. **APPROVED.** Section 21 — Button Functionality Matrix follows.*
