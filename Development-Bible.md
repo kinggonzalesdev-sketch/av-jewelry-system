@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–25 APPROVED; Section 26 (Notification and Reminder System) pending
+> **Status:** In Progress — Sections 1–26 APPROVED; Section 27 (Printer Integration) pending
 
 ---
 
@@ -8061,3 +8061,144 @@ This section stays business-focused. It defines no accounting, profit, revenue-r
 ---
 
 *End of Section 25 — Reporting and Analytics. **APPROVED.** Section 26 — Notification and Reminder System follows.*
+
+---
+
+## Section 26 — Notification and Reminder System
+
+### 26.1 Purpose of the Notification and Reminder System Section
+
+This section owns **internal notifications, customer-message delivery concepts, reminders, escalation, retry, acknowledgement, and delivery-state boundaries** for Version 1 (MineFlow). It resolves the delivery ownership deferred by Sections 9.20, 12.65–12.69, and 15.18–15.21.
+
+This section stays business-focused. It defines no SMS/email/WhatsApp/push provider, automatic customer contact, legal-consent rules, final delivery/read capability, exact notification timing, or code. It introduces no new permissions, roles, high-risk categories, official integrations, automatic business actions, or customer-facing access beyond approved Sections 1–25, and it does not silently resolve any To-be-confirmed item.
+
+### 26.2 Governing Notification Rules
+
+1. **Notifications do not change business records by themselves.**
+2. **A reminder does not verify payment.**
+3. **A reminder does not cancel an order.**
+4. **A reminder does not approve forfeiture.**
+5. **A reminder does not release fulfillment.**
+6. **A reminder does not return stock.**
+7. **Copy does not equal Sent.**
+8. **Mark as Sent does not prove Delivered or Read.**
+9. **Delivered and Read require a supported integration.**
+10. **Pancake/Meta direct sending remains conditional and unverified.**
+11. **A message send failure must not create a second Official Order.**
+12. **Message retry must not recreate an Official Order or duplicate claims.**
+13. **An existing Official Order remains even when sending fails.**
+14. **Manual copy/send fallback remains available.**
+15. **Owner approval requests notify/escalate without auto-approving.**
+16. **Unauthorized users may see only notifications within their visibility.**
+17. **Notification visibility does not grant the underlying action permission.**
+
+### 26.3 Notification and Reminder Definitions
+
+- A **notification** is an **in-app attention signal** about an event or a record needing action; **it changes no record by itself** (rule 1).
+- A **reminder** is a **staff-triggered follow-up** about time-sensitive work (unpaid holds, layaway due/grace); in V1 **reminders are staff-triggered** and each attempt is recorded (Section 4.15).
+
+### 26.4 Recipients and Triggers
+
+- **Recipients** are staff/Owner within their **permission and shop/page visibility** (rule 16).
+- **Triggers** are operational events (hold day boundaries, layaway due/grace, payment awaiting review, fulfillment preparation, Owner-approval requests, print failures, unresolved claims, waitlist/excess, Returned-to-Stock Review, shift handoff).
+- **Exact recipients and trigger timing remain To be confirmed.**
+
+### 26.5 In-App Notifications and Attention Flags
+
+- In-app **attention flags** link to their operational queue (Section 7.11).
+- **Owner alerts** (Needs Owner Approval, Forfeiture-Eligible), **time-sensitive** (Day 3 final, hold expiring, layaway due/grace), **review-needed** (2nd-Miner/Waitlist, Returned-to-Stock, Possible Duplicate), and **exception** (Exceptional Release) flags are surfaced.
+- **Visibility does not grant action authority** (rule 17).
+
+### 26.6 Customer-Message Delivery Concepts
+
+Message states (concepts; final vocabulary per Section 22.10):
+- **Prepare / Preview / Copy** — draft handling; **Copy ≠ Sent** (rule 7).
+- **Manually Sent** — staff attestation after manual send; **does not prove delivery** (rule 8).
+- **Direct Send Pending / Direct Send Failed** — only where a **validated integration** exists (rule 10).
+- **Delivered / Read** — **integration-dependent and To be confirmed** (rule 9); **not invented.**
+
+### 26.7 Manual-Send Fallback and Conditional Direct Send
+
+- **V1 baseline:** Prepare → Preview → Copy → staff manually sends via approved channel → Mark/records Sent where permitted (Section 12.65).
+- **Direct send is conditional** on a validated Pancake/Meta integration (Section 14); **the manual fallback always remains** (rule 14).
+
+### 26.8 Retry, Resend, and Duplicate-Send Protection
+
+- **Retry/resend re-attempts sending only** — it **must not recreate an Official Order or duplicate claims** (rules 11–13).
+- **A send failure leaves the existing Official Order intact** (rule 13).
+- **Duplicate-send protection** is required; **exact safeguards and resend authority remain To be confirmed.**
+
+### 26.9 Staff Acknowledgement and Unresolved Notifications
+
+- Notifications may require **staff acknowledgement**; **acknowledgement changes no business record** (rule 1).
+- **Unresolved notifications remain visible** until handled; **acknowledgement requirement remains To be confirmed.**
+
+### 26.10 Reminder Scenarios
+
+- **Overdue layaway reminders** (due/grace boundaries, Section 4.15) — staff-triggered.
+- **Hold-expiry reminders** (Day 1 / Day 2 / Day 3 final) anchored to the 3-day hold (Section 15.17).
+- **Payment evidence pending review**, **shipping/pickup preparation**, **unclaimed pickup**, **failed delivery** — surfaced for action.
+- **Reminders never verify payment, cancel, forfeit, release, or return stock** (rules 2–6).
+- **Exact reminder and escalation timing remain To be confirmed.**
+
+### 26.11 Owner-Approval, Print-Failure, and Operational Alerts
+
+- **Owner Approval Center** alerts notify/escalate high-risk requests **without auto-approving** (rule 15).
+- **Print-failure alerts**, **unresolved-claim**, **waitlist/excess**, **Returned-to-Stock Review**, and **shift-handoff** notifications surface work; none perform the underlying action.
+
+### 26.12 Escalation and Quiet Hours
+
+- **Escalation** may raise unhandled or blocked items; **escalation does not itself approve or perform the action** (Section 11.46).
+- **Quiet hours** may apply where later approved; **quiet-hours behavior remains To be confirmed.**
+
+### 26.13 Attribution, Unauthorized Behavior, Error/Recovery
+
+- Reminder/notification actions are **attributable to the account** (Section 11.43).
+- Unauthorized users see **only notifications within their visibility** (rule 16); acting still requires the underlying permission (rule 17).
+- **No failed send creates duplicates or a second order**; unresolved failures remain visible; **exact retry/recovery belongs to Section 32.**
+
+### 26.14 Reporting Boundary
+
+- Notification/reminder activity may be **summarized operationally**; **Sent ≠ Delivered/Read** in any report (Section 25.6). Formal reporting → Section 25.
+
+### 26.15 Edge Cases
+
+- copy taken but never sent · Mark as Sent without proof · direct send unavailable/failed · retry after failure · duplicate send attempt · reminder on an already-paid order · reminder on a cancelled order · Owner unavailable for approval alert · print-failure alert · unacknowledged notification · quiet-hours conflict · notification visible without action permission.
+
+### 26.16 Section Boundaries
+
+- **Section 26** owns notification/reminder/delivery concepts and delivery-state boundaries.
+- **Section 15** owns message preparation. **Section 14** owns the conditional Pancake integration. **Section 22** owns message statuses. **Section 25** reporting. **Sections 28–32** own technical delivery implementation, security, and recovery.
+
+### 26.17 Open / To-Be-Confirmed Items
+
+- channels
+- recipients
+- reminder timing
+- escalation timing
+- acknowledgement requirement
+- sent/delivered/read status model
+- Mark-as-Sent evidence
+- resend authority
+- duplicate-send safeguards
+- customer opt-in/consent
+- quiet hours
+- template ownership
+- language
+- external provider
+- Pancake/Meta availability
+- exact Section 4–5 permission reconciliation
+
+### 26.18 Section 26 Summary
+
+- **Notifications and reminders surface work but change no business record by themselves.**
+- **Reminders never verify payment, cancel, forfeit, release, or return stock.**
+- **Copy ≠ Sent; Mark as Sent ≠ Delivered/Read; Delivered/Read require a validated integration and remain To be confirmed.**
+- **Pancake/Meta direct send is conditional and unverified; the manual copy/send fallback always remains.**
+- **A send failure never creates a second Official Order or duplicates claims; the existing order stays intact.**
+- **Owner-approval alerts escalate without auto-approving; notification visibility never grants the underlying action.**
+- **No SMS/email/WhatsApp/push provider, auto-contact, consent rule, or delivery/read capability is invented; channels, timing, consent, and status model remain To be confirmed.**
+
+---
+
+*End of Section 26 — Notification and Reminder System. **APPROVED.** Section 27 — Printer Integration follows.*
