@@ -38,7 +38,7 @@ The client approved: (1) Supabase Auth with staff email/password, no self-regist
 - **MFA is required for the Owner account before production launch.**
 - **MFA is strongly recommended for Selected Admin accounts** (max two, §5.4).
 - **MFA for ordinary Staff may remain optional in initial V1** unless later security testing requires it (§34 security testing).
-- The **exact supported MFA method depends on validated Supabase capabilities** — **no MFA provider or unsupported method is invented or promised** (To be confirmed).
+- **MFA method (client-approved): Supabase Auth TOTP (authenticator-app).** **No SMS or WhatsApp MFA in Phase 0.** Owner MFA is required before production; Selected Admin MFA is strongly recommended and reviewed before production; Staff MFA optional in V1. Actual TOTP enrollment/enforcement is implemented in the account/permission phase — Phase 0 records the method and implementation hook, and **does not claim MFA enforcement is complete**. **Recovery and lost-device handling remain To be confirmed before pilot.**
 
 ## 6. Session model
 
@@ -152,7 +152,9 @@ Four logical environments:
 
 ## 17. Decisions still To be confirmed (Phase 0 residual)
 
-- exact MFA method (depends on validated Supabase capability)
+> **Build-ready confirmed pins (client-approved, for the fresh-session Phase 0 build):** the implementation standardizes on a **stable, toolchain-compatible** stack — **Next `16.2.10` · React / react-dom `19.2.7` · TypeScript `5.9.3` · ESLint `10.x` · @typescript-eslint `8.64.0` · eslint-config-next `16.2.10`** (Node `24.x`, npm `11.x`). **TypeScript is pinned to `5.9.3` (not the default-latest `7.0.2`)** because the current `@typescript-eslint` supports only `typescript >=4.8.4 <6.1.0`; TS 7 (native compiler) would break the ESLint type gate. No RC/canary/beta versions. Exact patch levels are re-verified at install time; MFA method is now **Supabase Auth TOTP** (§5).
+
+- ~~exact MFA method~~ **RESOLVED: Supabase Auth TOTP (authenticator-app)**; recovery/lost-device handling still To be confirmed before pilot
 - idle timeout / max session duration / concurrent-session limits
 - exact RLS policies and SQL (implementation phase)
 - secrets-management product/implementation
