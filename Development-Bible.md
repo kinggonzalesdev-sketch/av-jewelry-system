@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–22 APPROVED; Section 23 (Search and Filter Specifications) pending
+> **Status:** In Progress — Sections 1–23 APPROVED; Section 24 (Print Queue and Reprint Workflow) pending
 
 ---
 
@@ -7649,3 +7649,152 @@ Never allowed automatically: any → committed inventory without a Confirmed-Cla
 ---
 
 *End of Section 22 — Status Transition Rules. **APPROVED.** Section 23 — Search and Filter Specifications follows.*
+
+---
+
+## Section 23 — Search and Filter Specifications
+
+### 23.1 Purpose of the Search and Filter Specifications Section
+
+This section owns **search, filtering, sorting, saved views where approved, and cross-module lookup** at the business level for Version 1 (MineFlow), building on the global search keys of Sections 7.13 and 8.16.
+
+This section stays business-focused. It defines no database schema, indexing, query engine, APIs, or code — **technical indexing belongs to Sections 28–29**. It introduces no new permissions, roles, statuses, integrations, automatic actions, or customer-facing access beyond approved Sections 1–22, and it does not silently resolve any To-be-confirmed item.
+
+### 23.2 Governing Search Rules
+
+1. **Search-result visibility does not grant action permission** (Section 7.3).
+2. **Results respect role, permission, and shop/page access** (Section 8.16).
+3. **No automatic customer merge.**
+4. **No automatic record reassignment.**
+5. **No silent correction** from search/filter.
+6. **Similarly named customers remain distinct** (Section 10.6).
+7. **Historical/migrated records preserve their source markers** (Section 7.12).
+8. **Contact fields are not yet approved searchable keys** (Section 10.7) — remains To be confirmed.
+9. **Exact technical indexing/ranking belongs to Sections 28–29.**
+
+### 23.3 Searchable Entities and Fields (Business Level)
+
+| Entity | Business search keys |
+|---|---|
+| Customers | complete customer name; Facebook name; (contact fields **not yet approved** — TBC) |
+| Possible duplicates | flagged duplicate candidates (review only; no auto-merge) |
+| Items / Inventory | item code; item status/availability; Live Batch association |
+| Live Batches | batch reference/name; date; shop/page; state |
+| Claims | claim/reference number; buyer; source marker; miner position; claim status |
+| Official Orders | official order number; customer; order status |
+| Invoices | invoice number |
+| Payments | payment reference; related order; verification state |
+| Layaway | layaway record; customer; financer; layaway status |
+| Fulfillment | shipping/tracking number; fulfillment/pickup reference; courier |
+| Print Queue | label-job reference; print status |
+| Owner Approvals | request type; status; source record |
+| Returned-to-Stock Review | item; source of return; review status |
+| Migrated records | source-marked historical records |
+| Staff attribution | acting account on a record (within permitted visibility) |
+
+- **Global search entry** supports the approved keys: complete customer name, Facebook name, claim/reference number, official order number, invoice number, item code, shipping number (Section 7.13).
+
+### 23.4 Matching (Business Level)
+
+- **Exact matching** applies to structured identifiers (order number, invoice number, claim/reference number, item code, tracking number, payment reference).
+- **Partial matching** may apply to names (customer name, Facebook name) at the business level.
+- **Exact matching algorithm, ranking, and normalization are technical and belong to Sections 28–29** — **matching specifics remain To be confirmed** here.
+
+### 23.5 Filters
+
+Filters may include: **status** (per Section 22), **date/time ranges**, **source marker**, **miner position**, **shop/page context**, **financer**, **courier**, **staff attribution**, **arrangement type** (payment/fulfillment), and **blocked/unresolved work**.
+- **Filters are permission- and shop/page-scoped.**
+
+### 23.6 Sorting
+
+- Results may be sorted by relevant business fields (e.g., date, deadline, status, name).
+- **Exact default sort orders remain To be confirmed.**
+
+### 23.7 Result Display
+
+- Results show **permission-appropriate summary fields** and link to the owning detail screen (list → detail).
+- Results include the **source marker** for migrated/historical records.
+- **Opening a result does not grant any action beyond the user's permissions.**
+
+### 23.8 No-Result State
+
+- A search/filter with no matches shows a **clear no-result state**, distinct from an empty queue.
+
+### 23.9 Duplicate-Name Warnings
+
+- Similar/identical customer or Facebook names surface a **possible-duplicate warning**; **records remain distinct** and **no auto-merge** occurs (Section 10.22).
+- **Dedicated duplicate resolution belongs to Existing Record Migration** (Section 10.23); Customer Support alone cannot resolve.
+
+### 23.10 Permission-Based Result Visibility
+
+- A user sees a result **only when it is within their permission and shop/page access** (Section 11.39).
+- **Seeing a result never grants authority to act on it** (rule 1).
+
+### 23.11 Sensitive-Data Boundaries
+
+- Search must not expose data outside the user's access; **personal/contact data is not placed in shareable URLs or exposed beyond record access**.
+- **Contact fields are not yet approved searchable keys** (rule 8); whether they become searchable remains **To be confirmed**.
+
+### 23.12 Historical / Migrated Record Visibility
+
+- Migrated/historical records are searchable by their **actual status and identifiers**, always showing the **source marker** (Section 7.12).
+- **Historical values are preserved; search never recalculates or alters them.**
+
+### 23.13 Pagination / Progressive Loading
+
+- Large result sets use **pagination or progressive loading** — treated as a **technical deferral to Sections 28–29**; exact behavior remains To be confirmed.
+
+### 23.14 Mobile Behavior
+
+- Search is available from a **header/persistent entry**, mobile-first (Section 8.2); results follow the list → detail pattern with thumb-reachable actions (Section 8.20).
+
+### 23.15 Clearing and Combined Filters
+
+- Users may **combine multiple filters** and **clear all filters** to return to the default view.
+- **Combined filters remain permission- and shop/page-scoped.**
+
+### 23.16 Stale-Result Warning
+
+- When an underlying record changed after results were shown, the user should be **warned that results may be stale** (Section 11.42); **the latest valid state governs any action.**
+- **Real-time synchronization is not promised** (Section 7.14).
+
+### 23.17 Saved Views (Where Approved)
+
+- Saved views/filters **may** be offered where later approved; **their exact scope, sharing, and permissions remain To be confirmed** — not introduced as a finalized feature here.
+
+### 23.18 Export Relationship
+
+- Search/filter results **may relate to export**, but **no export authority is invented here**; export scope and permission belong to **Section 25 (Reporting)** and remain **To be confirmed**.
+
+### 23.19 Cross-Module Lookup
+
+- Global search enables **cross-module lookup** (e.g., from an order number to its claims, payments, layaway, and fulfillment), always **permission-filtered** and **without duplicating records** (Section 8.6).
+
+### 23.20 Section Boundaries
+
+- **Section 23** owns business-level search/filter/sort/lookup.
+- **Section 22** owns statuses used as filters. **Section 25** owns reporting/export. **Section 10** owns customer identity/duplicate resolution. **Sections 28–29** own technical indexing, ranking, and performance.
+
+### 23.21 Open / To-Be-Confirmed Items
+
+- whether contact fields become searchable keys
+- exact matching/ranking/normalization rules
+- default sort orders
+- saved-views scope/sharing/permissions
+- export authority and scope (Section 25)
+- pagination/progressive-loading behavior
+- stale-result warning specifics
+- exact filter sets per screen
+- Section 4–5 permission reconciliation (visibility scoping)
+
+### 23.22 Section 23 Summary
+
+- Search and filter operate **at the business level** across customers, items, batches, claims, orders, invoices, payments, layaway, fulfillment, print jobs, approvals, returned-to-stock, migrated records, and staff attribution.
+- **Results are permission- and shop/page-scoped; visibility never grants action authority.**
+- **No automatic merge, reassignment, or silent correction; similarly named customers stay distinct; migrated records keep their source markers.**
+- **Structured identifiers match exactly; names may match partially; exact algorithms and indexing are deferred to Sections 28–29.**
+- **Export authority is not invented here; saved views and contact-field searchability remain To be confirmed.**
+
+---
+
+*End of Section 23 — Search and Filter Specifications. **APPROVED.** Section 24 — Print Queue and Reprint Workflow to follow.*
