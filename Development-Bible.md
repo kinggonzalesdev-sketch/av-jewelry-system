@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–9 APPROVED (Project Vision; Business Workflow; Current Pain Points; Business Rules; User Roles & Permissions; Complete Order Lifecycle; Dashboard Workflow; Screen Map; Module Breakdown); Section 10 (Customer Workflow) pending
+> **Status:** In Progress — Sections 1–10 APPROVED; Section 11 (Staff Workflow) pending
 
 ---
 
@@ -3017,4 +3017,461 @@ source module
 
 ---
 
-*End of Section 9 — Module Breakdown. **APPROVED.** Section 10 — Customer Workflow to follow.*
+*End of Section 9 — Module Breakdown. **APPROVED.** Section 10 — Customer Workflow follows.*
+
+---
+
+## Section 10 — Customer Workflow
+
+### 10.1 Purpose of the Customer Workflow Section
+
+This section defines the complete **staff-managed customer lifecycle** in Version 1 (MineFlow) — from provisional captured identity through:
+
+- profile selection or creation
+- claim association
+- invoice grouping
+- Official Orders
+- payment history
+- layaway history
+- fulfillment history
+- migrated records
+- duplicate warnings
+- notes
+- combined long-term history
+
+**Governing facts:**
+- **Customers have no account or login.**
+- **Staff manage all customer records.**
+- **Visibility does not equal action authority.**
+- **Customer Management owns identity and combined history, while operational modules own their own transaction actions.**
+
+This section stays business-focused and staff-facing. It does not discuss database tables, API endpoints, code, frameworks, technical authentication, search algorithms, audit implementation details, or duplicate-merge implementation. It invents no customer-facing features, CRM scoring, loyalty programs, marketing automation, unrestricted editing, new permissions, or searchable fields, and it does not silently resolve any To-be-confirmed item.
+
+### 10.2 Governing Customer-Identity Rule
+
+> **Capture collects provisional identity.**
+> **Claim Review or Migration resolves the customer association.**
+> **Invoice Preparation groups claims already associated with a customer.**
+
+- Provisional information is **not** automatically a permanent customer profile.
+- **No OCR, auto-identification, or automatic matching is assumed.**
+- **No automatic profile creation or duplicate merge occurs.**
+
+### 10.3 Customer Lifecycle Stages
+
+```
+Provisional identity appears
+→ staff search during Claim Review or Migration
+→ select existing / create new / flag possible duplicate
+→ associate the claim or migrated record
+→ Confirmed Claim
+→ Invoice Draft grouping
+→ Official Order
+→ payment / layaway / fulfillment
+→ combined customer history
+```
+
+**Migrated records may enter directly at their verified historical state and bypass capture, claim confirmation, and invoice creation** (see 10.21).
+
+### 10.4 Sources of Provisional Customer Identity
+
+Possible sources:
+- captured mine comment
+- manual Pending Claim entry
+- screenshot evidence
+- entered Facebook name
+- entered customer name
+- Existing Record Migration entry
+
+**Invoice Preparation is NOT a primary customer-profile creation source** — it consumes an association already established on the Confirmed Claim (see 10.14).
+
+### 10.5 Customer Profile Fields at the Business Level
+
+Consider:
+- complete customer name
+- Facebook name or profile reference
+- approved contact information
+- approved shipping or pickup information
+- source markers
+- notes
+- possible-duplicate warning
+
+- **Exact required versus optional fields remain To be confirmed.**
+- **Exact editable field list remains To be confirmed.**
+- **Contact number, email, address, and other contact information are not automatically approved searchable keys.**
+
+### 10.6 Facebook Name Versus Customer Name
+
+- Facebook name and complete customer name are **distinct fields**.
+- A Facebook display name is **not** assumed to be the legal or complete customer name.
+- Two people may have similar or identical Facebook names.
+- Neither field automatically overrides the other.
+- **Staff review is required before customer association.**
+
+### 10.7 Search-Before-Create Workflow
+
+At the business level, staff may search using:
+- complete customer name
+- Facebook name
+- an existing customer identifier **only if formally approved later**
+- claim/reference number, invoice number, or Official Order number **when entering from an existing transaction**
+
+- **Contact number, email, address, and other contact fields are not yet approved searchable keys.**
+- **Whether contact information becomes searchable remains To be confirmed.**
+- **Detailed matching, ranking, filtering, and result behavior belong to Section 23.**
+
+### 10.8 Claim Capture Customer Workflow
+
+Claim Capture may collect: Facebook name; entered customer name; mine comment/reference; screenshot evidence; captured date/time.
+
+**Rules:**
+- information remains **provisional**;
+- capture does **not** create a permanent customer profile;
+- capture does **not** automatically identify the buyer;
+- capture does **not** resolve duplicates;
+- capture does **not** confirm the claim;
+- capture does **not** create an invoice or Official Order.
+
+**Output:** a Pending Claim with provisional customer information.
+
+### 10.9 Claim Review Customer-Resolution Workflow
+
+This is the **primary customer-resolution point** for new claims. Authorized staff may:
+- review provisional buyer information;
+- search existing customer profiles;
+- select a confident existing match;
+- create a new staff-managed profile when no confident match exists;
+- show or preserve a possible-duplicate warning when uncertain;
+- associate the Pending Claim with the selected customer;
+- correct the association before confirmation.
+
+**Rules:**
+- customer association must be resolved before claim confirmation where required;
+- **Customer Support permission alone does not change a claim's associated customer;**
+- applicable **Claim Review** authority owns this action.
+
+### 10.10 New Customer Workflow
+
+```
+provisional identity
+→ staff search
+→ no confident match
+→ create new staff-managed customer profile
+→ associate the Pending Claim
+→ continue Claim Review
+```
+
+**Rules:** no customer login; no automatic profile creation; provisional identity may seed profile fields but must remain reviewable; a possible-duplicate warning may remain visible.
+
+### 10.11 Returning Customer Workflow
+
+```
+provisional identity
+→ staff search
+→ confident existing match
+→ associate claim or record with existing customer
+```
+
+**Uncertain match:** do not auto-merge; show possible-duplicate warning; preserve staff review.
+
+### 10.12 Pending Claim Association
+
+The Pending Claim may contain: provisional Facebook name; entered customer name; captured comment/reference; screenshot evidence; captured date/time.
+
+**Rules:**
+- association is reviewable and correctable;
+- the profile and claim remain **distinct records**;
+- changing customer association belongs to **Claim Review**;
+- notes or profile edits do not silently change claim association.
+
+### 10.13 Confirmed Claim Association
+
+After authorized review:
+- the Confirmed Claim remains associated with the selected customer;
+- the claim/reference number remains attached;
+- **Confirm Claim & Print Label creates no invoice or Official Order;**
+- corrections before invoicing require the applicable **Claim Review** authority.
+
+**Customer Support alone cannot change the associated customer of a Confirmed Claim.**
+
+### 10.14 Invoice Preparation Customer Workflow
+
+Invoice Preparation **consumes** customer associations already established on Confirmed Claims.
+
+**Rules:**
+- group only claims belonging to the **same customer**;
+- grouped claims must also share the **same payment arrangement**;
+- grouped claims must share the **same fulfillment arrangement**;
+- different arrangements require **separate invoice drafts and Official Orders**;
+- Invoice Preparation **does not silently create or switch customer identity**;
+- inconsistent association may cause the claim to be **removed from the unsent draft and returned to the pre-invoice correction path**.
+
+### 10.15 Unsent Invoice Draft Correction
+
+Authorized Invoice Preparation staff may:
+- remove an incorrectly associated claim from the draft;
+- return it to the appropriate correction path;
+- regroup only after the customer association is corrected.
+
+- **Do not silently switch the claim or draft to another customer during Approve & Send Invoice.**
+- **One claim cannot appear in both For Invoice and an active draft at the same time.**
+
+### 10.16 Official Order Customer Association
+
+Successful **Approve & Send Invoice** creates:
+- one Official System Order
+- one official order number
+- one invoice number
+- a shared three-day hold
+- retained claim/reference numbers
+
+**Rules:**
+- the Official Order appears in the customer profile;
+- included claims are **not** counted again as extra orders;
+- the original customer association **must not be silently reassigned** after the Official Order exists.
+
+### 10.17 Customer Correction After Official Order Creation
+
+- This is **not** an ordinary Customer Support edit.
+- The original Official Order, financial history, payment history, layaway history, and fulfillment history **must not be silently reassigned**.
+- **Do not assume automatic cancellation.**
+- Exact authority, workflow, audit requirements, correction method, and possible Owner approval **remain To be confirmed**.
+- **Section 22 owns resulting status behavior; Section 31 owns detailed audit requirements.**
+
+**Do not classify every customer-detail correction as high-risk.** Only approved high-risk actions remain: **official-order cancellation, forfeiture, price override, exceptional release.**
+
+### 10.18 Payment History in the Customer Profile
+
+May show: Awaiting Required Payment / Deposit; Payment Submitted / Unverified; Required Payment / Deposit Verified; payment amounts; payment dates; payment history; verification attribution where later defined.
+
+**Rules:**
+- **Payment Verification permission is required to verify payments;**
+- viewing payment history does **not** grant verification authority;
+- **Required Payment / Deposit Verified does not automatically mean Paid in Full;**
+- **Paid in Full remains To be confirmed.**
+
+### 10.19 Layaway History in the Customer Profile
+
+May show: Active Layaway; payment/installment activity; overdue; grace period; forfeiture-eligible; financer; migrated marker; historical values and dates.
+
+**Rules:**
+- **Layaway Monitoring and Payment Verification remain separate;**
+- installment recording does **not** equal payment verification;
+- forfeiture approval remains with the **Owner**;
+- **forfeited-item disposition remains To be confirmed.**
+
+### 10.20 Fulfillment History in the Customer Profile
+
+May show: For Preparation; For Shipping; For Pickup; Approved for Release; Dispatched; Picked Up / Completed where relevant; shipping/pickup details; courier/tracking/reference; receiver details where applicable.
+
+**Rules:**
+- normal release is permission-based;
+- exceptional release routes to **Owner Approvals**;
+- Customer Support visibility does **not** grant fulfillment authority.
+
+### 10.21 Existing and Migrated Customer Workflow
+
+Authorized migration users may: search/select an existing profile; create a new profile when no confident match exists; flag a possible duplicate; associate the historical record.
+
+Historical record types may include: historical Official Order; existing layaway; completed record; cancelled record; forfeited record; other verified historical state.
+
+**Rules:**
+- preserve actual historical values and dates;
+- source marker required;
+- item photo optional if unavailable;
+- **do not apply current deposit rules retroactively;**
+- **no automatic merge;**
+- migrated operational records enter applicable workflows based on actual status.
+
+### 10.22 Possible-Duplicate Warning Workflow
+
+Possible outcomes: confident existing match; no match, create new profile; uncertain match, show possible-duplicate warning.
+
+**Rules:**
+- **no automatic merge;**
+- Customer Support **may see** the warning;
+- **Customer Support alone cannot confirm, merge, or resolve a duplicate;**
+- the warning does not block ordinary viewing unless later defined.
+
+### 10.23 Dedicated Duplicate-Review Handoff
+
+The dedicated duplicate-review workflow belongs to **Existing Record Migration**.
+
+**Access:** Owner; users with Existing Record Entry / Migration.
+
+**Customer Management:** displays the profile and warning; does **not** own duplicate resolution.
+
+- **Exact duplicate-merge mechanics remain To be confirmed.**
+- **Existing Record Entry / Migration remains a recorded Section 5 reconciliation, not silently treated as already added.**
+
+### 10.24 Customer Notes
+
+**Version 1 rules:**
+- authorized users may add customer or transaction-relevant notes when they have access to the related customer or record;
+- notes are **staff-attributed**;
+- note visibility follows record access;
+- notes may relate to assigned operational work;
+- **Customer Support is not the only permission that may add notes.**
+
+**Notes must not change:** transaction status; payment verification; balances; customer association; item allocation; fulfillment state; permissions.
+
+- **Note edit/delete rules remain To be confirmed.**
+- **Detailed attribution, history, and audit behavior belong to Section 31.**
+
+### 10.25 Basic Customer Profile Corrections
+
+Customer Management may maintain approved non-transactional profile information where authorized. Examples may include: spelling correction of customer name; Facebook name; approved contact details; approved shipping or pickup details.
+
+**Rules:**
+- **exact editable fields remain To be confirmed;**
+- ordinary profile corrections are **not** automatically high-risk;
+- profile correction **must not silently reassign** transaction records.
+
+### 10.26 Customer Correction Ownership Matrix
+
+| # | Correction | Owner / access | Rule |
+|---|---|---|---|
+| A | Basic non-transactional profile details | **Customer Management** — Customer Support or appropriate operational access | Exact editable fields **To be confirmed** |
+| B | Pending or Confirmed Claim association | **Claim Review** | **Customer Support alone cannot change it** |
+| C | Unsent Invoice Draft association | **Invoice Preparation** | Remove and return to correction path; **no silent switch** |
+| D | Migrated-record association | **Existing Record Migration** | **Customer Support alone cannot change it** |
+| E | Association after Official Order exists | **To be confirmed** | **No silent reassignment; no assumed automatic cancellation** |
+| F | Ordinary profile corrections | **Customer Management** | **Not automatically high-risk** |
+
+### 10.27 Customer Profile / History Contents
+
+Consider showing:
+- complete customer name
+- Facebook name
+- approved contact information
+- approved shipping/pickup information
+- source markers
+- total claims
+- Official Orders
+- Active Layaways
+- Completed Orders
+- Cancelled Orders
+- Expired Orders
+- payment history
+- layaway history
+- fulfillment history
+- migrated history
+- customer notes
+- possible-duplicate warning
+- **Outstanding Balance only after formally defined**
+
+### 10.28 Counting and Summary Rules
+
+- **Claims are not Official Orders.**
+- **Migrated claim-less records do not count as claims.**
+- **Migrated historical orders count as Official Orders.**
+- **An Active Layaway may already be an Official Order and is not additive.**
+- **Completed, Cancelled, and Expired counts refer to Official Orders, not claims.**
+- **Included claims are not counted as extra orders.**
+- **Outstanding Balance remains To be confirmed.**
+
+### 10.29 Customer Visibility and Action Authority
+
+**Owner:** full visibility and implicit access to all approved permissions.
+
+**Selected Admin and Staff:** visibility based on role, permissions, and operational relevance.
+
+**Customer Support may:** view and maintain approved profile information; view combined history; add allowed notes; see possible-duplicate warnings.
+
+**Customer Support alone may NOT:** verify payment; confirm or correct claim association; prepare or send invoice; approve fulfillment release; migrate records; resolve duplicates; approve high-risk actions.
+
+**Visibility does not equal action authority.**
+
+### 10.30 Customer Workflow Entry and Exit Points
+
+**Entry points:** Claim Capture; Claim Review; Existing Record Migration; Search from an existing claim, invoice, or order; Customer list/profile.
+
+**Operational path:**
+```
+Claim Capture
+→ Claim Review
+→ Customer association
+→ Confirmed Claim
+→ Invoice Preparation
+→ Official Order
+→ Payment / Layaway / Fulfillment
+→ Combined Customer History
+```
+
+**Migration path:**
+```
+Existing Record Migration
+→ search/select/create/flag duplicate
+→ associate historical record
+→ operational module by actual status
+→ Combined Customer History
+```
+
+**Exit states:** completed; cancelled; expired; historical/migrated; forfeiture-related history where applicable. All remain visible in combined history according to access.
+
+### 10.31 Edge Cases
+
+- two different buyers with the same or similar Facebook name;
+- same buyer with a migrated profile and a new MineFlow profile;
+- buyer with claims but no Official Order;
+- migrated historical order with no claim;
+- wrong customer on a Pending Claim;
+- wrong customer on a Confirmed Claim;
+- wrong customer inside an unsent Invoice Draft;
+- wrong customer after Official Order creation;
+- buyer with multiple arrangements requiring separate orders;
+- customer existing only through a migrated record;
+- possible duplicate that remains unresolved.
+
+**The post-Official-Order correction and merge mechanics are not silently resolved.**
+
+### 10.32 Customer Workflow Boundaries
+
+- **Customer Management** owns identity and combined history.
+- **Claim Review** owns claim association correction.
+- **Invoice Preparation** owns buyer-level grouping.
+- **Official Order Management** owns the Official Order record.
+- **Payment Management** owns payment verification.
+- **Layaway Management** owns installment monitoring.
+- **Fulfillment Management** owns shipping/pickup work.
+- **Existing Record Migration** owns historical entry and dedicated duplicate review.
+- **Search** owns detailed lookup behavior.
+- **Audit** owns detailed attribution requirements.
+- **Notes do not change transaction records.**
+- **Customer Profile is a combined view, not the owner of every underlying transaction.**
+
+### 10.33 Section Boundaries
+
+- **Section 10** owns the customer business workflow.
+- **Section 22** owns status transitions.
+- **Section 23** owns detailed search behavior.
+- **Section 25** owns formal reporting definitions.
+- **Section 31** owns detailed audit requirements.
+- **Customer-field technical storage belongs to later technical sections.**
+
+### 10.34 Open / To-Be-Confirmed Customer Items
+
+- authoritative required/optional customer field list
+- exact editable customer-profile fields
+- searchable contact fields
+- post-Official-Order customer-correction workflow
+- Outstanding Balance definition
+- Paid in Full definition/state
+- duplicate-merge mechanics
+- customer-note edit/delete behavior
+- detailed audit requirements
+- execution of the Section 4–5 reconciliation
+
+### 10.35 Section 10 Summary
+
+- **Customers are staff-managed and have no login.**
+- **Capture collects provisional identity only.**
+- **Claim Review or Migration resolves association.**
+- **Invoice Preparation groups already-associated claims.**
+- **Combined history includes new and migrated records.**
+- **Visibility does not grant unrelated operational authority.**
+- **No automatic matching, profile creation, merge, reassignment, or transaction change is introduced.**
+
+---
+
+*End of Section 10 — Customer Workflow. **APPROVED.** Section 11 — Staff Workflow to follow.*
