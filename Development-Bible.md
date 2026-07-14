@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–18 APPROVED; Section 19 (Inventory Workflow) pending
+> **Status:** In Progress — Sections 1–19 APPROVED; Section 20 pending
 
 ---
 
@@ -6803,3 +6803,223 @@ authorized requester (Initiate High-Risk Action)
 ---
 
 *End of Section 18 — Shipping and Pickup Workflow. **APPROVED.** Section 19 — Inventory Workflow follows.*
+
+---
+
+## Section 19 — Inventory Workflow
+
+### 19.1 Purpose of the Inventory Workflow Section
+
+This section owns **inventory visibility and business effects** across item entry, Pending Claims, Confirmed Claims, Invoice Drafts, Official Orders, cancellation, expiry, withdrawal, waitlist, Returned-to-Stock Review, unsold items, layaway forfeiture, and migrated inventory records in Version 1 (MineFlow).
+
+**Governing scope statements:**
+- **A Pending Claim does not automatically allocate or reduce stock** (Section 12.28).
+- **Nothing returns to stock automatically; Returned-to-Stock Review is manual** (Section 6.17, Section 8.10).
+- **Formal inventory status names and strict transitions belong to Section 22** (Section 9.13).
+
+This section stays business-focused. It does not define database schema, APIs, code, warehouse locations, procurement, costing, valuation, barcode hardware, or accounting. It introduces no new permissions, roles, statuses, high-risk categories, automatic behavior, or integrations beyond approved Sections 1–18, and it does not silently resolve any To-be-confirmed item — including the exact inventory-impact point analyzed in 19.6.
+
+### 19.2 Governing Inventory Rules
+
+1. New item required fields: **item code, grams per piece, quantity, item photo, total price per piece** (Section 4.4).
+2. **Quantity greater than one only for truly identical pieces** (Section 4.4.5).
+3. **Different pieces require separate item codes** (Section 4.4.6).
+4. **A Pending Claim does not automatically allocate or reduce stock.**
+5. **Unique quantity-one items support 1st and 2nd Miner only.**
+6. **No 3rd Miner.**
+7. **No automatic transfer to the 2nd Miner.**
+8. **Multi-stock verified claims may be fulfilled up to available quantity.**
+9. **Excess claims become waitlist/excess for staff review.**
+10. **No automatic waitlist allocation or reallocation.**
+11. **No automatic stock return.**
+12. **Withdrawn, approved-cancelled, and expired unpaid items go to Returned-to-Stock Review.**
+13. **Returned-to-Stock Review is manual.**
+14. **No automatic transfer to shop, auction, another miner, or available inventory.**
+15. **Forfeited layaway does not automatically return to stock.**
+16. **Forfeited-item disposition remains To be confirmed.**
+17. **Item history must remain traceable.**
+18. **Live Batch closure does not automatically change inventory.**
+19. **Message send failure does not change inventory.**
+20. **Payment verification alone does not automatically release or remove inventory.**
+21. **Migrated historical facts are preserved.**
+22. **Migration must not silently merge or change current inventory.**
+23. **The exact inventory-impact point remains To be confirmed** (see 19.6).
+
+### 19.3 Item Identity
+
+- Each item has an **item code**; **grams per piece** and **total price per piece** are recorded per piece (Section 4.4).
+- **Truly identical pieces** may be grouped under one code with a **quantity**; **visually or materially different pieces require separate codes** (Section 4.4.5–4.4.7).
+- **One item photo** may represent an identical group (Section 4.4.7).
+
+### 19.4 Availability Concepts
+
+The section distinguishes these **business concepts** (final names owned by Section 22):
+- **Available quantity** — pieces open for new claims.
+- **Provisional association** — a claim points at an item without firmly removing it from availability.
+- **Reservation** — a firmer hold tied to a confirmed/official stage.
+- **Commitment** — the item/quantity is committed to an order.
+- **Sold / released** — finalized on fulfillment.
+- **Returned for review** — sent to Returned-to-Stock Review after withdrawal/cancellation/expiry.
+
+### 19.5 Stage-by-Stage Effects (Conditional)
+
+The following describe **effects consistent with approved rules**; the exact point at which **available quantity** decreases is analyzed and left open in 19.6.
+
+- **Item entry** — item exists with its quantity; full quantity available.
+- **Pending Claim** — **provisional association only; no automatic reduction of available quantity** (rule 4).
+- **Confirmed Claim** — a reviewed claim holds its **miner position / reviewed allocation** (Section 4.9); whether this reduces available quantity is part of 19.6.
+- **Invoice Draft** — grouping for billing; does not itself finalize inventory.
+- **Official Order (Approve & Send Invoice)** — the order officially exists and the hold starts (Section 6.8); a firm **reservation/commitment** most safely attaches here.
+- **Payment verified** — order financially secured; **verification alone does not release or remove inventory** (rule 20).
+- **Fulfillment release/completion** — item finalized as **sold/released** (Section 6.12–6.13).
+
+### 19.6 Critical Inventory-Impact Analysis (Recommendation — To Be Confirmed)
+
+The exact point where stock becomes provisionally associated → reserved → committed → released → returned has **never been finalized** in approved Sections and is deferred here. Candidate points:
+
+- **A. Pending Claim** — *rejected as the decrement point:* approved rule 4 forbids automatic reduction at Pending Claim.
+- **B. Confirmed Claim** — reviewed allocation exists; decrementing here reduces overselling risk earliest but ties availability to a pre-order stage.
+- **C. Added to Invoice Draft** — grouping stage; weak basis for a firm hold.
+- **D. Approve & Send Invoice / Official Order** — the order officially exists and the hold starts; strongest basis for a **firm reservation/commitment**.
+- **E. Required Payment/Deposit Verified** — financially secured, but later than the hold; risks overselling during the hold.
+- **F. Fulfillment Release** — too late for reservation; suitable for **sold/released** finalization.
+- **G. Completed fulfillment** — final **sold/released** confirmation.
+
+**Recommended model (Section 19 proposal, not a final rule):**
+1. **Pending Claim → provisional association, no availability reduction** (grounded in rule 4).
+2. **Confirmed Claim → reviewed allocation / miner-position and waitlist ordering** (grounded in Section 4.9), with a **soft, staff-visible hold**.
+3. **Official Order (D) → firm reservation/commitment**, aligned to the official order and the three-day hold.
+4. **Fulfillment (F/G) → sold/released** finalization.
+5. **Withdrawal/cancellation/expiry → Returned-to-Stock Review** (manual), never automatic.
+
+> **To be confirmed — client decision required before this becomes a rule:** the single open choice is **whether *available quantity* visibly decrements at the Confirmed Claim stage (B) or only at the Official Order stage (D).** This choice **materially affects overselling risk, miner priority, and cancellation behavior**, so it is **not decided here**. Section 19 records the recommendation and preserves the decision as **To be confirmed**; **Section 22 owns the final status transitions** once the point is confirmed.
+
+### 19.7 Unique-Item Handling
+
+- Quantity-one items record **1st and 2nd Miner only; no 3rd Miner; no automatic transfer** (rules 5–7, Section 4.9-A).
+- If the 1st miner does not proceed, the item requires **staff review**; a recorded 2nd miner has **priority** before general availability; otherwise the item **may return to available stock via review** (Section 6.5).
+- **The exact 2nd-miner priority window remains To be confirmed** (Section 6.22).
+
+### 19.8 Multi-Stock Handling
+
+- Verified claims may be fulfilled **up to available quantity, in verified claim order** (rule 8, Section 4.9-B).
+- **Excess → waitlist/excess for staff review** (rule 9); **no automatic reallocation** (rule 10).
+- A freed unit goes to **Needs Staff Review**, not an automatic next buyer (Section 4.9.13).
+
+### 19.9 Waitlist / Excess
+
+- Waitlist/excess claims **remain visible for staff review**; **no automatic allocation or transfer** (Section 12.29).
+- **Waitlist selection authority remains To be confirmed.**
+
+### 19.10 Released / Freed Unit and Staff Review
+
+- A unit freed by withdrawal, approved cancellation, or expiry enters **Returned-to-Stock Review** (rule 12); **no automatic return, transfer, or allocation** (rules 11, 14).
+- **Freed-unit review authority remains To be confirmed.**
+
+### 19.11 Withdrawal
+
+- A withdrawn pre-invoice claim releases its provisional association; the item goes to **Returned-to-Stock Review**, subject to miner/waitlist priority (Section 6.15).
+- **Withdrawal does not erase history** (rule 17); **withdrawal authority remains To be confirmed** (Section 12.14).
+
+### 19.12 Cancellation
+
+- Cancelling an **Official Order is high-risk and Owner-approved** (Section 5.8); afterward the item enters **Returned-to-Stock Review** (Section 6.15).
+- **No automatic inventory return on cancellation** (rule 11).
+
+### 19.13 Expiry / Unpaid Order
+
+- An order whose three-day hold lapses without required payment becomes **Expired / Overdue**; the item enters **Returned-to-Stock Review** subject to miner/waitlist priority (Section 6.16).
+- **No automatic transfer or reallocation** (rule 14).
+
+### 19.14 Unsold Item
+
+- An unclaimed/unsold item at end of a Live has **no automatic disposition** (rules 11, 14).
+- **Unsold-item disposition remains To be confirmed** (Section 12.53); the **historical batch view preserves the outcome**.
+
+### 19.15 Live Batch Closure
+
+- **Closing a Live Batch does not automatically change inventory** (rule 18, Section 12.57).
+
+### 19.16 Returned-to-Stock Review
+
+- A **manual** review handling withdrawn, approved-cancelled, and expired unpaid items (Section 8.10).
+- Rules: **unique item checks the recorded 2nd miner; multi-stock checks the next eligible waitlist buyer; staff review required; no automatic transfer; forfeited layaway items are excluded from automatic stock return** (Section 6.17, rule 15).
+- **Returned-to-Stock Review outcomes and their authority remain To be confirmed.**
+
+### 19.17 Forfeited Layaway
+
+- A **forfeited layaway does not automatically return to stock** (rule 15, Section 6.11).
+- **Forfeited-item disposition remains To be confirmed** (rule 16).
+
+### 19.18 Migrated Inventory
+
+- Migrated inventory records **preserve historical facts** (rule 21) and **must not silently merge or change current inventory** (rule 22); the **source marker remains visible** (Section 7.12).
+- **Item photo is optional for migrated records** if unavailable (Section 6.20).
+- **Migrated-inventory correction authority remains To be confirmed.**
+
+### 19.19 Correction
+
+- Inventory corrections follow the **owning module and staff review**; later-stage records are progressively restricted (Section 11.44).
+- **No silent change to item-master data** when a claim/order references the item (Section 12.13, Section 12.39).
+
+### 19.20 Audit and Attribution
+
+- Inventory-affecting actions remain **attributable to the staff account** (Section 11.43); **detailed audit belongs to Section 31.**
+
+### 19.21 Concurrent Actions and Duplicate Prevention
+
+- Two staff must not drive **conflicting allocation or return actions**; the **latest valid state is respected**; a completed action must not repeat (Section 11.42).
+- **No failed action silently creates a duplicate or an unintended stock change.** Technical concurrency → Sections 28–32.
+
+### 19.22 Error and Recovery
+
+- **Unresolved failures remain visible**; **message send failure does not change inventory** (rule 19); **exact technical recovery belongs to Section 32.**
+
+### 19.23 Reporting and Counts
+
+- **Item Monitoring** and remaining-quantity views are operational; **exact inventory count definitions remain To be confirmed** and **formal reporting belongs to Section 25.**
+- **Claims are not orders; counts are not additive** (Section 7.10, Section 10.28).
+
+### 19.24 Edge Cases
+
+- Pending Claim with no availability change · unique item 1st vs 2nd miner · 1st miner does not proceed · multi-stock excess · freed unit awaiting review · withdrawal before invoice · Owner-approved cancellation · expired unpaid order · unsold item at batch close · forfeited layaway · migrated inventory vs current stock · item-master edit attempted after claims exist · concurrent allocation/return · availability-decrement point unresolved (19.6).
+
+### 19.25 Section Boundaries
+
+- **Section 19** owns inventory visibility and effects.
+- **Section 12** live/post-live workflow. **Section 15** invoice. **Section 16** payment. **Section 17** layaway. **Section 18** fulfillment.
+- **Section 22** owns formal inventory statuses and transitions. **Section 25** reporting. **Sections 28–32** integrity/security/audit/recovery.
+
+### 19.26 Open / To-Be-Confirmed Items
+
+- **exact inventory-impact point** (19.6 — decrement at Confirmed Claim vs Official Order)
+- exact reservation definition
+- when available quantity decreases
+- when remaining quantity increases again
+- unique-item 2nd-Miner priority window
+- freed-unit review authority
+- waitlist selection authority
+- withdrawal authority
+- unsold-item disposition
+- Returned-to-Stock Review outcomes
+- cancellation inventory effect
+- expired-unpaid inventory effect
+- payment/fulfillment inventory relationship
+- forfeited-item disposition
+- migrated inventory correction
+- exact inventory count definitions
+- exact Section 4–5 reconciliation
+
+### 19.27 Section 19 Summary
+
+- **New items require code, grams/piece, quantity, photo, and total price/piece; quantity only for truly identical pieces.**
+- **A Pending Claim never automatically allocates or reduces stock.**
+- **Unique items use 1st/2nd Miner only, no 3rd, no automatic transfer; multi-stock fills up to quantity with waitlist/excess and no automatic reallocation.**
+- **Nothing returns to stock automatically; withdrawn, cancelled, and expired items go through manual Returned-to-Stock Review; forfeited layaway is excluded from automatic return.**
+- **Live Batch closure, message-send failure, and payment verification alone do not change inventory.**
+- **Migrated facts are preserved and never silently merged; item history stays traceable.**
+- **The exact inventory-impact point is recommended (provisional at claim stages, firm reservation at Official Order) but remains To be confirmed** — the Confirmed-Claim-vs-Official-Order decrement choice is a client decision because it affects overselling, miner priority, and cancellation; **Section 22 owns the final transitions.**
+
+---
+
+*End of Section 19 — Inventory Workflow. **APPROVED.** Section 20 to follow.*
