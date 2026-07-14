@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** COMPLETE — Sections 1–36 approved; final full-document audit pending.
+> **Status:** COMPLETE AND AUDITED — Sections 1–36 approved; ready for implementation planning.
 
 ---
 
@@ -307,6 +307,8 @@ The planned access model is also part of V1 (not the current workflow): the **Ow
 ### 2.6 Planned End-to-End Version 1 Workflow
 
 The following describes the approved V1 process stage by stage. These are **planned system behaviors**, not descriptions of current practice.
+
+> **Supersession pointer (see §4.17, §6, §19, §22):** Several specifics in Sections 2.6–2.8 reflect the *original* planned workflow and were **subsequently superseded by Section 4 and later sections**. In particular: **"Confirm and Print" was renamed Confirm Claim & Print Label**, which creates a **Confirmed Claim + label job only** — the **Official System Order is created at Approve & Send Invoice** (invoice creation), **not at confirmation** (§4.3, §4.8, §4.10, §6.8); **only 1st and 2nd miner exist (no 3rd) with no automatic promotion** (§4.9-A); the hold is **3 days, not 24 hours** (§4.11); and **cancelled/expired/withdrawn items route to manual Returned-to-Stock Review rather than returning automatically** (§6.17, §19.16). The governing rules are those later sections; the text below is retained as the original planned-workflow record.
 
 **Pre-Live Preparation**
 Staff prepare the items and assignments for the Live within the system. *The exact preparation steps and whether every item receives a code before the Live remain To be confirmed with the client; the system should accommodate the confirmed process once defined.*
@@ -7361,7 +7363,7 @@ This section stays business-focused. It defines no UI implementation, exact pixe
 | Reopen Batch | **Owner approval** (Section 5.13) | closed batch | Batch reopened | No silent rewrite of history; Owner-approval-required, non-delegable |
 | Add / Edit Item | Live Batch Item Entry | open batch | Item added/updated | Fields per §4.4; no silent change once claims exist |
 | Withdraw Item | Item Withdrawal (Section 5.13) | item present | Item withdrawn; claims/evidence retained | No auto claim transfer or stock return; escalation if claims exist |
-| Set / Switch / Clear Current Flex | *TBC (Live authority) | available item | Current Flex set/switched/cleared | Affects future capture only; existing claims unchanged |
+| Set / Switch / Clear Current Flex | Current Flex Item Control (Section 5.13) | available item | Current Flex set/switched/cleared | Affects future capture only; existing claims unchanged |
 
 ### 21.4 Claim Capture and Entry Actions
 
@@ -7588,7 +7590,7 @@ Reflecting the client-approved inventory decision:
 |---|---|---|---|
 | Message Draft | Prepared before send | Ready to Copy/Send | Invoice Preparation |
 | Ready to Copy/Send | Previewed/ready | Manually Sent; Direct Send Pending | Invoice Preparation |
-| Manually Sent | Staff attestation (copy + manual send) | — | send authority *(TBC)* |
+| Manually Sent | Staff attestation (copy + manual send) | — | Message Sending (Section 5.13) |
 | Direct Send Pending *(integration-dependent)* | Direct send attempted | Direct Send Failed; Delivered | (conditional integration) |
 | Direct Send Failed *(integration-dependent)* | Direct send failed | Manually Sent; Direct Send Pending | — |
 | Delivered *(integration-dependent, TBC)* | Delivery confirmed | Read | — |
