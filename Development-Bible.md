@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–8 APPROVED (Project Vision; Business Workflow; Current Pain Points; Business Rules; User Roles & Permissions; Complete Order Lifecycle; Dashboard Workflow; Screen Map); Section 9 (Module Breakdown) pending
+> **Status:** In Progress — Sections 1–9 APPROVED (Project Vision; Business Workflow; Current Pain Points; Business Rules; User Roles & Permissions; Complete Order Lifecycle; Dashboard Workflow; Screen Map; Module Breakdown); Section 10 (Customer Workflow) pending
 
 ---
 
@@ -2281,4 +2281,740 @@ Dashboard queue / Returned-to-Stock Review
 
 ---
 
-*End of Section 8 — Screen Map. **APPROVED.** Section 9 — Module Breakdown to follow.*
+*End of Section 8 — Screen Map. **APPROVED.** Section 9 — Module Breakdown follows.*
+
+---
+
+## Section 9 — Module Breakdown
+
+### 9.1 Purpose of the Module Breakdown Section
+
+This section defines, for Version 1 (MineFlow):
+
+- the **major functional modules** of Version 1;
+- **what each module owns**;
+- the **approved screens** inside each module;
+- its **business concepts**;
+- its **primary users and permissions**;
+- its **inputs and outputs**;
+- its **boundaries and dependencies**.
+
+**Governing statements:**
+
+- A **module is a functional business area, not one screen**.
+- One module may contain **multiple screens**.
+- **Module names are not roles.**
+- **Module names are not new permission toggles.**
+- **Exact approved Section 5 permissions control access and actions.**
+- **Visibility does not equal action authority.**
+
+This section stays business-focused and product-architectural. It does not discuss database tables, API endpoints, hosting, source-code folders, frameworks, implementation code, unapproved integrations, or detailed transition logic. It invents no modules, screens, roles, permissions, records, actions, statuses, or technical behavior beyond approved Sections 1–8, and it does not silently resolve any To-be-confirmed item.
+
+### 9.2 Module Classification
+
+**Operational modules:**
+
+- A. Authentication and Access
+- B. Dashboard and Work Queues
+- C. Live Selling and Batch Management
+- D. Claim Capture
+- E. Claim Review and Allocation
+- F. Invoice Preparation
+- G. Official Order Management
+- H. Payment Management
+- I. Layaway Management
+- J. Fulfillment Management
+- K. Inventory and Item Availability
+- L. Customer Management
+- M. Existing Record Migration
+- N. Owner Approvals
+
+**Cross-cutting modules/services:**
+
+- O. Printing and Reprint
+- P. Search
+- Q. Reporting
+- R. Notifications and Reminders
+- S. User Accounts and Permissions
+- T. Settings
+- U. Audit and Accountability
+
+**Owner Approvals is operationally cross-module** because it receives high-risk requests from several modules.
+
+### 9.3 Authentication and Access Module
+
+**Purpose:**
+- control entry to the system;
+- enforce role and permission access;
+- block disabled accounts.
+
+**Screens:** Login; account/password recovery entry.
+
+**Business concepts:** staff account; authenticated user; role; permission enforcement; disabled account.
+
+**Main actions:** sign in; open recovery entry; deny access to disabled accounts.
+
+**Inputs:** user accounts, roles, and permission toggles from User Accounts and Permissions.
+
+**Outputs:** authenticated identity to every module; staff identity for audit attribution.
+
+**Boundaries:**
+- does not create or edit accounts;
+- does not define technical authentication or security implementation;
+- customers have no login.
+
+### 9.4 Dashboard and Work Queues Module
+
+**Purpose:**
+- operational command center;
+- surface queues, counts, alerts, and quick actions.
+
+**Screen:** Dashboard.
+
+**Business concepts:** operational queue; queue count; compact summary; attention flag; refresh behavior.
+
+**Actions:** open queue; use permission-gated quick action; manual Refresh.
+
+**Inputs:** queue states from operational modules.
+
+**Outputs:** navigation into the owning module.
+
+**Boundaries:**
+- Dashboard does not own the underlying record;
+- Dashboard does not define status transitions;
+- compact operational counts do not replace Reporting;
+- alerts do not define delivery behavior.
+
+### 9.5 Live Selling and Batch Management Module
+
+**Screens:** Live Batches; Live Batch Detail; Quick Add Item; Current Flex Item.
+
+**Purpose:**
+- prepare and operate a live-selling batch;
+- manage items being flexed.
+
+**Business concepts:** Live Batch; batch item; Current Flex Item.
+
+**Required item fields:**
+- item code
+- grams per piece
+- quantity
+- required item photo
+- total price per piece
+
+**Primary permissions:** Live Batch Item Entry; Claim Capture where viewing batch claims is operationally relevant.
+
+**Actions:** create/open batch; add item; set/switch/clear Current Flex Item.
+
+**Inputs:** item availability and quantity visibility from Inventory.
+
+**Outputs:** Current Flex Item to Claim Capture; item records to Inventory.
+
+**Boundaries:**
+- does not create claims;
+- does not review claims;
+- does not own item availability changes after claims and orders exist.
+
+### 9.6 Claim Capture Module
+
+**Screen:** Mobile Capture Entry.
+
+**Purpose:**
+- receive captured mine-comment evidence;
+- create a Pending Claim / Needs Review record.
+
+**Business concepts:** screenshot/frame evidence; Pending Claim; Current Flex Item association.
+
+**Primary permission:** Claim Capture.
+
+**Actions:** capture or receive evidence; create Pending Claim.
+
+**Inputs:** Current Flex Item from Live Selling and Batch Management.
+
+**Outputs:** Pending Claim to Claim Review and Allocation.
+
+**Rules:**
+- capture never confirms;
+- capture never prints;
+- capture never sends an invoice;
+- Android capture remains subject to technical validation;
+- iOS V1 uses screenshot → Share → Send to MineFlow.
+
+**Boundaries:**
+- does not correct, confirm, allocate, print, or invoice;
+- technical platform behavior belongs to later sections.
+
+### 9.7 Claim Review and Allocation Module
+
+**Screens:** Pending Claims; Claim Review; active-claim 2nd-Miner / Waitlist review inside Claim Review.
+
+**Purpose:**
+- convert a Raw Claim into a Confirmed Claim after authorized review.
+
+**Business concepts:** Raw Claim; Confirmed Claim; claim/reference number; item correction; miner position; multi-stock allocation; waitlist; withdrawal; rejected capture; active-claim sure-buyer review.
+
+**Primary permissions:** Claim Review; Item Correction; Miner / Allocation Review; Confirm Claim & Print Label; Initiate High-Risk Action for price-override requests only.
+
+**Actions:** review claim evidence; edit buyer details; correct item; review miner/allocation position; withdraw claim; switch item; reject capture; Confirm Claim & Print Label; initiate price-override request.
+
+**Inputs:** Pending Claims from Claim Capture; item data from Live Selling; item availability and quantity visibility from Inventory.
+
+**Outputs:** Confirmed Claims to Invoice Preparation; label job to Printing and Reprint; withdrawn-item outcome to Returned-to-Stock Review; price-override request to Owner Approvals.
+
+**Confirm Claim & Print Label creates a Confirmed Claim and claim/reference number only. It does not create or send an invoice.**
+
+**Returned-to-stock boundary:**
+- withdrawal sends the affected item to Returned-to-Stock Review;
+- it does not immediately return to general availability;
+- no automatic transfer or allocation occurs.
+
+**Boundaries:**
+- does not prepare invoices;
+- does not create Official Orders;
+- does not approve price overrides;
+- does not own freed-item review after the item enters Returned-to-Stock Review.
+
+### 9.8 Invoice Preparation Module
+
+**Screens:** Confirmed Claims / For Invoice; Invoice Drafts; Invoice Review.
+
+**Purpose:**
+- group complete claims for one buyer and arrangement;
+- prepare and send the approved invoice.
+
+**Business concepts:** individual For-Invoice claim; buyer-level invoice draft; grouped claim set; payment arrangement; fulfillment arrangement; Approve & Send Invoice.
+
+**Primary permission:** Invoice Preparation.
+
+**Actions:** prepare/group claims; build/edit/dissolve invoice draft; add/remove claim; review grouped invoice; Approve & Send Invoice.
+
+**Inputs:** Confirmed Claims from Claim Review; customer identity from Customer Management.
+
+**Outputs — after successful send:**
+- one Official System Order
+- one official order number
+- one invoice number
+- shared 3-day hold
+- included claims retain their claim/reference numbers
+
+**Rules:**
+- grouped claims must have the same payment and fulfillment arrangement;
+- one claim cannot count in For Invoice and an active invoice draft at the same time;
+- a removed or dissolved unsent claim may return to For Invoice.
+
+**Boundaries:**
+- invoice draft is not an Official Order;
+- unsuccessful or dissolved drafts do not create an order;
+- invoice-revision workflow remains To be confirmed.
+
+### 9.9 Official Order Management Module
+
+**Screens:** Official Orders; Order Detail.
+
+**Purpose:**
+- own the Official System Order;
+- provide the central transaction hub.
+
+**Business concepts:** Official System Order; official order number; invoice number; shared hold; lifecycle visibility; approval/exception visibility; migrated/source marker.
+
+**Actions:** open and monitor order; view claims/items; view invoice; view payment/deposit state; view payment history; view layaway information; view fulfillment information; view reminders; navigate to specialized work views.
+
+**Inputs:** new orders from Invoice Preparation; historical orders from Existing Record Migration; updates from Payment, Layaway, Fulfillment, Owner Approvals.
+
+**Outputs:** order context to Payment, Layaway, Fulfillment, Reminders, Reporting, Customer History; hold timing to Notifications and Reminders; expired or approved-cancelled item outcome to Returned-to-Stock Review.
+
+**Returned-to-stock boundary:**
+- expiry or approved cancellation does not immediately return the item to stock;
+- the item first enters Returned-to-Stock Review;
+- no automatic transfer or allocation occurs.
+
+**Boundaries:**
+- does not verify payments;
+- does not manage installment schedules;
+- does not perform fulfillment;
+- does not approve cancellation;
+- specialized views operate on the same transaction and create no duplicate records.
+
+### 9.10 Payment Management Module
+
+**Screens:** Payments; Payment Review.
+
+**Purpose:**
+- monitor and verify required payments and deposits.
+
+**Business concepts:** Awaiting Required Payment / Deposit; Payment Submitted / Unverified; Required Payment / Deposit Verified; payment history; payment verification.
+
+**Primary permission:** Payment Verification.
+
+**Actions:** review submitted payment; verify required payment/deposit; view payment history.
+
+**Inputs:** Official Order and arrangement context; installment context from Layaway where applicable.
+
+**Outputs:** verified state to Official Order, Layaway, and Fulfillment; verification attribution to Audit.
+
+**State:**
+- Required Payment / Deposit Verified does not automatically mean Paid in Full;
+- Paid in Full remains To be confirmed.
+
+**Boundaries:**
+- does not own layaway schedule;
+- does not approve fulfillment release;
+- does not define Paid in Full status.
+
+### 9.11 Layaway Management Module
+
+**Screens:** Layaway; Layaway Detail.
+
+**Purpose:**
+- monitor active layaways, installments, overdue/grace state, forfeiture eligibility, and financer attribution.
+
+**Business concepts:**
+- minimum 20% down payment
+- maximum three-month term
+- fee formula: ₱150 × grams × months
+- exact fee application remains To be confirmed
+- maximum 10-day grace period
+- financer
+- active layaway
+- overdue
+- grace
+- forfeiture-eligible
+- migrated layaway
+
+**Primary permissions:** Layaway Monitoring; Payment Verification for payment verification; Initiate High-Risk Action for forfeiture request.
+
+**Actions:** monitor schedule; record installment activity; open payment verification; monitor due/grace boundary; initiate forfeiture request.
+
+**Inputs:** Official Order; verified payment/deposit from Payment Management; migrated layaway from Existing Record Migration.
+
+**Outputs:** balance/status context to Official Order, Customer History, Reporting; reminder timing to Notifications and Reminders; forfeiture request to Owner Approvals.
+
+**Boundaries:**
+- installment recording does not equal payment verification;
+- forfeiture approval belongs to Owner Approvals;
+- forfeited-item disposition remains To be confirmed;
+- forfeited items do not automatically enter Returned-to-Stock Review.
+
+### 9.12 Fulfillment Management Module
+
+**Screens:** Fulfillment; Fulfillment Detail.
+
+**Purpose:**
+- prepare verified orders for shipping or pickup;
+- support normal release;
+- route exceptional release requests to the Owner.
+
+**Business concepts:** For Preparation; For Shipping; For Pickup; Approved for Release; Dispatched; Picked Up / Completed where relevant; normal release; exceptional release; courier/tracking/reference; receiver details.
+
+**Primary permissions:** Shipping / Pickup Preparation; Initiate High-Risk Action for exceptional-release request.
+
+**Actions:** prepare item; approve normal release; record dispatch; record handover/pickup; initiate exceptional-release request.
+
+**Inputs:** Official Order; Required Payment / Deposit Verified context.
+
+**Outputs:** fulfillment outcome to Official Order, Customer History, Inventory; exceptional-release request to Owner Approvals; cancelled or exited fulfillment item outcome to Returned-to-Stock Review.
+
+**Returned-to-stock boundary:**
+- Fulfillment performs no stock return;
+- an item leaving fulfillment because of an approved cancellation or other reviewed exit enters Returned-to-Stock Review;
+- no automatic stock return, transfer, or allocation occurs.
+
+**Boundaries:**
+- does not verify payment;
+- does not approve exceptional release;
+- does not own returned-to-stock review.
+
+### 9.13 Inventory and Item Availability Module
+
+**Screens:** Inventory; Returned-to-Stock Review.
+
+**Purpose:**
+- monitor item availability and quantity remaining;
+- handle staff-reviewed outcomes for withdrawn, cancelled, or expired items.
+
+**Business concepts monitored:**
+- item availability
+- quantity remaining
+- association with claims and orders
+- fulfillment outcome
+- withdrawal outcome
+- cancellation outcome
+- expiration outcome
+- Returned-to-Stock Review outcome
+
+**Formal inventory status names and strict transitions belong to Section 22.**
+
+**Primary permissions:** Inventory Monitoring; Miner / Allocation Review for allocation decisions during review.
+
+**Actions:** monitor item availability; monitor quantity remaining; open Returned-to-Stock Review; review recorded 2nd miner for unique item; review next eligible waitlist buyer for multi-stock; perform staff sure-buyer review; record reviewed outcome.
+
+**Inputs:** item records from Live Selling; claim/order associations; fulfillment outcomes; withdrawal/cancellation/expiration outcomes.
+
+**Outputs:** availability and quantity visibility to Live Selling and Claim Review; staff-reviewed re-offer candidate to the appropriate new-claim path; reviewed outcome recorded subject to Section 22.
+
+**Rules:**
+- unique item: show recorded 2nd miner;
+- multi-stock item: show next eligible waitlist buyer;
+- staff review is required;
+- no automatic return to general availability;
+- no automatic transfer to another buyer;
+- no automatic allocation;
+- staff-reviewed outcome may later return the item to general availability or create the appropriate reviewed next step, subject to Section 22;
+- forfeited layaway items are excluded from automatic stock return.
+
+**Boundaries:**
+- does not own active-claim allocation;
+- does not define formal inventory statuses;
+- does not decide forfeited-item disposition.
+
+### 9.14 Customer Management Module
+
+**Screens:** Customers; Customer Profile / History.
+
+**Purpose:**
+- maintain one staff-managed customer profile with combined migrated and new history.
+
+**Business concepts:** customer identity; Facebook name; claims; Official Orders; payments; layaways; fulfillment history; customer notes; source markers; duplicate warning; non-additive metrics.
+
+**Primary permissions:** Customer Support; operationally relevant access from other modules.
+
+**Actions:** open profile; maintain allowed customer details; add notes; view history; see duplicate warning.
+
+**Inputs:** claim/order/payment/layaway/fulfillment history; migrated records from Existing Record Migration.
+
+**Outputs:** customer identity to Invoice Preparation; customer data to Search and Reporting where authorized.
+
+**Rules:**
+- claims are not orders;
+- migrated claim-less records do not count as claims;
+- active layaways may already be included in Official Orders and are not additive;
+- customers have no login.
+
+**Boundaries:**
+- Customer Support warning does not authorize duplicate resolution;
+- does not enter migrated records;
+- does not own duplicate merge or confirmation.
+
+### 9.15 Existing Record Migration Module
+
+**Screens:** Existing / Migrated Records; Add Existing Layaway / Migrate Record; Possible Duplicate Customers.
+
+**Purpose:**
+- manually enter historical records;
+- preserve actual values and dates;
+- manage the dedicated possible-duplicate review workflow.
+
+**Business concepts:** migrated record; historical order; existing layaway; source marker; duplicate candidate; manual Version 1 entry.
+
+**Primary access:** Owner; users with Existing Record Entry / Migration.
+
+**Existing Record Entry / Migration remains a recorded permission reconciliation and is not silently treated as already added to the approved Section 5 list.**
+
+**Actions:** add existing/migrated record; preserve historical values; review possible duplicates; record migration attribution.
+
+**Rules:**
+- no retroactive application of current deposit rules;
+- item photo optional if unavailable;
+- source marker required;
+- manual entry in Version 1;
+- CSV/Excel import deferred;
+- no automatic merge;
+- exact merge workflow deferred.
+
+**Duplicate-review ownership:**
+- this module owns the dedicated duplicate-review workflow;
+- Customer Management displays the warning only;
+- Customer Support permission alone cannot confirm, merge, or resolve duplicates.
+
+**Inputs:** historical data entered by authorized staff.
+
+**Outputs:** historical Official Orders to Official Order Management; migrated layaways to Layaway Management; customer history to Customer Management; ongoing records to operational modules based on actual status; migration attribution to Audit.
+
+**Boundaries:**
+- does not continue managing the record after migration;
+- operational modules own ongoing work;
+- does not perform automatic merging;
+- does not perform bulk import in Version 1.
+
+### 9.16 Owner Approvals Module
+
+**Screen:** Owner Approvals.
+
+**Purpose:**
+- act as the single high-risk approval gate across modules.
+
+**High-risk actions:**
+- official-order cancellation
+- forfeiture
+- price override
+- exceptional release
+
+**Primary permissions:** Owner approves/rejects; Initiate High-Risk Action allows an authorized user to create a request and view its status.
+
+**Rules:**
+- initiate → Owner review → approve/reject → return outcome to source module;
+- no delegation;
+- request waits if Owner unavailable;
+- initiator cannot approve their own request;
+- normal fulfillment release is not high-risk.
+
+**Inputs:** price-override request from Claim Review; cancellation request from Official Order Management; forfeiture request from Layaway; exceptional-release request from Fulfillment.
+
+**Outputs:** approved/rejected outcome to source module; approval attribution to Audit.
+
+**Boundaries:**
+- does not own the underlying record;
+- does not perform normal operational release;
+- does not automatically execute unrelated downstream actions.
+
+### 9.17 Printing and Reprint Module
+
+**Screen:** Print Queue / Reprint.
+
+**Purpose:**
+- manage label activity created after claim confirmation.
+
+**Business concepts:** label job; pending print; successful print; failed print; reprint request.
+
+**Primary permission:** Confirm Claim & Print Label; exact reprint permissions remain deferred to Section 24.
+
+**Inputs:** label job from Claim Review and Allocation.
+
+**Actions:** view print activity; access reprint entry where authorized.
+
+**Rules:**
+- no capture event automatically prints;
+- no claim confirmation occurs inside the print module;
+- detailed reprint, failure, duplicate warning, and retry rules belong to Section 24.
+
+**Boundaries:**
+- Claim Review creates the label job;
+- Printing does not confirm claims;
+- Printing does not invoice.
+
+### 9.18 Search Module
+
+**Screens:** Global Search entry; Search Results.
+
+**Purpose:**
+- find records across approved searchable keys.
+
+**Search keys:**
+- complete customer name
+- Facebook name
+- claim/reference number
+- Official Order number
+- invoice number
+- item code
+- shipping number
+
+**Rules:**
+- results respect role and permission visibility;
+- Search does not replace operational list screens;
+- detailed query, filter, ranking, and result behavior belongs to Section 23.
+
+### 9.19 Reporting Module
+
+**Screen:** Reports.
+
+**Purpose:**
+- provide compact summaries in Version 1.
+
+**Primary permission:** View Reports.
+
+**May show:** compact totals; date-range selection; order-status summary; payment summary; layaway summary.
+
+**State:**
+- Outstanding Balance appears only after it is formally defined;
+- detailed analytics, charts, exports, performance analysis, and final definitions belong to Section 25;
+- dashboard operational counts belong to Dashboard and Work Queues.
+
+### 9.20 Notifications and Reminders Module
+
+**Purpose:**
+- manage operational reminder queues and attention flags.
+
+**Scope:**
+- Day 1 reminder queue
+- Day 2 reminder queue
+- Day 3 final reminder queue
+- authorized staff may send or record reminders
+- in-app attention flags
+- timing inputs from order holds and layaway dates
+
+**Primary permission:** Reminder Handling.
+
+**Inputs:** hold timing from Official Order Management; due/grace timing from Layaway.
+
+**Boundaries — do not define or assume:**
+- automatic message sending
+- any specific messaging platform
+- delivery-channel behavior
+- delivery confirmation
+- retry behavior
+
+**All delivery behavior belongs to Section 26.**
+
+### 9.21 User Accounts and Permissions Module
+
+**Screen:** User Accounts / Permissions.
+
+**Access:** Owner only.
+
+**Purpose:**
+- manage staff accounts, roles, and exact permission toggles.
+
+**Actions:** create account; edit account; disable account; assign role; assign approved permission toggles.
+
+**Outputs:** user identity and permission configuration to Authentication and every module.
+
+**Rules:**
+- module names are not permission names;
+- one module may use several permissions;
+- one permission may be relevant to several modules;
+- Owner's capabilities come from implicit access to all approved permissions;
+- Payment Verification and Existing Record Entry / Migration are not separate Owner-only functions.
+
+Includes the **recorded reconciliation need to add Existing Record Entry / Migration to Section 5**.
+
+### 9.22 Settings Module
+
+**Screen:** Settings.
+
+**Access:** Owner.
+
+**Purpose:**
+- provide a limited Version 1 settings entry.
+
+**Scope may include:** business/system name; basic business information; invoice display details; label/printing preferences; approved reminder defaults; printer/device setup entry; other confirmed operational defaults.
+
+**Exact fields remain To be confirmed.** Do not invent broad configuration features.
+
+### 9.23 Audit and Accountability Module
+
+**Purpose:**
+- preserve staff attribution and accountability across modules.
+
+**No dedicated Version 1 screen is required.** Audit information may surface inside related records.
+
+**Inputs from all modules may include attribution for:**
+- claim edits
+- claim confirmation
+- payment verification
+- migrated-record entry
+- high-risk request
+- Owner approval/rejection
+- other approved staff actions
+
+**Detailed audit requirements belong to Section 31.** Do not invent audit retention, event structure, edit-locking, or technical logging behavior here.
+
+### 9.24 Cross-Module Dependency Summary
+
+**Main operational flow:**
+```
+Live Selling
+→ Claim Capture
+→ Claim Review and Allocation
+→ Invoice Preparation
+→ Official Order Management
+→ Payment / Layaway / Fulfillment
+→ Completion or Returned-to-Stock Review where applicable
+```
+
+**Migration:**
+```
+Existing Record Migration
+→ Official Order / Layaway / Customer Management
+→ normal operational modules by actual status
+```
+
+**High-risk:**
+```
+source module
+→ Owner Approvals
+→ outcome returns to source module
+```
+
+**Cross-cutting:**
+- Dashboard reads operational queues;
+- Search reads permission-filtered records;
+- Reporting reads approved summaries;
+- Reminders read timing inputs;
+- Printing receives label jobs;
+- Audit receives staff attribution;
+- Accounts and Permissions control access;
+- Settings provides approved defaults.
+
+### 9.25 Module Boundary and Duplication Rules
+
+- **Live Selling owns batch/item/current-flex setup; Claim Capture owns Pending Claim creation.**
+- **Claim Review ends at Confirmed Claim; Invoice Preparation begins at For Invoice.**
+- **Invoice Draft is not an Official Order.**
+- **Official Order Management owns the central transaction record.**
+- **Payment, Layaway, and Fulfillment are specialized operational modules acting on the same transaction.**
+- **Dashboard shows queues but does not own records.**
+- **Returned-to-Stock Review must occur before any reviewed re-offer or return to general availability.**
+- **Customer Management displays duplicate warning; Existing Record Migration owns duplicate review.**
+- **Owner Approvals owns the approval act only.**
+- **Reminders do not define delivery mechanics.**
+- **Reports do not replace Dashboard queues.**
+- **Printing does not confirm claims.**
+- **Search does not replace operational lists.**
+- **Module names are not roles or permissions.**
+
+### 9.26 Owner-Only and High-Risk Responsibility Summary
+
+**Owner-only:**
+- approve/reject high-risk requests
+- manage user accounts and permissions
+- access Settings
+- implicit access to all approved permissions
+
+**High-risk requests:**
+- official-order cancellation
+- forfeiture
+- price override
+- exceptional release
+
+**Normal release:**
+- permission-based under Fulfillment;
+- not an Owner-only high-risk action.
+
+### 9.27 Migrated-Record Behavior Across Modules
+
+- Existing Record Migration creates the record;
+- operational modules manage it by actual status;
+- users do not need migration-entry permission merely to work on an applicable migrated record;
+- source marker visible everywhere;
+- historical values and dates preserved;
+- migrated layaway counts as one historical Official Order and may also appear in Active Layaways, but metrics are not additive;
+- claim-less migrated records do not count as claims;
+- forfeited-item disposition and duplicate merge remain To be confirmed.
+
+### 9.28 Open / To-Be-Confirmed Module Items
+
+- invoice-revision workflow
+- forfeited-item disposition
+- Paid in Full definition/label
+- Outstanding Balance definition
+- duplicate-customer merge workflow
+- detailed audit scope
+- execution of the Section 4–5 reconciliation
+- formal inventory status naming and transitions
+- print/reprint behavior
+- notification delivery behavior
+- exact Settings fields
+
+### 9.29 Section 9 Summary
+
+- **21 functional modules** — **14 operational** modules and **7 cross-cutting** modules/services.
+- **Module names are functional areas, not permissions.**
+- **Order Detail remains the central transaction hub.**
+- **Specialized modules operate on the same record without duplication.**
+- **Migrated records enter normal workflows by actual status.**
+- **High-risk approval remains centralized under the Owner.**
+- **No automatic return, transfer, allocation, merge, print, or notification behavior is introduced.**
+
+---
+
+*End of Section 9 — Module Breakdown. **APPROVED.** Section 10 — Customer Workflow to follow.*
