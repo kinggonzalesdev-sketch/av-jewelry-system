@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–27 APPROVED; Section 28 pending
+> **Status:** In Progress — Sections 1–28 APPROVED; Section 29 (API Design) pending
 
 ---
 
@@ -8338,4 +8338,214 @@ This section stays business-focused at the boundary. It defines no Bluetooth pro
 
 ---
 
-*End of Section 27 — Printer Integration. **APPROVED.** Section 28 to follow.*
+*End of Section 27 — Printer Integration. **APPROVED.** Section 28 — Database Design follows.*
+
+---
+
+## Section 28 — Database Design
+
+### 28.1 Purpose of the Database Design Section
+
+This section owns the **logical data model** of Version 1 (MineFlow): records, relationships, integrity rules, lifecycle persistence, history preservation, identifiers, and storage boundaries. It is **implementation-aware but not tied to final SQL** — it encodes the approved business behavior of Sections 1–27 into a durable data shape.
+
+This section stays at the logical level. It defines no final SQL, vendor-specific extensions, encryption implementation, storage limits, final UUID strategy, automatic cleanup, destructive cascades, accounting ledgers, profit/cost tables, or customer-login tables. **Any entity/attribute names below are proposed, not final.** It introduces no new roles, permissions, official statuses, automatic actions, integrations, accounting rules, or customer-facing access beyond approved Sections 1–27, and it does not silently resolve any To-be-confirmed item.
+
+### 28.2 Modeling Conventions
+
+- **Proposed names** (entities and attributes) are illustrative; **final naming is To be confirmed** and follows the eventual Supabase implementation.
+- Every record carries **stable internal IDs** (surrogate keys) distinct from **business-facing reference numbers**; **final UUID/ID strategy is To be confirmed**.
+- The model favors **immutable history + explicit correction records** over destructive edits (28.15, 28.19).
+- **No destructive cascade or automatic cleanup is modeled** (28.19).
+- The **role/permission schema is intentionally left open pending the Section 4–5 reconciliation** (28.6).
+
+### 28.3 Entity Overview (Proposed Groups)
+
+- **Access:** users, roles, permissions, user-permission assignments, shop/page access.
+- **Customers:** customers, customer aliases / Facebook names, possible-duplicate links.
+- **Live selling:** Live Batches, Live Batch items, Current-Flex history.
+- **Inventory:** inventory items, inventory quantities, reservations, Returned-to-Stock Review.
+- **Claims:** Pending Claims, Confirmed Claims, miner positions, waitlist/excess, claim evidence.
+- **Printing:** label jobs, print attempts.
+- **Invoicing:** Invoice Drafts, draft-claim links.
+- **Orders:** Official Orders, order-claim/item links, invoice references.
+- **Messaging:** customer messages, message attempts.
+- **Payments:** payments, payment evidence, payment verification.
+- **Layaway:** layaway arrangements, installments, financer.
+- **Fulfillment:** fulfillment records, shipping details, pickup details.
+- **Approvals:** Owner Approval Requests (cancellation, forfeiture, exceptional release, price override).
+- **Cross-cutting:** notifications, reminders, audit logs, migration/import records, source markers, attachments/files.
+
+### 28.4 Identifiers
+
+- **Internal IDs** — stable surrogate keys, never shown as business references.
+- **Business reference numbers** (distinct records/attributes): **claim/reference number**, **official order number**, **invoice number**, **item code**, **shipping/tracking number**, **payment reference**.
+- **One successful Approve & Send Invoice yields exactly one order number and one invoice number** (rule 11); **included claims retain their own claim/reference numbers** (rule 13).
+- **Final reference-number formats remain To be confirmed** (Sections 6.7, 15.34).
+
+### 28.5 Core Relationships (Logical)
+
+- **User — Permission:** many-to-many via user-permission assignments; **User — Shop/Page:** many-to-many (scope). *(schema pending §4–5, 28.6)*
+- **Customer — Alias/Facebook name:** one-to-many; **Customer — Possible-Duplicate link:** many-to-many (candidate pairs, review only).
+- **Live Batch — Item:** one-to-many; **Item — Current-Flex history:** one-to-many (time-ordered).
+- **Inventory Item — Reservation:** one-to-many; **Confirmed Claim — Reservation:** one-to-one (28.9).
+- **Pending Claim → Confirmed Claim:** one-to-one progression (same claim identity); **Claim — Evidence/Photo:** one-to-many.
+- **Invoice Draft — Claim:** many-to-many via draft-claim links, constrained so **one claim is in at most one active draft** (rule 10).
+- **Official Order — Claim/Item:** one-to-many (grouped claims stay distinct, rule 13); **Official Order — Invoice reference:** one-to-one.
+- **Official Order — Payment:** one-to-many; **Payment — Evidence:** one-to-many; **Payment — Verification:** one-to-one/one-to-many attributable event (rule 20).
+- **Official Order — Layaway:** one-to-one where applicable (rule 23); **Layaway — Installment:** one-to-many; **Layaway — Financer:** many-to-one.
+- **Official Order — Fulfillment:** one-to-one (shipping or pickup details); **Order/Claim — Approval Request:** one-to-many.
+- **Any record — Audit log / Notification / Attachment:** one-to-many (polymorphic association, proposed).
+
+### 28.6 Users, Roles, Permissions, Shop/Page
+
+- Model **users**, **roles** (Owner / Selected Admin / Staff), **permissions** (the Section 5.6 toggles), **user-permission assignments**, and **shop/page access**.
+- **No new role or permission is introduced here.** The **exact role/permission schema — including the recorded Existing Record Entry / Migration permission and the batch-lifecycle/Current-Flex/item-withdrawal/message-send/reprint/export authorities — remains To be confirmed pending the Section 4–5 reconciliation.**
+- **Assignment ≠ permission** (Section 11.6) is enforced by keeping assignment and permission as separate relations.
+
+### 28.7 Customers, Aliases, Duplicate Links
+
+- **Customer** holds staff-managed identity; **aliases/Facebook names** are separate related rows (a Facebook name is not the legal name, Section 10.6).
+- **Similarly named customers remain distinct records** (Section 23.2); **possible-duplicate links are review candidates only — no auto-merge** (rule 25 relation; Section 10.22).
+- **No customer-login table** exists (Section 5.10).
+- **Final duplicate-customer relationship model remains To be confirmed.**
+
+### 28.8 Live Batch, Items, Current-Flex History
+
+- **Live Batch** persists batch reference/date/shop-page/state; **Live Batch item** carries item code, grams/piece, quantity, total price/piece, and the required **item photo** (Section 4.4).
+- **Current-Flex history** is time-ordered; **switching Current Flex changes future capture only and never rewrites an existing claim's stored item** (Section 12.17).
+- **Batch closure changes no inventory** (Section 12.57).
+
+### 28.9 Inventory and Reservation Model (Key Integrity)
+
+Proposed model that encodes the approved inventory decision (Section 22.3):
+- **Inventory item** holds identity (item code, grams/piece, price/piece, photo) and **quantity** attributes: **total quantity** and **available quantity** (derived/maintained), with unique vs multi-stock distinguished by quantity = 1 vs > 1.
+- **Reservation record** (proposed) links a **Confirmed Claim** to an inventory item with a **reserved quantity** and a **state**:
+  - **Pending Claim → no reservation, no change to available quantity** (rule 2).
+  - **Confirmed Claim → create reservation, decrease available quantity exactly once** (rules 3; 28.14 idempotency).
+  - **Invoice Draft → reservation preserved, no second deduction** (rule 4).
+  - **Official Order → reservation state = committed, no second deduction** (rule 5).
+  - **Payment verification / fulfillment → no further deduction** (rules 6–7).
+  - **Cancelled / expired unpaid / withdrawn / rejected / forfeited → reservation released into a Returned-to-Stock Review record; available quantity is NOT automatically restored** (rule 8).
+- **Available quantity increases again only on an approved Returned-to-Stock Review** (rule 9, 28.19).
+- **Unique items model 1st and 2nd Miner only; no 3rd; no automatic transfer** (rules 14–16). **Multi-stock allocates up to available quantity; excess persists as waitlist/excess; no automatic allocation** (rules 17–19).
+- **Exact reservation-record design remains To be confirmed** (whether a dedicated reservation table or an equivalent state on the claim/item link).
+
+### 28.10 Claims, Miner, Waitlist, Evidence
+
+- **Pending Claim** and **Confirmed Claim** share a claim identity with a lifecycle state (Section 22.6); **claim evidence and photos** are related rows; **source marker** is an attribute (Section 12.26).
+- **Miner position** (1st/2nd for unique; allocation/waitlist for multi-stock) is stored per claim; **waitlist/excess** rows persist for staff review (rule 18).
+- **Withdrawn/rejected claims are retained in history, never hard-deleted** (Section 4/12).
+
+### 28.11 Label Jobs and Print Attempts
+
+- **Label job** is a distinct record tied to a Confirmed Claim; **print attempts** are one-to-many child rows recording outcome.
+- **A label job ≠ physical print; retry works on the same job; reprint never duplicates a claim or inventory deduction; failed jobs are not silently deleted** (rules 29; Section 24).
+
+### 28.12 Invoice Drafts and Draft-Claim Links
+
+- **Invoice Draft** (transient) with **draft-claim link** rows; a **uniqueness constraint ensures one claim is in at most one active draft** (rule 10).
+- **Grouping requires same customer + payment + fulfillment arrangement** (Section 15.5); a removed/dissolved-unsent claim returns to For-Invoice readiness.
+
+### 28.13 Official Orders, Order-Claim Links, Invoice References
+
+- **Official Order** is created on successful send with an **order number** and a linked **invoice reference/number**; **order-claim/item links** keep grouped claims distinct (rule 13).
+- **Idempotency ensures one Official Order per successful send; retry does not duplicate** (rules 11–12; 28.14).
+- **Whether item/customer detail snapshots are stored on the order (for historical fidelity) remains To be confirmed.**
+
+### 28.14 Idempotency and Concurrency Integrity
+
+- **Critical writes carry an idempotency/business-unique guarantee** (proposed idempotency keys or unique constraints): **Confirm Claim & Print Label → one Confirmed Claim + one reservation**; **Approve & Send Invoice → one Official Order**; **Verify Payment → one verified payment record**; **message/print retry → no duplicate** (rules 12, 20, 28–29).
+- **Concurrency integrity** favors **last-valid-state wins with conflict rejection/review** (Section 11.42); **exact optimistic-locking/versioning method is To be confirmed** (belongs to Section 29/technical).
+
+### 28.15 Payments, Evidence, Verification
+
+- **Payment**, **payment evidence**, and **payment verification** are **separate records/attributable events** (rule 20); **evidence recorded ≠ verified** (Section 16).
+- **Payments are never silently reassigned between orders; correction is an explicit, traceable record** (rule 21; Section 16.12).
+- **Required/Deposit Verified ≠ Paid in Full** (rule 22); **Paid in Full and Outstanding Balance modeling remain To be confirmed.**
+
+### 28.16 Layaway, Installments, Financer
+
+- **Layaway arrangement** relates to an **Official Order** (not an additional order, rule 23); **installments** are child rows; **financer** is a tracked related record (Section 17).
+- **Fee = ₱150 × grams × months** is derivable from stored grams/term; **fee-application modeling remains To be confirmed.**
+
+### 28.17 Fulfillment, Shipping, Pickup
+
+- **Fulfillment record** relates to the order with **shipping details** or **pickup details** (Section 18); release/exception states are stored; **no inventory deduction at fulfillment** (rule 7).
+
+### 28.18 Owner Approval Requests
+
+- **Owner Approval Request** records the four high-risk types (cancellation, forfeiture, exceptional release, price override) with reason, requester, decision, and decider.
+- **The request record does not itself perform the action** (Section 22.14); execution is a separate, state-validated write.
+
+### 28.19 Returned-to-Stock Review, Soft-Delete/Archive, Immutability
+
+- **Returned-to-Stock Review** is an explicit record gating manual availability restoration (rule 9); **approved return restores available quantity; rejected/held keeps it unavailable** (Section 22.15).
+- **History is preserved; withdrawn/cancelled/expired/forfeited records are retained** (rule 30). **Soft-delete vs archive rules remain To be confirmed**; **no destructive cascade or automatic cleanup is modeled.**
+- **Corrections are modeled as new correction records/log entries, not silent overwrites** (28.15; Section 11.44).
+
+### 28.20 Notifications, Reminders, Messages
+
+- **Notifications** and **reminders** are records that **change no business state by themselves** (Section 26); **customer messages** and **message attempts** persist send state (Manually Sent / Direct Send Pending/Failed; Delivered/Read integration-dependent, TBC).
+- **Message/integration failures never duplicate claims, messages, invoices, or orders** (rule 28); **final message-delivery fields remain To be confirmed.**
+
+### 28.21 Migration, Import, Source Markers
+
+- **Migration/import records** preserve **original values, dates, and source markers** (rules 24, 30); **claim-less migrated records never generate fake claims** (rule 25).
+- **Migrated records are marked and enter operational relations by actual status** (Section 6.20); **migration batch model remains To be confirmed.**
+
+### 28.22 Attachments and Files
+
+- **Attachments/files** (item photos, claim/message evidence, proofs) are related rows **owned by their record** with attribution; item photo vs claim/message evidence are **distinguished** (Section 12.42).
+- **Exact attachment limits, types, and retention remain To be confirmed**; encryption/storage implementation is deferred to security sections.
+
+### 28.23 Audit Logs, Timestamps, Actor Attribution
+
+- **Audit logs** capture material actions with **actor attribution and timestamps**; **attribution is not erased by reassignment** (rule 26).
+- Records carry **created/updated timestamps and acting-account references**; **notes are attributed and never alter transactional state** (rule 27).
+- **Detailed audit structure/retention belongs to Section 31.**
+
+### 28.24 Approved Integrity Rules (Mapping)
+
+All 30 approved integrity rules are honored by the model: claims ≠ orders (28.10/28.13); reservation only at Confirmed Claim, no double deduction, manual restoration (28.9); one-claim-one-active-draft (28.12); one order/number/invoice per send with idempotency (28.13–28.14); grouped claims distinct (28.13); unique 1st/2nd miner, no 3rd, no auto-transfer, multi-stock waitlist without auto-allocation (28.9); payment evidence vs verification separate and non-reassignable (28.15); Verified ≠ Paid in Full (28.15); active layaway not an extra order (28.16); migrated history preserved, no fake claims (28.21); attribution preserved (28.23); notes non-mutating (28.23); integration/print retries non-duplicating (28.11/28.20); history traceable (28.19).
+
+### 28.25 Reporting Relationships
+
+- Reporting reads the above relations under the **non-additive counting rules** (Section 25); **no report alters records**; **derived metrics (sales, Outstanding Balance) depend on TBC definitions.**
+
+### 28.26 Edge Cases
+
+- concurrent Confirm on the same claim (one reservation) · retried Approve & Send Invoice (one order) · claim in two draft attempts (rejected) · duplicate payment evidence · payment mis-attached (explicit correction) · migrated claim-less record · withdrawn claim retained · forfeited item not auto-returned · alias collision across customers · attachment orphaning prevention · reassignment preserving attribution.
+
+### 28.27 Open / To-Be-Confirmed Items
+
+- exact role/permission schema pending Section 4–5 reconciliation
+- final reference-number formats
+- exact attachment limits
+- soft-delete vs archive rules
+- retention periods
+- historical correction model
+- exact reservation-record design
+- whether snapshots are required for item/customer details
+- final duplicate-customer relationship model
+- final message-delivery fields
+- Paid in Full and Outstanding Balance modeling
+- printer-attempt detail level
+- migration batch model
+- exact Supabase implementation
+
+### 28.28 Section Boundaries
+
+- **Section 28** owns the logical data model and integrity.
+- **Section 22** owns statuses persisted. **Section 29** owns action contracts operating on this model. **Section 25** reporting relationships. **Sections 30–31** own security and audit detail. **Section 32** owns recovery.
+
+### 28.29 Section 28 Summary
+
+- The logical model encodes all **30 approved integrity rules**, with **proposed (non-final) entity names** and a clear split between **internal IDs and business reference numbers**.
+- **The reservation model is the spine:** no reservation at Pending Claim, a single reservation/decrement at Confirmed Claim, preserved-not-re-deducted through Invoice Draft and Official Order, and available-stock restoration **only** via approved manual Returned-to-Stock Review.
+- **Idempotency/uniqueness** guarantees one Confirmed Claim + one reservation, one Official Order per send, one verified payment, and non-duplicating retries.
+- **History is immutable and traceable; corrections are explicit records; attribution survives reassignment; notes never mutate state; no destructive cascades or auto-cleanup are modeled.**
+- **The role/permission schema, reference formats, reservation-record design, snapshots, Paid-in-Full/Outstanding-Balance modeling, and the final Supabase implementation remain To be confirmed.**
+
+---
+
+*End of Section 28 — Database Design. **APPROVED.** Section 29 — API Design follows.*
