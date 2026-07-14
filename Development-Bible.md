@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–30 APPROVED; Section 31 (Audit Log Requirements) pending
+> **Status:** In Progress — Sections 1–31 APPROVED; Section 32 (Error Handling and Recovery Rules) pending
 
 ---
 
@@ -8934,3 +8934,193 @@ This section stays at the requirements/boundary level. It defines no final authe
 ---
 
 *End of Section 30 — Security Rules. **APPROVED.** Section 31 — Audit Log Requirements follows.*
+
+---
+
+## Section 31 — Audit Log Requirements
+
+### 31.1 Purpose of the Audit Log Requirements Section
+
+This section owns **immutable or append-only business-event history**: actor attribution, approval history, correction history, security events, record timelines, and audit visibility for Version 1 (MineFlow). It gives the accountability foundation referenced across Sections 9.23, 11.43, and 28.23.
+
+This section stays at the requirements level. It defines no final audit-table schema, storage duration, cryptographic signing, blockchain, SIEM product, compliance certification, legal retention period, or log-volume limit. It introduces no new roles, permissions, Owner-only approvals, automatic actions, or integrations beyond approved Sections 1–30, and it does not silently resolve any To-be-confirmed item. **Technical storage belongs to Section 28 and implementation.**
+
+### 31.2 Governing Audit Principles
+
+- **Assignment does not erase action attribution; reassignment does not rewrite history.**
+- **Notes do not change transactional state** and are **not substitutes for audit events**.
+- **Owner self-action is recorded**; **Owner Approval Request and actual execution are separate events**.
+- **Payment evidence submission and verification are distinct.**
+- **Print job creation, print attempt, retry, and reprint are distinct.**
+- **Message preparation, copy, sent-marking, delivery, and read are distinct where available.**
+- **Inventory reservation, commitment, and return-to-stock approval are distinct.**
+- **Migration preserves original source and imported facts; corrections preserve previous and new values where applicable.**
+
+### 31.3 Governing Audit Rules
+
+1. **Audit history must not be silently overwritten.**
+2. **Changing display names must not change historical actor identity.**
+3. **Deleted/deactivated users remain attributable.**
+4. **Owner self-action shows Owner as decision-maker and executor where applicable.**
+5. **Approval and execution are separate where the workflow separates them.**
+6. **Failed actions may be logged without falsely recording success.**
+7. **Repeated requests must not generate duplicate successful business events.**
+8. **Notes are not substitutes for audit events.**
+9. **Migration source and imported-by attribution are required.**
+10. **Corrected payment association preserves both old and new relationship history.**
+11. **Customer merge is not automatic and must preserve history if ever approved.**
+12. **Audit visibility does not grant action permission.**
+13. **Audit export requires Export Data / Reports permission.**
+14. **Audit records must not expose secrets.**
+15. **Exact technical storage belongs to Section 28 and implementation.**
+
+### 31.4 Business Event vs Technical Log
+
+- **Audit records are business events** (who did what to which record, with before/after where applicable), distinct from low-level **technical logs** (owned by operations/Section 32).
+- Business events are the accountability record; technical logs support diagnostics.
+
+### 31.5 Append-Only Principle and Record Timeline
+
+- Audit history is **append-only**: events are added, **never silently overwritten or deleted** (rule 1).
+- Each record has a **timeline** of its material events, reconstructable in order.
+
+### 31.6 Per-Event Attributes
+
+Each audit event captures, where applicable: **event type · affected record · actor · role/permission context · date and time · prior value/state · new value/state · reason · approval reference · source/device/session · related record references · success/failure · correction/reversal relationship.** Visibility, retention, and export are governed by 31.17–31.20. **Snapshot depth and exact reason-required actions remain To be confirmed.**
+
+### 31.7 Actor Identity and Acting Permission
+
+- Every event records the **individual acting account** and the **permission under which it acted** (Section 11.43).
+- **Display-name changes never alter historical actor identity** (rule 2); **deactivated/removed users remain attributable** (rule 3).
+
+### 31.8 Owner Approvals and Direct Owner Self-Action
+
+- **Owner Approval Request creation, the Owner's decision, and the source module's execution are separate events** (rule 5; Section 22.14).
+- **Owner self-action is recorded with the Owner as both decision-maker and executor** where applicable (rule 4; Section 5.13 item 11).
+
+### 31.9 Failed vs Successful Action
+
+- **Failed actions may be logged as failures**, never falsely recorded as success (rule 6).
+- **Repeated/retried requests do not create duplicate successful business events** (rule 7; Section 29.7).
+
+### 31.10 Reason Requirements
+
+- Reason is captured for actions where a reason is required (e.g., withdrawal, high-risk requests, corrections, reprint where defined); **the exact reason-required action list remains To be confirmed.**
+
+### 31.11 Before/After Snapshots
+
+- Corrections and edits capture **previous and new values** where applicable (rule 10; principles); **exact snapshot depth remains To be confirmed.**
+
+### 31.12 Related Records and Source Marker
+
+- Events reference **related records** (claim ↔ order ↔ payment ↔ layaway ↔ fulfillment) and preserve the **source marker** for migrated/historical records.
+
+### 31.13 Correction Chains
+
+- A correction is a **new event linked to what it corrects** (rule 10), forming a traceable chain — including **wrong-payment-to-order correction** (old and new association both preserved) and any future **customer merge** (history preserved, never automatic — rule 11).
+
+### 31.14 Migration History
+
+- Migration/import events record **source and imported-by attribution** (rule 9) and preserve **original imported facts**; migrated records never fabricate claim events (Section 28.21).
+
+### 31.15 Security Events
+
+- Security-relevant events (account creation/activation/deactivation, role/permission changes, Selected Admin grant/removal, sign-in/security events where appropriate, and **unauthorized attempts where appropriate**) are recorded (Section 30.17).
+
+### 31.16 Sensitive-Data Redaction
+
+- **Audit records must not expose secrets** (rule 14); sensitive values are redacted/minimized while preserving accountability (Section 30.18).
+
+### 31.17 Audit Visibility and Role-Based Access
+
+- **Audit visibility does not grant action permission** (rule 12); audit access is **role/permission-scoped** — the Owner sees all; others see audit within their access.
+- **Who may view full audit records remains To be confirmed.**
+
+### 31.18 Search and Filter
+
+- Audit records are searchable/filterable by record, actor, event type, and date (aligned with Section 23), within permitted visibility.
+
+### 31.19 Retention
+
+- Audit records are **retained** to preserve traceability; **exact audit and security-event retention remain To be confirmed.**
+
+### 31.20 Export
+
+- **Audit export requires the Export Data / Reports permission** (rule 13; Section 5.13 item 8), limited to permitted records; **export format remains To be confirmed.**
+
+### 31.21 Performance and Tamper Resistance
+
+- Audit capture should not block critical operations unduly; **tamper-evidence mechanism remains To be confirmed** (no cryptographic signing/blockchain is asserted here).
+
+### 31.22 Time-Zone and Clock Consistency
+
+- Events carry consistent timestamps; **the time-zone standard and clock-consistency approach remain To be confirmed.**
+
+### 31.23 Offline Action Reconciliation
+
+- Actions taken during offline/mobile interruption are **reconciled without duplicating successful events** (rule 7; Section 32); **exact offline reconciliation remains To be confirmed.**
+
+### 31.24 Integration- and Printer-Attributed Events
+
+- **Integration-attributed events** (Pancake/Meta, where validated) and **printer-attributed attempts** are recorded but **never granted authority** (Section 30.9–30.12); **external-integration identity mapping remains To be confirmed.**
+
+### 31.25 Notification and Message Events
+
+- **Message preparation, copy, send/Mark-as-Sent, and (where available) delivery/read** are **distinct events** (principles; Section 22.10); notification/reminder actions are recorded.
+
+### 31.26 Reporting Relationship and Incident Investigation
+
+- Audit supports **reconciliation with reports** (Section 25.13) and **incident investigation** (Section 32); **audit never alters records.**
+
+### 31.27 Audit Event Catalog
+
+The following events are captured (attributes per 31.6):
+
+- **Access/identity:** account creation; activation/deactivation; sign-in/security events (where appropriate); role change; permission grant/removal; Selected Admin grant/removal; staff assignment/reassignment.
+- **Live/inventory:** Live Batch create/start/pause/resume/end/close/reopen; item create/edit/withdraw; Current Flex select/switch/clear; **inventory reservation, commitment, return-to-stock approval, availability restoration**.
+- **Claims/print:** Pending Claim creation; Claim Review; customer/item/miner/quantity correction; Confirm Claim & Print Label; label-job creation; print attempt/failure/success; retry/reprint/void.
+- **Invoicing/orders:** Invoice Draft creation/edit; claim add/remove from draft; Approve & Send Invoice; Official Order creation.
+- **Messaging:** message preparation/copy/send/Mark-as-Sent/retry (delivery/read where available).
+- **Payments/layaway:** payment evidence submission; payment verification; wrong-payment correction; layaway creation/update; installment recording; overdue/grace/forfeiture request.
+- **Approvals/fulfillment:** Owner approval/rejection; shipping/pickup preparation; normal release; exceptional release request/decision/execution; dispatch/pickup completion; cancellation request/decision/execution.
+- **Returned-to-stock/customers/migration:** Returned-to-Stock Review; customer create/edit/possible-duplicate review; migration/import; export; notification/reminder actions; security-sensitive or unauthorized attempts (where appropriate).
+
+**The final audit-event taxonomy remains To be confirmed.**
+
+### 31.28 Edge Cases
+
+- reassigned record keeping original actor · renamed user in historical events · deactivated user's past actions · retried Approve & Send Invoice (one success event) · Owner self-action (dual role recorded) · corrected payment association (old+new preserved) · failed action logged as failure · migration imported-by attribution · offline action reconciled once · integration/printer event without authority · audit viewer lacking action permission.
+
+### 31.29 Section Boundaries
+
+- **Section 31** owns audit requirements/visibility.
+- **Section 28** owns audit storage. **Section 30** owns security events. **Section 32** owns error/recovery logging. **Section 25** owns reporting. **Section 23** owns search.
+
+### 31.30 Open / To-Be-Confirmed Items
+
+- final audit-event taxonomy
+- before/after snapshot depth
+- exact reason-required actions
+- who may view full audit records
+- audit retention
+- export format
+- security-event retention
+- IP/device capture
+- time-zone standard
+- tamper-evidence mechanism
+- archived-record audit access
+- external integration identity mapping
+- exact implementation in Supabase
+
+### 31.31 Section 31 Summary
+
+- Audit is an **append-only business-event history** that is never silently overwritten; **attribution survives reassignment, renaming, and deactivation.**
+- **Approval and execution, evidence and verification, reservation/commitment/return, and message prepare/send/deliver/read are distinct events.**
+- **Owner self-action is recorded (dual role); repeated requests never create duplicate successful events; failures are logged as failures, never as success.**
+- **Migration preserves source and imported-by; corrections preserve old and new values; customer merge is never automatic and preserves history.**
+- **Audit visibility grants no action authority; audit export requires Export Data / Reports; records never expose secrets.**
+- **Taxonomy, snapshot depth, retention, viewing scope, tamper-evidence, time-zone standard, and Supabase implementation remain To be confirmed.**
+
+---
+
+*End of Section 31 — Audit Log Requirements. **APPROVED.** Section 32 — Error Handling and Recovery Rules follows.*
