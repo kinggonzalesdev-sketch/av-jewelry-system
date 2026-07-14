@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–20 APPROVED; Section 21 (Button Functionality Matrix) pending
+> **Status:** In Progress — Sections 1–21 APPROVED; Section 22 (Status Transition Rules) pending
 
 ---
 
@@ -7285,3 +7285,146 @@ Per the client-approved inventory decision, the following model is reflected whe
 ---
 
 *End of Section 20 — Feature Specifications. **APPROVED.** Section 21 — Button Functionality Matrix follows.*
+
+---
+
+## Section 21 — Button Functionality Matrix
+
+### 21.1 Purpose of the Button Functionality Matrix Section
+
+This section defines the **exact business behavior of buttons and actions** in Version 1 (MineFlow): the permission required, the prerequisite, whether confirmation or Owner approval applies, the action performed, the resulting record/state, and the prohibited side effects. It builds on the features of Section 20; **Section 22 owns the formal statuses named here**.
+
+This section stays business-focused. It defines no UI implementation, exact pixel/label design, code, or APIs. It introduces no new permissions, roles, statuses, high-risk categories, automatic actions, payment/accounting rules, integrations, or customer-facing access beyond approved Sections 1–20, and it does not silently resolve any To-be-confirmed item.
+
+### 21.2 Common Button Conventions
+
+- **Visibility ≠ authority.** A visible or enabled control still enforces its permission on click (Section 7.3, Section 11.45).
+- **Hidden vs disabled vs blocked:** an action with **no operational relevance is hidden**; a visible-but-not-yet-permitted action is **disabled with explanation**; an attempted-yet-unauthorized action is **blocked and changes no record**.
+- **Idempotency:** a **critical action clicked twice must not create a duplicate record** (no duplicate claim, order, payment, or message) (Section 11.42).
+- **Confirmation:** destructive, high-risk, or irreversible actions require an explicit **confirmation step**; high-risk actions additionally require **Owner approval**.
+- **Owner approval** applies only to the four approved high-risk categories: **official-order cancellation, forfeiture, price override, exceptional release** (Section 5.8, Section 9.16). Normal release is **not** high-risk.
+- **Error behavior:** failures are visible and non-destructive; **no failed action silently duplicates or deletes** (Section 32 owns technical recovery).
+- **Audit attribution:** every action row is **attributable to the account** (Section 11.43; Section 31 owns audit detail).
+- **Exact UI labels** may remain **To be confirmed** where not already approved.
+
+### 21.3 Live Batch and Item Actions
+
+| Action | Permission | Prerequisite | Result / State | Prohibited side effects / Notes (TBC) |
+|---|---|---|---|---|
+| Create Live Batch | Live Batch Item Entry* | authorized access | Draft batch created | No order/invoice/inventory change. *Batch-lifecycle authority = §4–5 reconciliation (TBC) |
+| Start Live | *TBC authority | prepared batch | Batch active; during-live intake enabled | No inventory change. Start authority TBC |
+| Pause / Resume | *TBC authority | active batch | Suspends/resumes new intake | Existing records preserved; status per §22 (candidate) |
+| End Live | *TBC authority | active batch | Live Ended / Under Review | Does not close batch, confirm claims, or change inventory |
+| Close Batch | *TBC authority | ended/reviewed batch | Batch closed | No auto confirm/invoice/order/stock-return/deletion (§12.57) |
+| Reopen Batch | *TBC authority | closed batch | Batch reopened (if allowed) | No silent rewrite of history; allowed/authority TBC |
+| Add / Edit Item | Live Batch Item Entry | open batch | Item added/updated | Fields per §4.4; no silent change once claims exist |
+| Withdraw Item | *TBC authority | item present | Item withdrawn; claims/evidence retained | No auto claim transfer or stock return; authority TBC |
+| Set / Switch / Clear Current Flex | *TBC (Live authority) | available item | Current Flex set/switched/cleared | Affects future capture only; existing claims unchanged |
+
+### 21.4 Claim Capture and Entry Actions
+
+| Action | Permission | Prerequisite | Result / State | Prohibited side effects / Notes |
+|---|---|---|---|---|
+| Capture Claim | Claim Capture | Current Flex set (during-live) | one Pending Claim | **No reservation**, confirm, print, invoice, order, auto-match |
+| Upload Screenshot | Claim Capture | — | Pending Claim with evidence | No OCR/auto-read |
+| Share to MineFlow (iOS) | Claim Capture | — | one Pending Claim | Pending Claim only |
+| Manual Entry (post-live) | Claim Capture* | Orders workspace | one Pending Claim (source-marked) | Not an order; **no reservation here**. *Item-creation authority TBC |
+| Save Pending Claim | Claim Capture | valid provisional data | Pending Claim saved | Idempotent; no duplicate on retry |
+
+### 21.5 Claim Review and Confirmation Actions
+
+| Action | Permission | Prerequisite | Result / State | Prohibited side effects / Notes |
+|---|---|---|---|---|
+| Review Claim | Claim Review | Pending Claim | claim opened for resolution | Customer Support alone cannot |
+| Correct Customer/Item/Miner/Quantity | Claim Review / Item Correction / Miner-Allocation Review | Pending/Confirmed pre-invoice | fields corrected, logged | No silent customer switch (§10) |
+| Withdraw Claim | Claim Review (authority TBC) | pre-Confirm claim | Claim Withdrawn (kept in history) | Item → Returned-to-Stock Review; no auto transfer |
+| Switch Item | Claim Review (authority TBC) | pre-Confirm claim | original withdrawn + new claim created | No direct item transfer |
+| Reject Capture | Claim Review | Pending Claim | capture rejected (logged) | No order/inventory effect |
+| Initiate Price Override | Initiate High-Risk Action | claim in review | request → Owner Approval | **Owner-approved**; does not change price itself |
+| **Confirm Claim & Print Label** | Confirm Claim & Print Label | reviewed, ready claim | **Confirmed Claim + label job → For Invoice; quantity reserved, available qty decreases** | **No invoice/order; label job ≠ physical print; no second reservation later** |
+| Retry / Reprint Label | Confirm Claim & Print Label (reprint rules §24) | existing label job | reprint queued | No new claim/confirmation; duplicate-print warning per §24 |
+
+### 21.6 Invoice and Customer-Message Actions
+
+| Action | Permission | Prerequisite | Result / State | Prohibited side effects / Notes |
+|---|---|---|---|---|
+| Add to Invoice Draft | Invoice Preparation | complete Confirmed Claim | claim grouped in draft | One claim, one active draft; same customer+payment+fulfillment |
+| Remove from Draft | Invoice Preparation | claim in unsent draft | claim returns to For Invoice | No silent customer switch |
+| Prepare / Preview / Copy Message | Invoice Preparation | draft/claims | message draft/preview/copied | **No official references pre-send; Copy ≠ Sent** |
+| **Approve & Send Invoice** | Invoice Preparation | reviewed grouped draft | **one Official Order + order no. + invoice no. + shared 3-day hold; reservation → committed, no second deduction** | **Retry must not create a second order** |
+| Mark as Sent | Invoice Preparation (send authority TBC) | invoice created | message marked sent (staff attestation) | **Does not prove delivery; Delivered/Read need integration** |
+
+### 21.7 Payment Actions
+
+| Action | Permission | Prerequisite | Result / State | Prohibited side effects / Notes |
+|---|---|---|---|---|
+| Submit Payment Evidence | (recording authority; not verification) | Official Order | Payment Submitted / Unverified | **Recording ≠ verifying** |
+| Verify Payment Evidence | Payment Verification | unverified payment | Required Payment/Deposit Verified | **≠ Paid in Full; no auto release/forfeit/cancel; no inventory change** |
+| Reject Payment Evidence | Payment Verification | unverified payment | evidence rejected (concept; status §22) | No silent move between orders |
+| Correct Wrong-Order Payment | Payment Verification / later payment-correction authority | mis-attached payment | controlled correction, traceable | Owner-approval requirement TBC; no reversal/void invented |
+
+### 21.8 Layaway Actions
+
+| Action | Permission | Prerequisite | Result / State | Prohibited side effects / Notes |
+|---|---|---|---|---|
+| Create / Activate Layaway | Layaway Monitoring + verified 20% DP (via Payment Verification) | layaway-arrangement order | Active Layaway | DP must be verified; fee = ₱150×grams×months |
+| Monitor / Record Installment | Layaway Monitoring | Active Layaway | installment activity logged | **Recording ≠ payment verification** |
+| Request Forfeiture | Initiate High-Risk Action | Forfeiture-Eligible | request → Owner Approval | **Eligibility ≠ approval** |
+| Approve / Reject Forfeiture | **Owner** | forfeiture request | Forfeited / Needs Owner Decision, or rejected | **No auto stock return; disposition TBC** |
+
+### 21.9 Fulfillment Actions
+
+| Action | Permission | Prerequisite | Result / State | Prohibited side effects / Notes |
+|---|---|---|---|---|
+| Prepare Shipping / Pickup | Shipping/Pickup Preparation | Official Order | For Preparation → For Shipping/Pickup | Preparation ≠ release |
+| Release Fulfillment (normal) | Shipping/Pickup Preparation | verified required payment, prepared, no exception | Approved for Release | **Permission-based, not Owner-only; no inventory re-deduction** |
+| Request Exceptional Release | Initiate High-Risk Action | exception condition | request → Owner Approval | **Request alone does not release** |
+| Approve / Reject Exceptional Release | **Owner** | exceptional request | release resumes or holds | Owner-approved; other required details not bypassed |
+| Dispatch | Shipping/Pickup Preparation | approved release (shipping) | Dispatched → Delivered → Completed | No auto dispatch/completion |
+| Complete Pickup | Shipping/Pickup Preparation | approved release (pickup) | Picked Up → Completed | No auto completion |
+
+### 21.10 Cancellation and Returned-to-Stock Actions
+
+| Action | Permission | Prerequisite | Result / State | Prohibited side effects / Notes |
+|---|---|---|---|---|
+| Request Official-Order Cancellation | Initiate High-Risk Action | Official Order | request → Owner Approval | Customer Support cannot; no auto inventory return |
+| Approve / Reject Cancellation | **Owner** | cancellation request | Cancelled, or rejected | On cancel → item to Returned-to-Stock Review |
+| Send to Returned-to-Stock Review | Inventory Monitoring (from withdrawal/cancel/expiry/reject/forfeit) | freed item | item in Returned-to-Stock Review | **No automatic stock return** |
+| Approve Stock Return | Inventory Monitoring / Miner-Allocation Review | reviewed item | **quantity available again** | Unique→check 2nd miner; multi→next waitlist; **no auto transfer/allocation** |
+| Reject / Hold Stock Return | Inventory Monitoring | reviewed item | remains unavailable/controlled | Outcomes/authority TBC |
+
+### 21.11 Customer, Migration, and Search Actions
+
+| Action | Permission | Prerequisite | Result / State | Prohibited side effects / Notes |
+|---|---|---|---|---|
+| Add / Edit Customer | Customer Support / operational access | — | profile created/updated | No silent transaction reassignment; editable fields TBC |
+| Possible Duplicate Review | Owner / Existing Record Entry-Migration | duplicate flagged | review opened | **No auto-merge; Customer Support alone cannot resolve** |
+| Import / Migrate Record | Owner / Existing Record Entry-Migration | historical data | migrated record (source-marked) | Historical values preserved; separate from live/post-live; no retroactive rules |
+| Search / Filter | per record access | — | permission-filtered results | **Visibility ≠ action authority** |
+| Export (where approved) | View Reports / **export authority TBC** | — | export of permitted data | **No export authority invented**; scope §25 |
+
+### 21.12 Prohibited Side Effects (Global)
+
+Across all actions, the following must **never** occur as an automatic side effect: creating a second Official Order on retry; deducting inventory twice; returning stock automatically; transferring to the 2nd Miner automatically; allocating a waitlist buyer automatically; merging customers automatically; verifying payment automatically; releasing fulfillment automatically; cancelling or forfeiting automatically; proving message delivery automatically; or performing any high-risk action without Owner approval.
+
+### 21.13 Open / To-Be-Confirmed Items
+
+- exact UI labels for all actions
+- batch-lifecycle, Current-Flex, item-withdrawal, post-live item-creation, message-send, and export authorities (Section 4–5 reconciliation)
+- confirmation-dialog specifics
+- reprint/duplicate-print rules (Section 24)
+- wrong-order payment-correction Owner-approval requirement
+- Returned-to-Stock Review outcomes/authority
+- Mark-as-Sent proof requirements
+
+### 21.14 Section 21 Summary
+
+- Buttons are specified by **permission, prerequisite, confirmation/Owner-approval, action, resulting state, and prohibited side effects**, grouped by workflow area.
+- **Visibility never grants authority; hidden/disabled/blocked are distinguished; double-clicks never duplicate critical records.**
+- **Confirm Claim & Print Label reserves and decrements inventory; Approve & Send Invoice commits it with no second deduction** — matching the approved inventory model.
+- **The four high-risk actions retain Owner approval; normal release stays permission-based.**
+- **No new permissions, statuses, or automatic behaviors are introduced; exact labels and unreconciled authorities remain To be confirmed.**
+
+---
+
+*End of Section 21 — Button Functionality Matrix. **APPROVED.** Section 22 — Status Transition Rules follows.*
