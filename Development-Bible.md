@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–16 APPROVED; Section 17 (Layaway Workflow) pending
+> **Status:** In Progress — Sections 1–17 APPROVED; Section 18 (Shipping and Pickup Workflow) pending
 
 ---
 
@@ -6406,3 +6406,213 @@ This section stays business-focused. It does not define database schema, APIs, c
 ---
 
 *End of Section 16 — Payment Workflow. **APPROVED.** Section 17 — Layaway Workflow follows.*
+
+---
+
+## Section 17 — Layaway Workflow
+
+### 17.1 Purpose of the Layaway Workflow Section
+
+This section owns **Active Layaway creation from an Official Order, the required down payment, term, fee, installment monitoring, due dates, grace period, financer, overdue review, forfeiture eligibility, Owner approval, and migrated layaway handling** in Version 1 (MineFlow).
+
+**Governing scope statements:**
+- **Layaway applies to an Official Order** (Section 6.11).
+- **Forfeiture is never automatic and requires Owner approval** (Section 4.16, Section 6.11).
+- **Recording installment activity is not payment verification** (Section 11.24).
+
+This section stays business-focused. It does not define database schema, APIs, code, interest/accounting logic, auto-debit, credit scoring, or final status-transition logic. It introduces no new permissions, roles, statuses, high-risk categories, automatic behavior, accounting rules, payment methods, integrations, or customer-facing features beyond approved Sections 1–16, and it does not silently resolve any To-be-confirmed item.
+
+### 17.2 Governing Layaway Rules
+
+1. Layaway applies to an **Official Order**.
+2. **Minimum down payment is 20%.**
+3. **Maximum term is three months.**
+4. **Layaway fee formula: ₱150 × grams × number of months.**
+5. **Exact fee application timing/category remains To be confirmed if not fully defined.**
+6. **Maximum grace period is ten days.**
+7. A layaway becomes **forfeiture-eligible; eligibility is not approval.**
+8. **Forfeiture requires Owner approval.**
+9. **Layaway becomes non-cancellable after deposit** per the approved rule (Section 4.14.5).
+10. **Payment Verification and Layaway Monitoring are separate permissions.**
+11. **Recording installment activity does not equal verifying payment.**
+12. **Active Layaway may already be an Official Order and is not counted as an additional order.**
+13. **Migrated layaway is one historical Official Order and also an Active Layaway where applicable, but is not additive.**
+14. **Historical layaway values and dates are preserved.**
+15. **Current deposit rules are not applied retroactively to migrated records.**
+16. **Financer must be tracked where applicable.**
+17. **Forfeited-item disposition remains To be confirmed.**
+18. **No automatic forfeiture.**
+19. **No automatic returned-to-stock action.**
+20. **No automatic transfer or waitlist allocation.**
+
+### 17.3 Eligibility for Layaway
+
+- Layaway is an **arrangement on an Official Order** (created via Approve & Send Invoice, Section 15).
+- The **layaway payment arrangement** is one of the arrangements that governs invoice grouping (Section 15.5).
+
+### 17.4 Layaway Arrangement Creation
+
+```
+Invoice sent (layaway arrangement)
+→ minimum 20% down payment verified
+→ Active Layaway
+```
+- **The 20% down payment must be verified** (via Payment Verification, Section 16) before the layaway is Active.
+
+### 17.5 Down Payment, Term, and Grams Basis
+
+- **Minimum down payment = total item price × 20%** (Section 6.10).
+- **Maximum term = three months.**
+- **Grams (per piece) is the basis for the fee** (Section 4.4.4).
+
+### 17.6 Fee Calculation and Display
+
+- **Layaway fee = ₱150 × grams × number of months** (Section 4.14.3).
+- The fee **may be displayed** with the layaway details.
+- **How the fee is applied to the balance/installments remains To be confirmed** (Section 6.10); **fee rounding remains To be confirmed.**
+
+### 17.7 Dates and Schedule
+
+- The system may record **start date, installment/due schedule, and end date** within the three-month maximum.
+- **Exact installment schedule options and due-date rules remain To be confirmed.**
+
+### 17.8 Financer
+
+- The **financer must be recorded and traceable** where applicable (Section 4.14.6).
+- **Exact financer fields/workflow remain To be confirmed** (Section 4.14.7).
+
+### 17.9 Payment Evidence and Verification Boundary
+
+- Installment payments follow the **Payment Workflow** (Section 16): evidence recorded, then verified by **Payment Verification**.
+- **Layaway Monitoring alone cannot verify payment** (rule 10–11).
+
+### 17.10 Installment Monitoring and History
+
+- **Layaway Monitoring** may review Active Layaway, record installment-related activity, review due dates, and identify overdue/grace/forfeiture-eligible states (Section 11.24).
+- **Installment history is preserved and attributable.**
+
+### 17.11 Remaining Amount, Paid in Full, Outstanding Balance
+
+- **Remaining balance = total item price − actual down payment/payments received** (Section 6.10).
+- **A verified installment does not automatically mean Paid in Full** (Section 16); **Paid in Full and Outstanding Balance remain To be confirmed.**
+
+### 17.12 Overdue and Grace Period
+
+- An unmet due date makes the layaway **Overdue**.
+- A **maximum ten-day grace period** follows before forfeiture eligibility (Section 4.14.4, Section 6.11).
+- **Late-payment handling inside grace, and post-grace handling before Owner approval, remain To be confirmed.**
+
+### 17.13 Forfeiture Eligibility
+
+- After grace, a layaway becomes **Forfeiture-Eligible** (Section 6.11).
+- **Eligibility is not approval** (rule 7).
+
+### 17.14 Forfeiture Request and Owner Decision
+
+```
+Forfeiture-Eligible
+→ authorized requester submits reason + supporting details (Initiate High-Risk Action)
+→ Needs Owner Approval
+→ Owner approves or rejects
+→ handling follows Sections 17, 19, and 22
+```
+- **Forfeiture is high-risk and requires Owner approval** (Section 5.8, Section 11.30).
+- **Forfeiture-request authority, Owner self-action behavior, and rejected-forfeiture handling remain To be confirmed.**
+
+### 17.15 Approved / Rejected Outcome
+
+- On **approval**, the layaway is **Forfeited / Needs Owner Decision** for disposition (Section 6.11).
+- **A forfeited item does not automatically return to stock** (rule 19, Section 6.17); **forfeited-item disposition remains To be confirmed.**
+- On **rejection**, the layaway remains in its prior state pending further action.
+
+### 17.16 Non-Cancellable-After-Deposit Rule
+
+- **After the deposit, the layaway cannot be cancelled** (Section 4.14.5) because the item goes to the financer.
+- **Layaway cancellation correction (if ever permitted) remains To be confirmed.**
+
+### 17.17 Fulfillment Hold
+
+- Fulfillment of a layaway item follows the normal rules (Section 18): **verified required payment before release; normal release is permission-based.**
+
+### 17.18 Customer History
+
+- Layaway history appears in the **customer profile** (Section 10.19), combining new and migrated records, with the **migrated marker where applicable**.
+
+### 17.19 Migrated Layaway
+
+- Migrated layaways **preserve actual historical values and dates**, are **not recalculated** by current rules, and may have **optional historical photos** (Section 6.20).
+- A migrated layaway **counts as one historical Official Order and may also appear in Active Layaways, but is not additive** (rules 12–13).
+- **Migrated-layaway correction authority remains To be confirmed.**
+
+### 17.20 Correction
+
+- Ordinary layaway monitoring corrections follow **Layaway Monitoring**; **payment corrections follow the controlled payment path** (Section 16.12).
+- **No silent reassignment** of a layaway between orders/customers (Section 10.17).
+
+### 17.21 Staff Attribution
+
+- Records may show **layaway updated by**, **approval requested by**, **approval decided by** (Section 11.43). Attribution belongs to the action; **Section 31 owns audit.**
+
+### 17.22 Reminders
+
+- Layaway reminders are **staff-triggered in V1** and anchored to due/grace dates (Section 2.6, Section 4.15).
+- **Reminder timing and delivery belong to Section 26** — **exact timing remains To be confirmed** here.
+
+### 17.23 Unauthorized Actions and Errors
+
+- Unauthorized layaway actions may be **hidden, disabled, blocked, or escalated**; attempts change no record (Section 11.45).
+- **No failed action silently creates duplicates; unresolved failures remain visible; technical recovery → Section 32.**
+
+### 17.24 Concurrency
+
+- The same installment/forfeiture action must not complete twice; **latest valid state respected** (Section 11.42). Technical concurrency → Sections 28–32.
+
+### 17.25 Reporting and Counting
+
+- **Active Layaways is a distinct, non-additive metric** (Section 7.10, Section 10.28).
+- **Formal reporting belongs to Section 25.**
+
+### 17.26 Edge Cases
+
+- down payment below 20% · term beyond three months requested · fee-application ambiguity · missed installment within grace · overdue past grace · forfeiture requested but Owner unavailable · forfeiture rejected · financer not recorded · migrated layaway needing correction · cancellation attempt after deposit · early completion · installment on wrong order.
+
+### 17.27 Section Boundaries
+
+- **Section 17** owns layaway monitoring.
+- **Section 16** owns payment verification. **Section 18** fulfillment. **Section 19** inventory (forfeited-item disposition, returned-to-stock).
+- **Section 22** statuses. **Section 25** reporting. **Section 26** reminders. **Sections 28–32** integrity/security/audit/recovery.
+
+### 17.28 Open / To-Be-Confirmed Items
+
+- exact fee application point
+- fee rounding
+- exact installment schedule options
+- exact due-date rules
+- early completion behavior
+- Paid in Full definition
+- Outstanding Balance definition
+- partial/insufficient installment behavior
+- late-payment handling inside grace
+- post-grace handling before Owner approval
+- forfeiture-request authority
+- Owner self-action behavior
+- rejected forfeiture handling
+- forfeited-item disposition
+- layaway cancellation correction
+- migrated-layaway correction authority
+- reminder timing
+- exact Section 4–5 reconciliation
+
+### 17.29 Section 17 Summary
+
+- **Layaway is an arrangement on an Official Order**, Active once the **20% down payment is verified**.
+- **Term ≤ 3 months; fee = ₱150 × grams × months; grace ≤ 10 days.**
+- **Payment Verification and Layaway Monitoring are separate**; recording installments never verifies payment.
+- **Forfeiture eligibility is not approval; forfeiture is high-risk and Owner-approved; nothing forfeits automatically.**
+- **A forfeited item never auto-returns to stock; its disposition remains To be confirmed.**
+- **Non-cancellable after deposit; financer is tracked; migrated layaways preserve historical values and are never additive.**
+- **Fee application, schedule, Paid in Full, Outstanding Balance, and reconciliation remain To be confirmed.**
+
+---
+
+*End of Section 17 — Layaway Workflow. **APPROVED.** Section 18 — Shipping and Pickup Workflow follows.*
