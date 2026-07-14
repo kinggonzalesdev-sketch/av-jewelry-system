@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–24 APPROVED; Section 25 (Reporting and Analytics) pending
+> **Status:** In Progress — Sections 1–25 APPROVED; Section 26 (Notification and Reminder System) pending
 
 ---
 
@@ -7930,3 +7930,134 @@ Statuses follow Section 22.7 (business concepts; final vocabulary partly To be c
 ---
 
 *End of Section 24 — Print Queue and Reprint Rules. **APPROVED.** Section 25 — Reporting and Analytics follows.*
+
+---
+
+## Section 25 — Reporting and Analytics
+
+### 25.1 Purpose of the Reporting and Analytics Section
+
+This section owns **business reporting definitions, dashboard/report counts, operational summaries, source tracking, date filters, staff attribution, and export boundaries** for Version 1 (MineFlow). It builds on the dashboard counts of Section 7.10 and the basic Reports screen of Section 8.15.
+
+This section stays business-focused. It defines no accounting, profit, revenue-recognition, financial-statement, commission, ROI, forecasting, or AI-analytics logic. It introduces no new permissions, roles, statuses, integrations, automatic actions, payment/accounting rules, or customer-facing access beyond approved Sections 1–24, and it does not silently resolve any To-be-confirmed item.
+
+### 25.2 Governing Reporting Rules
+
+1. **Claims are not Official Orders.**
+2. **Pending Claims must not be counted as sales.**
+3. **Confirmed Claims must not automatically be counted as Official Orders or completed sales.**
+4. **Claims grouped into one Official Order must not be counted as multiple orders.**
+5. **One Official Order counts once**, even with multiple claims/items.
+6. **Active Layaway may already be an Official Order and must not count as an additional order.**
+7. **Migrated claim-less records must not count as claims.**
+8. **Migrated historical Official Orders count as historical orders once.**
+9. **Required Payment/Deposit Verified does not automatically equal Paid in Full.**
+10. **Message Sent does not automatically equal Delivered or Read.**
+11. **Printed label does not equal fulfilled order.**
+12. **Returned-to-Stock Review is not automatically available stock.**
+13. **Source markers remain reportable.**
+14. **Staff attribution reflects actual actions.**
+15. **Report visibility does not grant action authority.**
+16. **Exact accounting/profit/revenue recognition is not invented.**
+
+### 25.3 Report Purposes and Access
+
+- Version 1 provides **compact operational summaries**, not full analytics (Section 8.15).
+- **View Reports** governs the Reports screen; **operational queue counts do not require View Reports** when part of the user's duty (Section 7.15).
+- **Report visibility does not grant action authority** (rule 15).
+
+### 25.4 Dashboard Operational Counts
+
+- Dashboard counts are **queue sizes tied to Section 6/22 stages** (Section 7.10) and follow the **non-additive counting rules** (rules 1–8).
+- **Compact summary metrics** may include Total Official Orders, Active Layaways, Completed Orders, Cancelled Orders, Expired Orders, and **Outstanding Balance only once defined** (Section 7.15) — **To be confirmed.**
+
+### 25.5 Claim and Live-Batch Reporting
+
+- **Claim counts** may be reported **by status and by source marker** (Live Claim, Post-Live Message, Private Message, Manual Staff Entry, Walk-in — final list TBC).
+- **Live Batch summaries** may include items presented, unique vs multi-stock, waitlist/excess, Confirmed Claims, and For-Invoice readiness.
+- **Pending/Confirmed claims are never counted as sales** (rules 2–3).
+
+### 25.6 Order, Invoice, and Message Reporting
+
+- **Official Orders** count once per order (rules 4–5); **Invoice Drafts** are operational, not orders until sent.
+- **Message reporting** distinguishes **prepared / sent (manual attestation)** from **Delivered/Read**, which are **integration-dependent and not equated with Sent** (rule 10, Section 22.10).
+
+### 25.7 Payment and Layaway Reporting
+
+- **Payment-submitted** and **payment-verified** counts are distinct (Section 16).
+- **Required/Deposit Verified ≠ Paid in Full** (rule 9); **Paid in Full and Outstanding Balance remain To be confirmed.**
+- **Layaway counts** may include Active, Overdue, Grace, and Forfeiture-Eligible; **Active Layaway is not an additional order** (rule 6). **Forfeited-layaway reporting remains To be confirmed.**
+
+### 25.8 Fulfillment, Approval, and Print Reporting
+
+- **Shipping/pickup counts** and **fulfillment-completion counts** are operational; a **printed label ≠ fulfilled order** (rule 11).
+- **Owner approvals** (cancellation, forfeiture, price override, exceptional release) may be summarized by type/outcome.
+- **Print success/failure/reprint** counts are operational (Section 24.14).
+- **Returned-to-Stock Review counts are not automatically available stock** (rule 12); **returned-stock reporting remains To be confirmed.**
+
+### 25.9 Customer, Migration, and Staff Reporting
+
+- **Customer counts** are non-additive (claims ≠ orders; active layaways not double-counted) (Section 10.28).
+- **Repeat-customer reporting** may be offered **only where safely supported** — otherwise **To be confirmed.**
+- **Migrated records** are reported with **source markers**; migrated claim-less records are **not counted as claims** (rules 7–8).
+- **Staff activity** reflects **actual attributed actions** (rule 14); **staff-performance visibility remains To be confirmed** and must not imply HR/commission use (Section 11.43).
+
+### 25.10 Filters, Trends, Drill-Down
+
+- Reports may support **date/time filters** and **shop/page filters**; **exact date basis (e.g., created vs sent vs verified) remains To be confirmed.**
+- **Trend concepts and drill-down** may be offered at a basic level; **detailed analytics remain beyond V1's compact scope.**
+
+### 25.11 Export Boundary
+
+- **Export may relate to reports**, but **no export authority, format, or scope is invented here** — **export permission and formats remain To be confirmed.**
+
+### 25.12 Sensitive Data, Stale Data, Errors
+
+- Reports respect **permission and shop/page visibility**; **personal/sensitive data is not exposed beyond access** (Section 23.11).
+- Reports may show a **stale-data warning**; **real-time synchronization is not promised** (Section 7.14).
+- **Errors are visible and non-destructive**; technical behavior → Sections 28–32.
+
+### 25.13 Audit / Report Reconciliation
+
+- Report counts should reconcile with the underlying records and attribution (Section 31 owns audit detail).
+- **No report silently alters a record.**
+
+### 25.14 Edge Cases
+
+- one order with many claims · migrated claim-less record · active layaway that is also an order · verified deposit that is not Paid in Full · message sent but not delivered · printed but not fulfilled · cancelled/expired order treatment · forfeited layaway · returned-to-stock not yet available · repeat customer with migrated + new profiles · staff attribution across reassignment.
+
+### 25.15 Section Boundaries
+
+- **Section 25** owns reporting/analytics/export scope.
+- **Section 7** owns dashboard queues. **Section 22** owns statuses counted. **Section 23** owns search/filter. **Section 31** owns audit. **Sections 28–29** own data/query performance.
+
+### 25.16 Open / To-Be-Confirmed Items
+
+- official sales definition
+- Paid in Full definition
+- Outstanding Balance definition
+- revenue recognition point
+- cancelled-order treatment
+- forfeited-layaway reporting
+- returned-stock reporting
+- exact dashboard KPIs
+- export formats
+- export permission
+- retention range
+- staff-performance visibility
+- exact date basis
+- exact source categories
+- exact Section 4–5 reconciliation
+
+### 25.17 Section 25 Summary
+
+- Version 1 reporting is **compact operational summaries**, not accounting or analytics.
+- **Counting is strictly non-additive:** claims are not orders; Pending/Confirmed claims are not sales; one order counts once; active layaways and migrated records are never double-counted.
+- **Verified ≠ Paid in Full; Sent ≠ Delivered/Read; Printed ≠ Fulfilled; Returned-to-Stock Review ≠ available stock.**
+- **Source markers and true staff attribution are reportable; report visibility grants no action authority.**
+- **No profit, revenue-recognition, financial, commission, ROI, forecasting, or AI logic is invented.**
+- **Sales/Paid-in-Full/Outstanding-Balance definitions, KPIs, export authority/formats, and staff-performance visibility remain To be confirmed.**
+
+---
+
+*End of Section 25 — Reporting and Analytics. **APPROVED.** Section 26 — Notification and Reminder System follows.*
