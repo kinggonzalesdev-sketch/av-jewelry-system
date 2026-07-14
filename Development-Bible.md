@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–26 APPROVED; Section 27 (Printer Integration) pending
+> **Status:** In Progress — Sections 1–27 APPROVED; Section 28 pending
 
 ---
 
@@ -8202,3 +8202,140 @@ Message states (concepts; final vocabulary per Section 22.10):
 ---
 
 *End of Section 26 — Notification and Reminder System. **APPROVED.** Section 27 — Printer Integration follows.*
+
+---
+
+## Section 27 — Printer Integration
+
+### 27.1 Purpose of the Printer Integration Section
+
+This section owns the **business and technical-boundary requirements** for connecting MineFlow to the target label printer in Version 1. It complements the label-job workflow of Section 24; **all hardware behavior is treated as technically unverified until physical testing.**
+
+This section stays business-focused at the boundary. It defines no Bluetooth protocol, printer language (ESC/POS, TSPL, ZPL, CPCL, or vendor language), SDK/package names, pairing sequence, supported OS versions, automatic discovery, print speed, DPI, driver requirements, or background-printing guarantee. It introduces no new permissions, roles, high-risk categories, official integrations, automatic actions, or technical guarantees beyond approved Sections 1–26, and it does not silently resolve any To-be-confirmed item.
+
+### 27.2 Target Hardware (Reference)
+
+- **Xprinter XP-236B Bluetooth**, target label size **40 × 30 mm**.
+- **All hardware compatibility and mobile-print behavior are technically unverified until validated on actual devices** (rule 9).
+
+### 27.3 Governing Printer Rules
+
+1. **Printer integration is not required for claim capture.**
+2. **Printer integration is not required for Official Order creation.**
+3. **Confirm Claim & Print Label may create a label job even when the printer is unavailable.**
+4. **Claim confirmation and physical printing are separate outcomes.**
+5. **Printer failure must not reverse the Confirmed Claim.**
+6. **Retry/reprint must not create duplicate claims, invoices, Official Orders, payments, or inventory deductions.**
+7. **Manual fallback remains available.**
+8. **A connected printer does not grant claim-confirmation or reprint permission.**
+9. **Exact device behavior must be validated on actual hardware.**
+10. **Do not promise iOS/Android compatibility before testing.**
+11. **Do not invent SDK support, protocol commands, or vendor capability.**
+
+### 27.4 Integration Purpose and Supported Workflow
+
+- The integration's purpose is to **print the 40 × 30 mm label** produced by a label job (Section 24.3) on the target printer.
+- The **supported workflow** is: Confirm Claim & Print Label → label job → (printer available) print attempt → success/failure recorded → reprint where authorized.
+- **Printing is an assistive output; it is never a prerequisite for confirming a claim or creating an order** (rules 1–4).
+
+### 27.5 Device and Connectivity Concepts
+
+- **Pairing/connectivity** with a Bluetooth printer is described at a **concept level only**; the **exact pairing flow, protocol, and OS support remain To be confirmed** (rules 9–11).
+- **Connected/disconnected state** is surfaced to staff; a **disconnected printer leaves the label job Pending/Failed and visible** (Section 24.7).
+- **Wrong-printer protection** is required so a job is not sent to an unintended device; **exact mechanism remains To be confirmed.**
+
+### 27.6 Mobile-Device Relationship (Android / iOS)
+
+- MineFlow is **mobile-first** (Section 8.2); printing occurs from staff mobile devices.
+- **Android and iOS print behavior are unverified** and must be **validated on actual hardware**; **compatibility must not be promised before testing** (rule 10).
+- The **Android floating capture direction and iOS screenshot/share flow** (Section 13) are separate from printing and equally subject to validation.
+
+### 27.7 Printer Selection and Multiple Printers
+
+- Staff may need to **select a printer**; **one-printer vs multiple-printer support and device ownership remain To be confirmed.**
+- Where multiple devices/staff operate, **wrong-printer and duplicate-print protection** apply (Section 24.8).
+
+### 27.8 Test Print, Preview, Attempt, Acknowledgement
+
+- A **test print** and **label preview** may be provided to validate alignment/quality.
+- A **print attempt** results in an **acknowledgement of success or failure**; **the exact print-success confirmation method remains To be confirmed** (Section 24.4).
+- **A reported success does not guarantee the physical label was applied** (printed-vs-physically-applied distinction, Section 24.13) — **To be confirmed.**
+
+### 27.9 Queue, Retry, Reprint
+
+- Print jobs flow through the **Print Queue** (Section 24); **retry operates on the same job; reprint never duplicates a claim/order/payment or deducts inventory** (rule 6).
+- **Offline behavior / offline queue remains To be confirmed.**
+
+### 27.10 Paper/Label, Bluetooth, and App Interruptions
+
+- **Paper/label issues, Bluetooth interruption, and app interruption** leave jobs visible and non-destructive; **the Confirmed Claim is unaffected** (rules 4–5).
+- **No failed job is silently deleted** (Section 24.12).
+
+### 27.11 Label Alignment, Quality, and Settings
+
+- **Label alignment, print quality, and calibration** are validated during hardware testing; **exact label fields, font sizes, and any barcode/QR use remain To be confirmed** (Section 24.10).
+- **Printer settings** entry may exist under Settings (Section 8.14, Owner); **exact fields remain To be confirmed.**
+
+### 27.12 Hardware Pilot and Compatibility Matrix
+
+- A **hardware pilot** on real devices is required before reliance; a **compatibility matrix** (device/OS vs behavior) is produced during testing.
+- **No compatibility is assumed or promised before the pilot** (rules 9–11).
+
+### 27.13 Fallback
+
+- **Manual fallback remains available** when the printer is unavailable or unsupported (rule 7); MineFlow remains usable without printing.
+- **Supported fallback printer remains To be confirmed.**
+
+### 27.14 Audit, Security, Privacy
+
+- Print/reprint actions remain **attributable to the account** (Section 11.43; audit → Section 31).
+- **Label content is treated as customer/transaction data**; device/connection security and privacy belong to **Sections 30–31** and **remain To be confirmed.**
+
+### 27.15 Error/Recovery and Production-Readiness Criteria
+
+- **Errors are visible and non-destructive; no duplicate records or inventory effects arise from print failures** (rule 6); technical recovery → Section 32.
+- A printer capability is **production-ready only when**: validated on the target hardware and OS, print-success confirmation is reliable, **duplicate-print safeguards are verified**, the **manual fallback is intact**, and any required settings/pairing are documented. **Until then, printer behavior remains conditional and unverified.**
+
+### 27.16 Edge Cases
+
+- printer unavailable at confirm · not paired · wrong printer selected · Bluetooth drop mid-print · app closed mid-print · paper/label out · reported success but no physical label · reprint after loss · multiple devices printing · offline print attempt · unsupported OS/device · settings not calibrated.
+
+### 27.17 Section Boundaries
+
+- **Section 27** owns the printer-integration boundary and hardware requirements.
+- **Section 24** owns the label-job/Print Queue business workflow. **Section 13** owns capture. **Sections 28–32** own technical implementation, APIs, security, audit, and recovery.
+
+### 27.18 Open / To-Be-Confirmed Items
+
+- actual XP-236B protocol
+- Android compatibility
+- iOS compatibility
+- SDK availability
+- driver/app requirements
+- pairing flow
+- one-printer vs multiple-printer support
+- device ownership
+- fallback printer
+- offline queue
+- exact label fields
+- font sizes
+- barcode/QR use
+- calibration
+- print-success confirmation method
+- duplicate-print safeguards
+- hardware replacement plan
+- testing devices
+- exact Section 4–5 permission reconciliation
+
+### 27.19 Section 27 Summary
+
+- **Printing is an assistive output, never required for claim capture or Official Order creation.**
+- **Claim confirmation and physical printing are separate outcomes; printer failure reverses no claim and creates no duplicate claim, invoice, order, payment, or inventory deduction.**
+- **The manual fallback always remains; a connected printer grants no permission.**
+- **The target is Xprinter XP-236B, 40 × 30 mm — all hardware, protocol, SDK, and OS behavior are unverified and must be validated on real devices; iOS/Android compatibility is not promised.**
+- **No Bluetooth protocol, printer language, SDK/package, pairing sequence, OS version, DPI, or driver is invented.**
+- **A hardware pilot, compatibility matrix, verified duplicate-print safeguards, reliable print-success confirmation, and an intact fallback gate production-readiness — all specifics remain To be confirmed.**
+
+---
+
+*End of Section 27 — Printer Integration. **APPROVED.** Section 28 to follow.*
