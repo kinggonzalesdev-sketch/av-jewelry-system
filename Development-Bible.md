@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–21 APPROVED; Section 22 (Status Transition Rules) pending
+> **Status:** In Progress — Sections 1–22 APPROVED; Section 23 (Search and Filter Specifications) pending
 
 ---
 
@@ -6867,7 +6867,7 @@ The following describe **effects consistent with approved rules**; the exact poi
 
 - **Item entry** — item exists with its quantity; full quantity available.
 - **Pending Claim** — **provisional association only; no automatic reduction of available quantity** (rule 4).
-- **Confirmed Claim** — a reviewed claim holds its **miner position / reviewed allocation** (Section 4.9); whether this reduces available quantity is part of 19.6.
+- **Confirmed Claim** — a reviewed claim holds its **miner position / reviewed allocation** (Section 4.9) and **reduces available quantity** (client-approved; see 19.6 and Section 22.3).
 - **Invoice Draft** — grouping for billing; does not itself finalize inventory.
 - **Official Order (Approve & Send Invoice)** — the order officially exists and the hold starts (Section 6.8); a firm **reservation/commitment** most safely attaches here.
 - **Payment verified** — order financially secured; **verification alone does not release or remove inventory** (rule 20).
@@ -6892,7 +6892,7 @@ The exact point where stock becomes provisionally associated → reserved → co
 4. **Fulfillment (F/G) → sold/released** finalization.
 5. **Withdrawal/cancellation/expiry → Returned-to-Stock Review** (manual), never automatic.
 
-> **To be confirmed — client decision required before this becomes a rule:** the single open choice is **whether *available quantity* visibly decrements at the Confirmed Claim stage (B) or only at the Official Order stage (D).** This choice **materially affects overselling risk, miner priority, and cancellation behavior**, so it is **not decided here**. Section 19 records the recommendation and preserves the decision as **To be confirmed**; **Section 22 owns the final status transitions** once the point is confirmed.
+> **Resolved by client decision (supersedes the earlier To-be-confirmed item):** the client has approved that **available quantity decrements at the Confirmed Claim stage (B)** — a Confirmed Claim provisionally reserves and decreases available quantity — and the reservation becomes **committed at the Official Order stage** with **no second deduction**. This confirms option **B for the reservation/decrement point** and retains **commitment at the Official Order** (the earlier recommendation of a soft hold at Confirmed Claim with firm reservation only at D is superseded). **Section 22.3 encodes the final transitions.** Remaining sub-details (e.g., freed-unit review authority, 2nd-Miner priority window) stay To be confirmed.
 
 ### 19.7 Unique-Item Handling
 
@@ -6992,7 +6992,7 @@ The exact point where stock becomes provisionally associated → reserved → co
 
 ### 19.26 Open / To-Be-Confirmed Items
 
-- **exact inventory-impact point** (19.6 — decrement at Confirmed Claim vs Official Order)
+- ~~exact inventory-impact point~~ **RESOLVED by client decision (19.6): decrement/reservation at Confirmed Claim, commitment at Official Order; encoded in Section 22.3**
 - exact reservation definition
 - when available quantity decreases
 - when remaining quantity increases again
@@ -7018,7 +7018,7 @@ The exact point where stock becomes provisionally associated → reserved → co
 - **Nothing returns to stock automatically; withdrawn, cancelled, and expired items go through manual Returned-to-Stock Review; forfeited layaway is excluded from automatic return.**
 - **Live Batch closure, message-send failure, and payment verification alone do not change inventory.**
 - **Migrated facts are preserved and never silently merged; item history stays traceable.**
-- **The exact inventory-impact point is recommended (provisional at claim stages, firm reservation at Official Order) but remains To be confirmed** — the Confirmed-Claim-vs-Official-Order decrement choice is a client decision because it affects overselling, miner priority, and cancellation; **Section 22 owns the final transitions.**
+- **The exact inventory-impact point is now client-approved:** available quantity **decrements/reserves at Confirmed Claim** and becomes **committed at the Official Order with no second deduction**; available-stock return occurs **only** via approved manual Returned-to-Stock Review. **Section 22.3 owns the final transitions.**
 
 ---
 
@@ -7428,3 +7428,224 @@ Across all actions, the following must **never** occur as an automatic side effe
 ---
 
 *End of Section 21 — Button Functionality Matrix. **APPROVED.** Section 22 — Status Transition Rules follows.*
+
+---
+
+## Section 22 — Status Transition Rules
+
+### 22.1 Purpose of the Status Transition Rules Section
+
+This section owns the **official status vocabulary and allowed transitions** for Version 1 (MineFlow), consolidating the operational stages of Sections 6, 12, and 15–20. Each status model states meaning, entry condition, allowed next statuses, required permission, Owner approval where applicable, prohibited direct transitions, error/recovery boundary, and audit requirement.
+
+This section stays business-focused. It defines no database schema, APIs, code, or technical state machine. It introduces no new permissions, roles, high-risk categories, integrations, automatic actions, payment/accounting rules, or customer-facing access beyond approved Sections 1–21, and it does not silently resolve any To-be-confirmed item.
+
+### 22.2 Status Conventions
+
+- **Business statuses are distinct from filters, queues, views, and badges.** "For Invoice," "Needs Review," and dashboard cards are **queues/readiness conditions**, not necessarily independent record statuses (see 22.6, 22.8).
+- **Every transition is attributable** to the acting account (audit requirement applies to all rows; Section 31 owns detail).
+- **No transition performs a high-risk action without Owner approval** (Section 5.8).
+- **Time-based transitions** (e.g., hold expiry) change lifecycle state but **never automatically return inventory** (Section 22.13).
+- **A status that cannot be safely finalized is marked *candidate* or *To be confirmed*** rather than invented.
+- **Paid in Full and Outstanding Balance remain To be confirmed**; **Delivered/Read are integration-dependent**; **no Pancake/Meta technical statuses are invented**.
+
+### 22.3 Approved Inventory Transition (Governing)
+
+Reflecting the client-approved inventory decision:
+- **Pending Claim → no reservation.**
+- **Confirmed Claim → quantity provisionally reserved (available quantity decreases).**
+- **Invoice Draft → reservation continues; no additional deduction.**
+- **Official Order → reservation becomes committed; no additional deduction.**
+- **Cancelled / Expired / Withdrawn / Rejected / Forfeited → Returned-to-Stock Review; no automatic available-stock return.**
+- **Approved Returned-to-Stock Review → quantity becomes available again.**
+- **No automatic 2nd-Miner or waitlist transition.**
+
+### 22.4 Live Batch Status Model
+
+| Status | Meaning / Entry | Allowed next | Permission / Owner |
+|---|---|---|---|
+| Draft | Batch created, not live | Active; Closed | create-batch authority *(TBC)* |
+| Active (Live) | Live intake enabled | Paused; Live Ended | start authority *(TBC)* |
+| Paused *(candidate)* | Intake temporarily suspended | Active; Live Ended | pause authority *(TBC)* |
+| Live Ended / Under Review | Intake stopped, review continues | Closed | end authority *(TBC)* |
+| Closed | Active batch work complete | Reopened *(if allowed)* | close authority *(TBC)* |
+| Reopened *(candidate)* | Closed batch reopened for correction | Live Ended; Closed | reopen authority *(TBC)* |
+
+- **Prohibited:** Closing does not auto-confirm claims, invoice, create orders, or change inventory (Section 12.57). **Historical View is a view, not a status.**
+- **Recovery:** accidental end/close is corrected via reopen (authority TBC); history is not rewritten.
+
+### 22.5 Item / Inventory Availability Status Model
+
+| Status | Meaning / Entry | Allowed next | Permission / Owner |
+|---|---|---|---|
+| Available | Open for new claims | Provisionally Reserved | — |
+| Provisionally Reserved | **Confirmed Claim** reserved the quantity | Committed; In Returned-to-Stock Review | Confirm Claim & Print Label |
+| Committed | **Official Order** committed the reservation | Sold/Released; In Returned-to-Stock Review | Invoice Preparation (via Approve & Send Invoice) |
+| Sold / Released | Fulfillment completed | — (terminal) | Shipping/Pickup Preparation |
+| In Returned-to-Stock Review | Freed by withdrawal/cancel/expiry/reject/forfeit | Returned-to-Available; Held/Unavailable | Inventory Monitoring / Miner-Allocation Review |
+| Returned-to-Available | Approved manual return | Available | Inventory Monitoring |
+| Held / Unavailable *(candidate)* | Rejected/unresolved review; forfeited pending disposition | In Returned-to-Stock Review | Inventory Monitoring |
+
+- **Prohibited direct transitions:** Available → Committed without Confirmed Claim; any → Available without approved review; **no automatic 2nd-Miner/waitlist transition**; forfeited item → Available automatically.
+- **No second deduction** occurs Provisionally Reserved → Committed.
+
+### 22.6 Claim Status Model
+
+| Status | Meaning / Entry | Allowed next | Permission / Owner |
+|---|---|---|---|
+| Pending Claim (Needs Review) | Captured/entered; **no reservation** | In Review; Withdrawn; Rejected | Claim Capture / Claim Review |
+| In Review | Under Claim Review | Confirmed Claim; Withdrawn; Rejected | Claim Review (+ Item Correction / Miner-Allocation Review) |
+| Withdrawn | Pre-confirm withdrawal (kept in history) | — (terminal); item → Returned-to-Stock Review | Claim Review *(withdraw authority TBC)* |
+| Rejected | Capture rejected | — (terminal) | Claim Review |
+| Confirmed Claim | Confirmed; **quantity reserved**; label job queued | (enters For Invoice readiness) | Confirm Claim & Print Label |
+
+- **For Invoice is a readiness condition/queue on a Confirmed Claim, not a separate record status** (Section 15.3). A Confirmed Claim is "For Invoice" until added to an active draft; if removed from an unsent draft it returns to that readiness state.
+- **Prohibited:** Pending → Confirmed without review; Confirmed → an order directly (an order is created only via Approve & Send Invoice); **Confirm does not print physically or invoice**.
+
+### 22.7 Print Job Status Model
+
+| Status | Meaning / Entry | Allowed next | Permission / Owner |
+|---|---|---|---|
+| Pending Print | Label job created at Confirm | Printed; Failed Print | Confirm Claim & Print Label |
+| Printed | Physical print reported successful | Reprint Requested | (reprint rules §24) |
+| Failed Print | Print failed | Reprint Requested; Pending Print | §24 |
+| Reprint Requested | Reprint queued | Printed; Failed Print | reprint authority *(§24)* |
+
+- **Physical print success is separate from Confirmed Claim** (a Confirmed Claim exists regardless of print outcome). Detailed rules → Section 24; printer integration → Section 27.
+
+### 22.8 Invoice Draft Status Model
+
+| Status | Meaning / Entry | Allowed next | Permission / Owner |
+|---|---|---|---|
+| Draft (building) | Claims grouped for one buyer/arrangement | In Review; Dissolved | Invoice Preparation |
+| In Review | Ready for Approve & Send Invoice | Sent; Draft; Dissolved | Invoice Preparation |
+| Sent | Approve & Send Invoice succeeded | — (becomes Official Order) | Invoice Preparation |
+| Dissolved | Unsent draft dissolved | — (claims return to For Invoice readiness) | Invoice Preparation |
+
+- **An Invoice Draft is not an Official Order.** On **Sent**, exactly **one Official Order + one order number + one invoice number + one shared 3-day hold** are created; **reservation → committed; no second deduction; retry does not create a second order** (Section 15.16).
+- **Prohibited:** one claim in two active drafts; silent customer switch at send.
+
+### 22.9 Official Order Status Model
+
+| Status | Meaning / Entry | Allowed next | Permission / Owner |
+|---|---|---|---|
+| Official Order / Invoiced | Created at successful send; **committed inventory** | Awaiting Required Payment/Deposit; Cancelled *(Owner)* | Invoice Preparation |
+| Awaiting Required Payment / Deposit | In hold, no payment yet | Payment Submitted/Unverified; Expired/Overdue; Cancelled *(Owner)* | — |
+| Required Payment / Deposit Verified | Required amount verified (**not necessarily Paid in Full**) | For Preparation; (Layaway Active) | Payment Verification |
+| For Preparation → For Shipping/Pickup → Approved for Release | Fulfillment progression | Dispatched/Picked Up; Exceptional Release Pending *(Owner)* | Shipping/Pickup Preparation |
+| Dispatched / Picked Up | Released and in transit/handed over | Completed | Shipping/Pickup Preparation |
+| Completed | Fulfilled and confirmed | — (terminal) | Shipping/Pickup Preparation |
+| Cancelled | Owner-approved cancellation | — (terminal); item → Returned-to-Stock Review | **Owner** |
+| Expired / Overdue | 3-day hold lapsed without required payment | item → Returned-to-Stock Review | (time-based) |
+
+- **Paid in Full is not defined here** (remains To be confirmed); **Required/Deposit Verified must not automatically equal Paid in Full**.
+- **Prohibited:** cancellation without Owner approval; automatic inventory return on Cancelled/Expired (both route to Returned-to-Stock Review).
+
+### 22.10 Customer Message Status Model
+
+| Status | Meaning / Entry | Allowed next | Permission / Owner |
+|---|---|---|---|
+| Message Draft | Prepared before send | Ready to Copy/Send | Invoice Preparation |
+| Ready to Copy/Send | Previewed/ready | Manually Sent; Direct Send Pending | Invoice Preparation |
+| Manually Sent | Staff attestation (copy + manual send) | — | send authority *(TBC)* |
+| Direct Send Pending *(integration-dependent)* | Direct send attempted | Direct Send Failed; Delivered | (conditional integration) |
+| Direct Send Failed *(integration-dependent)* | Direct send failed | Manually Sent; Direct Send Pending | — |
+| Delivered *(integration-dependent, TBC)* | Delivery confirmed | Read | — |
+| Read *(integration-dependent, TBC)* | Read confirmed | — | — |
+
+- **Manually Sent does not prove delivery; Delivered/Read require verified integration and are To be confirmed.** **No Pancake/Meta technical status is invented.** **A message send failure never creates a second Official Order or erases the order** (Section 12.69).
+
+### 22.11 Payment Status Model
+
+| Status | Meaning / Entry | Allowed next | Permission / Owner |
+|---|---|---|---|
+| Payment Submitted / Unverified | Evidence recorded, not verified | Verified; Rejected | recording authority |
+| Verified (Required Payment/Deposit Verified) | Amount required at stage verified | — (feeds order/layaway/fulfillment) | Payment Verification |
+| Rejected *(concept)* | Evidence rejected | Payment Submitted/Unverified | Payment Verification |
+
+- **Insufficient/Unclear are concepts, not final statuses** (naming here is deliberately minimal). **Recording ≠ verifying; Verified ≠ Paid in Full; Paid in Full remains To be confirmed.** **Payments are not silently moved between orders** (Section 16.12).
+
+### 22.12 Layaway Status Model
+
+| Status | Meaning / Entry | Allowed next | Permission / Owner |
+|---|---|---|---|
+| Active Layaway | 20% DP verified | Overdue; Completed | Layaway Monitoring |
+| Overdue | Missed due date | Grace Period; Active (on payment) | Layaway Monitoring |
+| Grace Period (≤10 days) | Within grace after overdue | Forfeiture-Eligible; Active | Layaway Monitoring |
+| Forfeiture-Eligible | Past grace | Forfeited *(Owner)*; Active | Initiate High-Risk Action to request |
+| Forfeited / Needs Owner Decision | Owner-approved forfeiture | — (disposition TBC; item **not** auto-returned) | **Owner** |
+| Completed *(Paid in Full TBC)* | Fully paid per approved rule | — (terminal) | Payment Verification |
+
+- **Non-cancellable after deposit; eligibility ≠ approval; no automatic forfeiture; forfeited item is excluded from automatic stock return.**
+
+### 22.13 Fulfillment Status Model
+
+| Status | Meaning / Entry | Allowed next | Permission / Owner |
+|---|---|---|---|
+| For Preparation | Verified required payment/deposit | For Shipping; For Pickup | Shipping/Pickup Preparation |
+| For Shipping / For Pickup | Being readied | Approved for Release; Exceptional Release Pending *(Owner)* | Shipping/Pickup Preparation |
+| Approved for Release | Normal release approved | Dispatched; Picked Up | Shipping/Pickup Preparation |
+| Exceptional Release Pending | Exception routed to Owner | Approved for Release; Held | **Owner** |
+| Dispatched → Delivered / Picked Up → Completed | Fulfillment progresses | Completed | Shipping/Pickup Preparation |
+| Failed Delivery / Unclaimed Pickup *(workflow TBC)* | Delivery failed / pickup not collected | (visible, unresolved; item → Returned-to-Stock Review only via review) | Shipping/Pickup Preparation |
+
+- **Preparation ≠ release; normal release is permission-based; exceptional release is Owner-approved; the request alone does not release; no automatic dispatch/completion/stock-return.**
+
+### 22.14 Owner Approval Request Status Model
+
+| Status | Meaning / Entry | Allowed next | Permission / Owner |
+|---|---|---|---|
+| Pending Owner Approval | High-risk request created | Approved; Rejected | Initiate High-Risk Action (create); **Owner** (decide) |
+| Approved | Owner approved | (source module executes) | **Owner** |
+| Rejected | Owner rejected | (source record unchanged) | **Owner** |
+
+- **The Owner Approval Request status does not itself perform the high-risk action** — the source module executes only after Approved. **No delegation; initiator cannot self-approve; waits if Owner unavailable.**
+
+### 22.15 Returned-to-Stock Review Status Model
+
+| Status | Meaning / Entry | Allowed next | Permission / Owner |
+|---|---|---|---|
+| In Review | Item freed by withdrawal/cancel/expiry/reject/forfeit-disposition | Approved Return; Rejected/Held | Inventory Monitoring / Miner-Allocation Review |
+| Approved Return | Manual review approved | Returned-to-Available (quantity available again) | Inventory Monitoring |
+| Rejected / Held | Not returned | Held/Unavailable; In Review | Inventory Monitoring |
+
+- **Manual only; no automatic transfer/allocation; unique-item checks recorded 2nd miner, multi-stock checks next waitlist buyer — as staff review, not auto-transition; forfeited layaway excluded from automatic return.**
+
+### 22.16 Migration / Import Status Model
+
+- Migrated/imported records enter as **source-marked historical records** at their **actual operational status** (Active Layaway, Overdue, Completed, Cancelled, Forfeited/Needs Owner Decision, etc.) and **bypass** Pending Claim → Confirm → Invoice (Section 6.20).
+- **Historical values/dates preserved; no retroactive rules; no auto-merge; migration is not mixed with live/post-live intake.**
+
+### 22.17 Prohibited Global Transitions
+
+Never allowed automatically: any → committed inventory without a Confirmed-Claim reservation; a second inventory deduction; any → available stock without approved Returned-to-Stock Review; 2nd-Miner or waitlist auto-allocation; a second Official Order from retry; payment auto-verification; fulfillment auto-release; auto-cancellation or auto-forfeiture; a high-risk action without Owner approval; Delivered/Read without verified integration; Required/Deposit Verified auto-equaling Paid in Full.
+
+### 22.18 Error and Recovery Boundary
+
+- Failed or interrupted transitions leave the record in its **last valid state**; **no partial or duplicate state is silently created** (Section 11.42).
+- Corrections follow the **owning module**, are progressively restricted at later stages, and remain attributable. **Exact technical recovery belongs to Section 32.**
+
+### 22.19 Open / To-Be-Confirmed Items
+
+- final Live Batch transition authorities (create/start/pause/end/close/reopen)
+- Paid in Full status/definition
+- Outstanding Balance definition
+- Delivered/Read (integration-dependent) model
+- Failed-Delivery / Unclaimed-Pickup workflow
+- Held/Unavailable inventory sub-states
+- forfeited-item disposition path
+- rejected/insufficient/unclear payment status naming
+- Returned-to-Stock Review outcome authority
+- Section 4–5 permission reconciliation
+
+### 22.20 Section 22 Summary
+
+- **Official statuses are defined per domain** — Live Batch, Inventory, Claim, Print Job, Invoice Draft, Official Order, Customer Message, Payment, Layaway, Fulfillment, Owner Approval Request, Returned-to-Stock Review, and Migration.
+- **Business statuses are distinguished from queues/filters/badges** — "For Invoice" and "Needs Review" are readiness conditions, not independent record statuses.
+- **The approved inventory model is encoded:** reservation at Confirmed Claim, commitment at Official Order (no second deduction), and available-stock return **only** via approved manual Returned-to-Stock Review; **no automatic 2nd-Miner/waitlist transition**.
+- **High-risk transitions remain Owner-gated; the Owner Approval Request status does not itself act.**
+- **Physical print stays separate from Confirmed Claim; Verified ≠ Paid in Full; Delivered/Read stay integration-dependent; no Pancake/Meta status is invented.**
+- **Unfinalizable statuses remain candidates or To be confirmed.**
+
+---
+
+*End of Section 22 — Status Transition Rules. **APPROVED.** Section 23 — Search and Filter Specifications follows.*
