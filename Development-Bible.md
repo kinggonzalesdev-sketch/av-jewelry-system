@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–13 APPROVED; Section 14 (Pancake Integration) pending
+> **Status:** In Progress — Sections 1–14 APPROVED; Section 15 (Invoice Workflow) pending
 
 ---
 
@@ -5684,3 +5684,295 @@ Considered situations:
 ---
 
 *End of Section 13 — Facebook Live Capture Workflow. **APPROVED.** Section 14 — Pancake Integration follows.*
+
+---
+
+## Section 14 — Pancake Integration
+
+### 14.1 Purpose of the Pancake Integration Section
+
+This section defines **Pancake as a conditional, technically unverified integration** for Version 1 (MineFlow). It describes the *possible* business role of a Pancake connection, the *conditions* under which any part of it could be relied upon, and the strict boundaries that protect the approved MineFlow lifecycle if Pancake is used, delayed, degraded, or never available.
+
+**Governing scope statements:**
+
+- **Pancake is not currently used by the business** (Section 1.5, Section 2.2) and its capabilities are **not assumed**.
+- **MineFlow must remain fully usable without Pancake.**
+- **Any Pancake-assisted intake creates a Pending Claim first** and follows the approved lifecycle unchanged.
+- **Nothing in this section promises a Pancake API, feature, credential, price, or approval** — every such item is explicitly **To be confirmed** pending official documentation and testing.
+
+This section stays business-focused. It does not define database schema, API endpoints, request/response formats, tokens, webhook mechanics, code, hosting, OCR, automatic reading, printer behavior, exact buttons, final statuses, or technical retry/locking. Technical implementation belongs to Sections 28–32. It introduces no new permissions, roles, statuses, high-risk categories, automatic actions, or customer-facing features beyond approved Sections 1–13, and it does not silently resolve any To-be-confirmed item.
+
+### 14.2 Governing Pancake Rules
+
+1. **Do not claim a Pancake API exists or supports a feature unless verified.**
+2. **Do not invent endpoints, schemas, tokens, webhook behavior, pricing, or approval status.**
+3. **Direct Pancake capture or message sending is not guaranteed.**
+4. **MineFlow must remain usable without Pancake.**
+5. **Manual entry and manual copy/send remain available** at all times.
+6. **Pancake data must create Pending Claims first** where claim intake applies.
+7. **Pancake must not auto-confirm, auto-allocate, auto-print, auto-invoice, auto-create an Official Order, auto-verify payment, or auto-release fulfillment.**
+8. **Failed message sending must not create another Official Order.**
+9. **Integration retries must not duplicate claims, orders, or messages.**
+10. **Customer and transaction authority remains governed by MineFlow permissions.**
+11. **External integration does not override MineFlow's approved lifecycle.**
+12. **Technical implementation belongs to Sections 28–32.**
+
+### 14.3 Current Status — Unverified and Conditional
+
+- **The business does not currently use Pancake** (Section 1.5, Section 2.8-A).
+- Pancake is treated throughout the Bible as a **planned, unverified integration** (Section 2.5, Section 12.66).
+- **No workflow currently depends on Pancake**, and none may be built to depend on it until its capabilities are confirmed against **official documentation and actual testing**.
+- Until then, every Pancake capability referenced here is **provisional** and **To be confirmed**.
+
+### 14.4 Purpose of a Possible Pancake Connection
+
+*If* a validated Pancake connection becomes available, its possible business purpose is to:
+
+- help connect the primary Facebook Page to the live-selling workflow;
+- **possibly** assist staff with customer-interaction data during and after a Live;
+- **possibly** assist with preparing or communicating invoice/order messages.
+
+**All of the above are possibilities, not commitments.** Each depends on verified Pancake capabilities (see 14.9).
+
+### 14.5 Expected Business Benefits (Conditional)
+
+*If verified*, potential benefits may include:
+
+- faster surfacing of customer-interaction references for staff-assisted capture;
+- reduced manual copying of customer/message details;
+- more convenient message preparation and communication.
+
+**Rules:**
+- These benefits are **conditional on verified capability**.
+- **No benefit may be assumed, promised to the client, or built as a dependency** before validation.
+
+### 14.6 Possible Comment / Customer / Message Intake
+
+*If verified*, Pancake **might** provide references such as customer-interaction data, comment references, or message references that **assist** staff-assisted capture.
+
+**Rules:**
+- Any such intake is **assistive only** — **staff still record and review** the provisional information.
+- **No automatic reading, buyer identification, customer match, or miner-position detection** (Section 13.2).
+- **Any Pancake-assisted claim intake creates a Pending Claim first** (Section 12.2) and enters **Claim Review**.
+- **The exact comment fields and customer identifiers actually available from Pancake remain To be confirmed** (see 14.28).
+
+### 14.7 Possible Invoice / Message Communication
+
+*If verified*, Pancake **might** support communicating invoice/order messages to the customer.
+
+**Rules:**
+- Message **preparation** remains owned by Section 15; message **delivery/retry/status** remains owned by Section 26.
+- **The manual-send fallback (Section 12.65) remains available in all cases.**
+- **Direct sending is conditional** on validated integration (Section 12.66) and **must not be promised** in Version 1.
+- **A failed send must not create another Official Order** and **must not erase the existing order** (Section 12.69).
+
+### 14.8 Required Access and Vendor Cooperation
+
+Any Pancake connection would require, at a business level:
+
+- an eligible Pancake account and the business's authorization to connect the primary Facebook Page;
+- **vendor cooperation and any required approvals** from Pancake and/or Meta;
+- confirmation that the needed capabilities are **officially supported and permitted**.
+
+**Rules:**
+- **The availability of the required access, approvals, and cooperation remains To be confirmed.**
+- **No credential, approval, or agreement is assumed to exist.**
+
+### 14.9 API Availability Validation
+
+Before any Pancake-dependent behavior is built:
+
+- the **actual availability of a Pancake API** must be validated against **official documentation**;
+- the **specific supported features** must be confirmed;
+- capabilities must be **tested**, not assumed.
+
+**Rules:**
+- **No endpoint, schema, token, webhook, or polling behavior is defined or assumed here.**
+- **API availability and supported features remain To be confirmed** (see 14.28).
+
+### 14.10 Authentication / Access Requirements (Business Level)
+
+At a business level, connecting Pancake would involve an **authorized setup step** performed by the Owner or an appropriately authorized user.
+
+**Rules:**
+- **Entering third-party credentials/tokens is a controlled, authorized setup activity**, not an ordinary staff action, and its exact handling belongs to the security sections (Sections 30–32).
+- **Exact authentication and access mechanics remain To be confirmed** and are **not defined here**.
+- **No token format, storage, or scope is invented.**
+
+### 14.11 Supported Page / Account Scope
+
+- Version 1 targets **one business and one primary Facebook Page** (Section 1.5).
+- Any Pancake connection would be **scoped to that primary Page/account**, preserving shop/page context (Section 12.7).
+- **The exact supported Page/account limits remain To be confirmed** (see 14.28).
+
+### 14.12 Data Mapping Boundaries
+
+*If verified*, mapping Pancake-provided data into MineFlow must respect:
+
+- **provisional-only intake** — Pancake data seeds provisional fields, never final records;
+- **staff review** — customer, item, miner position, and quantity are resolved in **Claim Review**;
+- **no silent creation** of customers, confirmed claims, invoices, or Official Orders.
+
+**Rules:**
+- **The exact available fields and their mapping remain To be confirmed.**
+- **No field mapping is assumed or invented here.**
+
+### 14.13 Pancake Intake Creates Pending Claims First
+
+- Where claim intake applies, **Pancake-assisted data creates a Pending Claim first** (Section 12.2, Section 12.25).
+- The Pending Claim then follows the **approved lifecycle**: Claim Review → Confirm Claim & Print Label → For Invoice → Invoice Draft → Approve & Send Invoice → Official Order.
+- **Pancake does not shortcut, skip, or replace any step.**
+
+### 14.14 Duplicate Prevention
+
+- Pancake-assisted intake must **not create duplicate claims** for the same customer interaction.
+- Where a duplicate risk exists, it is **surfaced for staff review** (Section 12.30, Section 13.18).
+- **No automatic deletion or merge.**
+- **Integration retries must not duplicate claims, orders, or messages** (rule 9).
+- **The exact duplicate-prevention method remains To be confirmed** (see 14.28).
+
+### 14.15 Manual Fallback
+
+- **Manual claim entry and manual copy/send remain available at all times** (Section 12.65, Section 13.21).
+- If Pancake is unavailable, degraded, or unverified, **staff continue operating manually with no loss of core capability**.
+- **MineFlow never becomes unusable due to a Pancake dependency.**
+
+### 14.16 Integration-Unavailable State
+
+When Pancake is not connected or not available:
+
+- MineFlow **operates normally in manual mode**;
+- **no Pancake-dependent action is offered as if it were available**;
+- **no claim, order, or message is blocked solely because Pancake is offline** — the manual paths remain.
+
+### 14.17 Failed Request Behavior
+
+When a Pancake request fails:
+
+- **no failed request silently creates a duplicate or partial record**;
+- **a failed send does not create another Official Order and does not erase an existing order** (rule 8);
+- **the failure remains visible** to authorized staff;
+- staff **fall back to the manual path**.
+
+**Exact technical failure handling belongs to Section 32.**
+
+### 14.18 Retry Boundaries
+
+- **Retries must not duplicate claims, orders, or messages** (rule 9).
+- A retry **re-attempts the same operation safely**, it does not create a second record.
+- **Exact retry mechanics, limits, and backoff belong to Sections 26 and 32** and **remain To be confirmed**.
+
+### 14.19 Delivery-Confirmation Limitations
+
+- **Delivery and read confirmation cannot be assumed** and require verified integration support.
+- Without verified support, **"Mark as Sent" is a staff confirmation only** and **does not prove delivery** (Section 12.65, Section 12.68).
+- **The exact delivery/read-status model remains To be confirmed** and is owned by **Section 26**.
+
+### 14.20 Staff Visibility and Authority
+
+- **Customer and transaction authority remains governed by MineFlow permissions** (Section 5, Section 11).
+- **Pancake does not grant authority** — a user still needs the applicable MineFlow permission and shop/page access to act.
+- **Visibility of Pancake-assisted data follows record access** (Section 11.39).
+- **No new permission or role is introduced by this section.**
+
+### 14.21 Attribution
+
+- Actions taken with Pancake-assisted data remain **attributable to the individual staff account** (Section 11.43).
+- **Attribution belongs to the action, not to the integration.**
+- **Detailed audit behavior belongs to Section 31.**
+
+### 14.22 Privacy and Security Boundaries
+
+- Pancake-provided data is treated as **customer/transaction data** subject to the same access rules as other records (Section 13.24).
+- **Third-party credentials and access are handled as controlled, authorized setup**, not ordinary staff actions.
+- **Exact privacy, consent, data-retention, and security requirements remain To be confirmed** and belong to **Sections 30–31**.
+- **No data-sharing, storage, or transmission behavior is defined or promised here.**
+
+### 14.23 Disconnection / Revocation
+
+- The business must be able to **disconnect or revoke** a Pancake connection.
+- On disconnection, **MineFlow reverts to manual operation** with no loss of core capability (Section 14.15).
+- **Existing records remain intact and attributable.**
+- **Exact disconnection/revocation mechanics remain To be confirmed** and belong to the security sections.
+
+### 14.24 Testing and Pilot Requirements
+
+Before any Pancake-dependent behavior is relied upon:
+
+- capabilities must be **validated against official documentation**;
+- a **controlled test/pilot** must confirm real behavior;
+- **manual fallback must be verified to remain fully functional** during and after the pilot.
+
+**Rules:**
+- **No Pancake behavior is enabled in production before validation and pilot.**
+- **The exact testing environment and vendor support availability remain To be confirmed.**
+
+### 14.25 Production-Readiness Criteria
+
+A Pancake capability may be considered production-ready **only when**:
+
+- the specific capability is **officially documented and permitted**;
+- it has been **tested and passed a controlled pilot**;
+- **duplicate prevention and retry-safety are verified**;
+- **the manual fallback remains intact**;
+- **required access, approvals, and any vendor agreement are in place**.
+
+**Until all criteria are met, the capability remains conditional and is not relied upon.**
+
+### 14.26 Section Boundaries
+
+- **Section 14** owns the business definition of the conditional Pancake integration.
+- **Section 12** owns the live/post-live workflow that any Pancake-assisted intake must follow.
+- **Section 13** owns capture-method behavior.
+- **Section 15** owns invoice and message preparation.
+- **Section 26** owns message delivery, retries, reminders, and delivery status.
+- **Sections 28–32** own technical implementation, APIs, security, attribution, and recovery.
+
+### 14.27 Edge Cases
+
+- Pancake account or Page authorization unavailable
+- API not available or feature unsupported
+- partial capability (intake but not sending, or vice versa)
+- credentials expire or are revoked mid-operation
+- Pancake returns incomplete or ambiguous data
+- duplicate interaction surfaced from Pancake
+- send attempt fails after Official Order creation
+- retry after a timeout or network drop
+- delivery/read status unavailable
+- Pancake offline during a Live
+- disconnection requested mid-session
+- vendor pricing or approval not finalized
+
+### 14.28 Open / To-Be-Confirmed Items
+
+- actual Pancake API availability
+- supported features
+- access credentials and approval
+- webhook or polling availability
+- comment fields available
+- customer identifiers available
+- message-send capability
+- delivery/read status
+- rate limits
+- vendor pricing
+- data retention
+- Page/account limits
+- failure/retry behavior
+- testing environment
+- vendor support
+- production agreement
+
+### 14.29 Section 14 Summary
+
+- **Pancake is a conditional, technically unverified integration** — nothing about its API, features, credentials, pricing, or approval is assumed.
+- **MineFlow must remain fully usable without Pancake**, with **manual entry and manual copy/send always available**.
+- **Any Pancake-assisted intake creates a Pending Claim first** and follows the approved lifecycle unchanged.
+- **Pancake must not auto-confirm, auto-allocate, auto-print, auto-invoice, auto-create an Official Order, auto-verify payment, or auto-release fulfillment.**
+- **A failed send never creates another Official Order or erases an existing one; retries never duplicate claims, orders, or messages.**
+- **Authority stays with MineFlow permissions; external integration never overrides the approved lifecycle.**
+- **Delivery/read confirmation, privacy, security, retries, and technical behavior are deferred** to Sections 26 and 28–32.
+- **Validation, a controlled pilot, and explicit production-readiness criteria** gate any real reliance on Pancake, and **every unresolved capability remains To be confirmed.**
+
+---
+
+*End of Section 14 — Pancake Integration. **APPROVED.** Section 15 — Invoice Workflow to follow.*
