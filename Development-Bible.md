@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–7 APPROVED (Project Vision; Business Workflow; Current Pain Points; Business Rules; User Roles & Permissions; Complete Order Lifecycle; Dashboard Workflow); Section 8 (Screen Map) pending
+> **Status:** In Progress — Sections 1–8 APPROVED (Project Vision; Business Workflow; Current Pain Points; Business Rules; User Roles & Permissions; Complete Order Lifecycle; Dashboard Workflow; Screen Map); Section 9 (Module Breakdown) pending
 
 ---
 
@@ -1894,4 +1894,391 @@ The dashboard may show **compact summary counts only**:
 
 ---
 
-*End of Section 7 — Dashboard Workflow. **APPROVED.** Section 8 — Screen Map to follow.*
+*End of Section 7 — Dashboard Workflow. **APPROVED.** Section 8 — Screen Map follows.*
+
+---
+
+## Section 8 — Screen Map
+
+### 8.1 Purpose of the Screen Map Section
+
+This section defines, for Version 1 (MineFlow):
+
+- the **major screens** of the application;
+- **what each screen is for**;
+- **who may access it**;
+- its **primary actions**;
+- **how users move between screens**.
+
+**Screen visibility is filtered by role, permissions, and operational relevance, while action buttons remain permission-gated** (Section 7.3). A user may see a screen or queue relevant to their duties, but may perform only the actions their exact permissions allow.
+
+This section stays business-focused, structural, and mobile-first. It does not discuss database schema, APIs, hosting, code, or technical implementation details. It introduces no new screens, roles, actions, business rules, permissions, or technical behavior beyond approved Sections 1–7, and it does not silently resolve any To-be-confirmed item.
+
+### 8.2 Application Navigation Model
+
+- **One shared application structure** (not separate products per role).
+- **Mobile-first navigation.**
+- **Five primary bottom-navigation items:**
+  - Dashboard
+  - Live
+  - Claims
+  - Orders
+  - More
+- **Global Search** is available from the **header or persistent entry** (not a sixth bottom-nav item).
+- **Login exists outside authenticated navigation.**
+- **Navigation items and screens render based on role and permissions.**
+
+### 8.3 Dashboard Navigation Group
+
+**Dashboard**
+
+- **Purpose:** operational command center; work queues; compact summary counts; alerts and quick actions.
+- **Primary users:** all authenticated staff, filtered by permissions.
+- **Links to:** all operational queues and detail screens.
+
+### 8.4 Live Navigation Group
+
+**A. Live Batches**
+- **Purpose:** list and open live-selling batches.
+- **Primary permissions:** Live Batch Item Entry; Claim Capture.
+- **Main actions:** open batch; create batch.
+- **Links:** Live Batch Detail.
+
+**B. Live Batch Detail**
+- **Purpose:** show the items and claims associated with one Live Batch.
+- **Main actions:** add item; review available items; set or switch Current Flex Item; open batch claims.
+- **Links:** Quick Add Item; Current Flex Item; Pending Claims; Mobile Capture Entry.
+
+**C. Quick Add Item**
+- **Purpose:** fast item entry.
+- **Required fields:** item code; grams per piece; quantity; required item photo; total price per piece.
+- **Primary permission:** Live Batch Item Entry.
+
+**D. Current Flex Item**
+- **Purpose:** show and control the item currently being presented during the Live; serve as the item-data source when a claim is captured.
+- **Main actions:** set current item; switch current item; clear current item where appropriate.
+- *Item-matching transition rules are not defined here.*
+
+**E. Mobile Capture Entry**
+- **Purpose:** receive or initiate captured mine-comment evidence; create a Pending Claim / Needs Review record.
+- **Android:** planned floating **Capture Claim** entry, subject to technical validation.
+- **iOS Version 1:** screenshot → Share → Send to MineFlow.
+- **Rules:** capture does not confirm; capture does not print; capture does not send an invoice; item details come from the Current Flex Item; full platform behavior is deferred to **Sections 12, 13, 20, and 24**.
+
+### 8.5 Claims Navigation Group
+
+**A. Pending Claims**
+- **Purpose:** Raw Claims waiting for initial review.
+- **Primary permissions:** Claim Capture; Claim Review.
+- **Main action:** open Claim Review.
+
+**B. Claim Review**
+- **Purpose:** review and correct the captured claim.
+- **Shows access to:** buyer details; mine comment/reference; mine date and time; screenshot/frame; assigned item; item photo; grams; total item price; claim position / allocation status; duplicate/repeated-claim warning where applicable.
+- **Main actions (permission-gated):** edit buyer details; correct item; review miner/allocation position; withdraw claim; switch item; reject capture; Confirm Claim & Print Label; initiate price override request where permitted.
+- **2nd-Miner / Waitlist Needs Staff Review destination (active claims):** when the allocation issue relates to an **active Pending or Confirmed Claim**, the dashboard queue opens **Claim Review** and focuses the user on the **miner/allocation section**; allocation actions require **Miner / Allocation Review**.
+- **Confirm Claim & Print Label creates a Confirmed Claim and claim/reference number only. It does not create or send an invoice.**
+
+**C. Confirmed Claims / For Invoice**
+- **Purpose:** show individual confirmed claims **not currently included in an active invoice draft**.
+- **Main action:** prepare or group claims for invoice.
+- **Primary permission:** Invoice Preparation.
+
+**D. Invoice Drafts**
+- **Purpose:** show buyer-level invoice drafts or grouped claim sets.
+- **Rules:** grouped claims must share the same approved payment and fulfillment arrangement; one claim cannot appear simultaneously in For Invoice and an active invoice draft; claims removed from an unsent draft may return to For Invoice.
+- **Main actions:** build draft; edit draft; remove claim; dissolve draft; open Invoice Review.
+
+**E. Invoice Review**
+- **Purpose:** final staff review before invoice creation and sending.
+- **Main action:** Approve & Send Invoice.
+- **On successful send:** creates **one Official System Order**; generates **one official order number**; generates **one invoice number**; starts the **shared 3-day hold**; included claims **retain their claim/reference numbers**.
+
+### 8.6 Orders Navigation Group
+
+**A. Official Orders**
+- **Purpose:** list official system orders.
+- **Visibility:** based on operational relevance and permissions.
+- **Main action:** open Order Detail.
+
+**B. Order Detail — Central Transaction Hub**
+
+**Order Detail is the central record and main transaction hub.**
+
+It provides access to:
+- included claims/items
+- invoice details
+- required payment/deposit status
+- payment history
+- layaway information
+- fulfillment information
+- reminders
+- lifecycle status
+- approval or exception status
+- migrated/source marker where applicable
+
+It links to specialized work views: **Payment Review**, **Layaway Detail**, and **Fulfillment Detail**. These specialized views operate on the **same transaction and must not create duplicate transaction records**.
+
+### 8.7 Payments Screens
+
+**A. Payments**
+- **Purpose:** show payment-related queues:
+  - Awaiting Required Payment / Deposit
+  - Payment Submitted / Unverified
+  - Required Payment / Deposit Verified
+- **Visibility:** based on operational relevance.
+- **Actions:** open Payment Review.
+
+**B. Payment Review**
+- **Purpose:** compare submitted payment information with the related invoice/order; verify the required payment or deposit.
+- **Primary permission:** Payment Verification.
+- **Clarification:** **Required Payment / Deposit Verified does not automatically mean Paid in Full.** Do not display Paid in Full unless the full-balance rule and status are formally approved later.
+
+### 8.8 Layaway Screens
+
+**A. Layaway**
+- **Purpose:** queues for Active Layaway; Layaway Overdue; Grace Period; Forfeiture-Eligible.
+- **Primary permission:** Layaway Monitoring.
+
+**B. Layaway Detail**
+- **Purpose:** focused view of one layaway record.
+- **Shows:** item/order; customer; total item price; down payment; payments received; remaining balance; term; start/due dates; grace status; financer; migrated marker where applicable.
+- **Actions:** record or monitor installment; open payment verification where authorized; initiate forfeiture request.
+- **Owner approval remains required for forfeiture.**
+
+### 8.9 Fulfillment Screens
+
+*One combined top-level area — no separate top-level Shipping and Pickup screens.*
+
+**A. Fulfillment**
+- **Tabs / filters / queues for:** For Preparation; For Shipping; For Pickup; Approved for Release; Dispatched; Picked Up / Completed where relevant.
+- **Primary permission:** Shipping / Pickup Preparation.
+
+**B. Fulfillment Detail**
+- **Purpose:** focused shipping or pickup work view for one transaction.
+- **Shows as relevant:** customer; order; payment/deposit verification state; preparation status; shipping or pickup arrangement; courier/tracking/reference; receiver details; release status; exception status.
+- **Normal release:** operational and permission-based.
+- **Exceptional release:** routes to Owner Approvals.
+
+### 8.10 Inventory Screens
+
+**A. Inventory**
+- **Purpose:** item and stock monitoring for unique and multi-stock items.
+- **Primary permission:** Inventory Monitoring.
+- **Links to:** Live Batch item; associated claims/orders; Returned-to-Stock Review.
+
+**B. Returned-to-Stock Review**
+- **Purpose:** handle items from withdrawn claims, approved cancellations, and expired unpaid orders.
+- **Rules:** unique item checks recorded 2nd miner; multi-stock checks next eligible waitlist buyer; staff review required; no automatic transfer; forfeited layaway items are excluded from automatic stock return.
+- **2nd-Miner / Waitlist Needs Staff Review destination (freed items):** when an item becomes available because of withdrawal, approved cancellation, or an expired unpaid order, the dashboard queue opens **Returned-to-Stock Review**, which shows the **recorded 2nd miner** for a unique item or the **next eligible waitlist buyer** for multi-stock, requires a **staff sure-buyer review**, and **does not automatically transfer or allocate the item**.
+
+### 8.11 Customer Screens
+
+**A. Customers**
+- **Purpose:** staff-managed customer list.
+- **Primary access:** Customer Support and other operationally relevant users.
+- **Main action:** open Customer Profile / History.
+
+**B. Customer Profile / History**
+- **Purpose:** combined view of migrated and new customer records.
+- **Shows:** customer identity details; total claims; official orders; active layaways; completed orders; cancelled orders; expired orders; payments; outstanding balance only once formally defined; shipping/pickup history; notes; source markers.
+- **States:** claims are not orders; migrated claim-less records do not count as claims; active layaways may already be included in official orders and are not additive.
+- **Customers do not log in.**
+
+### 8.12 Existing and Migrated Record Screens
+
+**A. Existing / Migrated Records**
+- **Purpose:** management list of historical/manual records.
+- **Access:** Owner; users with Existing Record Entry / Migration.
+
+**B. Add Existing Layaway / Migrate Record**
+- **Purpose:** manually enter historical records.
+- **Rules:** historical values and dates are preserved; current deposit rules are not applied retroactively; item photo is optional if unavailable; source marker is required; manual entry is Version 1; CSV/Excel import is deferred.
+- **Links:** Customer Profile / History; Layaway Detail; Order Detail where applicable.
+
+### 8.13 Possible Duplicate Customer Screen
+
+- **Purpose:** review possible duplicate profiles.
+- **Access:** Owner; users with Existing Record Entry / Migration; Customer Support may see a warning only, not merge or confirm duplicates solely from Customer Support permission.
+- **Rules:** no automatic merge; exact merge workflow deferred; attention card appears prominently only when duplicates exist.
+
+### 8.14 Owner and Administrative Screens
+
+**A. Owner Approvals**
+- **Purpose:** Owner approval queue for official-order cancellation; forfeiture; price override; exceptional release.
+- **Access:** Owner approves/rejects; initiating Selected Admin may view their request status but cannot approve.
+
+**B. User Accounts / Permissions**
+- **Access:** Owner only.
+- **Actions:** create account; edit account; disable account; assign roles; assign permission toggles.
+- Includes the future reconciliation need for the **Existing Record Entry / Migration** permission.
+
+**C. Settings**
+- **Access:** Owner.
+- **V1 scope may include:** business/system name; basic business details; invoice display details; label/printing preferences; approved reminder defaults; printer/device setup entry; other confirmed operational defaults.
+- **Exact fields remain To be confirmed.** Do not invent broad configuration options.
+
+### 8.15 Reports Screen
+
+A dedicated **basic** Reports screen in Version 1.
+
+- **Access:** View Reports.
+- **May show:** compact totals; date-range selection; order-status summary; payment summary; layaway summary.
+- **Detailed analytics, charts, performance analysis, exports, and final report definitions belong to Section 25.**
+
+### 8.16 Search Results Screen
+
+Global Search supports entry by:
+- complete customer name
+- Facebook name
+- claim/reference number
+- official order number
+- invoice number
+- item code
+- shipping number
+
+- **Search results must respect role and permission visibility.**
+- **Detailed query, filter, ranking, and result behavior belongs to Section 23.**
+
+### 8.17 Print Queue / Reprint Screen
+
+- **Purpose:** show pending, successful, failed, or reprint-related label activity where applicable.
+- **Placement:** accessible from Claim Review; the Claims or Live area; the More menu; a print-status shortcut when pending/failed work exists.
+- **It is not a primary bottom-navigation item.**
+- **Detailed permissions, reprint rules, duplicate warnings, and failed-print behavior belong to Section 24.**
+
+### 8.18 Login and Account Recovery Entry
+
+- individual staff login;
+- no shared credentials;
+- Owner-managed user accounts;
+- disabled accounts cannot sign in;
+- account/password recovery entry;
+- customers have no login.
+
+**Exact authentication, recovery, and security implementation are deferred to later technical/security sections.**
+
+### 8.19 Screen-to-Screen Relationship Summary
+
+**Live path:**
+```
+Login
+→ Dashboard
+→ Live Batches
+→ Live Batch Detail
+→ Current Flex Item / Mobile Capture Entry
+→ Pending Claims
+→ Claim Review
+→ Confirmed Claims / For Invoice
+→ Invoice Draft
+→ Invoice Review
+→ Approve & Send Invoice
+→ Official Order
+→ Order Detail
+```
+
+**Payment path:**
+```
+Order Detail
+→ Payment Review
+→ Required Payment / Deposit Verified
+→ Order Detail / Layaway / Fulfillment
+```
+
+**Layaway path:**
+```
+Order Detail
+→ Layaway Detail
+→ Active / Overdue / Grace / Forfeiture-Eligible
+→ Owner Approvals where required
+```
+
+**Fulfillment path:**
+```
+Order Detail or Dashboard queue
+→ Fulfillment
+→ Fulfillment Detail
+→ Approved for Release
+→ Completed
+```
+
+**Migration path:**
+```
+More
+→ Existing / Migrated Records
+→ Add Existing Layaway / Migrate Record
+→ Customer Profile / Layaway Detail / Order Detail
+```
+
+**Approval path:**
+```
+Source screen
+→ Owner Approvals
+→ approve/reject
+→ return to source record
+```
+
+**2nd-Miner / Waitlist review path:**
+```
+Dashboard queue
+→ Claim Review, when the allocation issue belongs to an active claim
+
+or
+
+Dashboard queue / Returned-to-Stock Review
+→ sure-buyer or waitlist review
+→ staff-reviewed allocation outcome
+```
+
+*Strict allocation and status transitions remain owned by Section 22. This queue opens within existing screens — it is not a new top-level screen.*
+
+### 8.20 Mobile Navigation and Interaction Rules
+
+- five-item bottom navigation;
+- thumb-reachable primary actions;
+- Dashboard as the hub;
+- list → detail interaction pattern;
+- Global Search in header/persistent entry;
+- capture entry prioritized in Live;
+- permission-filtered navigation;
+- high-risk actions must not be exposed as ordinary one-tap actions;
+- detailed responsive design belongs to later feature/UI specifications.
+
+### 8.21 Screen Overlap and Boundary Rules
+
+- **Order Detail is the central transaction record.**
+- **Payment Review, Layaway Detail, and Fulfillment Detail are focused action views.**
+- **They do not create duplicate records.**
+- **Fulfillment combines shipping and pickup.**
+- **Confirmed Claims / For Invoice and Invoice Drafts remain separate.**
+- **Dashboard summaries do not replace Reports.**
+- **Search Results does not replace operational list screens.**
+- **Print Queue behavior belongs to Section 24.**
+- **Status transitions belong to Section 22.**
+- **Detailed search belongs to Section 23.**
+- **Analytics belongs to Section 25.**
+- **Notification delivery belongs to Section 26.**
+
+### 8.22 Open / To-Be-Confirmed Screen Items
+
+- exact Settings fields
+- Print Queue visibility and reprint details
+- duplicate-customer merge workflow
+- Paid in Full labeling
+- Outstanding Balance definition
+- technical login/recovery/security behavior
+
+### 8.23 Section 8 Summary
+
+- **One shared mobile-first application.**
+- **Five primary bottom-nav items** (Dashboard, Live, Claims, Orders, More).
+- **Order Detail as the central hub.**
+- **One combined Fulfillment area.**
+- **Specialized views without duplicate records.**
+- **No customer login.**
+- **Migrated records supported.**
+- **Screen visibility and actions remain permission-controlled.**
+
+---
+
+*End of Section 8 — Screen Map. **APPROVED.** Section 9 — Module Breakdown to follow.*
