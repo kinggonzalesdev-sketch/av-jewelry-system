@@ -1006,12 +1006,16 @@ The Owner is the highest authority in the system.
 
 The Selected Admin is a trusted staff role with limited elevated capability.
 
+- **Version 1 supports a maximum of two Selected Admin accounts** (client-approved).
+- **Selected Admin status does not automatically grant every permission** — each Selected Admin uses **individual granular permission toggles**.
 - Can **perform assigned operational duties** (based on their permission toggles).
 - **May initiate/process high-risk actions only if granted the "Initiate High-Risk Action" permission.**
 - **Still needs Owner approval** for high-risk actions.
 - **Cannot approve their own high-risk action.**
+- **Cannot promote another user to Selected Admin** (only the Owner manages Selected Admin status — Section 5.13 item 10).
 - **Cannot exceed Owner authority.**
 - **Cannot perform duties not assigned to their account.**
+- **Staff may hold operational permissions without being a Selected Admin.**
 
 ### 5.5 Staff Role
 
@@ -1113,9 +1117,9 @@ The **Owner implicitly has all permissions**; toggles are used to configure Staf
 
 ### 5.12 Open / To-Be-Confirmed Permission Items
 
-1. **Exact selected-admin roster** — which real staff members are designated as Selected Admins.
+1. ~~Exact selected-admin roster~~ **RESOLVED**: **maximum two Selected Admins** (Section 5.4); exact identities are **account-setup configuration**, not a Development Bible decision (client-approved, Decision 1.9).
 2. **Exact Owner approval mechanism** — how Owner approval is requested and recorded (in-system approval vs. verbal-plus-logged).
-3. **Actual permission toggles assigned to each named staff member** — the per-account configuration.
+3. ~~Actual per-account permission toggles~~ **RESOLVED as setup-time configuration**: each account's toggles are assigned by the Owner during account setup and need not be named in the Bible; the permission set itself is defined in 5.6/5.13.
 4. **Initiate High-Risk Action granularity** — whether it remains a single toggle or later splits into separate toggles per high-risk action.
 
 *(The specific authorities for migration, Live Batch lifecycle, Current Flex Item, item withdrawal, post-live item entry, message preparation/sending, reprint/void-label, export, and payment correction are no longer open — they are resolved in 5.13.)*
@@ -7381,8 +7385,10 @@ This section stays business-focused. It defines no UI implementation, exact pixe
 |---|---|---|---|---|
 | Review Claim | Claim Review | Pending Claim | claim opened for resolution | Customer Support alone cannot |
 | Correct Customer/Item/Miner/Quantity | Claim Review / Item Correction / Miner-Allocation Review | Pending/Confirmed pre-invoice | fields corrected, logged | No silent customer switch (§10) |
-| Withdraw Claim | Claim Review (authority TBC) | pre-Confirm claim | Claim Withdrawn (kept in history) | Item → Returned-to-Stock Review; no auto transfer |
-| Switch Item | Claim Review (authority TBC) | pre-Confirm claim | original withdrawn + new claim created | No direct item transfer |
+| Withdraw Claim (pre-confirm) | Claim Review (reason required) | pre-Confirm claim | Claim Withdrawn (kept in history) | **No reservation ⇒ no inventory effect / no RTS**; no auto-promote; not silent-delete |
+| Withdraw Confirmed Claim | Claim Review (reason + full audit) | Confirmed Claim, not in an order | reservation released → Returned-to-Stock Review | **No auto-available; no auto 2nd-miner/waitlist; if in draft, remove via draft correction first; if order exists, use cancellation** |
+| Switch Item | Claim Review (reason required) | pre-Confirm claim | original withdrawn + new claim created | No direct item transfer |
+| Manual Miner Switch (1st→2nd) | Claim Review | before Official Order | reservation transfers to new miner | **No second deduction; item not briefly available; prohibited after Official Order; 2nd-miner window TBC** |
 | Reject Capture | Claim Review | Pending Claim | capture rejected (logged) | No order/inventory effect |
 | Initiate Price Override | Initiate High-Risk Action | claim in review | request → Owner Approval | **Owner-approved**; does not change price itself |
 | **Confirm Claim & Print Label** | Confirm Claim & Print Label | reviewed, ready claim | **Confirmed Claim + label job → For Invoice; quantity reserved, available qty decreases** | **No invoice/order; label job ≠ physical print; no second reservation later** |
@@ -7538,12 +7544,16 @@ Reflecting the client-approved inventory decision:
 |---|---|---|---|
 | Pending Claim (Needs Review) | Captured/entered; **no reservation** | In Review; Withdrawn; Rejected | Claim Capture / Claim Review |
 | In Review | Under Claim Review | Confirmed Claim; Withdrawn; Rejected | Claim Review (+ Item Correction / Miner-Allocation Review) |
-| Withdrawn | Pre-confirm withdrawal (kept in history) | — (terminal); item → Returned-to-Stock Review | Claim Review *(withdraw authority TBC)* |
+| Withdrawn (pre-confirm) | Pending/In-Review withdrawal (kept in history) | — (terminal); **no reservation ⇒ no inventory effect, no Returned-to-Stock Review** | Claim Review **(reason required)** |
 | Rejected | Capture rejected | — (terminal) | Claim Review |
-| Confirmed Claim | Confirmed; **quantity reserved**; label job queued | (enters For Invoice readiness) | Confirm Claim & Print Label |
+| Confirmed Claim | Confirmed; **quantity reserved**; label job queued | For Invoice readiness; **Withdrawn (confirmed)** via controlled correction | Confirm Claim & Print Label |
+| Withdrawn (confirmed) | Confirmed Claim removed via controlled **Confirmed-Claim Correction / Withdrawal** | — (terminal); **reservation released → item In Returned-to-Stock Review** | Claim Review **(reason + full audit)** |
 
 - **For Invoice is a readiness condition/queue on a Confirmed Claim, not a separate record status** (Section 15.3). A Confirmed Claim is "For Invoice" until added to an active draft; if removed from an unsent draft it returns to that readiness state.
-- **Prohibited:** Pending → Confirmed without review; Confirmed → an order directly (an order is created only via Approve & Send Invoice); **Confirm does not print physically or invoice**.
+- **Pending Claim withdrawal/correction (Decision-approved):** a **Claim Review** user may withdraw or correct a Pending Claim; a **reason is required** and **evidence may be required** by correction type; **no inventory return** (Pending has no reservation); **no automatic miner promotion**; duplicate/invalid Pending Claims are removed **only through this controlled action, never silent deletion**; audit history is preserved.
+- **Confirmed Claim withdrawal (Decision-approved):** a Confirmed Claim **cannot be casually deleted**; removal uses a controlled **Confirmed-Claim Correction / Withdrawal** requiring **Claim Review authority, a reason, and full audit attribution**. It **releases the claim's reservation to Returned-to-Stock Review** — the quantity **does not automatically become available**, and there is **no automatic 2nd-Miner transfer or waitlist allocation**. If the claim is in an **Invoice Draft**, it must first be removed via the **controlled Invoice Draft correction path**; if an **Official Order already exists**, ordinary claim withdrawal is **prohibited** — use the **Official Order correction/cancellation** rules.
+- **Manual 1st→2nd Miner switch (Decision-approved):** there is **no automatic 1st→2nd promotion**; an authorized **Claim Review** user may perform a **manual miner switch before Official Order creation**, recording **reason, supporting evidence where available, previous miner, replacement miner, performer, and timestamp**, with both associations kept in history. The **existing reservation transfers to the new miner within the controlled correction with no second inventory deduction**, and the **item must not briefly become generally available** during the switch. Once an **Official Order exists**, miner switching is **prohibited** (use order correction/cancellation). The **exact 2nd-Miner priority-window timing remains To be confirmed** (Section 6.22, 19.7).
+- **Prohibited:** Pending → Confirmed without review; Confirmed → an order directly (an order is created only via Approve & Send Invoice); **Confirm does not print physically or invoice**; casual deletion of a Confirmed Claim; automatic availability, 2nd-Miner transfer, or waitlist allocation on any withdrawal.
 
 ### 22.7 Print Job Status Model
 
@@ -9834,10 +9844,10 @@ This register consolidates unresolved items **without resolving them** and **wit
 **B. Permissions / authority details**
 | Item | Origin | Why open | Owner | Timing | Blocks |
 |---|---|---|---|---|---|
-| Selected-admin roster & per-account toggles | 5.12, 4.18 | staff assignment pending | Owner | before V1 build | V1 build |
+| ~~Selected-admin roster & per-account toggles~~ **RESOLVED** — max two Selected Admins; identities/toggles are account-setup config | 5.4, 5.12 | client-approved | Owner (setup) | account setup | non-blocking |
 | Exact Owner approval mechanism (in-system vs verbal-logged) | 4.18, 5.12 | not chosen | Owner | before pilot | pilot |
 | Initiate-High-Risk granularity | 5.12 | may split later | Owner | post-V1 | non-blocking |
-| Claim withdraw/switch authority | 12.32 | not among reconciled 12 | Client/Owner | before V1 build | V1 build |
+| ~~Claim withdraw/switch authority~~ **RESOLVED** — Claim Review authority; Pending-Claim & Confirmed-Claim withdrawal + manual miner switch defined (reservation→RTS, no auto-transfer) | 22.6, 21.5 | client-approved | — | resolved | non-blocking |
 | Waitlist-selection / freed-unit / RTS-outcome authority | 19.9–19.16 | review authority undecided | Client | before pilot | pilot |
 
 **C. Statuses / terminology**
