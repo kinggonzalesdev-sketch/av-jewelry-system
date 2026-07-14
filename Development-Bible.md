@@ -919,7 +919,8 @@ Two separate models apply, depending on whether the item entry is unique or mult
   - approving forfeiture
   - overriding price
   - releasing items
-- **R4.16.4 — Roles and approval flow: To be confirmed.** The exact selected-admin roles, the approval flow, and permission tiers are **To be confirmed** (see 4.18).
+- **R4.16.4 — Permission tiers reconciled; approval mechanism still open.** The **selected-admin/staff permission tiers and the specific reconciled authorities are now defined in Section 5.13**; the **exact Owner approval *mechanism*** (in-system vs. verbal-plus-logged) and the **selected-admin roster** remain **To be confirmed** (see 4.18).
+- **R4.16.5 — Additional Owner-approval-required actions (client-approved).** Beyond the four core high-risk actions above, two further actions require Owner approval and **cannot be delegated in V1**: **Live Batch reopen** and **verified wrong-payment-to-order correction** (Section 5.13, items 2, 9, 12). These are administered through the Owner Approval mechanism and are **not** added to the four core high-risk categories.
 
 > **Supersession note (see 4.17):** Earlier sections referred to "Owner-authorized cancellation" and to forfeiture requiring "authorized staff or Owner." This is tightened: high-risk actions may be initiated by selected admins but **require Owner approval**.
 
@@ -951,8 +952,9 @@ These details remain unresolved and are **not** invented here. They are recorded
 1. **Full-payment deadline for straight orders** — for non-layaway, non-shipping-deposit orders, whether the 3-day deadline requires full payment or a partial payment.
 2. **Price-override allowed stage** — at which stage(s) a price override is permitted (e.g., before invoice only, or also after the official order).
 3. **Same-day invoicing conditions** — the conditions, if ever approved, under which same-day invoice sending would replace the next-day schedule.
-4. **Exact selected-admin roles and Owner approval flow** — which roles qualify as "selected admins" and how Owner approval is requested and granted for high-risk actions.
+4. **Exact selected-admin roster and Owner approval *mechanism*** — which real staff qualify as "selected admins" and how Owner approval is requested/recorded (in-system vs. verbal-plus-logged). *(The permission authorities themselves are now reconciled in Section 5.13.)*
 5. **Exact financer fields and workflow** — the specific data captured and the process for financer assignment in layaway.
+6. **Refund / reversal / void / accounting treatment** for corrected verified payments — deferred (Section 5.13 item 9).
 
 ### 4.19 Section 4 Summary
 
@@ -1044,8 +1046,20 @@ Version 1 uses a simple **role + permission-toggle** model. Each account has:
 - Customer Support
 - View Reports
 - Initiate High-Risk Action
+- Existing Record Entry / Migration
+- Live Batch Operation *(create, start, pause, resume, end)*
+- Live Batch Closure
+- Current Flex Item Control *(select, switch, clear)*
+- Item Withdrawal
+- Post-Live Item Entry
+- Message Preparation
+- Message Sending
+- Retry / Reprint Label
+- Void / Cancel Label Job
+- Export Data / Reports
+- Payment Correction
 
-The **Owner implicitly has all permissions**; toggles are used to configure Staff and Selected Admin accounts.
+The **Owner implicitly has all permissions**; toggles are used to configure Staff and Selected Admin accounts. The permissions added in the reconciliation (see 5.13) follow the same rule: **no permission silently includes another**, and each is independently assignable and auditable.
 
 ### 5.7 Payment Verification Permission
 
@@ -1098,11 +1112,43 @@ The **Owner implicitly has all permissions**; toggles are used to configure Staf
 ### 5.12 Open / To-Be-Confirmed Permission Items
 
 1. **Exact selected-admin roster** — which real staff members are designated as Selected Admins.
-2. **Exact Owner approval mechanism** — how Owner approval for high-risk actions is requested and recorded (in-system approval vs. verbal-plus-logged).
+2. **Exact Owner approval mechanism** — how Owner approval is requested and recorded (in-system approval vs. verbal-plus-logged).
 3. **Actual permission toggles assigned to each named staff member** — the per-account configuration.
 4. **Initiate High-Risk Action granularity** — whether it remains a single toggle or later splits into separate toggles per high-risk action.
 
-### 5.13 Section 5 Summary
+*(The specific authorities for migration, Live Batch lifecycle, Current Flex Item, item withdrawal, post-live item entry, message preparation/sending, reprint/void-label, export, and payment correction are no longer open — they are resolved in 5.13.)*
+
+### 5.13 Reconciled Permission Authorities (Client-Approved)
+
+This subsection resolves the standing Section 4–5 permission reconciliation. These authorities are **client-approved and now APPROVED here**; earlier "To be confirmed" or "recorded Section 5 reconciliation" phrasing in later sections for **these specific authorities** is **superseded by this subsection**. Genuinely residual items remain open in 5.12 and 4.18 (e.g., selected-admin roster, exact approval mechanism, financer fields, straight-order full-payment deadline).
+
+**Governing principles preserved:** Owner is the highest authority; Selected Admin and Staff use granular permissions; role title does not grant authority; **assignment ≠ permission; visibility ≠ action authority**; notes do not change records; **no permission silently includes another**; unauthorized actions change no record; every critical authority is auditable; Customer Support cannot perform Claim Review, Payment Verification, or fulfillment release unless separately granted an approved permission.
+
+**1. Existing Record Entry / Migration.** A distinct permission, available only to the **Owner** or a **Selected Admin explicitly granted it**; **normal Staff cannot migrate**. It grants **no** payment verification, cancellation, fulfillment release, inventory return, or other unrelated authority.
+
+**2. Live Batch lifecycle.** **Live Batch Operation** (create, start, pause, resume, end) is permission-based and may be granted to qualified assigned staff. **Live Batch Closure** is a stronger explicit permission, assignable to **Owner or Selected Admin**. **Reopen Live Batch requires Owner approval** (an Owner-approval-required action; see below). **Batch assignment alone grants none of these.**
+
+**3. Current Flex Item Control** (select / switch / clear) is an explicit permission for qualified live staff. It affects **future claim entry only**, **never alters existing claims**, and **batch assignment alone does not grant it**.
+
+**4. Item Withdrawal.** An **Item Withdrawal** authority. Withdrawing an item **with no claims** may be handled by an authorized user; withdrawing an item **with Pending/Confirmed Claims, Invoice-Draft involvement, or an Official Order** requires stronger review/escalation per the owning workflow. Withdrawal **never auto-transfers claims or returns stock**; high-risk cancellation and inventory-return rules remain separate.
+
+**5. Manual Post-Live Entry.** **Claim Capture** may create a manual Pending Claim. **Creating a new item from Manual Entry requires a separate Post-Live Item Entry authority.** Selecting an existing item **does not allow silent editing of the item master**. **Claim Review remains separately required.** Manual Entry cannot bypass confirmation, invoicing, or Official Order creation.
+
+**6. Customer Message.** **Message Preparation** (prepare / preview / copy / edit a draft) — **Invoice Preparation may include Message Preparation**. **Message Sending** (direct send where validated / manually record or Mark as Sent / retry or resend) is a **distinct permission**. **Copy ≠ Sent; Mark as Sent does not prove Delivered or Read.** Sending authority grants **no** invoice approval, payment verification, or order cancellation.
+
+**7. Print authority.** **Retry / Reprint Label** is a separate operational permission requiring an existing label job; a reason may be required as later defined; it **never creates another claim or inventory effect**. **Void / Cancel Label Job** is a stronger permission for the **Owner or an explicitly authorized Selected Admin**; it **does not cancel the claim or Official Order automatically**.
+
+**8. Export.** A separate **Export Data / Reports** permission. **Report visibility does not grant export authority**; export is limited to records **already visible to the user**; sensitive information stays scope-controlled; **no unrestricted database export**; exact formats remain **To be confirmed**.
+
+**9. Payment Correction.** A controlled **Payment Correction** authority. **Unverified** payment evidence on the wrong Official Order may be corrected by an explicitly authorized payment-correction user. **After verification**, moving/correcting the payment-to-order relationship **requires Owner approval** (an Owner-approval-required action). The original association, evidence, actor, reason, timestamps, and correction history remain traceable; **no silent reassignment**; **no duplicate verified payment**; refund/reversal/void/accounting treatment remain **To be confirmed**.
+
+**10. Selected Admin reassignment.** **Only the Owner** may grant, remove, or modify Selected Admin status and its permissions. A Selected Admin **cannot** promote another user to Selected Admin unless a future rule allows it. Reassignment **never erases historical attribution**.
+
+**11. Owner self-action.** The Owner **may perform Owner-approved actions directly**, still creating a **complete audit record** (recording the Owner as both decision-maker and executor where applicable). **No artificial second-person approval is required in V1.**
+
+**12. Owner-only actions and no delegation (V1).** Owner-only approvals **may not be delegated in V1**. They are: **Official Order cancellation approval; layaway forfeiture approval; price override approval; exceptional fulfillment release approval; Live Batch reopen approval; and verified wrong-payment-to-order correction approval.** The **first four remain the core high-risk operational categories** (unchanged from 5.8); **Live Batch reopen** and **verified wrong-payment correction** are **additional Owner-approval-required actions** administered through the Owner Approval mechanism (they are **not** added to the four core high-risk categories). A future delegation model may be considered later but is **not introduced now**.
+
+### 5.14 Section 5 Summary
 
 - Section 5 keeps Version 1 **simple**: **three roles** (Owner, Selected Admin, Staff) plus a set of **permission toggles** assigned per duty.
 - **Owner is the highest authority** and the **sole approver of high-risk actions**; there is **no delegation** in Version 1.
@@ -2708,7 +2754,7 @@ This section stays business-focused and product-architectural. It does not discu
 
 **Primary access:** Owner; users with Existing Record Entry / Migration.
 
-**Existing Record Entry / Migration remains a recorded permission reconciliation and is not silently treated as already added to the approved Section 5 list.**
+**Existing Record Entry / Migration is now an approved Section 5 permission (Section 5.6, 5.13 item 1): Owner or an explicitly granted Selected Admin only; normal Staff cannot migrate.**
 
 **Actions:** add existing/migrated record; preserve historical values; review possible duplicates; record migration attribution.
 
@@ -2875,7 +2921,7 @@ This section stays business-focused and product-architectural. It does not discu
 - Owner's capabilities come from implicit access to all approved permissions;
 - Payment Verification and Existing Record Entry / Migration are not separate Owner-only functions.
 
-Includes the **recorded reconciliation need to add Existing Record Entry / Migration to Section 5**.
+Includes the now-approved **Existing Record Entry / Migration** permission (Section 5.6, 5.13 item 1).
 
 ### 9.22 Settings Module
 
@@ -3302,7 +3348,7 @@ The dedicated duplicate-review workflow belongs to **Existing Record Migration**
 **Customer Management:** displays the profile and warning; does **not** own duplicate resolution.
 
 - **Exact duplicate-merge mechanics remain To be confirmed.**
-- **Existing Record Entry / Migration remains a recorded Section 5 reconciliation, not silently treated as already added.**
+- **Existing Record Entry / Migration is an approved Section 5 permission (Section 5.6, 5.13 item 1).**
 
 ### 10.24 Customer Notes
 
@@ -3521,7 +3567,7 @@ This section stays business-focused and staff-facing. It does not define technic
 13. No automatic claim transfer, waitlist allocation, returned-to-stock action, duplicate merge, payment verification, invoice creation, or fulfillment release occurs merely because a user opens a record.
 14. Notes do not change statuses, balances, customer association, allocation, fulfillment state, or permissions.
 15. New and migrated records may both enter the staff workflow according to actual status.
-16. Existing Record Entry / Migration remains a recorded Section 5 reconciliation.
+16. Existing Record Entry / Migration is an approved Section 5 permission (Section 5.6, 5.13 item 1).
 
 ### 11.3 Staff Lifecycle
 
@@ -3776,10 +3822,10 @@ Requires **Payment Verification** permission. Authorized verifier may:
 - Payment records **must not be silently moved** between Official Orders.
 - Customer Support cannot perform this correction.
 - Layaway Monitoring alone cannot perform it.
-- **Payment Verification or a later approved payment-correction authority** initiates a controlled correction path.
+- **The approved Payment Correction authority** initiates a controlled correction path (Section 5.13 item 9).
 - Original evidence, verification state, performer, date, and affected orders remain traceable.
-- **Whether Owner approval is required remains To be confirmed.**
-- **No reversal, refund, void, transfer, or accounting method is defined here.**
+- **Unverified** evidence on the wrong order may be corrected by an authorized Payment Correction user; **after verification, the correction requires Owner approval** (Section 5.13 items 9, 12).
+- **No reversal, refund, void, transfer, or accounting method is defined here** (remains To be confirmed).
 
 ### 11.24 Layaway Monitoring Workflow
 
@@ -4387,7 +4433,7 @@ The following are **business authorities**, described without inventing permissi
 
 **Findings:**
 - **Live Batch Item Entry** and **Claim Capture** (Section 5.6) cover some of these actions.
-- **Create/start/end/close/reopen, Current Flex Item authority, and item-withdrawal authority** are **not** explicitly covered by the approved Section 5 permission list and **require Section 4–5 reconciliation.**
+- **Create/start/pause/resume/end, Current Flex Item control, item withdrawal, close, and reopen** are now **approved Section 5 permissions/authorities** (Section 5.6, 5.13 items 2–4): **Live Batch Operation** (create/start/pause/resume/end), **Live Batch Closure** (Owner/Selected Admin), **Current Flex Item Control**, **Item Withdrawal**, and **reopen requires Owner approval**.
 - **None of these become Owner-only unless later approved.**
 - **No new permission is silently introduced.**
 
@@ -4442,8 +4488,7 @@ A new Live Batch item requires:
 
 ### 12.14 Item Withdrawal
 
-- An authorized user may **request or perform a later-approved item withdrawal action.**
-- **Withdrawal authority remains To be confirmed.**
+- A user with the approved **Item Withdrawal** permission may withdraw an item (Section 5.13 item 4); withdrawing an item **with Pending/Confirmed Claims, Invoice-Draft involvement, or an Official Order** requires stronger review/escalation per the owning workflow.
 - **Withdrawal does not automatically transfer claims.**
 - **Withdrawal does not automatically return stock.**
 - **Related claims and evidence remain visible.**
@@ -4778,8 +4823,7 @@ Possible fields:
 
 **Rules:**
 - **Existing item selection does not silently edit item data.**
-- **New item creation from this form remains To be confirmed.**
-- **Exact post-live item authority remains To be confirmed.**
+- **New item creation from this form requires the approved Post-Live Item Entry permission** (Section 5.13 item 5).
 - **No automatic stock allocation.**
 
 ### 12.40 Manual Entry Transaction Fields
@@ -4830,13 +4874,13 @@ Carry as **To be confirmed:**
 
 ### 12.43 Manual Entry Permission Boundary
 
-- **Claim Capture may cover Pending Claim creation.**
-- **Live Batch Item Entry may not cover post-live item creation.**
-- **Claim Review remains required.**
+- **Claim Capture creates the manual Pending Claim** (Section 5.13 item 5).
+- **Creating a new item from Manual Entry requires the approved Post-Live Item Entry permission** (Section 5.6, 5.13 item 5); Live Batch Item Entry does not cover it.
+- **Selecting an existing item does not allow silent editing of the item master.**
+- **Claim Review remains separately required.**
 - **Confirm Claim & Print Label remains separate.**
 - **Invoice Preparation remains separate.**
-- **Photo/evidence attachment and Orders manual-entry access require Section 4–5 reconciliation.**
-- **No new permission is silently added.**
+- Photo/evidence attachment is part of the capture action under Claim Capture; **no new permission is silently added.**
 
 ### 12.44 Live Batch Monitoring
 
@@ -5000,15 +5044,13 @@ Possible criteria may include:
 
 ### 12.57 Closing a Live Batch
 
-- An authorized user may **mark the batch closed where later approved.**
+- A user with **Live Batch Closure** may mark the batch closed (Owner or Selected Admin; Section 5.13 item 2).
 - **No automatic** confirmation, invoice, Official Order, stock return, waitlist allocation, or record deletion.
-- **Exact authority remains To be confirmed.**
-- **Not automatically Owner-only.**
+- **Live Batch Closure is a stronger explicit permission; batch assignment alone does not grant it.**
 
 ### 12.58 Reopening a Closed Batch
 
-- **Whether reopening is allowed remains To be confirmed.**
-- **Reopening authority remains To be confirmed.**
+- **Reopening a closed batch requires Owner approval** (Section 5.13 items 2, 12) — an Owner-approval-required action that cannot be delegated in V1.
 - **Corrections must not rewrite historical actions silently.**
 - **Final status behavior belongs to Section 22.**
 
@@ -5567,7 +5609,7 @@ When an upload or save fails:
 - **Claim Capture** (Section 5.6) is the primary authority for creating a Pending Claim.
 - **Claim Review** remains required and separate for review and correction.
 - **Confirm Claim & Print Label** remains a separate permission.
-- **Photo/evidence attachment authority and post-live/Orders manual-entry access require Section 4–5 reconciliation** (Section 12.43).
+- **Manual-entry access is Claim Capture and new-item creation is Post-Live Item Entry** (Section 5.13 items 5–6); photo/evidence attachment is part of the capture action.
 - **No new permission is silently added.**
 
 ### 13.23 Staff Attribution
@@ -6160,7 +6202,7 @@ Prepare → Preview → Copy → staff manually sends via approved channel → s
 
 - **Invoice Preparation** governs draft building, review, and Approve & Send Invoice.
 - It is **separate from Payment Verification and from fulfillment authority** (rules 17–18).
-- **Message-send / Mark-as-Sent micro-authority and any Orders-manual-entry access require Section 4–5 reconciliation** (Section 12.43). **No new permission is silently added.**
+- **Message Sending / Mark-as-Sent is the approved Message Sending permission** (Section 5.13 item 6), distinct from **Message Preparation** (which Invoice Preparation may include); manual-entry access is Claim Capture (Section 5.13 item 5). **No permission silently includes another.**
 
 ### 15.27 Unauthorized Actions
 
@@ -6323,7 +6365,7 @@ This section stays business-focused. It does not define database schema, APIs, c
 - **Payment records must not be silently moved between orders** (rule 11).
 - Correction follows a **controlled path** initiated by **Payment Verification or a later-approved payment-correction authority**; Customer Support and Layaway-Monitoring-alone cannot perform it (Section 11.23).
 - **Original evidence, verification state, performer, date, and affected orders remain traceable.**
-- **Whether Owner approval is required remains To be confirmed**; **no reversal/refund/void/transfer method is defined here** (Section 11.23).
+- **Unverified correction by an authorized Payment Correction user; verified correction requires Owner approval** (Section 5.13 item 9); **no reversal/refund/void/transfer method is defined here** (Section 11.23).
 
 ### 16.13 Payment History
 
@@ -6919,7 +6961,7 @@ The exact point where stock becomes provisionally associated → reserved → co
 ### 19.11 Withdrawal
 
 - A withdrawn pre-invoice claim releases its provisional association; the item goes to **Returned-to-Stock Review**, subject to miner/waitlist priority (Section 6.15).
-- **Withdrawal does not erase history** (rule 17); **withdrawal authority remains To be confirmed** (Section 12.14).
+- **Withdrawal does not erase history** (rule 17); withdrawal uses the approved **Item Withdrawal** permission with escalation for claimed items (Section 5.13 item 4, Section 12.14).
 
 ### 19.12 Cancellation
 
@@ -7073,7 +7115,7 @@ Per the client-approved inventory decision, the following model is reflected whe
 ### 20.5 Live Batch
 
 - **Purpose:** prepare and operate one selling session (Section 12).
-- **Users:** Live Batch Item Entry, Claim Capture (batch-lifecycle authorities are a **Section 4–5 reconciliation item**, carried TBC).
+- **Users:** Live Batch Item Entry, Claim Capture; batch-lifecycle authorities are approved (Section 5.13 item 2): **Live Batch Operation**, **Live Batch Closure**, and **reopen requires Owner approval**.
 - **Entry:** Live nav → Live Batches → Live Batch Detail.
 - **Inputs:** batch reference/date/shop-page/notes (exact required fields TBC); items.
 - **Displays:** items, Current Flex Item, batch state, counts, unresolved work.
@@ -7105,7 +7147,7 @@ Per the client-approved inventory decision, the following model is reflected whe
 ### 20.8 Manual Post-Live Entry
 
 - **Purpose:** new-claim intake for post-live message / private message / walk-in (Section 12.35).
-- **Users:** Claim Capture (post-live item-creation authority is a **Section 4–5 reconciliation item**, TBC).
+- **Users:** Claim Capture; new-item creation from Manual Entry uses the approved **Post-Live Item Entry** permission (Section 5.13 item 5).
 - **Entry:** **Orders workspace → + Manual Entry** (secondary entry points TBC).
 - **Inputs:** provisional customer; item (select existing or new-if-approved); source marker; photo/evidence; arrangement.
 - **Displays:** entered summary before save.
@@ -7251,7 +7293,7 @@ Per the client-approved inventory decision, the following model is reflected whe
 ### 20.26 Existing Record Migration
 
 - **Purpose:** manually enter historical records; manage duplicate review (Section 9.15).
-- **Users:** Owner; Existing Record Entry / Migration holders (**this permission remains a recorded Section 5 reconciliation**, not silently added).
+- **Users:** Owner; Existing Record Entry / Migration holders (**an approved Section 5 permission** — Section 5.6, 5.13 item 1).
 - **Inputs:** historical values/dates; source marker; optional photo.
 - **Actions:** add/migrate record; review possible duplicates.
 - **Result:** **historical values preserved; no retroactive rules; no auto-merge; migration separate from live/post-live intake**; migrated records enter operational modules by actual status.
@@ -7265,7 +7307,7 @@ Per the client-approved inventory decision, the following model is reflected whe
 
 ### 20.28 Open / To-Be-Confirmed Items
 
-- batch-lifecycle, Current-Flex, item-withdrawal, post-live item-creation, and message-send authorities (Section 4–5 reconciliation)
+- ~~batch-lifecycle, Current-Flex, item-withdrawal, post-live item-creation, message-send authorities~~ **RESOLVED in Section 5.13**
 - exact required fields per feature (batch, customer, invoice, shipping, pickup, settings)
 - Paid in Full and Outstanding Balance definitions
 - message template, channels, delivery/status model
@@ -7311,14 +7353,14 @@ This section stays business-focused. It defines no UI implementation, exact pixe
 
 | Action | Permission | Prerequisite | Result / State | Prohibited side effects / Notes (TBC) |
 |---|---|---|---|---|
-| Create Live Batch | Live Batch Item Entry* | authorized access | Draft batch created | No order/invoice/inventory change. *Batch-lifecycle authority = §4–5 reconciliation (TBC) |
-| Start Live | *TBC authority | prepared batch | Batch active; during-live intake enabled | No inventory change. Start authority TBC |
-| Pause / Resume | *TBC authority | active batch | Suspends/resumes new intake | Existing records preserved; status per §22 (candidate) |
-| End Live | *TBC authority | active batch | Live Ended / Under Review | Does not close batch, confirm claims, or change inventory |
-| Close Batch | *TBC authority | ended/reviewed batch | Batch closed | No auto confirm/invoice/order/stock-return/deletion (§12.57) |
-| Reopen Batch | *TBC authority | closed batch | Batch reopened (if allowed) | No silent rewrite of history; allowed/authority TBC |
+| Create Live Batch | Live Batch Operation (Section 5.13) | authorized access | Draft batch created | No order/invoice/inventory change |
+| Start Live | Live Batch Operation (Section 5.13) | prepared batch | Batch active; during-live intake enabled | No inventory change |
+| Pause / Resume | Live Batch Operation (Section 5.13) | active batch | Suspends/resumes new intake | Existing records preserved; status per §22 (candidate) |
+| End Live | Live Batch Operation (Section 5.13) | active batch | Live Ended / Under Review | Does not close batch, confirm claims, or change inventory |
+| Close Batch | Live Batch Closure (Owner/Selected Admin, Section 5.13) | ended/reviewed batch | Batch closed | No auto confirm/invoice/order/stock-return/deletion (§12.57) |
+| Reopen Batch | **Owner approval** (Section 5.13) | closed batch | Batch reopened | No silent rewrite of history; Owner-approval-required, non-delegable |
 | Add / Edit Item | Live Batch Item Entry | open batch | Item added/updated | Fields per §4.4; no silent change once claims exist |
-| Withdraw Item | *TBC authority | item present | Item withdrawn; claims/evidence retained | No auto claim transfer or stock return; authority TBC |
+| Withdraw Item | Item Withdrawal (Section 5.13) | item present | Item withdrawn; claims/evidence retained | No auto claim transfer or stock return; escalation if claims exist |
 | Set / Switch / Clear Current Flex | *TBC (Live authority) | available item | Current Flex set/switched/cleared | Affects future capture only; existing claims unchanged |
 
 ### 21.4 Claim Capture and Entry Actions
@@ -7328,7 +7370,7 @@ This section stays business-focused. It defines no UI implementation, exact pixe
 | Capture Claim | Claim Capture | Current Flex set (during-live) | one Pending Claim | **No reservation**, confirm, print, invoice, order, auto-match |
 | Upload Screenshot | Claim Capture | — | Pending Claim with evidence | No OCR/auto-read |
 | Share to MineFlow (iOS) | Claim Capture | — | one Pending Claim | Pending Claim only |
-| Manual Entry (post-live) | Claim Capture* | Orders workspace | one Pending Claim (source-marked) | Not an order; **no reservation here**. *Item-creation authority TBC |
+| Manual Entry (post-live) | Claim Capture (new item = Post-Live Item Entry, Section 5.13) | Orders workspace | one Pending Claim (source-marked) | Not an order; **no reservation here** |
 | Save Pending Claim | Claim Capture | valid provisional data | Pending Claim saved | Idempotent; no duplicate on retry |
 
 ### 21.5 Claim Review and Confirmation Actions
@@ -7342,7 +7384,7 @@ This section stays business-focused. It defines no UI implementation, exact pixe
 | Reject Capture | Claim Review | Pending Claim | capture rejected (logged) | No order/inventory effect |
 | Initiate Price Override | Initiate High-Risk Action | claim in review | request → Owner Approval | **Owner-approved**; does not change price itself |
 | **Confirm Claim & Print Label** | Confirm Claim & Print Label | reviewed, ready claim | **Confirmed Claim + label job → For Invoice; quantity reserved, available qty decreases** | **No invoice/order; label job ≠ physical print; no second reservation later** |
-| Retry / Reprint Label | Confirm Claim & Print Label (reprint rules §24) | existing label job | reprint queued | No new claim/confirmation; duplicate-print warning per §24 |
+| Retry / Reprint Label | Retry / Reprint Label (Section 5.13; rules §24) | existing label job | reprint queued | No new claim/confirmation; duplicate-print warning per §24 |
 
 ### 21.6 Invoice and Customer-Message Actions
 
@@ -7352,7 +7394,7 @@ This section stays business-focused. It defines no UI implementation, exact pixe
 | Remove from Draft | Invoice Preparation | claim in unsent draft | claim returns to For Invoice | No silent customer switch |
 | Prepare / Preview / Copy Message | Invoice Preparation | draft/claims | message draft/preview/copied | **No official references pre-send; Copy ≠ Sent** |
 | **Approve & Send Invoice** | Invoice Preparation | reviewed grouped draft | **one Official Order + order no. + invoice no. + shared 3-day hold; reservation → committed, no second deduction** | **Retry must not create a second order** |
-| Mark as Sent | Invoice Preparation (send authority TBC) | invoice created | message marked sent (staff attestation) | **Does not prove delivery; Delivered/Read need integration** |
+| Mark as Sent | Message Sending (Section 5.13) | invoice created | message marked sent (staff attestation) | **Does not prove delivery; Delivered/Read need integration** |
 
 ### 21.7 Payment Actions
 
@@ -7361,7 +7403,7 @@ This section stays business-focused. It defines no UI implementation, exact pixe
 | Submit Payment Evidence | (recording authority; not verification) | Official Order | Payment Submitted / Unverified | **Recording ≠ verifying** |
 | Verify Payment Evidence | Payment Verification | unverified payment | Required Payment/Deposit Verified | **≠ Paid in Full; no auto release/forfeit/cancel; no inventory change** |
 | Reject Payment Evidence | Payment Verification | unverified payment | evidence rejected (concept; status §22) | No silent move between orders |
-| Correct Wrong-Order Payment | Payment Verification / later payment-correction authority | mis-attached payment | controlled correction, traceable | Owner-approval requirement TBC; no reversal/void invented |
+| Correct Wrong-Order Payment | Payment Correction (Section 5.13) | mis-attached payment | controlled correction, traceable | Unverified: authorized user; **verified: Owner approval**; no reversal/void invented |
 
 ### 21.8 Layaway Actions
 
@@ -7401,7 +7443,7 @@ This section stays business-focused. It defines no UI implementation, exact pixe
 | Possible Duplicate Review | Owner / Existing Record Entry-Migration | duplicate flagged | review opened | **No auto-merge; Customer Support alone cannot resolve** |
 | Import / Migrate Record | Owner / Existing Record Entry-Migration | historical data | migrated record (source-marked) | Historical values preserved; separate from live/post-live; no retroactive rules |
 | Search / Filter | per record access | — | permission-filtered results | **Visibility ≠ action authority** |
-| Export (where approved) | View Reports / **export authority TBC** | — | export of permitted data | **No export authority invented**; scope §25 |
+| Export (where approved) | **Export Data / Reports** (Section 5.13) | — | export of permitted data | Limited to records visible to the user; formats §25 (TBC) |
 
 ### 21.12 Prohibited Side Effects (Global)
 
@@ -7410,7 +7452,7 @@ Across all actions, the following must **never** occur as an automatic side effe
 ### 21.13 Open / To-Be-Confirmed Items
 
 - exact UI labels for all actions
-- batch-lifecycle, Current-Flex, item-withdrawal, post-live item-creation, message-send, and export authorities (Section 4–5 reconciliation)
+- ~~batch-lifecycle, Current-Flex, item-withdrawal, post-live item-creation, message-send, and export authorities~~ **RESOLVED in Section 5.13** (exact UI labels remain TBC)
 - confirmation-dialog specifics
 - reprint/duplicate-print rules (Section 24)
 - wrong-order payment-correction Owner-approval requirement
@@ -7463,15 +7505,15 @@ Reflecting the client-approved inventory decision:
 
 | Status | Meaning / Entry | Allowed next | Permission / Owner |
 |---|---|---|---|
-| Draft | Batch created, not live | Active; Closed | create-batch authority *(TBC)* |
-| Active (Live) | Live intake enabled | Paused; Live Ended | start authority *(TBC)* |
-| Paused *(candidate)* | Intake temporarily suspended | Active; Live Ended | pause authority *(TBC)* |
-| Live Ended / Under Review | Intake stopped, review continues | Closed | end authority *(TBC)* |
-| Closed | Active batch work complete | Reopened *(if allowed)* | close authority *(TBC)* |
-| Reopened *(candidate)* | Closed batch reopened for correction | Live Ended; Closed | reopen authority *(TBC)* |
+| Draft | Batch created, not live | Active; Closed | Live Batch Operation (Section 5.13) |
+| Active (Live) | Live intake enabled | Paused; Live Ended | Live Batch Operation |
+| Paused *(candidate)* | Intake temporarily suspended | Active; Live Ended | Live Batch Operation |
+| Live Ended / Under Review | Intake stopped, review continues | Closed | Live Batch Operation |
+| Closed | Active batch work complete | Reopened *(if allowed)* | Live Batch Closure (Owner/Selected Admin) |
+| Reopened *(candidate)* | Closed batch reopened for correction | Live Ended; Closed | **Owner approval** (reopen) |
 
 - **Prohibited:** Closing does not auto-confirm claims, invoice, create orders, or change inventory (Section 12.57). **Historical View is a view, not a status.**
-- **Recovery:** accidental end/close is corrected via reopen (authority TBC); history is not rewritten.
+- **Recovery:** accidental end/close is corrected via reopen (**Owner approval**, Section 5.13); history is not rewritten.
 
 ### 22.5 Item / Inventory Availability Status Model
 
@@ -7764,7 +7806,7 @@ Filters may include: **status** (per Section 22), **date/time ranges**, **source
 
 ### 23.18 Export Relationship
 
-- Search/filter results **may relate to export**, but **no export authority is invented here**; export scope and permission belong to **Section 25 (Reporting)** and remain **To be confirmed**.
+- Search/filter results **may relate to export**, which uses the approved **Export Data / Reports** permission (Section 5.13 item 8), limited to records visible to the user; export **scope and formats** belong to **Section 25** and remain **To be confirmed**.
 
 ### 23.19 Cross-Module Lookup
 
@@ -7850,7 +7892,7 @@ Statuses follow Section 22.7 (business concepts; final vocabulary partly To be c
 - A **reprint** produces another physical label for an existing Confirmed Claim (e.g., physical-label loss or damage, rule 8).
 - **A reprint must not create a duplicate claim or another inventory deduction** (rule 6).
 - **Original vs reprint is distinguished** and **traceable** (rule 9); **reprint-reason requirement remains To be confirmed.**
-- **Reprint authority remains To be confirmed** (Section 4–5 reconciliation).
+- **Reprint authority is the approved Retry / Reprint Label permission** (Section 5.13 item 7); **Void / Cancel Label Job** is a stronger Owner/authorized-Selected-Admin permission.
 
 ### 24.7 Printer-Unavailable and Hardware-Issue Handling
 
@@ -7925,7 +7967,7 @@ Statuses follow Section 22.7 (business concepts; final vocabulary partly To be c
 - **Retry works on the same job; reprint never duplicates a claim or deducts inventory and stays traceable; failed jobs are never silently deleted.**
 - **Manual workflow remains available when the printer is unavailable; printer availability grants no permission.**
 - **The approved target is Xprinter XP-236B, 40 × 30 mm, treated as unverified until tested; hardware behavior belongs to Section 27.**
-- **Label fields, reprint authority, status names, and duplicate-print safeguards remain To be confirmed.**
+- **Reprint uses the approved Retry / Reprint Label permission and Void / Cancel Label Job is Owner/authorized-Selected-Admin (Section 5.13 item 7); label fields, status names, and duplicate-print safeguards remain To be confirmed.**
 
 ---
 
@@ -8009,7 +8051,7 @@ This section stays business-focused. It defines no accounting, profit, revenue-r
 
 ### 25.11 Export Boundary
 
-- **Export may relate to reports**, but **no export authority, format, or scope is invented here** — **export permission and formats remain To be confirmed.**
+- **Export uses the approved Export Data / Reports permission** (Section 5.13 item 8), limited to records visible to the user; **exact formats and scope remain To be confirmed.**
 
 ### 25.12 Sensitive Data, Stale Data, Errors
 
@@ -8056,7 +8098,7 @@ This section stays business-focused. It defines no accounting, profit, revenue-r
 - **Verified ≠ Paid in Full; Sent ≠ Delivered/Read; Printed ≠ Fulfilled; Returned-to-Stock Review ≠ available stock.**
 - **Source markers and true staff attribution are reportable; report visibility grants no action authority.**
 - **No profit, revenue-recognition, financial, commission, ROI, forecasting, or AI logic is invented.**
-- **Sales/Paid-in-Full/Outstanding-Balance definitions, KPIs, export authority/formats, and staff-performance visibility remain To be confirmed.**
+- **Export uses the approved Export Data / Reports permission (Section 5.13); Sales/Paid-in-Full/Outstanding-Balance definitions, KPIs, export formats, and staff-performance visibility remain To be confirmed.**
 
 ---
 
@@ -8399,7 +8441,7 @@ This section stays at the logical level. It defines no final SQL, vendor-specifi
 ### 28.6 Users, Roles, Permissions, Shop/Page
 
 - Model **users**, **roles** (Owner / Selected Admin / Staff), **permissions** (the Section 5.6 toggles), **user-permission assignments**, and **shop/page access**.
-- **No new role or permission is introduced here.** The **exact role/permission schema — including the recorded Existing Record Entry / Migration permission and the batch-lifecycle/Current-Flex/item-withdrawal/message-send/reprint/export authorities — remains To be confirmed pending the Section 4–5 reconciliation.**
+- **No new role or permission is introduced here.** The **approved permission set — including Existing Record Entry / Migration, Live Batch Operation/Closure, Current Flex Item Control, Item Withdrawal, Post-Live Item Entry, Message Preparation/Sending, Retry-Reprint Label, Void/Cancel Label Job, Export Data/Reports, and Payment Correction — is defined in Section 5.13**; only the **final database schema shape** for roles/permissions remains To be confirmed pending implementation.
 - **Assignment ≠ permission** (Section 11.6) is enforced by keeping assignment and permission as separate relations.
 
 ### 28.7 Customers, Aliases, Duplicate Links
@@ -8639,7 +8681,7 @@ This section stays at the logical/contract level. It defines no final URL paths,
 
 ### 29.17 Reporting APIs
 
-- Reporting actions are **read-only, permission-scoped, non-additive** (Section 25) and **never alter records**; export scope/authority remains To be confirmed.
+- Reporting actions are **read-only, permission-scoped, non-additive** (Section 25) and **never alter records**; export uses the approved **Export Data / Reports** permission (Section 5.13 item 8), limited to records visible to the user; export **formats** remain To be confirmed.
 
 ### 29.18 Sensitive-Data Minimization and Observability
 
@@ -8673,8 +8715,8 @@ Common to all: **authorization checked server-side; attributable; idempotent whe
 | Request / Approve Official-Order Cancellation | Initiate High-Risk Action / **Owner** | order exists; re-validated | request → decision | **Customer Support cannot; no auto inventory return; item → Returned-to-Stock Review** |
 | Send to Returned-to-Stock Review | Inventory Monitoring | freed item | review record created | **No automatic available-stock restore** |
 | Approve/Reject Stock Return | Inventory Monitoring / Miner-Allocation | reviewed item | **available qty restored** or held | **No auto transfer/allocation; unique→2nd miner, multi→waitlist as review** |
-| Retry / Reprint | Confirm Claim & Print Label (reprint authority TBC) | existing job | reprint queued | **No duplicate claim/order/payment/inventory deduction** |
-| Send / Retry Customer Message | Invoice Preparation (send authority TBC) | invoice exists | message attempt recorded | **Copy≠Sent; failure ≠ second order; retry no duplicate order/claim; manual fallback stays** |
+| Retry / Reprint | Retry / Reprint Label (Section 5.13) | existing job | reprint queued | **No duplicate claim/order/payment/inventory deduction** |
+| Send / Retry Customer Message | Message Sending (Section 5.13) | invoice exists | message attempt recorded | **Copy≠Sent; failure ≠ second order; retry no duplicate order/claim; manual fallback stays** |
 | Import / Migrate Record | Owner / Existing Record Entry-Migration | historical data | source-marked migrated record | **No fake claim; no auto-merge/reassign; historical values preserved** |
 
 ### 29.22 Edge Cases
