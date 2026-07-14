@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–35 APPROVED; Section 36 (Version Roadmap) pending
+> **Status:** COMPLETE — Sections 1–36 approved; final full-document audit pending.
 
 ---
 
@@ -9717,3 +9717,243 @@ This section stays at the plan level. It hard-codes no vendor prices, plan detai
 ---
 
 *End of Section 35 — Deployment Plan. **APPROVED.** Section 36 — Version Roadmap follows.*
+
+---
+
+## Section 36 — Version Roadmap
+
+### 36.1 Purpose of the Version Roadmap Section
+
+This section owns the **staged product roadmap, version boundaries, deferred capabilities, validation gates, and the distinction between V1 requirements and future SaaS expansion** for MineFlow / A.V. Jewelry Operations System. It closes the Development Bible with a consolidated open-items register.
+
+This section introduces no new roles, permissions, Owner-only approvals, customer-facing access, automatic actions, unsupported integrations, production guarantees, or accounting behavior beyond approved Sections 1–35, and it does not silently resolve any To-be-confirmed item.
+
+### 36.2 Product Naming
+
+- **Client-facing system:** A.V. Jewelry Operations System.
+- **Internal codename:** MineFlow.
+- **Reserved future SaaS name:** FlowDesk (not used in V1).
+- **Footer:** Powered by King GenZ Digital.
+
+### 36.3 Roadmap Governance
+
+- The roadmap is governed by the approved Bible; **every version requires testing and release criteria** (principle 11) and **deferred features remain explicit** (principle 13).
+- **Version numbers reflect meaningful, tested releases** (principle 15); **technical debt and known limitations are recorded** (principle 14).
+
+### 36.4 Roadmap Phases
+
+**Documentation Complete → Prototype Validation → V1 Core Build → Internal QA → Hardware/Integration Validation → Staff UAT → Controlled Pilot → V1 Production → V1.1 Stabilization → V1.x Enhancements → Future Multi-Page / Multi-Tenant → Future SaaS / FlowDesk.**
+
+### 36.5 Hard Roadmap Principles
+
+1. **V1 must work without Pancake.**
+2. **V1 must work without direct Meta sending.**
+3. **Manual claim entry remains available.**
+4. **Manual message copy/send remains available.**
+5. **No future integration may bypass Claim Review, Official Order, payment, inventory, or Owner-approval rules.**
+6. **Hardware-dependent features are not committed until tested.**
+7. **Future SaaS work must not compromise the first client's operational stability.**
+8. **Multi-tenant architecture must not be claimed as completed in V1.**
+9. **Customer login is excluded from V1.**
+10. **Native app-store distribution is excluded unless later approved.**
+11. **Every version requires testing and release criteria.**
+12. **V1 production follows pilot approval.**
+13. **Deferred features must remain explicit.**
+14. **Technical debt and known limitations must be recorded.**
+15. **Version numbers must reflect meaningful tested releases.**
+
+### 36.6 V1 Core Scope
+
+Internal staff authentication · granular permissions · Dashboard · Live Batch · Current Flex Item · manual/live claim intake · Pending Claims · Claim Review · Confirm Claim & Print Label · Print Queue · For Invoice · Invoice Draft · Official Orders · manual customer-message preparation/copy/send recording · payment evidence and verification · layaway · shipping/pickup · Owner Approval Center · inventory reservation and Returned-to-Stock Review · customers · search/filter · audit logs · migration tools · notifications/reminders at approved baseline · reports at approved baseline · mobile-first web application.
+
+### 36.7 Conditional / Validation-Dependent Capabilities
+
+Xprinter XP-236B Bluetooth printing · Android floating Capture Claim · iOS Share to MineFlow · Pancake integration · Meta direct capabilities · direct message sending · Delivered/Read confirmation · offline synchronization · PWA installation behavior · advanced notifications · automated report exports. **None of these block V1 launch; each is committed only after its validation gate (Sections 27, 13, 14, 26, 34).**
+
+### 36.8 Exclusions (V1)
+
+Customer login/portal (excluded unless separately approved) · multi-tenant SaaS · native mobile apps / app-store distribution (unless later approved) · advanced analytics · accounting/revenue-recognition logic · automatic business actions beyond approved controls.
+
+### 36.9 Future Features (Illustrative, Not Committed)
+
+Multiple Facebook Pages · multi-tenant SaaS · subscription plans · expanded staff limits · advanced analytics · customer-facing portal (only if separately approved) · native mobile apps (only if separately justified) · additional printers · additional messaging channels · further integrations · automation that does not violate approved controls.
+
+### 36.10 Validation Gates and Release Criteria
+
+- **V1 Core Build → Internal QA** requires passing static/unit/integration/permission/E2E tests (Section 34).
+- **→ Hardware/Integration Validation** requires real printer and real device testing (Sections 27, 34).
+- **→ Staff UAT → Controlled Pilot** requires Pilot-Ready status (Section 34.6).
+- **→ V1 Production** requires Production-Ready status, a successful pilot, and sign-off (Sections 34–35).
+
+### 36.11 V1.1 Stabilization and Enhancement Backlog
+
+- **V1.1 Stabilization** addresses defects, recorded technical debt, and pilot/production feedback.
+- **V1.x Enhancements** deliver validated conditional capabilities (printer, capture, direct send, exports) as their gates pass.
+
+### 36.12 Domain Roadmaps
+
+- **Integration roadmap:** Pancake/Meta only after API/access/plan validation (Section 14).
+- **Printer roadmap:** XP-236B pilot → rollout after physical testing (Section 27).
+- **Mobile roadmap:** validated Android/iOS behavior; PWA before any native consideration (Section 13, 33).
+- **Reporting roadmap:** compact V1 reports → richer analytics/exports post-V1 (Section 25).
+- **Notification roadmap:** staff-triggered baseline → validated delivery/read and channels (Section 26).
+- **Security roadmap:** finalize auth/MFA/RLS/secrets before pilot; harden thereafter (Section 30).
+- **Scaling / multi-page / SaaS roadmaps:** deferred; **not claimed complete in V1** (principles 7–8).
+- **Data-migration roadmap:** manual entry in V1 → possible CSV/bulk import later (Section 6.20).
+- **Support/handover roadmap:** defined support ownership and credential handover before production (Section 35.15).
+
+### 36.13 Version Approval and Roadmap-Change Process
+
+- **Version approval** requires meeting that version's release criteria (Section 34) and Owner sign-off.
+- **Roadmap changes** are recorded; scope changes that affect money, inventory, security, or Official Order behavior require explicit Owner decision and Bible updates. **Deferred features remain explicit; nothing is silently promoted.**
+
+### 36.14 Edge Cases
+
+- pressure to launch before pilot (blocked) · committing a hardware feature before testing (blocked) · claiming multi-tenant done in V1 (blocked) · introducing customer login (blocked) · integration bypassing the lifecycle (blocked) · undocumented deferral (blocked) · version bump without a tested release (blocked).
+
+### 36.15 Section Boundaries
+
+- **Section 36** owns roadmap/versioning and the consolidated register.
+- **Section 34** testing gates. **Section 35** deployment. **Sections 1–33** the requirements being staged.
+
+### 36.16 Consolidated Open-Items Register (Sections 1–36)
+
+This register consolidates unresolved items **without resolving them** and **without inventing new requirements**. **Owner** = decision owner (Client/Owner, Developer, or Vendor). **Timing** = when it must be settled. **Blocks** = V1 build / pilot / production / non-blocking.
+
+**A. Client business decisions**
+| Item | Origin | Why open | Owner | Timing | Blocks |
+|---|---|---|---|---|---|
+| Straight-order full-payment deadline (in 3-day hold) | 4.18, 6.22 | client not yet decided | Client | before pilot | pilot |
+| Same-day invoicing conditions | 4.18 | not yet approved | Client | post-V1 | non-blocking |
+| Financer fields/workflow | 4.14.7, 4.18 | detail not captured | Client | before layaway use | pilot |
+| Unsold-item disposition | 12.53, 19.14 | policy undecided | Client | before production | production |
+| Forfeited-item disposition | 17.17, 19.17 | policy undecided | Client | before production | production |
+
+**B. Permissions / authority details**
+| Item | Origin | Why open | Owner | Timing | Blocks |
+|---|---|---|---|---|---|
+| Selected-admin roster & per-account toggles | 5.12, 4.18 | staff assignment pending | Owner | before V1 build | V1 build |
+| Exact Owner approval mechanism (in-system vs verbal-logged) | 4.18, 5.12 | not chosen | Owner | before pilot | pilot |
+| Initiate-High-Risk granularity | 5.12 | may split later | Owner | post-V1 | non-blocking |
+| Claim withdraw/switch authority | 12.32 | not among reconciled 12 | Client/Owner | before V1 build | V1 build |
+| Waitlist-selection / freed-unit / RTS-outcome authority | 19.9–19.16 | review authority undecided | Client | before pilot | pilot |
+
+**C. Statuses / terminology**
+| Item | Origin | Why open | Owner | Timing | Blocks |
+|---|---|---|---|---|---|
+| Final Live Batch status names | 12.74, 22.4 | candidates only | Developer/Client | before V1 build | non-blocking |
+| Paid in Full status/definition | 16, 22 | not defined | Client | before pilot | pilot |
+| Outstanding Balance definition | 7.18, 25 | not defined | Client | before pilot | pilot |
+| Pause/Resume status | 12.21 | candidate | Developer | before V1 build | non-blocking |
+
+**D. Payment / layaway / accounting**
+| Item | Origin | Why open | Owner | Timing | Blocks |
+|---|---|---|---|---|---|
+| Accepted payment methods | 2.8, 16 | not finalized | Client | before pilot | pilot |
+| Partial/over/underpayment behavior | 16.8 | undecided | Client | before pilot | pilot |
+| Layaway fee application point & rounding | 6.10, 17.6 | not specified | Client | before layaway use | pilot |
+| Refund/reversal/void/accounting for corrected payments | 16, 4.18 | deferred | Client | post-V1 | non-blocking |
+
+**E. Inventory**
+| Item | Origin | Why open | Owner | Timing | Blocks |
+|---|---|---|---|---|---|
+| 2nd-miner priority window | 6.22, 19.7 | timing undecided | Client | before pilot | pilot |
+| Returned-to-Stock Review outcomes/authority | 19.16 | undecided | Client | before pilot | pilot |
+
+**F. Fulfillment**
+| Item | Origin | Why open | Owner | Timing | Blocks |
+|---|---|---|---|---|---|
+| Required shipping/pickup fields, courier list, COD rules | 18.25 | not captured | Client | before pilot | pilot |
+| Failed-delivery / unclaimed-pickup / re-delivery / return-to-sender | 18.13 | workflow undecided | Client | before production | production |
+| Fulfillment completion definition | 18.25 | not defined | Client | before pilot | non-blocking |
+| Wrong-fulfillment correction authority | 18.14 | undecided | Owner | before pilot | non-blocking |
+
+**G. Messaging**
+| Item | Origin | Why open | Owner | Timing | Blocks |
+|---|---|---|---|---|---|
+| Message template & language | 15, 26 | not written | Client | before pilot | pilot |
+| Approved sending channels | 26 | not chosen | Client | before pilot | pilot |
+| Sent/Delivered/Read model & Mark-as-Sent evidence | 26 | integration-dependent | Client/Vendor | before production | non-blocking |
+| Duplicate-send safeguards & resend authority | 26 | design pending | Developer | before pilot | non-blocking |
+| Customer opt-in/consent & quiet hours | 26 | policy pending | Client | before production | non-blocking |
+
+**H. Reporting / export**
+| Item | Origin | Why open | Owner | Timing | Blocks |
+|---|---|---|---|---|---|
+| Official sales / revenue-recognition definition | 25 | not defined | Client | before production | non-blocking |
+| Dashboard KPIs, export formats, date basis, source categories, retention | 25 | not finalized | Client | before production | non-blocking |
+| Staff-performance visibility | 25 | policy pending | Owner | post-V1 | non-blocking |
+
+**I. Authentication / security**
+| Item | Origin | Why open | Owner | Timing | Blocks |
+|---|---|---|---|---|---|
+| Auth method, MFA, password policy, session/concurrent limits | 30.23 | not chosen | Owner/Developer | before pilot | pilot |
+| Recovery process, Owner emergency access, IP/device restrictions | 30.23 | not defined | Owner | before pilot | pilot |
+| Supabase RLS & secrets-management implementation | 30.23 | implementation pending | Developer | before pilot | pilot |
+| Privacy/legal requirements | 30.23 | not assessed | Client | before production | production |
+
+**J. Audit / retention**
+| Item | Origin | Why open | Owner | Timing | Blocks |
+|---|---|---|---|---|---|
+| Audit-event taxonomy, snapshot depth, reason-required actions | 31.30 | design pending | Developer | before V1 build | non-blocking |
+| Audit/security retention, full-audit viewing, tamper-evidence, time-zone standard | 31.30 | policy/impl pending | Owner/Developer | before production | non-blocking |
+
+**K. Error / recovery**
+| Item | Origin | Why open | Owner | Timing | Blocks |
+|---|---|---|---|---|---|
+| Retry limits, timeouts, error codes, recovery-queue names | 32.22 | design pending | Developer | before pilot | non-blocking |
+| Escalation recipients, severity, RTO/RPO, offline sync, DR, vendor-outage procedures | 32.22 | ops pending | Owner/Developer | before production | production |
+
+**L. Database / API**
+| Item | Origin | Why open | Owner | Timing | Blocks |
+|---|---|---|---|---|---|
+| Reference-number formats, reservation-record design, snapshots, PIF/OB modeling | 28.27 | design pending | Developer | before V1 build | non-blocking |
+| REST/RPC balance, idempotency-key & locking method, pagination/upload limits, indexing, background jobs | 29.23 | design pending | Developer | before V1 build | non-blocking |
+
+**M. Printer / hardware**
+| Item | Origin | Why open | Owner | Timing | Blocks |
+|---|---|---|---|---|---|
+| XP-236B protocol/SDK/pairing, print-success confirmation, duplicate-print safeguards, calibration, label fields | 24.17, 27.18 | untested hardware | Developer/Vendor | before printer readiness | printer feature (not V1 launch) |
+| One vs multiple printers, device ownership, fallback printer, rollout quantity | 27.18 | not decided | Owner | before printer rollout | non-blocking |
+
+**N. Pancake / Meta**
+| Item | Origin | Why open | Owner | Timing | Blocks |
+|---|---|---|---|---|---|
+| API availability, features, credentials/approval, webhook/polling, fields/identifiers, send, delivery/read, rate limits, pricing/plan | 14.28 | unverified vendor | Vendor/Client | before integration readiness | integration feature (not V1 launch) |
+
+**O. Mobile / iOS / Android**
+| Item | Origin | Why open | Owner | Timing | Blocks |
+|---|---|---|---|---|---|
+| Android floating capture feasibility; iOS share-extension implementation | 13.29 | untested | Developer | before those features | non-blocking |
+| Supported device/OS matrix, PWA & offline behavior | 13.29, 33 | not validated | Developer | before production | non-blocking |
+
+**P. Testing**
+| Item | Origin | Why open | Owner | Timing | Blocks |
+|---|---|---|---|---|---|
+| Test tools, automation, coverage, device/printer matrix, UAT participants, pilot duration/volume, severity defs, sign-off authority | 34.9 | process not set | Owner/Developer | before pilot | pilot |
+
+**Q. Deployment / subscriptions**
+| Item | Origin | Why open | Owner | Timing | Blocks |
+|---|---|---|---|---|---|
+| Final domain, registrar, Vercel/Supabase plans, regions, staging structure | 35.18 | not chosen | Owner | before production (some before pilot) | production |
+| Backup frequency/restore, monitoring, alerts, release cadence, support owner, sign-off authority, rollback tooling, credential owner | 35.18 | ops pending | Owner | before production | production |
+| Pilot date & duration | 35.18 | not scheduled | Owner | before pilot | pilot |
+
+**R. Roadmap / future features**
+| Item | Origin | Why open | Owner | Timing | Blocks |
+|---|---|---|---|---|---|
+| Multi-page/multi-tenant, SaaS plans, customer portal, native apps, FlowDesk scope | 36 | future scope | Client | future | non-blocking |
+
+> **Register note:** Items are consolidated as-is; **none are resolved here and no new requirement was created to fill the register.** "Blocks V1 build" items should be settled before core coding of the affected area; "blocks pilot/production" items before those gates.
+
+### 36.17 Section 36 Summary
+
+- The roadmap stages MineFlow from **Documentation Complete through V1 Production to future Multi-Page and SaaS (FlowDesk)**, with **explicit validation gates** and **deferred features kept explicit**.
+- **V1 works without Pancake or direct Meta sending; manual claim entry and manual message copy/send always remain; no future integration may bypass the approved lifecycle.**
+- **Hardware- and integration-dependent features are committed only after testing; multi-tenant is not claimed complete in V1; customer login and native app-store distribution are excluded from V1.**
+- **The consolidated open-items register** groups every unresolved item across Sections 1–36 by category with origin, reason, decision owner, timing, and blocking level — **resolving none and inventing none.**
+- **Every version requires tested release criteria; V1 production follows pilot approval; technical debt and limitations are recorded.**
+
+---
+
+*End of Section 36 — Version Roadmap. **APPROVED.** End of the Development Bible (Sections 1–36).*
