@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–12 APPROVED; Section 13 (Facebook Live Capture Workflow) pending
+> **Status:** In Progress — Sections 1–13 APPROVED; Section 14 (Pancake Integration) pending
 
 ---
 
@@ -5319,3 +5319,368 @@ Unauthorized actions may be:
 ---
 
 *End of Section 12 — Live Selling Workflow. **APPROVED.** Section 13 — Facebook Live Capture Workflow follows.*
+
+---
+
+## Section 13 — Facebook Live Capture Workflow
+
+### 13.1 Purpose of the Facebook Live Capture Workflow Section
+
+This section defines the detailed **capture-method behavior** by which authorized staff turn Facebook Live-related activity into a **Pending Claim** in Version 1 (MineFlow). Where Section 12 owns the broader Live Selling business workflow, **Section 13 owns *how* a claim is captured** — the manual, screenshot, iOS, and planned Android methods, the provisional information each produces, and the handoff to Claim Review.
+
+**Governing scope statements:**
+
+- **Capture creates a Pending Claim only** — nothing is confirmed, printed, invoiced, or ordered here.
+- **Capture never reads Facebook, screenshots, or images automatically** — a human staff member records the provisional information.
+- **Item details come from the Current Flex Item** (Section 12.15) for during-live capture, not from the screenshot.
+- **Capture feeds Claim Review** (Section 6.4, Section 9.7), which resolves customer, item, miner position, quantity, and readiness for confirmation.
+
+This section stays business-focused and staff-facing. It does not define database schema, APIs, code, OCR, automatic screenshot or comment reading, actual camera or file implementation, actual Facebook/Meta or Pancake implementation, printer behavior, exact button behavior, final status-transition logic, or technical retry/locking. It introduces no new permissions, statuses, integrations, automatic behavior, or technical commitments beyond approved Sections 1–12, and it does not silently resolve any To-be-confirmed item.
+
+### 13.2 Governing Capture Rules
+
+1. **Capture/manual entry creates a Pending Claim only.**
+2. **No OCR.**
+3. **No automatic screenshot reading.**
+4. **No automatic Facebook comment reading.**
+5. **No automatic buyer identification.**
+6. **No automatic customer match.**
+7. **No automatic miner-position detection.**
+8. **No automatic stock allocation.**
+9. **No automatic claim confirmation.**
+10. **No automatic physical printing.**
+11. **No invoice is created by capture.**
+12. **No Official Order is created by capture.**
+13. **No direct Facebook/Meta capability may be promised.**
+14. **Android floating capture remains subject to technical validation.**
+15. **iOS Share creates a Pending Claim only.**
+16. **Changing the Current Flex Item does not change an existing claim** (Section 11.12, Section 12.17).
+17. **Duplicate detection may warn but must not silently delete or merge** (Section 12.30).
+18. **Manual entry must remain available where authorized.**
+19. **Assignment does not create permission; visibility does not equal action authority** (Section 11.6, Section 11.19).
+
+### 13.3 Relationship to Section 12 and Claim Review
+
+- **Section 12** establishes *that* a claim is captured during-live or entered post-live and *where* those paths sit in the operation.
+- **Section 13** establishes *how* the capture is performed and *what provisional record* it produces.
+- All capture methods converge on the same output — a **Pending Claim** — and the same next step — **Claim Review** (Section 6.4).
+
+```
+Capture method (manual / screenshot / iOS Share / planned Android)
+→ provisional Pending Claim
+→ Claim Review
+```
+
+**Post-live Manual Entry** (Section 12.35–12.43) is also a capture method in the broad sense; its Orders-workspace entry point and item-authority questions remain owned by Section 12, while the field-level capture behavior described here applies consistently.
+
+### 13.4 Capture Methods Overview
+
+Version 1 considers these capture methods:
+
+- **Manual claim entry** — staff type the provisional details directly.
+- **Screenshot upload** — staff attach a saved image as evidence and enter the details.
+- **iOS screenshot → Share to MineFlow** — staff share a screenshot into the app, which creates a Pending Claim.
+- **Planned Android floating Capture Claim** — a planned on-screen companion entry, **subject to technical validation**.
+
+**Rules:**
+- **All methods produce a Pending Claim only.**
+- **Manual entry must always remain available** as the baseline fallback.
+- **Method-specific device and platform feasibility remains To be confirmed** (see 13.29).
+
+### 13.5 Manual Claim Entry
+
+Staff enter the provisional claim details directly, without relying on any image or integration.
+
+- Serves as the **baseline and universal fallback** for every capture situation.
+- Requires the applicable **Claim Capture** authority (Section 5.6) and shop/page access.
+- **Creates a Pending Claim only.**
+- Does **not** confirm, print, invoice, or create an Official Order.
+
+### 13.6 Screenshot Upload
+
+Staff attach a saved screenshot image as **supporting evidence** and enter the provisional details.
+
+- The screenshot is **evidence only** — it is **not read automatically** (no OCR).
+- Staff record the buyer name, comment/reference, and other provisional details themselves.
+- **Item details come from the Current Flex Item** for during-live capture.
+- **Creates a Pending Claim only.**
+- **Exact file types, size, and count limits remain To be confirmed** (see 13.29).
+
+### 13.7 iOS Screenshot → Share to MineFlow
+
+On iOS, staff take a device screenshot and **Share it to MineFlow**, which starts a Pending Claim with the image attached as evidence.
+
+- **iOS Share creates a Pending Claim only.**
+- **No automatic reading** of the shared image.
+- Staff complete or correct the provisional details.
+- The **exact share-extension or alternative implementation remains To be confirmed** (see 13.29).
+
+### 13.8 Planned Android Floating Capture Claim
+
+Android is planned to offer a **floating Capture Claim** companion that lets staff start a Pending Claim quickly while the Live is on screen.
+
+- **Planned direction only — subject to technical validation.**
+- If unavailable, staff use **screenshot upload or manual entry**.
+- **Creates a Pending Claim only** if implemented.
+- **Android technical feasibility remains To be confirmed** (see 13.29).
+
+### 13.9 Current Flex Item Dependency (During-Live Capture)
+
+For **during-live capture**, the **Current Flex Item** provides the proposed item association (Section 12.15).
+
+- Staff **verify the Current Flex Item before capturing** a claim.
+- The item details on the claim come from the **Current Flex Item record**, not from the screenshot or comment.
+- **Switching the Current Flex Item affects only future captures**; existing Pending Claims keep their stored item association (Section 12.17).
+
+### 13.10 No-Current-Flex Blocked State
+
+- When **no Current Flex Item is set**, the **during-live Current-Flex capture action is unavailable or blocked** (Section 12.18).
+- Staff may **set a Current Flex Item** or use **another authorized intake path** (including post-live Manual Entry, which is independent of the Current Flex Item).
+- **Exact UI treatment belongs to Sections 20 and 21.**
+
+### 13.11 Provisional Buyer Information
+
+Capture may collect **provisional** buyer information:
+
+- Facebook name
+- entered customer name
+- customer message/reference where applicable
+
+**Rules:**
+- Information remains **provisional** until Claim Review.
+- **No automatic buyer identification or customer match** (Section 10.2, Section 10.8).
+- **A possible-duplicate warning may apply; no automatic merge.**
+- **Claim Review owns final customer association** (Section 10.9).
+
+### 13.12 Provisional Comment / Reference
+
+Capture may record the **mine comment or reference** as provisional text/evidence.
+
+- The comment/reference is **entered or attached by staff**, not read automatically.
+- It supports later review but **does not confirm the claim**.
+
+### 13.13 Claim Position for Review
+
+- The **miner/claim position is entered or suggested for review** (Section 12.24).
+- It is **not automatically detected**.
+- **Staff review the evidence; final miner position belongs to Claim Review.**
+- **Ties or unclear order require review; no universal tie-breaker is introduced.**
+
+### 13.14 Timestamp and Screenshot Evidence
+
+- Capture may record a **captured or entered date/time** and attach **screenshot evidence**.
+- Timestamp and screenshot are **provisional evidence**, not an authoritative ordering mechanism.
+- **Screenshots are stored as evidence and never read automatically.**
+
+### 13.15 Take Photo and Upload Photo
+
+Where applicable, capture supports:
+
+- **Take Photo** using the device camera
+- **Upload Photo** from the device or gallery
+
+**Rules:**
+- A photo may serve as **item photo** or **claim/message evidence**; the two purposes remain distinguished (Section 12.42).
+- **No OCR or automatic reading.**
+- **Taking or uploading a photo does not confirm the claim, identify the customer, or create an invoice or Official Order.**
+- **Actual camera/file implementation belongs to later technical sections.**
+
+### 13.16 Preview, Replace, Remove-Before-Save
+
+Before saving a Pending Claim, staff may:
+
+- **Preview** the selected image;
+- **Replace** it;
+- **Remove** it before saving;
+- attach supporting evidence where permitted.
+
+**Exact number, size, and file-type limits remain To be confirmed** (see 13.29).
+
+### 13.17 Pending Claim Creation (Capture Output)
+
+A successful capture creates:
+
+- one **Pending Claim**
+- provisional customer information
+- proposed item association (from the Current Flex Item for during-live capture)
+- evidence (screenshot/photo where attached)
+- captured/entered date and time
+- **source marker** (Section 12.26)
+- staff attribution
+
+It **does not** create:
+
+- Confirmed Claim
+- physical print
+- invoice
+- Official Order
+- stock allocation
+- transfer
+- customer profile match
+- final miner position
+
+### 13.18 Duplicate-Entry Risks
+
+Capture must surface **warnings or review prompts** for duplicate risks, including:
+
+- the same screenshot attached twice;
+- the same buyer/comment captured more than once;
+- the same buyer claiming the same unique item repeatedly;
+- a duplicate save after a network retry;
+- a claim already confirmed elsewhere;
+- a reused comment reference;
+- similar Facebook names.
+
+**Rules:**
+- **Warning/review only.**
+- **No automatic deletion or merge.**
+- **The exact duplicate-detection method remains To be confirmed** (see 13.29).
+
+### 13.19 Multiple Staff Capturing the Same Comment
+
+When two staff capture the same live comment:
+
+- both captures may create **separate Pending Claims**;
+- the situation is surfaced for **staff review**, not auto-resolved;
+- **no automatic deletion or merge occurs**;
+- **Claim Review reconciles** the duplicate.
+
+**Concurrency safeguards at the technical level belong to Sections 28–32** (Section 12.31).
+
+### 13.20 Failed Upload / Save Behavior
+
+When an upload or save fails:
+
+- **no failed action silently creates a duplicate record**;
+- **unresolved failures remain visible** to staff;
+- staff may **retry or fall back to manual entry**;
+- **exact technical retry/recovery belongs to Section 32.**
+
+### 13.21 Manual Fallback
+
+- **Manual claim entry always remains available** where authorized.
+- If screenshot, iOS Share, Android capture, or any integration is unavailable, **staff can still create a Pending Claim manually**.
+- The system **remains usable without any automatic capture method**.
+
+### 13.22 Capture Permission Boundaries
+
+- **Claim Capture** (Section 5.6) is the primary authority for creating a Pending Claim.
+- **Claim Review** remains required and separate for review and correction.
+- **Confirm Claim & Print Label** remains a separate permission.
+- **Photo/evidence attachment authority and post-live/Orders manual-entry access require Section 4–5 reconciliation** (Section 12.43).
+- **No new permission is silently added.**
+
+### 13.23 Staff Attribution
+
+Capture records who performed the action, for example:
+
+- claim captured/entered by
+- evidence attached by
+- note added by
+
+**Rules:**
+- **Attribution belongs to the action, not the role title** (Section 11.43).
+- **Reassignment does not erase attribution.**
+- **Detailed audit history belongs to Section 31.**
+
+### 13.24 Privacy and Evidence Visibility (Business Level)
+
+At the business level:
+
+- captured **screenshots and photos are treated as customer/transaction evidence**;
+- **evidence visibility follows record access** — a user sees capture evidence only for records within their permission and shop/page access (Section 11.6, Section 11.39);
+- evidence is **retained with its claim/order** for traceability;
+- **exact retention periods, privacy/consent requirements, and data-handling rules remain To be confirmed** and are owned by later security/audit sections (Sections 30–31).
+
+### 13.25 Handoff to Claim Review
+
+Every captured Pending Claim hands off to **Claim Review** (Section 6.4, Section 9.7), which resolves:
+
+- customer association
+- item association
+- miner position
+- quantity availability
+- duplicate warning
+- allowed corrections
+- readiness for confirmation
+
+**Customer Support alone cannot perform Claim Review** (Section 11.10). **Capture does not confirm; Claim Review and Confirm Claim & Print Label remain separate steps.**
+
+### 13.26 Error and Recovery Boundaries
+
+Considered situations:
+
+- internet/connection failure
+- screenshot upload failure
+- iOS Share unavailable
+- Android capture unavailable
+- camera unavailable
+- photo upload failure
+- claim save failure
+- duplicate save attempt
+- network retry
+
+**Core rules:**
+- **Manual entry remains available.**
+- **No failed action creates silent duplicates.**
+- **Unresolved failures remain visible.**
+- **Exact technical retry/recovery/offline behavior belongs to Section 32.**
+
+### 13.27 Section Boundaries
+
+- **Section 12** owns the broader live and post-live workflow.
+- **Section 13** owns capture methods.
+- **Section 21** owns exact buttons.
+- **Section 22** owns statuses.
+- **Section 23** owns search.
+- **Section 24** owns the print queue.
+- **Section 27** owns printer integration.
+- **Sections 28–32** own technical implementation, security, audit, and recovery.
+
+### 13.28 Edge Cases
+
+- no Current Flex Item at capture time
+- Current Flex Item changes mid-capture
+- screenshot attached but details incomplete
+- camera or Share unavailable
+- Android floating capture unavailable
+- duplicate capture by two staff
+- same buyer/same unique item captured repeatedly
+- similar Facebook names
+- unclear miner order
+- failed upload or save
+- duplicate save after retry
+- offline capture attempt
+- evidence attached to the wrong provisional claim before save
+- capture attempted without permission
+
+### 13.29 Open / To-Be-Confirmed Items
+
+- Android technical feasibility
+- iOS share-extension or alternative implementation
+- exact screenshot/photo limits (number and size)
+- supported file types
+- duplicate-detection method
+- evidence retention
+- capture permission reconciliation (Section 4–5)
+- multi-device behavior
+- offline behavior
+- Facebook/Meta access
+- privacy/consent requirements where applicable
+
+### 13.30 Section 13 Summary
+
+- **Capture turns Facebook Live-related activity into a Pending Claim — and nothing more.**
+- **Manual entry, screenshot upload, iOS Share, and planned Android capture** all produce a Pending Claim only.
+- **No OCR and no automatic reading** of screenshots or Facebook comments; **no automatic buyer, customer, or miner-position detection.**
+- **During-live capture depends on the Current Flex Item; no Current Flex Item blocks the Current-Flex capture action.**
+- **Switching the Current Flex Item never changes an existing claim.**
+- **Duplicate risks are warned and reviewed, never silently deleted or merged.**
+- **Manual entry always remains available; the system works without any integration.**
+- **No direct Facebook/Meta capability is promised; Android capture stays subject to technical validation.**
+- **Capture hands off to Claim Review; confirmation, printing, invoicing, and Official Order creation remain separate, later steps.**
+- **Exact device, file, duplicate-detection, retention, privacy, and permission details remain To be confirmed.**
+
+---
+
+*End of Section 13 — Facebook Live Capture Workflow. **APPROVED.** Section 14 — Pancake Integration follows.*
