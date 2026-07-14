@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–34 APPROVED; Section 35 (Deployment Plan) pending
+> **Status:** In Progress — Sections 1–35 APPROVED; Section 36 (Version Roadmap) pending
 
 ---
 
@@ -9580,3 +9580,140 @@ account access and deactivation · granular permissions · Live Batch lifecycle 
 ---
 
 *End of Section 34 — Testing Plan. **APPROVED.** Section 35 — Deployment Plan follows.*
+
+---
+
+## Section 35 — Deployment Plan
+
+### 35.1 Purpose of the Deployment Plan Section
+
+This section owns **environment setup, domain use, hosting, database deployment, secrets, migrations, release process, backups, monitoring, rollback, production access, pilot launch, and full production launch** for Version 1 (MineFlow).
+
+This section stays at the plan level. It hard-codes no vendor prices, plan details, domain, regions, dates, or SLA — **current vendor pricing and plan details require fresh verification at purchase time.** It introduces no new roles, permissions, Owner-only approvals, customer-facing access, automatic actions, unsupported integrations, or production guarantees beyond approved Sections 1–34, and it does not silently resolve any To-be-confirmed item.
+
+### 35.2 Governing Deployment Rules
+
+1. **No production deployment before Section 34 readiness gates pass.**
+2. **Development/test/production data must be separated.**
+3. **Secrets must not be committed.**
+4. **Production migrations require backup and rollback planning.**
+5. **A failed migration must not leave silent partial business data.**
+6. **Production access follows least privilege.**
+7. **Owner account setup and recovery must be validated.**
+8. **Staff permissions must be verified before launch.**
+9. **Printer compatibility must be physically tested before operational reliance.**
+10. **Pancake/Meta integration must not block launch because manual fallback exists.**
+11. **Manual claim entry and manual message sending must remain available.**
+12. **Deployment must not silently enable unsupported integrations.**
+13. **Production launch requires smoke testing.**
+14. **Critical launch blockers prevent launch.**
+15. **A controlled pilot precedes full production.**
+16. **Rollback must preserve business data and auditability.**
+17. **Domain/DNS changes must be planned and verified.**
+18. **Backups must be restorable, not merely present.**
+19. **Production support ownership must be clear.**
+20. **Customer login must not be introduced.**
+
+### 35.3 Intended Platform
+
+- **GitHub** (source control), **Vercel** (web deployment), **Supabase** (database, authentication, and file storage where finally validated), a **custom domain**, and **optional** Pancake/Meta and printer/device integrations.
+- **Paid subscriptions are not required during documentation or local development** (35.14).
+
+### 35.4 Deployment Phases
+
+1. **Local development** — no paid services required.
+2. **Development environment** — isolated dev data.
+3. **Staging / internal test** — mirrors production shape, isolated data.
+4. **Controlled pilot** — bounded real operation (Section 34.6).
+5. **Production** — after readiness gates and pilot approval.
+6. **Post-launch monitoring** — smoke tests, monitoring, support.
+
+### 35.5 Environment Separation, Domain, DNS, SSL
+
+- **Development, test, and production are separated** (rule 2), including data.
+- **Domain reservation, DNS, and SSL** are planned and verified (rule 17); **SSL is normally included through hosting/domain setup and should not require a separate paid certificate.**
+- **Final domain, registrar, regions, and staging-domain structure remain To be confirmed.**
+
+### 35.6 Project Setup
+
+- **Vercel project** and **Supabase project** are configured per environment; **environment variables** hold configuration; **secrets are never committed** (rule 3; Section 30.12).
+- **Database migrations** are ordered and reviewed (Section 33.9); **storage buckets** for attachments are access-scoped (Section 30.11).
+
+### 35.7 Account Seeding and Data
+
+- **Owner account setup and recovery are validated** (rule 7); **staff accounts and their permissions are verified before launch** (rule 8).
+- **Test data is isolated from production** (rule 2); **production data begins only when the environment is production-ready.**
+
+### 35.8 Backups, Restore, Monitoring, Logs, Alerts
+
+- **Backups must be restorable, not merely present** (rule 18); **restore testing** is required.
+- **Monitoring, logs, and alerts** are established at a boundary level; **provider, alert recipients, backup frequency, and restore process remain To be confirmed** (Section 32.13).
+
+### 35.9 Deployment Checklist and Gates
+
+- **Pre-deployment checks** include **build / type / lint / test gates** (Section 33.15, 34) — **no production deployment before Section 34 gates pass** (rule 1).
+- **Critical launch blockers prevent launch** (rule 14).
+
+### 35.10 Migration Order, Rollback, Failed Deployment, Hotfix
+
+- **Database migration order** is planned; **production migrations require backup and rollback planning** (rule 4); **a failed migration leaves no silent partial business data** (rule 5).
+- **Rollback preserves business data and auditability** (rule 16). A **failed deployment** rolls back to the last good state; a **hotfix process** exists for urgent fixes; **rollback tooling remains To be confirmed.**
+
+### 35.11 Version Tagging and Release Notes
+
+- Releases are **version-tagged** with **release notes** (aligned to Section 36); **release cadence and naming remain To be confirmed.**
+
+### 35.12 Pilot, Training, Sign-off, Smoke Test
+
+- **Pilot deployment** precedes full production (rule 15); **staff training** accompanies it.
+- **Production sign-off** is required before launch; **post-deployment smoke testing** validates critical paths (rule 13). **Sign-off authority, pilot date, and duration remain To be confirmed.**
+
+### 35.13 Printer, Mobile, and Integration Timing
+
+- **Printer setup is physically tested before operational reliance** (rule 9; Section 27); **mobile-device validation** precedes reliance (Section 34.13).
+- **Pancake/Meta trial/validation** happens on real access; **it does not block launch because manual fallback exists** (rules 10–11); **deployment never silently enables unsupported integrations** (rule 12).
+
+### 35.14 Subscription Timing (Practical Rules)
+
+- **Domain** may be purchased early once the final name is confirmed.
+- **GitHub Free** may be used during development.
+- **Supabase Free** may be used for development and non-critical testing.
+- **Vercel free/local preview** may be used during development, subject to current commercial-use terms.
+- **Supabase Pro** should be considered **before real customer/order/payment data becomes operational.**
+- An appropriate **Vercel paid/commercial plan** should be confirmed **before actual business production use.**
+- **Pancake should not be purchased until API/features, Page access, trial, and required plan are validated.**
+- **SSL** is normally included through hosting/domain setup and should not require a separate paid certificate.
+- **Apple Developer / Google Play accounts are not required for a web/PWA-first V1** unless native-store distribution is later approved.
+
+> **Note:** Vendor pricing and plan details are **not hard-coded** here and **require fresh verification at purchase time.**
+
+### 35.15 Support Boundary, Outage, Handover, Credentials, Offboarding
+
+- **Production support ownership must be clear** (rule 19); the **support boundary, outage procedure, access handover, credential ownership, and offboarding** are defined operationally.
+- **The developer maintains the system but is not the business Owner/administrator** (Section 1.8); **support owner and credential owner remain To be confirmed.**
+
+### 35.16 Edge Cases
+
+- deploy attempted before gates pass · secret committed · migration fails mid-run · rollback needed · test data in production · Owner recovery unvalidated · staff permission wrong at launch · printer untested but relied upon · integration silently enabled · domain/DNS misconfigured · backup present but not restorable · unclear support ownership.
+
+### 35.17 Section Boundaries
+
+- **Section 35** owns deployment/launch.
+- **Section 33** standards. **Section 34** readiness gates. **Section 30** security. **Section 32** recovery/backup boundary. **Section 36** version/release governance.
+
+### 35.18 Open / To-Be-Confirmed Items
+
+- final domain · registrar · exact Vercel plan · exact Supabase plan · regions · staging-domain structure · backup frequency · restore process · monitoring provider · alert recipients · release cadence · support owner · production sign-off authority · pilot date · pilot duration · maintenance window · rollback tooling · credential owner · Pancake plan · printer rollout quantity · mobile device list.
+
+### 35.19 Section 35 Summary
+
+- Deployment moves through **local → development → staging → controlled pilot → production → post-launch monitoring**, with strict **environment and data separation**.
+- **No production deployment occurs before Section 34 readiness gates pass; a controlled pilot precedes full production; production launch requires smoke testing and clear sign-off.**
+- **Secrets are never committed; production migrations require backup and rollback planning; failed migrations leave no silent partial data; rollback preserves business data and auditability; backups must be restorable.**
+- **Printer compatibility is physically tested before reliance; Pancake/Meta never blocks launch because manual fallback remains; deployment never silently enables unsupported integrations; no customer login.**
+- **Subscription timing is practical** — free tiers for development, paid plans confirmed before operational/production data, Pancake only after validation — with **prices never hard-coded and requiring fresh verification.**
+- **Domain, plans, regions, backup/monitoring specifics, support ownership, and pilot parameters remain To be confirmed.**
+
+---
+
+*End of Section 35 — Deployment Plan. **APPROVED.** Section 36 — Version Roadmap follows.*
