@@ -3,7 +3,7 @@
 > **Internal Project Name:** MineFlow
 > **Client-Facing System Name:** A.V. Jewelry Operations System
 > **Document Type:** Single Source of Truth (Development Bible)
-> **Status:** In Progress — Sections 1–17 APPROVED; Section 18 (Shipping and Pickup Workflow) pending
+> **Status:** In Progress — Sections 1–18 APPROVED; Section 19 (Inventory Workflow) pending
 
 ---
 
@@ -6616,3 +6616,190 @@ Forfeiture-Eligible
 ---
 
 *End of Section 17 — Layaway Workflow. **APPROVED.** Section 18 — Shipping and Pickup Workflow follows.*
+
+---
+
+## Section 18 — Shipping and Pickup Workflow
+
+### 18.1 Purpose of the Shipping and Pickup Workflow Section
+
+This section owns **fulfillment preparation, shipping, pickup, verified payment/deposit checks, normal release, exceptional release, dispatch, handover, completion, staff attribution, and blocked/error handling** in Version 1 (MineFlow).
+
+**Governing scope statements:**
+- **Fulfillment belongs to an Official Order** (Section 6.12).
+- **Normal release is permission-based; exceptional release is high-risk and Owner-approved** (Section 6.14).
+- **Shipping and Pickup share one combined Fulfillment area** (Section 8.9).
+
+This section stays business-focused. It does not define database schema, APIs, code, courier-API behavior, shipping-fee calculation, insurance, accounting, or final status-transition logic. It introduces no new permissions, roles, statuses, high-risk categories, automatic behavior, accounting rules, integrations, or customer-facing features beyond approved Sections 1–17, and it does not silently resolve any To-be-confirmed item.
+
+### 18.2 Governing Fulfillment Rules
+
+1. Fulfillment belongs to an **Official Order**.
+2. **Shipping and Pickup are separate fulfillment arrangements.**
+3. Claims grouped into one Invoice Draft **must share the same fulfillment arrangement** (Section 15.5).
+4. **Normal fulfillment release is permission-based, not Owner-only.**
+5. **Exceptional release is high-risk and requires Owner approval.**
+6. **Preparation does not automatically mean release.**
+7. **Required Payment / Deposit Verified does not automatically mean Paid in Full.**
+8. **Shipping may proceed based on approved deposit/COD conditions.**
+9. **Shipping requires at least ₱1,000 deposit plus approved COD balance where applicable.**
+10. **Customer Support cannot release fulfillment** without the required permission.
+11. **Layaway Monitoring does not grant fulfillment release.**
+12. **Payment Verification does not automatically perform fulfillment release.**
+13. **No automatic release.**
+14. **No automatic dispatch.**
+15. **No automatic pickup completion.**
+16. **No automatic exceptional release.**
+17. **No automatic stock return upon failed fulfillment.**
+18. **An exceptional-release request does not itself release the item.**
+19. **Owner approval resumes the applicable workflow but does not bypass other required details.**
+
+### 18.3 Fulfillment Arrangement Selection
+
+- Each Official Order carries a **shipping or pickup** arrangement, set when its claims were grouped (Section 15.5).
+- **Fulfillment combines shipping and pickup in one area** (Section 8.9) with separate queues.
+
+### 18.4 Shipping Preparation
+
+- Authorized **Shipping / Pickup Preparation** users may review details, prepare items, confirm the payment/deposit requirement, and enter/verify shipping details (Section 11.25).
+- Shipping details may include **courier, shipping date, shipping/tracking number, shipping fee, receiver information, proof of shipment where applicable** (Section 2.6).
+
+### 18.5 Pickup Preparation
+
+- Authorized users may prepare the pickup item, verify permitted pickup details, review the payment/deposit requirement, and prepare receiver/handover information (Section 11.26).
+- Pickup details may include **scheduled pickup date, order number, person receiving, confirmation/proof of release, releasing staff, completion date/time** (Section 2.6).
+
+### 18.6 Required Customer and Contact Details
+
+- Shipping may require **shipping address and approved contact details**; pickup may require **pickup-person details**.
+- **Exact required shipping/pickup fields and contact-field approval remain To be confirmed** (Section 10.5).
+
+### 18.7 Payment / Deposit Check and COD
+
+- **Payment must be verified before an item is shipped or released for pickup** (Section 4.12.5).
+- For shipping, **≥ ₱1,000 deposit + approved COD balance** may apply (Section 4.12.2); the **COD balance may remain until delivery** (Section 6.12).
+- **Required/Deposit Verified is not Paid in Full** (rule 7).
+- **Exact COD rules remain To be confirmed.**
+
+### 18.8 Layaway Restriction
+
+- Layaway fulfillment follows Section 17 (item goes to the financer; non-cancellable after deposit). Fulfillment does not override layaway rules.
+
+### 18.9 Preparation State
+
+- **Preparation does not automatically mean release** (rule 6).
+- An order in **For Preparation / For Shipping / For Pickup** is being readied, not yet released.
+
+### 18.10 Normal Release Eligibility and Authority
+
+- **Normal release** requires: verified required payment/deposit, complete preparation, no mismatch/dispute/exception, and approval by **Shipping / Pickup Preparation** authority (Section 6.14).
+- **Owner approval is not required for every normal dispatch** (Section 6.12).
+
+### 18.11 Exceptional Release Request
+
+```
+authorized requester (Initiate High-Risk Action)
+→ exceptional release request + reason + supporting info
+→ Needs Owner Approval
+→ Owner approves or rejects
+→ fulfillment resumes only after decision
+```
+- **Exceptional release** covers release without verified required payment, unpaid balance outside the approved arrangement, mismatch/dispute, incomplete requirements, manual override, or action beyond assigned authority (Section 6.14).
+- **The request does not itself release the item** (rule 18).
+- **Exceptional-release evidence requirements and Owner self-action/delegation remain To be confirmed.**
+
+### 18.12 Dispatch and Pickup Completion
+
+- **Shipping:** after approved release → **Dispatched → Delivered → Completed** (Section 6.12).
+- **Pickup:** after approved release → **Picked Up → Completed** (Section 6.13).
+- **No automatic dispatch or pickup completion** (rules 14–15).
+
+### 18.13 Failed Delivery and Unclaimed Pickup
+
+- **Failed delivery** and **unclaimed pickup** are recognized situations that keep the item/order in a **visible, unresolved fulfillment state**.
+- **No automatic stock return** (rule 17); any exit to stock goes through **Returned-to-Stock Review** (Section 19).
+- **Failed-delivery, unclaimed-pickup, re-delivery, and return-to-sender workflows remain To be confirmed.**
+
+### 18.14 Wrong Fulfillment Details and Correction
+
+- Wrong courier/tracking/receiver/pickup details follow a **correction path within the owning module**; later-stage records are progressively restricted (Section 11.44).
+- **Wrong-fulfillment correction authority remains To be confirmed.**
+
+### 18.15 Staff Attribution
+
+- Records may show **fulfillment prepared by, released by, dispatched by, pickup completed by** (Section 11.43). Attribution belongs to the action; **Section 31 owns audit.**
+
+### 18.16 Notes
+
+- Notes are **staff-attributed** and **do not change** fulfillment, payment, or order state (Section 11.38).
+
+### 18.17 Unauthorized Actions
+
+- Unauthorized fulfillment actions may be **hidden, disabled, blocked, or escalated**; attempts change no record (Section 11.45). Detailed security → Sections 30, 32.
+
+### 18.18 Errors and Retries
+
+- **No failed action silently creates duplicates or a stock return; unresolved failures remain visible; technical recovery → Section 32.**
+
+### 18.19 Concurrent Work
+
+- The same release/dispatch/handover must not complete twice; **latest valid state respected** (Section 11.42). Technical concurrency → Sections 28–32.
+
+### 18.20 Reminders and Notifications Boundary
+
+- Fulfillment-related notifications (e.g., tracking sent to the customer) are **staff-triggered** with delivery owned by **Section 26**.
+
+### 18.21 Migrated Active Fulfillment
+
+- Migrated records in an active fulfillment state **enter fulfillment by their actual status**, keep the **source marker**, and preserve historical values (Section 6.20, Section 7.12).
+- **Migrated-fulfillment correction remains To be confirmed.**
+
+### 18.22 Reporting Boundary
+
+- Fulfillment summaries may appear in basic reports; **formal reporting belongs to Section 25.**
+
+### 18.23 Edge Cases
+
+- release attempted before payment verified · preparation complete but not releasable · exceptional release requested but Owner unavailable · exceptional release rejected · COD balance outstanding at delivery · failed delivery · unclaimed pickup · re-delivery requested · return-to-sender · wrong courier/tracking/receiver · pickup by unauthorized person · migrated active fulfillment · Customer-Support attempt to release.
+
+### 18.24 Section Boundaries
+
+- **Section 18** owns shipping/pickup fulfillment.
+- **Section 16** payment. **Section 17** layaway. **Section 19** inventory/returned-to-stock.
+- **Section 22** statuses. **Section 25** reporting. **Section 26** notification delivery. **Sections 28–32** integrity/security/audit/recovery.
+
+### 18.25 Open / To-Be-Confirmed Items
+
+- exact required shipping fields
+- exact required pickup fields
+- shipping fee behavior
+- courier list
+- tracking rules
+- receiver-proof requirements
+- pickup authorization requirements
+- normal release conditions
+- exact COD rules
+- failed-delivery workflow
+- unclaimed-pickup workflow
+- re-delivery behavior
+- return-to-sender behavior
+- wrong-fulfillment correction authority
+- exceptional-release evidence requirements
+- Owner self-action/delegation
+- migrated-fulfillment correction
+- fulfillment completion definition
+- exact Section 4–5 reconciliation
+
+### 18.26 Section 18 Summary
+
+- **Fulfillment belongs to an Official Order; shipping and pickup are separate arrangements in one combined area.**
+- **Payment must be verified before release; Required/Deposit Verified ≠ Paid in Full.**
+- **Shipping uses ≥ ₱1,000 deposit + approved COD; the COD balance may remain until delivery.**
+- **Normal release is permission-based; exceptional release is high-risk and Owner-approved, and the request alone never releases the item.**
+- **Nothing dispatches, completes pickup, releases, or returns stock automatically.**
+- **Customer Support, Layaway Monitoring, and Payment Verification do not by themselves grant release.**
+- **Failed delivery, unclaimed pickup, re-delivery, return-to-sender, courier/field details, and completion definition remain To be confirmed.**
+
+---
+
+*End of Section 18 — Shipping and Pickup Workflow. **APPROVED.** Section 19 — Inventory Workflow follows.*
