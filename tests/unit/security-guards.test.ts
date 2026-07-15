@@ -144,12 +144,45 @@ describe('Phase 1 migration boundary', () => {
 
     const offenders = sqlFiles.flatMap((file) => {
       const sql = readFileSync(join(migrationsDir, file), 'utf8');
+
+      // Strip dollar-quoted function BODIES before scanning.
+      //
+      // The rule is "a migration must not SHIP operational rows". An INSERT
+      // inside a function body ships nothing — it is runtime logic that only
+      // executes when an authorized caller invokes it (Phase 4's
+      // confirm_claim_and_print and Phase 5's approve_and_send_invoice both
+      // legitimately insert business rows at runtime). A top-level INSERT is a
+      // seed, and that is what this guard exists to catch, so only top-level
+      // statements are scanned.
+      const topLevel = sql.replace(/\$\$[\s\S]*?\$\$/g, '');
+
       return businessTables
-        .filter((table) => new RegExp(`insert into public\\.${table}\\b`, 'i').test(sql))
+        .filter((table) =>
+          new RegExp(`insert into public\\.${table}\\b`, 'i').test(topLevel),
+        )
         .map((table) => `${file}: ${table}`);
     });
 
     expect(offenders).toEqual([]);
+  });
+
+  it('still catches a real seed after stripping function bodies', () => {
+    // Proves the exemption above did not gut the guard. A guard that cannot
+    // fail is not a guard, so this asserts the detection itself: a top-level
+    // seed is caught, while the same statement inside a function body is not.
+    const strip = (sql: string) => sql.replace(/\$\$[\s\S]*?\$\$/g, '');
+    const detects = (sql: string) => /insert into public\.customers\b/i.test(strip(sql));
+
+    expect(detects("insert into public.customers (display_name) values ('Real');")).toBe(
+      true,
+    );
+    expect(
+      detects(
+        `create function f() returns void language plpgsql as $$
+         begin insert into public.customers (display_name) values ('Runtime'); end;
+         $$;`,
+      ),
+    ).toBe(false);
   });
 });
 
