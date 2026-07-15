@@ -110,13 +110,19 @@ describe('protected route boundary (ADR §7, Invariant #3)', () => {
     expect(middleware).not.toMatch(/auth\.getSession\(\)/);
   });
 
-  it('treats sign-in as the only public route', () => {
+  it('keeps the public route list minimal and explicit', () => {
+    // Phase 2 added /account-disabled: a signed-in user whose account was
+    // deactivated must be able to see they are blocked and sign out. It renders
+    // nothing sensitive and gives no reason. Any OTHER addition here would widen
+    // the unauthenticated surface and must be deliberate.
     const middleware = readFileSync(
       join(projectRoot, 'src', 'lib', 'supabase', 'proxy.ts'),
       'utf8',
     );
 
-    expect(middleware).toMatch(/PUBLIC_ROUTES\s*=\s*\['\/sign-in'\]/);
+    expect(middleware).toMatch(
+      /PUBLIC_ROUTES\s*=\s*\['\/sign-in',\s*'\/account-disabled'\]/,
+    );
   });
 });
 
