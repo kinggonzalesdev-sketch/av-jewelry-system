@@ -15,18 +15,18 @@
 
 Sidebar order, exactly as approved:
 
-| #   | Item                 | Route                       |
-| --- | -------------------- | --------------------------- |
-| 1   | **Dashboard Report** | `/preview/dashboard-report` |
-| 2   | **Orders**           | `/preview/orders`           |
-| 3   | **Invoice**          | `/preview/invoice`          |
-| 4   | **Live**             | `/preview/live`             |
-| 5   | Customers            | `/preview/customers`        |
-| 6   | Items / Inventory    | `/preview/items`            |
-| 7   | Payments             | `/preview/payments`         |
-| 8   | Fulfillment          | `/preview/fulfillment`      |
-| 9   | Reports              | `/preview/reports`          |
-| 10  | **Settings**         | `/preview/settings`         |
+| #   | Item                   | Route                       |
+| --- | ---------------------- | --------------------------- |
+| 1   | **Dashboard Report**   | `/preview/dashboard-report` |
+| 2   | **Orders**             | `/preview/orders`           |
+| 3   | **Invoice**            | `/preview/invoice`          |
+| 4   | **Live**               | `/preview/live`             |
+| 5   | Customers              | `/preview/customers`        |
+| 6   | Items / Inventory      | `/preview/items`            |
+| 7   | **Payments & Layaway** | `/preview/payments`         |
+| 8   | Fulfillment            | `/preview/fulfillment`      |
+| 9   | Reports                | `/preview/reports`          |
+| 10  | **Settings**           | `/preview/settings`         |
 
 **Dashboard Report is restored as its own tab.** **There is no separate
 multi-platform Connections tab** — Pancake lives at **Settings → Integrations →
@@ -286,6 +286,86 @@ _available later through Pancake, after subscription upgrade and API validation_
 
 ---
 
+## 9b. Payments & Layaway
+
+**The navigation label is "Payments & Layaway", not "Payments".** A generic
+"Payments" label hid layaway entirely — it has its own queues, its own
+Owner-gated forfeiture path, and its own rules, so the label names it.
+
+**Six internal tabs:** Payment Verification · Layaway Accounts · Installments ·
+Overdue / Grace Period · Forfeiture Review · Payment History.
+
+### Approved rules represented on screen
+
+| Rule                                        | Where it shows                                               |
+| ------------------------------------------- | ------------------------------------------------------------ |
+| Minimum **20%** down payment                | Rules panel + every account's Required Down Payment          |
+| Maximum **3 months**                        | Rules panel + "N of 3 max" on each account                   |
+| Maximum **10-day** grace period             | Rules panel + Grace Period End on each account               |
+| Layaway **belongs to an Official Order**    | Stated on every account detail, with the order number        |
+| Evidence and verification **stay separate** | Two distinct columns in the installment schedule             |
+| **Non-cancellable after deposit**           | Shown once the down payment is verified                      |
+| **Forfeiture requires Owner approval**      | Only "Request Forfeiture" exists — no direct Forfeit control |
+| Forfeited → **Returned-to-Stock Review**    | Stated in the flow and on the action                         |
+| **No automatic forfeiture**                 | Stated on the Overdue and Forfeiture Review tabs             |
+| **No automatic stock return**               | Stated with the forfeiture action                            |
+
+### The safe flow (shown on two tabs)
+
+```
+Overdue → Grace Period → Forfeiture Review → Owner Approval
+→ Execute Forfeiture → Returned-to-Stock Review
+```
+
+Reaching the end of the grace period only makes an account
+**Forfeiture-Eligible**. Eligibility is not approval.
+
+### Layaway account details
+
+Customer · Official Order Number · Invoice Number · Item summary · Total Order
+Amount · Required Down Payment · Down Payment Paid · Remaining Balance · Start
+Date · Due Date · Grace Period End · Number of Months · Layaway Fee ·
+Installment Schedule · Payment Evidence · Payment Verification Status · Financer
+· Current Layaway Status · Available actions.
+
+### Layaway fee — concept only
+
+The fee is computed as **₱150 × grams × number of months** and displayed with its
+working shown (e.g. ₱150 × 12.4g × 3).
+
+> **The exact fee application — per piece, per order, or applied differently —
+> remains subject to final business confirmation.**
+
+Whether the fee is per piece, per order, per item line, or charged at a different
+point is **not decided**, and the prototype does not invent an answer.
+
+### Dashboard Report layaway cards
+
+**Active Layaways · Installments Due · Overdue / Grace Period ·
+Forfeiture-Eligible**, with a direct link into the workspace. Forfeiture-Eligible
+is labelled as eligible for _review_, never as forfeited.
+
+---
+
+## 9c. Night mode
+
+A **Night mode** toggle sits in the sidebar (and the mobile header). It starts in
+**day mode**, so the approved clean-white direction is what a reviewer sees first.
+
+**It uses a `night:` variant, not `dark:`.** Production's dark mode is OS-driven
+through `prefers-color-scheme` on CSS variables. Redefining `dark:` to be
+class-based would silently change its meaning for every future production
+component, so the prototype has its own variant and leaves `dark:` alone.
+
+The `night` class is applied to the **prototype root only** — never to `<html>` —
+so the toggle cannot reach outside `/preview`.
+
+**Sidebar bottom order is preserved:** Night mode → Collapse → **Bluetooth /
+Printer → Logout (last)**. Night mode and Collapse sit _above_ the printer;
+anything placed below Logout would break the approved rule.
+
+---
+
 ## 10. Settings
 
 1. Business Profile · 2. Shops / Pages · 3. **Invoice Settings** · 4. **Reminder and
@@ -362,17 +442,18 @@ global printer settings · archive actions · Reset Test Data.
 
 ## 13. Responsive behaviour
 
-| Screen           | Desktop                               | Mobile                                     |
-| ---------------- | ------------------------------------- | ------------------------------------------ |
-| Sidebar          | Fixed 256px rail, collapsible to 68px | Compact header + bottom nav + More sheet   |
-| Dashboard Report | KPI row of 6, full-width charts       | KPI cards 2-up, filters wrap, charts scale |
-| Gross Profit     | Controls in a row, 3×2 figures        | Stacked controls, 2-up figures             |
-| Orders           | Full table, 12 columns                | Card list, no horizontal overflow          |
-| New Entry        | Two-column (form + photo rail)        | Stacked                                    |
-| Invoice          | Queue + preview side by side          | Stacked                                    |
-| Live             | Workspace + connection rail           | Stacked                                    |
-| Settings         | Section list + panel                  | Stacked                                    |
-| Pancake          | Panel + rail                          | Stacked                                    |
+| Screen             | Desktop                                                | Mobile                                     |
+| ------------------ | ------------------------------------------------------ | ------------------------------------------ |
+| Sidebar            | Fixed 256px rail, collapsible to 68px                  | Compact header + bottom nav + More sheet   |
+| Dashboard Report   | KPI row of 6, full-width charts                        | KPI cards 2-up, filters wrap, charts scale |
+| Gross Profit       | Controls in a row, 3×2 figures                         | Stacked controls, 2-up figures             |
+| Orders             | 10 status cards in ONE row at 2xl, 5 at xl, full table | 2-column cards, no horizontal overflow     |
+| Payments & Layaway | Six tabs, account detail + schedule                    | Stacked, scrollable schedule               |
+| New Entry          | Two-column (form + photo rail)                         | Stacked                                    |
+| Invoice            | Queue + preview side by side                           | Stacked                                    |
+| Live               | Workspace + connection rail                            | Stacked                                    |
+| Settings           | Section list + panel                                   | Stacked                                    |
+| Pancake            | Panel + rail                                           | Stacked                                    |
 
 **Mobile bottom nav** carries Orders · Invoice · Live · Customers · More.
 Dashboard Report is the landing page but deliberately **not** in the bottom four:

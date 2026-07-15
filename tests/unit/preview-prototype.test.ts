@@ -11,6 +11,13 @@ import {
   rangeBounds,
   salesSeries,
 } from '@/components/preview/dashboard-data';
+import {
+  LAYAWAY_FEE_NOTE,
+  LAYAWAY_RULES,
+  SAMPLE_LAYAWAYS,
+  layawayFeeConcept,
+  layawaySummary,
+} from '@/components/preview/layaway-data';
 import { PREVIEW_NAV } from '@/components/preview/shell';
 import {
   SAMPLE_ORDERS,
@@ -44,11 +51,19 @@ describe('prototype navigation', () => {
       'Live',
       'Customers',
       'Items / Inventory',
-      'Payments',
+      'Payments & Layaway',
       'Fulfillment',
       'Reports',
       'Settings',
     ]);
+  });
+
+  it('keeps Layaway visible in the navigation label', () => {
+    // A generic "Payments" label hid layaway entirely. The label must name it.
+    const labels = PREVIEW_NAV.map((n) => n.label);
+
+    expect(labels).toContain('Payments & Layaway');
+    expect(labels).not.toContain('Payments');
   });
 
   it('restores Dashboard Report as its own tab, separate from Orders and Reports', () => {
@@ -177,6 +192,206 @@ describe('Dashboard Report', () => {
     // Reports stays a separate future area.
     const reports = readFileSync(join(appDir, 'preview', 'reports', 'page.tsx'), 'utf8');
     expect(reports).toContain('ComingSoonPage');
+  });
+});
+
+describe('Payments & Layaway workspace', () => {
+  const view = readFileSync(
+    join(projectRoot, 'src', 'components', 'preview', 'payments-view.tsx'),
+    'utf8',
+  );
+
+  it('has the six approved internal tabs', () => {
+    const tabs = view
+      .slice(view.indexOf('const TABS'), view.indexOf('] as const'))
+      .match(/'([^']+)'/g)
+      ?.map((s) => s.slice(1, -1));
+
+    expect(tabs).toEqual([
+      'Payment Verification',
+      'Layaway Accounts',
+      'Installments',
+      'Overdue / Grace Period',
+      'Forfeiture Review',
+      'Payment History',
+    ]);
+  });
+
+  it('encodes the approved layaway limits', () => {
+    expect(LAYAWAY_RULES).toEqual({
+      minimumDownPaymentPercent: 20,
+      maximumMonths: 3,
+      maximumGraceDays: 10,
+    });
+  });
+
+  it('never exceeds the approved maximum months in sample data', () => {
+    for (const l of SAMPLE_LAYAWAYS) {
+      expect(l.months).toBeLessThanOrEqual(LAYAWAY_RULES.maximumMonths);
+    }
+  });
+
+  it('requires at least a 20% down payment in every sample account', () => {
+    for (const l of SAMPLE_LAYAWAYS) {
+      const expected = Math.round((l.totalOrderAmount * 20) / 100);
+      expect(l.requiredDownPayment).toBe(expected);
+    }
+  });
+
+  it('ties every layaway to an Official Order — never a separate order', () => {
+    for (const l of SAMPLE_LAYAWAYS) {
+      expect(l.officialOrderNumber).toMatch(/^ORD-/);
+      expect(l.invoiceNumber).toMatch(/^INV-/);
+    }
+  });
+
+  it('keeps payment evidence separate from verification', () => {
+    // Evidence can exist while verification is still pending or rejected —
+    // if the two were the same field this could not be represented.
+    const all = SAMPLE_LAYAWAYS.flatMap((l) => l.installments);
+
+    expect(all.some((i) => i.evidence !== null && i.verification !== 'Verified')).toBe(
+      true,
+    );
+  });
+
+  it('computes the layaway fee concept as ₱150 × grams × months', () => {
+    expect(layawayFeeConcept(10, 3)).toBe(4500);
+    expect(layawayFeeConcept(12.4, 3)).toBe(5580);
+  });
+
+  it('marks the fee application as subject to business confirmation', () => {
+    // The exact application (per piece / per order / other) is NOT decided.
+    expect(LAYAWAY_FEE_NOTE).toMatch(/subject to final business confirmation/i);
+    expect(view).toContain('LAYAWAY_FEE_NOTE');
+  });
+
+  it('shows the safe forfeiture flow', () => {
+    for (const step of [
+      'Overdue',
+      'Grace Period',
+      'Forfeiture Review',
+      'Owner Approval',
+      'Execute Forfeiture',
+      'Returned-to-Stock Review',
+    ]) {
+      expect(view).toContain(step);
+    }
+  });
+
+  it('offers no direct Forfeit control — only a request', () => {
+    expect(view).toContain('Request Forfeiture');
+    expect(view).not.toMatch(/>\s*Forfeit\s*</);
+    expect(view).toMatch(/no automatic forfeiture/i);
+  });
+
+  it('never invents a "Paid in Full" layaway status', () => {
+    const statuses = readFileSync(
+      join(projectRoot, 'src', 'components', 'preview', 'layaway-data.ts'),
+      'utf8',
+    )
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .match(/export type LayawayStatus[\s\S]*?;/)?.[0];
+
+    expect(statuses).toBeDefined();
+    expect(statuses).not.toMatch(/Paid in Full/);
+  });
+
+  it('surfaces layaway on the Dashboard Report', () => {
+    const dash = readFileSync(
+      join(projectRoot, 'src', 'components', 'preview', 'dashboard-view.tsx'),
+      'utf8',
+    );
+
+    for (const card of [
+      'Active Layaways',
+      'Installments Due',
+      'Overdue / Grace Period',
+      'Forfeiture-Eligible',
+    ]) {
+      expect(dash).toContain(card);
+    }
+  });
+
+  it('summarises layaway counts from the sample accounts', () => {
+    const s = layawaySummary();
+
+    expect(s.activeLayaways).toBeGreaterThan(0);
+    expect(s.overdueOrGrace).toBeGreaterThan(0);
+    expect(s.forfeitureEligible).toBeGreaterThan(0);
+    expect(s.installmentsDue).toBeGreaterThan(0);
+  });
+});
+
+describe('night mode', () => {
+  it('uses a `night:` variant, never redefining `dark:`', () => {
+    // Production's dark mode is OS-driven through prefers-color-scheme. A
+    // class-based `dark:` would silently change that meaning for every future
+    // production component, so the prototype gets its own variant.
+    const css = readFileSync(join(projectRoot, 'src', 'app', 'globals.css'), 'utf8');
+
+    expect(css).toMatch(/@custom-variant night/);
+    expect(css).not.toMatch(/@custom-variant dark/);
+    expect(css).toMatch(/prefers-color-scheme: dark/);
+  });
+
+  it('scopes the toggle to the prototype root, not <html>', () => {
+    const shell = readFileSync(
+      join(projectRoot, 'src', 'components', 'preview', 'shell.tsx'),
+      'utf8',
+    );
+
+    expect(shell).toContain('data-testid="night-toggle"');
+    expect(shell).toMatch(/night && 'night'/);
+    // Must not reach outside /preview.
+    expect(shell).not.toMatch(/document\.documentElement|document\.body/);
+  });
+
+  it('starts in day mode so the approved white direction is seen first', () => {
+    const shell = readFileSync(
+      join(projectRoot, 'src', 'components', 'preview', 'shell.tsx'),
+      'utf8',
+    );
+
+    expect(shell).toMatch(/const \[night, setNight\] = useState\(false\)/);
+  });
+});
+
+describe('Orders status cards', () => {
+  const view = readFileSync(
+    join(projectRoot, 'src', 'components', 'preview', 'orders-view.tsx'),
+    'utf8',
+  );
+
+  it('shows all ten cards in one row only at 2xl', () => {
+    expect(view).toContain('2xl:grid-cols-10');
+    // A laptop falls back to five rather than cramping ten.
+    expect(view).toContain('xl:grid-cols-5');
+    // Tablet and mobile.
+    expect(view).toContain('sm:grid-cols-3');
+    expect(view).toContain('grid-cols-2');
+  });
+
+  it('keeps every card the same height', () => {
+    expect(view).toMatch(/min-h-\[\d+px\]/);
+    expect(view).toContain('justify-between');
+  });
+
+  it('does not clip long labels', () => {
+    // The label must wrap, not truncate. Scan the CLASS attributes only —
+    // the comment above the label legitimately contains the word "truncated",
+    // and a naive text scan fails against its own documentation.
+    const cardBlock = view.slice(
+      view.indexOf('SUMMARY_CARDS.map'),
+      view.indexOf('Search + filters'),
+    );
+    const classNames = [...cardBlock.matchAll(/className="([^"]*)"/g)]
+      .map((m) => m[1])
+      .join(' ');
+
+    expect(classNames).not.toMatch(/\btruncate\b|\bline-clamp-/);
+    // …and it must actively allow long words to break.
+    expect(classNames).toContain('[hyphens:auto]');
   });
 });
 
