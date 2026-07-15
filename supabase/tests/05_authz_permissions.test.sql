@@ -222,13 +222,26 @@ select lives_ok(
     values ('a0000000-0000-0000-0000-000000000002', 'An Admin', 'real.action', 'claim')$$,
   'A caller may write an audit event attributed to themselves');
 
--- Audit remains append-only even for a permitted writer. There is no UPDATE
--- policy, so RLS matches no row and the statement is a silent no-op — the row is
--- never reached, so the Phase 1 append-only trigger does not even need to fire.
--- Either way nothing is mutated, which is what matters.
-select lives_ok(
+-- Audit remains append-only even for a permitted writer.
+--
+-- CHANGED IN PHASE 11 (security review, stage 9). This assertion used to be
+-- lives_ok(): the update "raised nothing" because RLS matched no row, so the
+-- statement was a silent no-op. That reading was correct about the outcome and
+-- wrong about the cause. The update reached RLS at all only because Phase 2's
+-- `grant select, insert, update on all tables in schema public to authenticated`
+-- had re-granted the UPDATE privilege that Phase 1 deliberately revoked — so
+-- this test was quietly encoding the erosion of a defence as expected
+-- behaviour, and a silent success for a tamper attempt is exactly what §30.3
+-- r18 forbids ("a security failure must not silently complete").
+--
+-- Migration 20260716200000 restored the privilege layer, so the attempt is now
+-- refused outright at 42501 rather than succeeding against zero rows. The
+-- guarantee is strengthened, not weakened: nothing was ever mutable, and now
+-- the attempt is also refused loudly instead of reporting success.
+select throws_ok(
   $$update public.audit_events set action = 'tampered' where action = 'real.action'$$,
-  'An update attempt on audit_events raises nothing (no policy matches)');
+  '42501', null,
+  'An update attempt on audit_events is REFUSED, not silently ignored (privilege layer)');
 
 select is(
   (select count(*)::int from public.audit_events where action = 'tampered'),

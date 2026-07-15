@@ -10,9 +10,16 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./tests/setup.ts'],
     include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
-    // Phase 0 has no integration or e2e suites yet; those directories are
-    // reserved and excluded until the phases that own them land.
-    exclude: ['node_modules/**', '.next/**', 'tests/e2e/**', 'tests/integration/**'],
+    // Phase 11 owns §34.3 stage 4 (integration) and enabled tests/integration.
+    //
+    // tests/e2e stays excluded, and that is a deliberate decision rather than an
+    // omission: browser-driven E2E needs a test tool that §34.9 leaves open
+    // ("test tools", "automation framework" — Owner/developer, before pilot), so
+    // choosing Playwright here would silently resolve an open item (§33.2).
+    // End-to-end lifecycle coverage is not missing meanwhile — it runs at the
+    // trusted boundary where the rules actually live, in
+    // supabase/tests/15_phase11_e2e_lifecycle.test.sql.
+    exclude: ['node_modules/**', '.next/**', 'tests/e2e/**'],
   },
   resolve: {
     alias: {
