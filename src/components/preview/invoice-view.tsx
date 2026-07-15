@@ -73,10 +73,10 @@ function InvoiceAllPanel({ autoOpen }: { autoOpen: boolean }) {
               className={cn(
                 'flex-1 rounded-lg border px-2.5 py-1.5 font-medium',
                 done
-                  ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                  ? 'border-emerald-300 night:border-emerald-700 bg-emerald-50 night:bg-emerald-950 text-emerald-800 night:text-emerald-300'
                   : activeStep
-                    ? 'border-slate-400 bg-white text-slate-800'
-                    : 'border-slate-200 bg-slate-50 text-slate-400',
+                    ? 'border-slate-400 bg-white night:bg-slate-900 text-slate-800'
+                    : 'border-slate-200 night:border-slate-700 bg-slate-50 night:bg-slate-800 text-slate-400 night:text-slate-500',
               )}
             >
               {label}
@@ -87,11 +87,19 @@ function InvoiceAllPanel({ autoOpen }: { autoOpen: boolean }) {
 
       {step === 'idle' ? (
         <div className="mt-3">
-          <p className="text-sm text-slate-600">
-            <strong className="text-slate-900">{eligible.length}</strong> eligible
-            record(s) will be grouped into{' '}
-            <strong className="text-slate-900">{groups.length}</strong> draft(s).{' '}
-            <strong className="text-slate-900">{excluded.length}</strong> excluded.
+          <p className="text-sm text-slate-600 night:text-slate-300">
+            <strong className="text-slate-900 night:text-slate-100">
+              {eligible.length}
+            </strong>{' '}
+            eligible record(s) will be grouped into{' '}
+            <strong className="text-slate-900 night:text-slate-100">
+              {groups.length}
+            </strong>{' '}
+            draft(s).{' '}
+            <strong className="text-slate-900 night:text-slate-100">
+              {excluded.length}
+            </strong>{' '}
+            excluded.
           </p>
           <PreviewButton className="mt-2" onClick={() => setStep('prepared')}>
             Prepare All Eligible Invoices
@@ -103,29 +111,31 @@ function InvoiceAllPanel({ autoOpen }: { autoOpen: boolean }) {
         <div className="mt-3 space-y-3">
           {/* Groups */}
           <div>
-            <p className="mb-1.5 text-xs font-semibold text-slate-700">
+            <p className="mb-1.5 text-xs font-semibold text-slate-700 night:text-slate-300">
               Prepared drafts ({groups.length})
             </p>
             <div className="space-y-1.5">
               {groups.map((g) => (
                 <div
                   key={`${g.customer}-${g.arrangement}-${g.fulfillment}`}
-                  className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                  className="rounded-lg border border-slate-200 night:border-slate-700 bg-slate-50 night:bg-slate-800 px-3 py-2"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs font-semibold text-slate-900">{g.customer}</p>
+                    <p className="text-xs font-semibold text-slate-900 night:text-slate-100">
+                      {g.customer}
+                    </p>
                     <div className="flex gap-1.5">
                       <StatusBadge label={g.arrangement} tone="slate" />
                       <StatusBadge label={g.fulfillment} tone="slate" />
                     </div>
                   </div>
-                  <p className="mt-1 font-mono text-[10px] text-slate-500">
+                  <p className="mt-1 font-mono text-[10px] text-slate-500 night:text-slate-400">
                     {g.orders.map((o) => o.orderNumber).join(' · ')}
                   </p>
                 </div>
               ))}
             </div>
-            <p className="mt-1.5 text-[11px] text-slate-500">
+            <p className="mt-1.5 text-[11px] text-slate-500 night:text-slate-400">
               Grouped only where customer, payment arrangement, and fulfillment
               arrangement all match. A draft never mixes buyers or arrangements.
             </p>
@@ -133,32 +143,34 @@ function InvoiceAllPanel({ autoOpen }: { autoOpen: boolean }) {
 
           {/* Exclusions — shown with reasons, never silently dropped */}
           <div>
-            <p className="mb-1.5 text-xs font-semibold text-slate-700">
+            <p className="mb-1.5 text-xs font-semibold text-slate-700 night:text-slate-300">
               Excluded ({excluded.length}) — with reason
             </p>
             <div className="max-h-40 space-y-1 overflow-y-auto">
               {excluded.map((e) => (
                 <div
                   key={e.order.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5"
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 night:border-amber-800 bg-amber-50 night:bg-amber-950 px-2.5 py-1.5"
                 >
-                  <span className="font-mono text-[10px] text-slate-700">
+                  <span className="font-mono text-[10px] text-slate-700 night:text-slate-300">
                     {e.order.orderNumber}
                   </span>
-                  <span className="text-[11px] text-amber-900">{e.reason}</span>
+                  <span className="text-[11px] text-amber-900 night:text-amber-200">
+                    {e.reason}
+                  </span>
                 </div>
               ))}
             </div>
           </div>
 
           {step === 'prepared' ? (
-            <div className="rounded-lg border border-slate-300 bg-white p-3">
-              <label className="flex items-start gap-2 text-xs text-slate-700">
+            <div className="rounded-lg border border-slate-300 night:border-slate-600 bg-white night:bg-slate-900 p-3">
+              <label className="flex items-start gap-2 text-xs text-slate-700 night:text-slate-300">
                 <input
                   type="checkbox"
                   checked={confirmed}
                   onChange={(e) => setConfirmed(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 night:border-slate-600 text-emerald-600 focus:ring-emerald-500"
                 />
                 <span>
                   I have reviewed {groups.length} draft(s) covering {eligible.length}{' '}
@@ -178,7 +190,9 @@ function InvoiceAllPanel({ autoOpen }: { autoOpen: boolean }) {
 
           {step === 'sent' ? (
             <div>
-              <p className="mb-1.5 text-xs font-semibold text-slate-700">Results</p>
+              <p className="mb-1.5 text-xs font-semibold text-slate-700 night:text-slate-300">
+                Results
+              </p>
               <div className="space-y-1">
                 {results.map((r) => (
                   <div
@@ -186,12 +200,12 @@ function InvoiceAllPanel({ autoOpen }: { autoOpen: boolean }) {
                     className={cn(
                       'rounded-lg border px-2.5 py-2',
                       r.ok
-                        ? 'border-emerald-200 bg-emerald-50'
-                        : 'border-rose-200 bg-rose-50',
+                        ? 'border-emerald-200 night:border-emerald-800 bg-emerald-50 night:bg-emerald-950'
+                        : 'border-rose-200 night:border-rose-800 bg-rose-50 night:bg-rose-950',
                     )}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-xs font-semibold text-slate-900">
+                      <span className="text-xs font-semibold text-slate-900 night:text-slate-100">
                         {r.customer}
                       </span>
                       <StatusBadge
@@ -199,7 +213,9 @@ function InvoiceAllPanel({ autoOpen }: { autoOpen: boolean }) {
                         tone={r.ok ? 'green' : 'red'}
                       />
                     </div>
-                    <p className="mt-0.5 text-[11px] text-slate-600">{r.message}</p>
+                    <p className="mt-0.5 text-[11px] text-slate-600 night:text-slate-300">
+                      {r.message}
+                    </p>
                     {!r.ok ? (
                       <PreviewButton size="sm" variant="outline" className="mt-1.5">
                         Retry Message Only
@@ -288,14 +304,14 @@ export function InvoiceView({ autoPrepare = false }: { autoPrepare?: boolean }) 
                   className={cn(
                     'w-full rounded-lg border px-2.5 py-2 text-left transition-colors',
                     current?.id === o.id
-                      ? 'border-emerald-500 bg-emerald-50'
-                      : 'border-slate-200 hover:bg-slate-50',
+                      ? 'border-emerald-500 bg-emerald-50 night:bg-emerald-950'
+                      : 'border-slate-200 night:border-slate-700 hover:bg-slate-50 night:hover:bg-slate-800',
                   )}
                 >
-                  <p className="truncate text-xs font-semibold text-slate-900">
+                  <p className="truncate text-xs font-semibold text-slate-900 night:text-slate-100">
                     {o.customer}
                   </p>
-                  <p className="truncate font-mono text-[10px] text-slate-500">
+                  <p className="truncate font-mono text-[10px] text-slate-500 night:text-slate-400">
                     {o.orderNumber}
                   </p>
                 </button>
@@ -333,9 +349,9 @@ export function InvoiceView({ autoPrepare = false }: { autoPrepare?: boolean }) 
                 </div>
               </div>
 
-              <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
+              <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200 night:border-slate-700">
                 <table className="w-full min-w-[420px] text-left text-xs">
-                  <thead className="bg-slate-50 text-[10px] uppercase text-slate-500">
+                  <thead className="bg-slate-50 night:bg-slate-800 text-[10px] uppercase text-slate-500 night:text-slate-400">
                     <tr>
                       <th className="px-2.5 py-2">Item</th>
                       <th className="px-2.5 py-2 text-right">Qty</th>
@@ -344,7 +360,7 @@ export function InvoiceView({ autoPrepare = false }: { autoPrepare?: boolean }) 
                     </tr>
                   </thead>
                   <tbody>
-                    <tr className="border-t border-slate-100">
+                    <tr className="border-t border-slate-100 night:border-slate-800">
                       <td className="px-2.5 py-2 font-mono">{current.itemCode}</td>
                       <td className="px-2.5 py-2 text-right tabular-nums">
                         {current.quantity}
@@ -381,8 +397,10 @@ export function InvoiceView({ autoPrepare = false }: { autoPrepare?: boolean }) 
                   ['Assigned staff', current.assignedStaff],
                 ].map(([k, v]) => (
                   <div key={k}>
-                    <dt className="text-slate-500">{k}</dt>
-                    <dd className="font-medium text-slate-900">{v}</dd>
+                    <dt className="text-slate-500 night:text-slate-400">{k}</dt>
+                    <dd className="font-medium text-slate-900 night:text-slate-100">
+                      {v}
+                    </dd>
                   </div>
                 ))}
               </dl>
@@ -394,7 +412,7 @@ export function InvoiceView({ autoPrepare = false }: { autoPrepare?: boolean }) 
                 />
               </div>
 
-              <div className="mt-4 flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">
+              <div className="mt-4 flex flex-wrap gap-1.5 border-t border-slate-100 night:border-slate-800 pt-3">
                 <PreviewButton variant="outline" size="sm">
                   Review Invoice
                 </PreviewButton>
@@ -428,7 +446,7 @@ export function InvoiceView({ autoPrepare = false }: { autoPrepare?: boolean }) 
               </div>
             </Card>
           ) : (
-            <Card className="p-8 text-center text-sm text-slate-500">
+            <Card className="p-8 text-center text-sm text-slate-500 night:text-slate-400">
               No sample records match this filter.
             </Card>
           )}

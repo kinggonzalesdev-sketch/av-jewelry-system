@@ -61,16 +61,22 @@ function Toggle({
   badge?: string;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3 border-b border-slate-100 py-3 last:border-0">
+    <div className="flex items-start justify-between gap-3 border-b border-slate-100 night:border-slate-800 py-3 last:border-0">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-1.5">
-          <p className="text-sm font-medium text-slate-900">{label}</p>
+          <p className="text-sm font-medium text-slate-900 night:text-slate-100">
+            {label}
+          </p>
           {locked ? <StatusBadge label="Locked ON" tone="green" /> : null}
           {badge ? <StatusBadge label={badge} tone="amber" /> : null}
         </div>
-        <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">{description}</p>
+        <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500 night:text-slate-400">
+          {description}
+        </p>
         {locked && lockReason ? (
-          <p className="mt-1 text-[11px] font-medium text-emerald-800">{lockReason}</p>
+          <p className="mt-1 text-[11px] font-medium text-emerald-800 night:text-emerald-300">
+            {lockReason}
+          </p>
         ) : null}
       </div>
       <button
@@ -88,7 +94,7 @@ function Toggle({
       >
         <span
           className={cn(
-            'absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all',
+            'absolute top-0.5 h-5 w-5 rounded-full bg-white night:bg-slate-900 transition-all',
             checked ? 'left-[22px]' : 'left-0.5',
           )}
         />
@@ -103,14 +109,16 @@ function ResetTestDataPanel() {
   const ok = phrase === 'RESET TEST DATA' && reason.trim().length > 0;
 
   return (
-    <div className="rounded-xl border-2 border-rose-300 bg-rose-50 p-4">
+    <div className="rounded-xl border-2 border-rose-300 night:border-rose-700 bg-rose-50 night:bg-rose-950 p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <p className="text-sm font-bold text-rose-900">Reset Test Data</p>
+        <p className="text-sm font-bold text-rose-900 night:text-rose-200">
+          Reset Test Data
+        </p>
         <OwnerOnlyBadge />
         <StatusBadge label="Local / staging only" tone="red" />
         <StatusBadge label="AAL2 required later" tone="amber" />
       </div>
-      <p className="mt-2 text-xs leading-relaxed text-rose-900">
+      <p className="mt-2 text-xs leading-relaxed text-rose-900 night:text-rose-200">
         <strong>Destroys all test records in this environment.</strong> This action is
         disabled in production and can never be run there. It is audited.
       </p>
@@ -146,7 +154,7 @@ function ImportPanel({ kind }: { kind: 'Customers' | 'Items' }) {
         title={`Import ${kind}`}
         right={<PermissionBadge permission="existing_record_entry" />}
       />
-      <ol className="mt-3 space-y-1.5 text-xs text-slate-600">
+      <ol className="mt-3 space-y-1.5 text-xs text-slate-600 night:text-slate-300">
         {[
           'Download Template',
           'Upload File',
@@ -157,7 +165,7 @@ function ImportPanel({ kind }: { kind: 'Customers' | 'Items' }) {
           'Import Results',
         ].map((step, i) => (
           <li key={step} className="flex items-center gap-2">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-semibold text-slate-600">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 night:bg-slate-800 text-[10px] font-semibold text-slate-600 night:text-slate-300">
               {i + 1}
             </span>
             {step}
@@ -207,8 +215,8 @@ export function SettingsView() {
                   className={cn(
                     'flex w-full items-center justify-between gap-1.5 rounded-lg px-2.5 py-2 text-left text-xs font-medium transition-colors',
                     section === s
-                      ? 'bg-emerald-50 text-emerald-800'
-                      : 'text-slate-600 hover:bg-slate-100',
+                      ? 'bg-emerald-50 night:bg-emerald-950 text-emerald-800 night:text-emerald-300'
+                      : 'text-slate-600 night:text-slate-300 hover:bg-slate-100 night:hover:bg-slate-800',
                   )}
                 >
                   <span className="truncate">{s}</span>
@@ -222,7 +230,7 @@ export function SettingsView() {
               </li>
             ))}
           </ul>
-          <p className="mt-2 border-t border-slate-100 px-2.5 pt-2 text-[10px] text-slate-400">
+          <p className="mt-2 border-t border-slate-100 night:border-slate-800 px-2.5 pt-2 text-[10px] text-slate-400 night:text-slate-500">
             <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-violet-500 align-middle" />
             Owner-only section
           </p>
@@ -263,10 +271,10 @@ export function SettingsView() {
                 title="Shops / Pages"
                 description="Scope for staff and records."
               />
-              <ul className="mt-3 divide-y divide-slate-100 text-sm">
+              <ul className="mt-3 divide-y divide-slate-100 night:divide-slate-800 text-sm">
                 {['A.V. Jewelry Main', 'A.V. Jewelry Live 2'].map((s) => (
                   <li key={s} className="flex items-center justify-between gap-2 py-2.5">
-                    <span className="text-slate-900">{s}</span>
+                    <span className="text-slate-900 night:text-slate-100">{s}</span>
                     <StatusBadge label="Active" tone="green" />
                   </li>
                 ))}
@@ -300,11 +308,11 @@ export function SettingsView() {
                   />
                 </Field>
               </div>
-              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              <div className="mt-3 rounded-lg border border-slate-200 night:border-slate-700 bg-slate-50 night:bg-slate-800 p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 night:text-slate-400">
                   Preview
                 </p>
-                <p className="mt-1 text-xs text-slate-700">
+                <p className="mt-1 text-xs text-slate-700 night:text-slate-300">
                   Hi Ana Reyes, here is your invoice INV-2026-000088 for ₱12,500. Please
                   settle within the hold period.
                 </p>
@@ -352,11 +360,11 @@ export function SettingsView() {
                   checked={false}
                 />
               </div>
-              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+              <div className="mt-3 rounded-lg border border-amber-200 night:border-amber-800 bg-amber-50 night:bg-amber-950 p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-800 night:text-amber-200">
                   Approved flow — there is no automatic cancellation
                 </p>
-                <p className="mt-1.5 text-xs font-medium leading-relaxed text-amber-900">
+                <p className="mt-1.5 text-xs font-medium leading-relaxed text-amber-900 night:text-amber-200">
                   Hold Period Reached → For Cancellation Review → Owner Review → Owner
                   Approval → Execute Cancellation → Returned-to-Stock Review
                 </p>
@@ -504,16 +512,18 @@ export function SettingsView() {
             <Card className="p-4">
               <SectionTitle title="Integrations" right={<OwnerOnlyBadge />} />
               <Link href="/preview/settings/integrations/pancake" className="mt-3 block">
-                <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3 transition-colors hover:bg-slate-50">
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 night:border-slate-700 p-3 transition-colors hover:bg-slate-50 night:hover:bg-slate-800">
                   <div>
-                    <p className="text-sm font-semibold text-slate-900">Pancake</p>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-sm font-semibold text-slate-900 night:text-slate-100">
+                      Pancake
+                    </p>
+                    <p className="text-[11px] text-slate-500 night:text-slate-400">
                       Facebook Page access for Live capture
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <StatusBadge label="Not Connected" tone="slate" />
-                    <span className="text-slate-400">›</span>
+                    <span className="text-slate-400 night:text-slate-500">›</span>
                   </div>
                 </div>
               </Link>
@@ -536,12 +546,12 @@ export function SettingsView() {
               <Card className="p-4">
                 <SectionTitle title="Archive" right={<OwnerOnlyBadge />} />
                 <div className="mt-3 space-y-2">
-                  <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 night:border-slate-700 p-3">
                     <div>
-                      <p className="text-sm font-medium text-slate-900">
+                      <p className="text-sm font-medium text-slate-900 night:text-slate-100">
                         Archive Closed Orders
                       </p>
-                      <p className="text-[11px] text-slate-500">
+                      <p className="text-[11px] text-slate-500 night:text-slate-400">
                         Hides completed orders from active views. Records are retained.
                       </p>
                     </div>
@@ -549,12 +559,12 @@ export function SettingsView() {
                       Archive
                     </PreviewButton>
                   </div>
-                  <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 night:border-slate-700 p-3">
                     <div>
-                      <p className="text-sm font-medium text-slate-900">
+                      <p className="text-sm font-medium text-slate-900 night:text-slate-100">
                         Archive Inactive Customers
                       </p>
-                      <p className="text-[11px] text-slate-500">
+                      <p className="text-[11px] text-slate-500 night:text-slate-400">
                         Hides inactive customers. Records and history are retained.
                       </p>
                     </div>
@@ -579,7 +589,7 @@ export function SettingsView() {
                 title="Audit Log"
                 right={<PermissionBadge permission="export_data_reports" />}
               />
-              <ul className="mt-3 divide-y divide-slate-100 text-xs">
+              <ul className="mt-3 divide-y divide-slate-100 night:divide-slate-800 text-xs">
                 {[
                   [
                     '2026-07-14 14:22',
@@ -601,10 +611,16 @@ export function SettingsView() {
                   ],
                 ].map(([when, who, action, entity]) => (
                   <li key={String(when)} className="grid grid-cols-4 gap-2 py-2">
-                    <span className="text-slate-500">{when}</span>
-                    <span className="font-medium text-slate-900">{who}</span>
-                    <span className="font-mono text-slate-600">{action}</span>
-                    <span className="font-mono text-slate-500">{entity}</span>
+                    <span className="text-slate-500 night:text-slate-400">{when}</span>
+                    <span className="font-medium text-slate-900 night:text-slate-100">
+                      {who}
+                    </span>
+                    <span className="font-mono text-slate-600 night:text-slate-300">
+                      {action}
+                    </span>
+                    <span className="font-mono text-slate-500 night:text-slate-400">
+                      {entity}
+                    </span>
                   </li>
                 ))}
               </ul>

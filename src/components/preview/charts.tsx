@@ -160,12 +160,14 @@ export function LineChart({
       </svg>
 
       {hover !== null && data[hover] ? (
-        <div className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] shadow-sm">
-          <span className="font-medium text-slate-900">{data[hover].label}</span>
-          <span className="ml-2 tabular-nums text-emerald-700">
+        <div className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 rounded-md border border-slate-200 night:border-slate-700 bg-white night:bg-slate-900 px-2 py-1 text-[11px] shadow-sm">
+          <span className="font-medium text-slate-900 night:text-slate-100">
+            {data[hover].label}
+          </span>
+          <span className="ml-2 tabular-nums text-emerald-700 night:text-emerald-300">
             {formatValue(data[hover].value)}
           </span>
-          <span className="ml-1 text-slate-400">sample</span>
+          <span className="ml-1 text-slate-400 night:text-slate-500">sample</span>
         </div>
       ) : null}
     </div>
@@ -186,10 +188,10 @@ export function BarChart({
     <ul className="space-y-2" role="img" aria-label="Order status breakdown, sample data">
       {data.map((d) => (
         <li key={d.label} className="flex items-center gap-2.5">
-          <span className="w-28 shrink-0 truncate text-[11px] text-slate-600">
+          <span className="w-28 shrink-0 truncate text-[11px] text-slate-600 night:text-slate-300">
             {d.label}
           </span>
-          <div className="h-5 flex-1 overflow-hidden rounded bg-slate-100">
+          <div className="h-5 flex-1 overflow-hidden rounded bg-slate-100 night:bg-slate-800">
             <div
               className="h-full rounded transition-all"
               style={{
@@ -199,7 +201,7 @@ export function BarChart({
               title={`${d.label}: ${d.value} (sample)`}
             />
           </div>
-          <span className="w-7 shrink-0 text-right text-xs font-semibold tabular-nums text-slate-900">
+          <span className="w-7 shrink-0 text-right text-xs font-semibold tabular-nums text-slate-900 night:text-slate-100">
             {d.value}
           </span>
         </li>
@@ -316,7 +318,7 @@ export function GroupedBarChart({
         {series.map((s) => (
           <span
             key={s.name}
-            className="flex items-center gap-1.5 text-[11px] text-slate-600"
+            className="flex items-center gap-1.5 text-[11px] text-slate-600 night:text-slate-300"
           >
             <span
               className="h-2.5 w-2.5 rounded-sm"
@@ -394,7 +396,7 @@ export function DonutChart({ data }: { data: Array<Point & { color: string }> })
         {data.map((d) => (
           <li
             key={d.label}
-            className="flex items-center gap-2 text-[11px] text-slate-600"
+            className="flex items-center gap-2 text-[11px] text-slate-600 night:text-slate-300"
           >
             <span
               className="h-2.5 w-2.5 shrink-0 rounded-sm"
@@ -402,7 +404,9 @@ export function DonutChart({ data }: { data: Array<Point & { color: string }> })
               aria-hidden="true"
             />
             <span className="flex-1">{d.label}</span>
-            <span className="font-semibold tabular-nums text-slate-900">{d.value}</span>
+            <span className="font-semibold tabular-nums text-slate-900 night:text-slate-100">
+              {d.value}
+            </span>
           </li>
         ))}
       </ul>

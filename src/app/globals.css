@@ -1,6 +1,26 @@
 @import 'tailwindcss';
 
 /*
+ * `night:` — a class-based variant used ONLY by the UI review prototype
+ * (`/preview`), which has a manual night-mode toggle.
+ *
+ * Deliberately NOT named `dark:`. Tailwind's built-in `dark:` follows
+ * prefers-color-scheme, and the production app relies on that OS-driven
+ * behaviour through the CSS variables below. Redefining `dark:` to be
+ * class-based would silently change what it means for every future production
+ * component. A separate variant keeps the prototype's toggle isolated and leaves
+ * `dark:` free to mean exactly what it means today.
+ */
+/*
+ * `:is()` rather than `:where()` on purpose. `:where()` contributes zero
+ * specificity, so `night:bg-slate-900` would tie with a plain `bg-white` at
+ * (0,1,0) and fall back to source order — which does not reliably win. `:is()`
+ * takes its argument's specificity, giving (0,2,0), so a night override always
+ * beats the light class it is meant to replace.
+ */
+@custom-variant night (&:is(.night, .night *));
+
+/*
  * shadcn/ui-compatible design tokens (Tailwind CSS v4, CSS-first configuration).
  * Neutral defaults — visual design is not a Phase 0 decision.
  */

@@ -20,7 +20,7 @@ export function SampleBadge({ className }: { className?: string }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-800',
+        'inline-flex items-center gap-1 rounded-full border border-amber-300 night:border-amber-700 bg-amber-50 night:bg-amber-950 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-800 night:text-amber-200',
         className,
       )}
     >
@@ -35,18 +35,21 @@ export function SampleBadge({ className }: { className?: string }) {
  */
 export function PrototypeBadge({ label = 'Prototype' }: { label?: string }) {
   return (
-    <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-600">
+    <span className="inline-flex items-center rounded-full border border-slate-300 night:border-slate-600 bg-slate-50 night:bg-slate-800 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-600 night:text-slate-300">
       {label}
     </span>
   );
 }
 
 const TONE_CLASS: Record<string, string> = {
-  green: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-  amber: 'border-amber-200 bg-amber-50 text-amber-800',
-  red: 'border-rose-200 bg-rose-50 text-rose-800',
-  blue: 'border-sky-200 bg-sky-50 text-sky-800',
-  slate: 'border-slate-200 bg-slate-100 text-slate-700',
+  green:
+    'border-emerald-200 night:border-emerald-800 bg-emerald-50 night:bg-emerald-950 text-emerald-800 night:text-emerald-300',
+  amber:
+    'border-amber-200 night:border-amber-800 bg-amber-50 night:bg-amber-950 text-amber-800 night:text-amber-200',
+  red: 'border-rose-200 night:border-rose-800 bg-rose-50 night:bg-rose-950 text-rose-800 night:text-rose-200',
+  blue: 'border-sky-200 night:border-sky-800 bg-sky-50 night:bg-sky-950 text-sky-800 night:text-sky-300',
+  slate:
+    'border-slate-200 night:border-slate-700 bg-slate-100 night:bg-slate-800 text-slate-700 night:text-slate-300',
 };
 
 export function StatusBadge({
@@ -73,7 +76,7 @@ export function StatusBadge({
 
 export function OwnerOnlyBadge() {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-violet-800">
+    <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 night:border-violet-800 bg-violet-50 night:bg-violet-950 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-violet-800 night:text-violet-300">
       Owner only
     </span>
   );
@@ -81,7 +84,7 @@ export function OwnerOnlyBadge() {
 
 export function PermissionBadge({ permission }: { permission: string }) {
   return (
-    <span className="inline-flex items-center rounded border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-600">
+    <span className="inline-flex items-center rounded border border-slate-200 night:border-slate-700 bg-white night:bg-slate-900 px-1.5 py-0.5 font-mono text-[10px] text-slate-600 night:text-slate-300">
       {permission}
     </span>
   );
@@ -104,10 +107,11 @@ export function PreviewButton({
         size === 'sm' ? 'h-8 px-2.5 text-xs' : 'h-10 px-3.5 text-sm',
         variant === 'default' && 'bg-emerald-600 text-white hover:bg-emerald-700',
         variant === 'outline' &&
-          'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
-        variant === 'ghost' && 'text-slate-600 hover:bg-slate-100',
+          'border border-slate-300 night:border-slate-600 bg-white night:bg-slate-900 text-slate-700 night:text-slate-300 hover:bg-slate-50 night:hover:bg-slate-800',
+        variant === 'ghost' &&
+          'text-slate-600 night:text-slate-300 hover:bg-slate-100 night:hover:bg-slate-800',
         variant === 'danger' &&
-          'border border-rose-300 bg-white text-rose-700 hover:bg-rose-50',
+          'border border-rose-300 night:border-rose-700 bg-white night:bg-slate-900 text-rose-700 night:text-rose-300 hover:bg-rose-50 night:hover:bg-rose-950',
         className,
       )}
       {...props}
@@ -126,7 +130,10 @@ export function Card({
 }) {
   return (
     <div
-      className={cn('rounded-xl border border-slate-200 bg-white shadow-sm', className)}
+      className={cn(
+        'rounded-xl border border-slate-200 night:border-slate-700 bg-white night:bg-slate-900 shadow-sm',
+        className,
+      )}
     >
       {children}
     </div>
@@ -145,9 +152,13 @@ export function SectionTitle({
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h2 className="text-lg font-semibold tracking-tight text-slate-900">{title}</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-slate-900 night:text-slate-100">
+          {title}
+        </h2>
         {description ? (
-          <p className="mt-0.5 text-sm text-slate-500">{description}</p>
+          <p className="mt-0.5 text-sm text-slate-500 night:text-slate-400">
+            {description}
+          </p>
         ) : null}
       </div>
       {right}
@@ -171,8 +182,8 @@ export function RuleNote({
       className={cn(
         'rounded-lg border px-3 py-2 text-xs leading-relaxed',
         tone === 'amber'
-          ? 'border-amber-200 bg-amber-50 text-amber-900'
-          : 'border-slate-200 bg-slate-50 text-slate-600',
+          ? 'border-amber-200 night:border-amber-800 bg-amber-50 night:bg-amber-950 text-amber-900 night:text-amber-200'
+          : 'border-slate-200 night:border-slate-700 bg-slate-50 night:bg-slate-800 text-slate-600 night:text-slate-300',
       )}
     >
       {children}
@@ -193,19 +204,21 @@ export function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 flex items-center gap-1.5 text-xs font-medium text-slate-700">
+      <span className="mb-1 flex items-center gap-1.5 text-xs font-medium text-slate-700 night:text-slate-300">
         {label}
         {required ? <span className="text-rose-600">*</span> : null}
       </span>
       {children}
       {hint ? (
-        <span className="mt-1 block text-[11px] text-slate-500">{hint}</span>
+        <span className="mt-1 block text-[11px] text-slate-500 night:text-slate-400">
+          {hint}
+        </span>
       ) : null}
     </label>
   );
 }
 
 export const inputClass =
-  'h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500';
+  'h-10 w-full rounded-lg border border-slate-300 night:border-slate-600 bg-white night:bg-slate-900 px-3 text-sm text-slate-900 night:text-slate-100 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500';
 
 export const selectClass = inputClass + ' pr-8';

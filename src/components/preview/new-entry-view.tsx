@@ -92,17 +92,22 @@ function PhotoControls() {
         className={cn(
           'flex aspect-[4/3] w-full items-center justify-center rounded-lg border-2 border-dashed text-center',
           state === 'empty'
-            ? 'border-slate-300 bg-slate-50'
-            : 'border-emerald-300 bg-emerald-50',
+            ? 'border-slate-300 night:border-slate-600 bg-slate-50 night:bg-slate-800'
+            : 'border-emerald-300 night:border-emerald-700 bg-emerald-50 night:bg-emerald-950',
         )}
       >
         {state === 'empty' ? (
           <div className="px-4">
-            <p className="text-3xl text-slate-300" aria-hidden="true">
+            <p
+              className="text-3xl text-slate-300 night:text-slate-600"
+              aria-hidden="true"
+            >
               ⛶
             </p>
-            <p className="mt-1 text-xs font-medium text-slate-600">Item photo required</p>
-            <p className="mt-0.5 text-[11px] text-slate-500">
+            <p className="mt-1 text-xs font-medium text-slate-600 night:text-slate-300">
+              Item photo required
+            </p>
+            <p className="mt-0.5 text-[11px] text-slate-500 night:text-slate-400">
               Normal jewelry workflow cannot be saved without a photo
             </p>
           </div>
@@ -111,7 +116,7 @@ function PhotoControls() {
             <p className="text-3xl text-emerald-500" aria-hidden="true">
               ▩
             </p>
-            <p className="mt-1 text-xs font-medium text-emerald-800">
+            <p className="mt-1 text-xs font-medium text-emerald-800 night:text-emerald-300">
               Sample photo captured (not a real image)
             </p>
           </div>
@@ -126,13 +131,17 @@ function PhotoControls() {
               style={{ width: `${progress}%` }}
             />
           </div>
-          <p className="mt-1 text-[11px] text-slate-500">Uploading… {progress}%</p>
+          <p className="mt-1 text-[11px] text-slate-500 night:text-slate-400">
+            Uploading… {progress}%
+          </p>
         </div>
       ) : null}
 
       {state === 'failed' ? (
-        <div className="flex items-center justify-between gap-2 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-2">
-          <p className="text-[11px] font-medium text-rose-800">Upload failed</p>
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-rose-200 night:border-rose-800 bg-rose-50 night:bg-rose-950 px-2.5 py-2">
+          <p className="text-[11px] font-medium text-rose-800 night:text-rose-200">
+            Upload failed
+          </p>
           <PreviewButton
             size="sm"
             variant="outline"
@@ -183,7 +192,7 @@ function PhotoControls() {
       <button
         type="button"
         onClick={() => simulateUpload(true)}
-        className="text-[10px] text-slate-400 underline hover:text-slate-600"
+        className="text-[10px] text-slate-400 night:text-slate-500 underline hover:text-slate-600"
       >
         (prototype: simulate a failed upload)
       </button>
@@ -219,17 +228,17 @@ export function NewEntryView() {
                   className={cn(
                     'rounded-lg border p-3 text-left transition-colors',
                     mode === m.key
-                      ? 'border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500'
-                      : 'border-slate-200 bg-white hover:border-slate-300',
+                      ? 'border-emerald-500 bg-emerald-50 night:bg-emerald-950 ring-1 ring-emerald-500'
+                      : 'border-slate-200 night:border-slate-700 bg-white night:bg-slate-900 hover:border-slate-300',
                   )}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-semibold text-slate-900">
+                    <span className="text-sm font-semibold text-slate-900 night:text-slate-100">
                       {m.label}
                     </span>
                     <PermissionBadge permission={m.permission} />
                   </div>
-                  <p className="mt-1 text-[11px] leading-relaxed text-slate-600">
+                  <p className="mt-1 text-[11px] leading-relaxed text-slate-600 night:text-slate-300">
                     {m.effect}
                   </p>
                 </button>
@@ -319,25 +328,31 @@ export function NewEntryView() {
           </Card>
 
           <Card className="p-4">
-            <p className="text-xs font-medium text-slate-500">Primary action</p>
+            <p className="text-xs font-medium text-slate-500 night:text-slate-400">
+              Primary action
+            </p>
             <PreviewButton className="mt-2 w-full">{active.button}</PreviewButton>
-            <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-500 night:text-slate-400">
               {active.effect}
             </p>
             <div className="mt-2 flex items-center gap-1.5">
-              <span className="text-[11px] text-slate-500">Requires</span>
+              <span className="text-[11px] text-slate-500 night:text-slate-400">
+                Requires
+              </span>
               <PermissionBadge permission={active.permission} />
             </div>
 
-            <div className="mt-4 border-t border-slate-100 pt-3">
+            <div className="mt-4 border-t border-slate-100 night:border-slate-800 pt-3">
               <PreviewButton variant="outline" size="sm" className="w-full">
                 ⎙ Reprint Last Label
               </PreviewButton>
               <div className="mt-2 flex items-center gap-1.5">
-                <span className="text-[11px] text-slate-500">Requires</span>
+                <span className="text-[11px] text-slate-500 night:text-slate-400">
+                  Requires
+                </span>
                 <PermissionBadge permission="retry_reprint_label" />
               </div>
-              <ul className="mt-2 space-y-0.5 text-[11px] leading-relaxed text-slate-500">
+              <ul className="mt-2 space-y-0.5 text-[11px] leading-relaxed text-slate-500 night:text-slate-400">
                 <li>• Creates only a new print attempt</li>
                 <li>• Does NOT create a new claim</li>
                 <li>• Does NOT create another reservation</li>
