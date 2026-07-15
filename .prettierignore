@@ -1,0 +1,21 @@
+# Dependencies & build output
+node_modules/
+.next/
+out/
+build/
+dist/
+coverage/
+package-lock.json
+next-env.d.ts
+
+# ---------------------------------------------------------------------------
+# Approved planning documents — AUTHORITATIVE, DO NOT REFORMAT.
+# These are the source of truth (ADR §2) and must remain byte-for-byte intact.
+# Formatting them would constitute an unapproved modification.
+# ---------------------------------------------------------------------------
+Development-Bible.md
+IMPLEMENTATION-ROADMAP.md
+PHASE-0-ARCHITECTURE-DECISIONS.md
+
+# Local working note (untracked)
+SESSION-HANDOFF.md

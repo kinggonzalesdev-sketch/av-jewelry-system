@@ -1,0 +1,81 @@
+# Supabase local development configuration (ADR §10, §12).
+#
+# Local development only. This file must never reference a production project,
+# and no credentials belong here.
+#
+# Staging uses a SEPARATE Supabase project from production (ADR §10).
+# No project is linked in Phase 0.
+
+project_id = "av-jewelry-operations-local"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[db.migrations]
+schema_paths = []
+
+[studio]
+enabled = true
+port = 54323
+
+# Local-only mail catcher. Real email is never sent from local development.
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+# Buckets are private by default and permission/record-scoped (ADR §13).
+# Exact bucket layout, limits, retention, and signed-URL duration are To be confirmed.
+# No buckets are declared in Phase 0.
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = ["https://127.0.0.1:3000"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+
+# No public self-registration; no customer login (ADR §4).
+# Staff accounts are created through an authorized internal administration process.
+enable_signup = false
+enable_anonymous_sign_ins = false
+enable_manual_linking = false
+
+[auth.email]
+enable_signup = false
+double_confirm_changes = true
+enable_confirmations = false
+secure_password_change = true
+
+# Approved MFA method: TOTP (authenticator app) only (ADR §5).
+# SMS / WhatsApp / email-based MFA are NOT approved and remain disabled.
+# Enrollment and enforcement are implemented in Phase 2 — not Phase 0.
+[auth.mfa]
+max_enrolled_factors = 10
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
+[auth.mfa.phone]
+enroll_enabled = false
+verify_enabled = false
+
+[auth.sms]
+enable_signup = false
+enable_confirmations = false
+
+[analytics]
+enabled = false
