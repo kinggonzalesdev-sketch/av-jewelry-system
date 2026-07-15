@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 
 import {
@@ -25,6 +26,7 @@ import {
   type CostingMode,
   type RangeKey,
 } from '@/components/preview/dashboard-data';
+import { layawaySummary } from '@/components/preview/layaway-data';
 import {
   Card,
   Field,
@@ -57,26 +59,29 @@ function KpiCard({
 }: {
   label: string;
   value: string;
-  tone?: 'default' | 'green' | 'amber';
+  tone?: 'default' | 'green' | 'amber' | 'rose';
 }) {
   return (
     <div
       className={cn(
-        'rounded-xl border bg-white p-3',
-        tone === 'green' && 'border-emerald-200',
-        tone === 'amber' && 'border-amber-200',
-        tone === 'default' && 'border-slate-200',
+        'rounded-xl border bg-white night:bg-slate-900 p-3',
+        tone === 'green' && 'border-emerald-200 night:border-emerald-800',
+        tone === 'amber' && 'border-amber-200 night:border-amber-800',
+        tone === 'rose' && 'border-rose-200 night:border-rose-800',
+        tone === 'default' && 'border-slate-200 night:border-slate-700',
       )}
     >
-      <p className="text-[11px] font-medium leading-tight text-slate-500">{label}</p>
+      <p className="text-[11px] font-medium leading-tight text-slate-500 night:text-slate-400">
+        {label}
+      </p>
       <p
         className={cn(
           'mt-1 text-xl font-bold tabular-nums',
           tone === 'green'
-            ? 'text-emerald-700'
+            ? 'text-emerald-700 night:text-emerald-300'
             : tone === 'amber'
               ? 'text-amber-700'
-              : 'text-slate-900',
+              : 'text-slate-900 night:text-slate-100',
         )}
       >
         {value}
@@ -87,9 +92,13 @@ function KpiCard({
 
 function MiniCount({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white px-2.5 py-2">
-      <p className="text-[10px] leading-tight text-slate-500">{label}</p>
-      <p className="mt-0.5 text-sm font-bold tabular-nums text-slate-900">{value}</p>
+    <div className="rounded-lg border border-slate-200 night:border-slate-700 bg-white night:bg-slate-900 px-2.5 py-2">
+      <p className="text-[10px] leading-tight text-slate-500 night:text-slate-400">
+        {label}
+      </p>
+      <p className="mt-0.5 text-sm font-bold tabular-nums text-slate-900 night:text-slate-100">
+        {value}
+      </p>
     </div>
   );
 }
@@ -124,7 +133,7 @@ function DateFilters({
               'rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors',
               range === r
                 ? 'border-emerald-600 bg-emerald-600 text-white'
-                : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50',
+                : 'border-slate-300 night:border-slate-600 bg-white night:bg-slate-900 text-slate-600 night:text-slate-300 hover:bg-slate-50 night:hover:bg-slate-800',
             )}
           >
             {RANGE_LABEL[r]}
@@ -165,15 +174,16 @@ function DateFilters({
         </div>
       ) : null}
 
-      <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2.5">
+      <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-slate-100 night:border-slate-800 pt-2.5">
         <StatusBadge label={`Active: ${RANGE_LABEL[range]}`} tone="green" />
-        <span className="text-[11px] text-slate-600">
-          Showing <strong className="text-slate-900">{bounds.start}</strong> to{' '}
-          <strong className="text-slate-900">{bounds.end}</strong>
+        <span className="text-[11px] text-slate-600 night:text-slate-300">
+          Showing{' '}
+          <strong className="text-slate-900 night:text-slate-100">{bounds.start}</strong>{' '}
+          to <strong className="text-slate-900 night:text-slate-100">{bounds.end}</strong>
         </span>
         <SampleBadge className="ml-auto" />
       </div>
-      <p className="mt-1.5 text-[11px] text-slate-500">
+      <p className="mt-1.5 text-[11px] text-slate-500 night:text-slate-400">
         Export Report is a visual prototype action — no file is produced and no export is
         implemented.
       </p>
@@ -194,6 +204,7 @@ function DashboardTab({
   const sales = useMemo(() => salesSeries(range, from, to), [range, from, to]);
   const status = useMemo(() => orderStatusBreakdown(range, from, to), [range, from, to]);
   const payments = useMemo(() => paymentBreakdown(range, from, to), [range, from, to]);
+  const lw = layawaySummary();
 
   return (
     <div className="space-y-4">
@@ -217,7 +228,7 @@ function DashboardTab({
 
       {/* Secondary operational counts */}
       <div>
-        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400 night:text-slate-500">
           Operational summary
         </p>
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
@@ -231,6 +242,51 @@ function DashboardTab({
           <MiniCount label="Shipping Confirmed" value={k.shippingConfirmed} />
           <MiniCount label="Cancelled Orders" value={k.cancelledOrders} />
         </div>
+      </div>
+
+      {/*
+        Layaway summary — a first-class row, not a footnote.
+        Layaway was previously invisible under a generic "Payments" label; these
+        cards give it a permanent home on the summary screen.
+      */}
+      <div>
+        <div className="mb-1.5 flex flex-wrap items-center gap-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 night:text-slate-500">
+            Layaway
+          </p>
+          <Link
+            href="/preview/payments"
+            className="text-[11px] font-medium text-emerald-700 night:text-emerald-300 hover:underline"
+          >
+            Open Payments &amp; Layaway →
+          </Link>
+        </div>
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+          <KpiCard
+            label="Active Layaways"
+            value={String(lw.activeLayaways)}
+            tone="green"
+          />
+          <KpiCard
+            label="Installments Due"
+            value={String(lw.installmentsDue)}
+            tone="amber"
+          />
+          <KpiCard
+            label="Overdue / Grace Period"
+            value={String(lw.overdueOrGrace)}
+            tone="amber"
+          />
+          <KpiCard
+            label="Forfeiture-Eligible"
+            value={String(lw.forfeitureEligible)}
+            tone="rose"
+          />
+        </div>
+        <p className="mt-1.5 text-[11px] text-slate-500 night:text-slate-400">
+          Forfeiture-Eligible means eligible for <strong>review</strong> — not forfeited.
+          Forfeiture requires Owner approval, and there is no automatic stock return.
+        </p>
       </div>
 
       {/* Charts */}
@@ -323,7 +379,7 @@ function GrossProfitTab() {
             </select>
           </Field>
         </div>
-        <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2.5">
+        <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-slate-100 night:border-slate-800 pt-2.5">
           <StatusBadge label={`Period: ${monthLabel(month)}`} tone="green" />
           <StatusBadge label={`Costing: ${mode}`} tone="slate" />
           <SampleBadge />
@@ -388,7 +444,7 @@ export function DashboardReportView() {
 
       {/* Internal tabs — Dashboard and Gross Profit ONLY. */}
       <div
-        className="mb-4 inline-flex rounded-lg border border-slate-200 bg-white p-1"
+        className="mb-4 inline-flex rounded-lg border border-slate-200 night:border-slate-700 bg-white night:bg-slate-900 p-1"
         role="tablist"
         aria-label="Dashboard Report tabs"
       >
@@ -408,7 +464,7 @@ export function DashboardReportView() {
               'rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors',
               tab === key
                 ? 'bg-emerald-600 text-white'
-                : 'text-slate-600 hover:bg-slate-100',
+                : 'text-slate-600 night:text-slate-300 hover:bg-slate-100 night:hover:bg-slate-800',
             )}
           >
             {label}

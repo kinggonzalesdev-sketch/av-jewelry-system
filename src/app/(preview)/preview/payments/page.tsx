@@ -1,5 +1,5 @@
-import { ComingSoonPage } from '@/components/preview/shell';
+import { PaymentsView } from '@/components/preview/payments-view';
 
-export default function Page() {
-  return <ComingSoonPage title="Payments" phase="Phase 6 — Payment & Layaway" />;
+export default function PreviewPaymentsPage() {
+  return <PaymentsView />;
 }
