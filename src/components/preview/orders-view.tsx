@@ -67,33 +67,33 @@ function MoreMenu({ order }: { order: SampleOrder }) {
             className="fixed inset-0 z-10 cursor-default"
             onClick={() => setOpen(false)}
           />
-          <div className="absolute right-0 z-20 mt-1 w-60 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+          <div className="absolute right-0 z-20 mt-1 w-60 rounded-lg border border-slate-200 night:border-slate-700 bg-white night:bg-slate-900 py-1 shadow-lg">
             {['View Details', 'Send Reminder', 'Verify Payment', 'Mark as Keep'].map(
               (label) => (
                 <button
                   key={label}
                   type="button"
-                  className="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                  className="block w-full px-3 py-2 text-left text-xs text-slate-700 night:text-slate-300 hover:bg-slate-50 night:hover:bg-slate-800"
                 >
                   {label}
                 </button>
               ),
             )}
-            <div className="my-1 border-t border-slate-100" />
+            <div className="my-1 border-t border-slate-100 night:border-slate-800" />
             <button
               type="button"
-              className="block w-full px-3 py-2 text-left text-xs font-medium text-amber-800 hover:bg-amber-50"
+              className="block w-full px-3 py-2 text-left text-xs font-medium text-amber-800 night:text-amber-200 hover:bg-amber-50"
             >
               {cancelLabel}
-              <span className="mt-0.5 block text-[10px] font-normal text-slate-500">
+              <span className="mt-0.5 block text-[10px] font-normal text-slate-500 night:text-slate-400">
                 Owner approval required. Availability returns only via Returned-to-Stock
                 Review.
               </span>
             </button>
-            <div className="my-1 border-t border-slate-100" />
+            <div className="my-1 border-t border-slate-100 night:border-slate-800" />
             <button
               type="button"
-              className="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+              className="block w-full px-3 py-2 text-left text-xs text-slate-700 night:text-slate-300 hover:bg-slate-50 night:hover:bg-slate-800"
             >
               View Audit Trail
             </button>
@@ -199,8 +199,23 @@ export function OrdersView() {
         }
       />
 
-      {/* Status summary cards */}
-      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+      {/*
+        Status summary cards — responsive grid.
+
+        2xl (≥1536px) : all 10 in ONE row. At 10 columns each card is ~120px, which
+                        still fits "Payment Evidence Submitted" over three short
+                        lines without clipping — one row is allowed only where the
+                        labels stay readable.
+        xl  (≥1280px) : 5 per row. A laptop cannot hold 10 legibly, so it falls back
+                        rather than cramping the text.
+        sm  (tablet)  : 3 columns.
+        mobile        : 2 columns.
+
+        Equal height: the grid stretches items, and min-h + justify-between put the
+        count on a common baseline whether the label wraps to one line or three.
+        No breakpoint can force horizontal page overflow.
+      */}
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-10">
         {SUMMARY_CARDS.map((card) => {
           const active = status === card.key;
           return (
@@ -211,19 +226,23 @@ export function OrdersView() {
                 setStatus(card.key);
                 setPage(1);
               }}
+              aria-pressed={active}
               className={cn(
-                'rounded-xl border bg-white p-3 text-left transition-colors',
+                'flex min-h-[78px] flex-col justify-between rounded-xl border bg-white night:bg-slate-900 p-2.5 text-left transition-colors',
                 active
                   ? 'border-emerald-500 ring-1 ring-emerald-500'
-                  : 'border-slate-200 hover:border-slate-300',
+                  : 'border-slate-200 night:border-slate-700 hover:border-slate-300',
               )}
             >
-              <p className="text-[11px] font-medium leading-tight text-slate-500">
+              {/* Label wraps freely and is never truncated; hyphens let a long
+                  word break cleanly instead of overflowing a narrow card. */}
+              <span className="text-[11px] font-medium leading-tight text-slate-500 night:text-slate-400 [hyphens:auto]">
                 {card.label}
-              </p>
-              <p className="mt-1 text-xl font-bold text-slate-900">
+              </span>
+              {/* The count is the prominent element. */}
+              <span className="mt-1.5 text-2xl font-bold leading-none tabular-nums text-slate-900 night:text-slate-100">
                 {counts[card.key] ?? 0}
-              </p>
+              </span>
             </button>
           );
         })}
@@ -304,16 +323,16 @@ export function OrdersView() {
             />
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-            <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+            <label className="flex items-center gap-2 text-xs font-medium text-slate-600 night:text-slate-300">
               <input
                 type="checkbox"
                 checked={showKeep}
                 onChange={(e) => setShowKeep(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                className="h-4 w-4 rounded border-slate-300 night:border-slate-600 text-emerald-600 focus:ring-emerald-500"
               />
               {showKeep ? 'Hide Keep' : 'Show Keep'}
             </label>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 night:text-slate-400">
               {filtered.length} of {SAMPLE_ORDERS.length} sample records
             </p>
           </div>
@@ -324,7 +343,7 @@ export function OrdersView() {
       <Card className="hidden overflow-hidden lg:block">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1080px] text-left text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+            <thead className="border-b border-slate-200 night:border-slate-700 bg-slate-50 night:bg-slate-800 text-[11px] uppercase tracking-wide text-slate-500 night:text-slate-400">
               <tr>
                 <th className="w-10 px-3 py-2.5">
                   <span className="sr-only">Select</span>
@@ -342,16 +361,16 @@ export function OrdersView() {
                 <th className="px-3 py-2.5 text-right font-semibold">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 night:divide-slate-800">
               {pageRows.map((o) => (
-                <tr key={o.id} className="hover:bg-slate-50/60">
+                <tr key={o.id} className="hover:bg-slate-50 night:hover:bg-slate-800/60">
                   <td className="px-3 py-2.5">
                     <input
                       type="checkbox"
                       checked={selected.has(o.id)}
                       onChange={() => toggle(o.id)}
                       aria-label={`Select ${o.orderNumber}`}
-                      className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                      className="h-4 w-4 rounded border-slate-300 night:border-slate-600 text-emerald-600 focus:ring-emerald-500"
                     />
                   </td>
                   <td className="px-3 py-2.5">
@@ -360,26 +379,34 @@ export function OrdersView() {
                       tone={ORDER_STATUS_TONE[o.status]}
                     />
                   </td>
-                  <td className="px-3 py-2.5 text-xs text-slate-600">{o.shop}</td>
-                  <td className="px-3 py-2.5 font-mono text-xs text-slate-900">
+                  <td className="px-3 py-2.5 text-xs text-slate-600 night:text-slate-300">
+                    {o.shop}
+                  </td>
+                  <td className="px-3 py-2.5 font-mono text-xs text-slate-900 night:text-slate-100">
                     {o.orderNumber}
                   </td>
-                  <td className="px-3 py-2.5 font-mono text-xs text-slate-500">
+                  <td className="px-3 py-2.5 font-mono text-xs text-slate-500 night:text-slate-400">
                     {o.invoiceNumber ?? '—'}
                   </td>
                   <td className="px-3 py-2.5">
-                    <p className="font-medium text-slate-900">{o.customer}</p>
-                    <p className="text-[11px] text-slate-500">{o.facebookName}</p>
+                    <p className="font-medium text-slate-900 night:text-slate-100">
+                      {o.customer}
+                    </p>
+                    <p className="text-[11px] text-slate-500 night:text-slate-400">
+                      {o.facebookName}
+                    </p>
                   </td>
                   <td className="px-3 py-2.5 text-right tabular-nums">{o.quantity}</td>
                   <td className="px-3 py-2.5 text-right font-medium tabular-nums">
                     {peso(o.amount)}
                   </td>
-                  <td className="px-3 py-2.5 text-xs text-slate-600">{o.paymentState}</td>
-                  <td className="px-3 py-2.5 text-xs text-slate-600">
+                  <td className="px-3 py-2.5 text-xs text-slate-600 night:text-slate-300">
+                    {o.paymentState}
+                  </td>
+                  <td className="px-3 py-2.5 text-xs text-slate-600 night:text-slate-300">
                     {o.fulfillmentState}
                   </td>
-                  <td className="px-3 py-2.5 text-xs text-slate-600">
+                  <td className="px-3 py-2.5 text-xs text-slate-600 night:text-slate-300">
                     {o.assignedStaff}
                   </td>
                   <td className="px-3 py-2.5">
@@ -399,7 +426,7 @@ export function OrdersView() {
                 <tr>
                   <td
                     colSpan={12}
-                    className="px-3 py-10 text-center text-sm text-slate-500"
+                    className="px-3 py-10 text-center text-sm text-slate-500 night:text-slate-400"
                   >
                     No sample records match these filters.
                   </td>
@@ -416,10 +443,10 @@ export function OrdersView() {
           <Card key={o.id} className="p-3">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-900">
+                <p className="truncate text-sm font-semibold text-slate-900 night:text-slate-100">
                   {o.customer}
                 </p>
-                <p className="truncate font-mono text-[11px] text-slate-500">
+                <p className="truncate font-mono text-[11px] text-slate-500 night:text-slate-400">
                   {o.orderNumber}
                 </p>
               </div>
@@ -430,30 +457,36 @@ export function OrdersView() {
             </div>
             <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
               <div>
-                <dt className="text-slate-500">Amount</dt>
-                <dd className="font-semibold tabular-nums text-slate-900">
+                <dt className="text-slate-500 night:text-slate-400">Amount</dt>
+                <dd className="font-semibold tabular-nums text-slate-900 night:text-slate-100">
                   {peso(o.amount)}
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-500">Qty</dt>
-                <dd className="tabular-nums text-slate-900">{o.quantity}</dd>
+                <dt className="text-slate-500 night:text-slate-400">Qty</dt>
+                <dd className="tabular-nums text-slate-900 night:text-slate-100">
+                  {o.quantity}
+                </dd>
               </div>
               <div>
-                <dt className="text-slate-500">Payment</dt>
-                <dd className="text-slate-700">{o.paymentState}</dd>
+                <dt className="text-slate-500 night:text-slate-400">Payment</dt>
+                <dd className="text-slate-700 night:text-slate-300">{o.paymentState}</dd>
               </div>
               <div>
-                <dt className="text-slate-500">Fulfillment</dt>
-                <dd className="text-slate-700">{o.fulfillmentState}</dd>
+                <dt className="text-slate-500 night:text-slate-400">Fulfillment</dt>
+                <dd className="text-slate-700 night:text-slate-300">
+                  {o.fulfillmentState}
+                </dd>
               </div>
               <div>
-                <dt className="text-slate-500">Shop</dt>
-                <dd className="truncate text-slate-700">{o.shop}</dd>
+                <dt className="text-slate-500 night:text-slate-400">Shop</dt>
+                <dd className="truncate text-slate-700 night:text-slate-300">{o.shop}</dd>
               </div>
               <div>
-                <dt className="text-slate-500">Staff</dt>
-                <dd className="truncate text-slate-700">{o.assignedStaff}</dd>
+                <dt className="text-slate-500 night:text-slate-400">Staff</dt>
+                <dd className="truncate text-slate-700 night:text-slate-300">
+                  {o.assignedStaff}
+                </dd>
               </div>
             </dl>
             <div className="mt-3 flex items-center gap-1.5">
@@ -468,7 +501,7 @@ export function OrdersView() {
           </Card>
         ))}
         {pageRows.length === 0 ? (
-          <Card className="p-8 text-center text-sm text-slate-500">
+          <Card className="p-8 text-center text-sm text-slate-500 night:text-slate-400">
             No sample records match these filters.
           </Card>
         ) : null}
@@ -476,7 +509,7 @@ export function OrdersView() {
 
       {/* Pagination */}
       <div className="mt-3 flex items-center justify-between gap-2">
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-500 night:text-slate-400">
           Page {current} of {totalPages}
         </p>
         <div className="flex gap-1.5">
