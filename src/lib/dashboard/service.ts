@@ -1,0 +1,317 @@
+import 'server-only';
+
+import { recordAuditEvent } from '@/lib/audit/log';
+import { AuthorizationError, requirePermission } from '@/lib/authz/guard';
+import { moneyString } from '@/lib/payments/format';
+import { createClient } from '@/lib/supabase/server';
+
+/**
+ * Dashboard, Search, Reports, Notifications & Audit (Bible §7, §23, §25, §26, §31).
+ *
+ * This module READS. It creates no business record and changes no state.
+ *
+ * ══════════════════════════════════════════════════════════════════════════
+ *  COUNTS ARE NON-ADDITIVE (§7, §4)
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * An Active Layaway IS ALREADY an Official Order. A Claim is NOT an order.
+ * The order buckets below are DISJOINT — the database builds them that way and
+ * a pgTAP test proves they sum to the total. Queue counts overlap the buckets
+ * by nature and are typed separately so nobody adds them to order figures.
+ *
+ * Report VISIBILITY is not action authority (§25): seeing a number here grants
+ * nothing. Export is its own permission.
+ */
+
+export type DashboardCounts = {
+  /** DISJOINT Official Order buckets. These sum to totalOfficialOrders. */
+  ordersActiveLayaway: number;
+  ordersAwaitingPayment: number;
+  ordersForFulfillment: number;
+  ordersClosed: number;
+  ordersCancelled: number;
+  totalOfficialOrders: number;
+
+  /** Claims are NOT orders. Never add these to the buckets above. */
+  pendingClaims: number;
+  confirmedClaimsForInvoice: number;
+
+  /** Advisory queues. They OVERLAP the buckets — never sum them with orders. */
+  paymentsAwaitingVerification: number;
+  rtsInReview: number;
+  ownerApprovalsPending: number;
+};
+
+/** Reads the approved dashboard counts. RLS scopes them to the caller. */
+export async function getDashboardCounts(): Promise<DashboardCounts | null> {
+  const supabase = await createClient();
+  const response = await supabase.rpc('dashboard_counts');
+
+  if (response.error || response.data === null) return null;
+
+  const c = response.data as Record<string, unknown>;
+  const n = (key: string) => Number(c[key] ?? 0);
+
+  return {
+    ordersActiveLayaway: n('orders_active_layaway'),
+    ordersAwaitingPayment: n('orders_awaiting_payment'),
+    ordersForFulfillment: n('orders_for_fulfillment'),
+    ordersClosed: n('orders_closed'),
+    ordersCancelled: n('orders_cancelled'),
+    totalOfficialOrders: n('total_official_orders'),
+    pendingClaims: n('pending_claims'),
+    confirmedClaimsForInvoice: n('confirmed_claims_for_invoice'),
+    paymentsAwaitingVerification: n('payments_awaiting_verification'),
+    rtsInReview: n('rts_in_review'),
+    ownerApprovalsPending: n('owner_approvals_pending'),
+  };
+}
+
+export type SearchResult = {
+  resultKind: string;
+  entityId: string;
+  reference: string;
+  label: string;
+  detail: string;
+};
+
+/**
+ * Global search (§23).
+ *
+ * PERMISSION-SCOPED by RLS, not by a filter written here — the function is
+ * `security invoker`, so a caller can only find what they could already read.
+ * Returns references only: finding a record is not authority over it, and
+ * nothing here merges or reassigns anything.
+ */
+export async function search(query: string): Promise<SearchResult[]> {
+  const trimmed = query?.trim() ?? '';
+  // A one-character query would sweep the whole table for no user benefit.
+  if (trimmed.length < 2) return [];
+
+  const supabase = await createClient();
+  const response = await supabase.rpc('global_search', { p_query: trimmed });
+
+  if (response.error || !response.data) return [];
+
+  return (
+    response.data as Array<{
+      result_kind: string;
+      entity_id: string;
+      reference: string;
+      label: string;
+      detail: string;
+    }>
+  ).map((r) => ({
+    resultKind: r.result_kind,
+    entityId: r.entity_id,
+    reference: r.reference,
+    label: r.label,
+    detail: r.detail,
+  }));
+}
+
+export type SalesSummary = {
+  from: string;
+  to: string;
+  verifiedCollected: string;
+  paymentsRecorded: number;
+  paymentsVerified: number;
+  paymentsUnverified: number;
+};
+
+/**
+ * Sales summary report (§25).
+ *
+ * Gated by `export_data_reports` in the DATABASE — reading a summary is taking
+ * data, so it carries the export permission rather than plain visibility. The
+ * report cannot contain a row the caller could not already read, because RLS
+ * still applies underneath.
+ */
+export async function getSalesSummary(
+  from: string,
+  to: string,
+): Promise<{ ok: true; data: SalesSummary } | { ok: false; error: string }> {
+  try {
+    await requirePermission('export_data_reports');
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) {
+      await recordAuditEvent({
+        action: 'report.sales_summary',
+        entityType: 'report',
+        outcome: 'denied',
+        reason: cause.message,
+      });
+      return { ok: false, error: cause.message };
+    }
+    throw cause;
+  }
+
+  const supabase = await createClient();
+  const response = await supabase.rpc('report_sales_summary', { p_from: from, p_to: to });
+
+  if (response.error) {
+    return { ok: false, error: response.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+
+  const r = (response.data ?? {}) as Record<string, unknown>;
+
+  await recordAuditEvent({
+    action: 'report.sales_summary',
+    entityType: 'report',
+    context: {
+      from,
+      to,
+      // The trail states the boundary: a report grants no authority.
+      grants_action_authority: false,
+      limited_to_visible_records: true,
+    },
+  });
+
+  return {
+    ok: true,
+    data: {
+      from,
+      to,
+      verifiedCollected: moneyString(r.verified_collected),
+      paymentsRecorded: Number(r.payments_recorded ?? 0),
+      paymentsVerified: Number(r.payments_verified ?? 0),
+      paymentsUnverified: Number(r.payments_unverified ?? 0),
+    },
+  };
+}
+
+export type NotificationRow = {
+  id: string;
+  kind: string;
+  body: string;
+  dueAt: string | null;
+  acknowledgedAt: string | null;
+};
+
+/** The caller's own reminders. RLS scopes these to them. */
+export async function listNotifications(): Promise<NotificationRow[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('notifications')
+    .select('id, kind, body, due_at, acknowledged_at')
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+  return ((data ?? []) as unknown[]).map((row) => {
+    const r = row as Record<string, unknown>;
+    return {
+      id: r.id as string,
+      kind: r.kind as string,
+      body: r.body as string,
+      dueAt: (r.due_at as string | null) ?? null,
+      acknowledgedAt: (r.acknowledged_at as string | null) ?? null,
+    };
+  });
+}
+
+/**
+ * Acknowledges a reminder.
+ *
+ * Changes NO business record — the database freezes everything but the
+ * acknowledgement. Acknowledging a "layaway due" note does not touch the
+ * layaway.
+ */
+export async function acknowledgeNotification(
+  notificationId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  let staff;
+  try {
+    staff = await requirePermission('layaway_monitoring');
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) {
+      // Any active staff member may hold reminders; the permission above is the
+      // narrowest that fits V1's reminder kinds. Fall through to a plain denial.
+      await recordAuditEvent({
+        action: 'notification.acknowledge',
+        entityType: 'notification',
+        entityId: notificationId,
+        outcome: 'denied',
+        reason: cause.message,
+      });
+      return { ok: false, error: cause.message };
+    }
+    throw cause;
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('notifications')
+    .update({
+      acknowledged_at: new Date().toISOString(),
+      acknowledged_by: staff.staffProfileId,
+    })
+    .eq('id', notificationId)
+    .is('acknowledged_at', null)
+    .select('id');
+
+  if (error || !data || data.length === 0) {
+    return {
+      ok: false,
+      error: 'That reminder could not be acknowledged. It may already be acknowledged.',
+    };
+  }
+
+  await recordAuditEvent({
+    action: 'notification.acknowledge',
+    entityType: 'notification',
+    entityId: notificationId,
+    context: {
+      // A reminder is a note. The trail says what it did not do.
+      business_record_changed: false,
+      customer_notified: false,
+      delivered: false,
+      read: false,
+    },
+  });
+
+  return { ok: true };
+}
+
+export type AuditRow = {
+  id: string;
+  occurredAt: string;
+  actorLabel: string | null;
+  action: string;
+  entityType: string;
+  outcome: string;
+  reason: string | null;
+};
+
+/**
+ * Audit visibility (§31).
+ *
+ * Append-only and role-scoped by RLS. The `context` payload is deliberately NOT
+ * surfaced: it can carry operational detail, and §31 r12 forbids exposing
+ * secrets through the trail. Only the attributed facts are shown.
+ */
+export async function listAuditEvents(entityId?: string): Promise<AuditRow[]> {
+  const supabase = await createClient();
+
+  let query = supabase
+    .from('audit_events')
+    .select('id, occurred_at, actor_label, action, entity_type, outcome, reason')
+    .order('occurred_at', { ascending: false })
+    .limit(100);
+
+  if (entityId) query = query.eq('entity_id', entityId);
+
+  const { data } = await query;
+
+  return ((data ?? []) as unknown[]).map((row) => {
+    const r = row as Record<string, unknown>;
+    return {
+      id: r.id as string,
+      occurredAt: r.occurred_at as string,
+      actorLabel: (r.actor_label as string | null) ?? null,
+      action: r.action as string,
+      entityType: r.entity_type as string,
+      outcome: r.outcome as string,
+      reason: (r.reason as string | null) ?? null,
+    };
+  });
+}

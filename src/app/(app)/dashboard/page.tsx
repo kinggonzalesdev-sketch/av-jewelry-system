@@ -1,59 +1,64 @@
 import type { Metadata } from 'next';
 
-import { EmptyState } from '@/components/states/empty-state';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { DashboardView } from '@/components/dashboard/dashboard-view';
+import { getGrantedPermissions } from '@/lib/authz/guard';
+import {
+  getDashboardCounts,
+  listAuditEvents,
+  listNotifications,
+  search,
+} from '@/lib/dashboard/service';
 
 export const metadata: Metadata = {
   title: 'Dashboard — A.V. Jewelry Operations',
 };
 
 /**
- * Dashboard placeholder (Bible §8.3).
+ * Dashboard (Bible §7, §8.3, §23, §25, §26, §31). Roadmap Phase 9.
  *
- * The real Dashboard is an operational command center: work queues, compact summary
- * counts, alerts, and quick actions, all filtered by permission. It is delivered in
- * Roadmap Phase 9, and it reads records created by Phases 1–8.
+ * Real, database-backed — no longer a placeholder. Every count comes from
+ * public.dashboard_counts(), which builds DISJOINT Official Order buckets:
+ * an Active Layaway IS an Official Order and is never counted twice.
  *
- * ⚠️  This page renders NO operational data — no revenue, customer counts, orders,
- *     claims, sales, inventory, or metrics. There is no data model yet, so any number
- *     shown here would be fabricated. A fake count is worse than an empty state: it
- *     invites an operational decision based on a number that means nothing.
+ * Counts, search results, and audit rows are all scoped by RLS, so this page
+ * shows only what the caller may already read. Permission flags decide what
+ * renders; every action re-checks server-side (ADR §7).
  */
-export default function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
+  const query = typeof params.q === 'string' ? params.q : '';
+
+  const [counts, notifications, audit, results, permissions] = await Promise.all([
+    getDashboardCounts(),
+    listNotifications(),
+    listAuditEvents(),
+    search(query),
+    getGrantedPermissions(),
+  ]);
+
   return (
     <div className="space-y-4">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
         <p className="text-sm text-muted-foreground">
-          Operational command center. Not built yet.
+          Work queues, search, reports, reminders, and audit.
         </p>
       </header>
 
-      <Card>
-        <CardHeader>
-          <div>
-            <span
-              className="inline-flex items-center rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground"
-              data-testid="placeholder-badge"
-            >
-              Placeholder — not implemented
-            </span>
-          </div>
-          <CardTitle className="pt-1 text-base">Phase 0 foundation</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            You are signed in and inside the protected application shell. This confirms
-            the authentication boundary works — nothing more. No business workflow, data
-            model, or permission system exists yet.
-          </p>
-
-          <EmptyState
-            title="No operational data"
-            description="Work queues, summary counts, alerts, and quick actions arrive in Phase 9, once the records they read are built in Phases 1–8. No figures are shown here because none exist yet."
-          />
-        </CardContent>
-      </Card>
+      <DashboardView
+        counts={counts}
+        notifications={notifications}
+        audit={audit}
+        results={results}
+        query={query}
+        canExport={permissions.has('export_data_reports')}
+        canVerifyPayments={permissions.has('payment_verification')}
+        canMonitorInventory={permissions.has('inventory_monitoring')}
+      />
     </div>
   );
 }

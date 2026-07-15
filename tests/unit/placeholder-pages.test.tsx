@@ -7,7 +7,6 @@ import { describe, expect, it } from 'vitest';
 import { EmptyState } from '@/components/states/empty-state';
 import { NotAuthorized } from '@/components/states/not-authorized';
 import { PlaceholderPage } from '@/components/states/placeholder-page';
-import DashboardPage from '@/app/(app)/dashboard/page';
 
 /**
  * Placeholder screens must be honest (Invariants #17, #18).
@@ -34,35 +33,6 @@ describe('PlaceholderPage', () => {
     );
     expect(screen.getByText(/Phase 3 — Live Selling & Claim Intake/)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Live' })).toBeInTheDocument();
-  });
-});
-
-describe('Dashboard placeholder', () => {
-  it('is clearly labelled as a placeholder', () => {
-    render(<DashboardPage />);
-
-    expect(screen.getByTestId('placeholder-badge')).toBeInTheDocument();
-  });
-
-  it('shows an empty state instead of operational figures', () => {
-    render(<DashboardPage />);
-
-    expect(screen.getByTestId('empty-state')).toHaveTextContent(/no operational data/i);
-  });
-
-  it('displays no numeric operational data', () => {
-    const { container } = render(<DashboardPage />);
-    const text = container.textContent ?? '';
-
-    // Phase references ("Phases 1–8", "Phase 9") are legitimate prose. Any OTHER
-    // standalone number on the Dashboard would be fabricated, since no data model
-    // exists yet.
-    const withoutPhaseRefs = text.replace(/Phases?\s*[\d–—-]+/g, '');
-    const currencyOrCounts = withoutPhaseRefs.match(
-      /[₱$]\s?\d|\b\d{1,3}(,\d{3})+\b|\b\d+\b/g,
-    );
-
-    expect(currencyOrCounts).toBeNull();
   });
 });
 
