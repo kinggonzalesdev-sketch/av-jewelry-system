@@ -28,7 +28,9 @@ enabled = true
 port = 54323
 
 # Local-only mail catcher. Real email is never sent from local development.
-[inbucket]
+# `[inbucket]` was deprecated by the Supabase CLI in favour of `[local_smtp]`;
+# behaviour and port are unchanged (Mailpit serves the same catcher on 54324).
+[local_smtp]
 enabled = true
 port = 54324
 
