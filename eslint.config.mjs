@@ -18,6 +18,24 @@ const noPrototypeImports = {
 };
 
 /**
+ * The UI review prototype (`src/components/preview/**`, `src/app/(preview)/**`) is
+ * not production code either. It holds sample data and makes no authorization
+ * decision, so nothing in the real application may import it.
+ *
+ * The prototype may import production UTILITIES (e.g. `cn`) — that direction is
+ * harmless. This rule blocks only the dangerous direction: production → preview.
+ */
+const noPreviewImports = {
+  group: [
+    '**/components/preview/**',
+    '@/components/preview/*',
+    '@/components/preview/**',
+  ],
+  message:
+    'The UI review prototype is sample-data only and must not be imported by production code.',
+};
+
+/**
  * The privileged/service-role Supabase client is server-only (Bible §30.15, ADR §11).
  * `src/lib/supabase/admin.ts` also imports `server-only`, which fails the *build* if a
  * Client Component reaches it. This rule fails the *lint* gate earlier and more clearly.
@@ -92,6 +110,19 @@ export default tseslint.config(
   // `no-restricted-imports` replaces rather than merges, so both patterns are repeated here.
   {
     files: ['src/components/**/*.{ts,tsx}', 'src/app/**/*.tsx'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: [noPrototypeImports, noPrivilegedClientImports, noPreviewImports] },
+      ],
+    },
+  },
+
+  // The prototype itself may import its own modules. It is exempted from the
+  // preview rule (it IS the preview) but still barred from the privileged client:
+  // a prototype has no business touching a service-role client.
+  {
+    files: ['src/components/preview/**/*.{ts,tsx}', 'src/app/(preview)/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': [
         'error',

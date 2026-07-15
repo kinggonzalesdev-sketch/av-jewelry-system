@@ -22,7 +22,15 @@ export const config = {
      *  - _next/static, _next/image  (build assets)
      *  - favicon.ico
      *  - common static image files
+     *  - preview/**  (the UI prototype)
+     *
+     * `preview` is excluded deliberately. The prototype holds only sample data,
+     * touches no database, and makes no authorization decision — running the
+     * session proxy over it would force a Supabase connection just to look at
+     * static screens. It is guarded instead by its own layout, which returns 404
+     * when NODE_ENV is production, so it can never be served from a production
+     * build. Excluding it here therefore widens no production surface.
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|preview|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };
