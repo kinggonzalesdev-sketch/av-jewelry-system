@@ -34,12 +34,12 @@ export default function AppError({
     <div className="flex min-h-dvh items-center justify-center px-4">
       <div className="w-full max-w-sm text-center" data-testid="error-boundary">
         <h1 className="text-lg font-semibold">Something went wrong</h1>
-        <p className="mt-2 text-sm text-[--color-muted-foreground]">
+        <p className="mt-2 text-sm text-muted-foreground">
           The action did not complete. No changes were saved. You can try again, and if
           this keeps happening, report it with the reference below.
         </p>
         {error.digest ? (
-          <p className="mt-3 font-mono text-xs text-[--color-muted-foreground]">
+          <p className="mt-3 font-mono text-xs text-muted-foreground">
             Reference: {error.digest}
           </p>
         ) : null}

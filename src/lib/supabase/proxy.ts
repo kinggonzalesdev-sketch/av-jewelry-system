@@ -17,8 +17,14 @@ import { getClientEnv } from '@/lib/env';
  *     mistake the ADR prohibits.
  */
 
-/** Routes reachable without a session. Everything else is internal and protected. */
-const PUBLIC_ROUTES = ['/sign-in'];
+/**
+ * Routes reachable without a session. Everything else is internal and protected.
+ *
+ * `/account-disabled` is listed because a signed-in user with a deactivated
+ * account must be able to see WHY they are blocked and sign out. It is not a
+ * public page — it renders nothing sensitive and reveals no reason.
+ */
+const PUBLIC_ROUTES = ['/sign-in', '/account-disabled'];
 
 function isPublicRoute(pathname: string): boolean {
   return PUBLIC_ROUTES.some(

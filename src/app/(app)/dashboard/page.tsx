@@ -24,7 +24,7 @@ export default function DashboardPage() {
     <div className="space-y-4">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-[--color-muted-foreground]">
+        <p className="text-sm text-muted-foreground">
           Operational command center. Not built yet.
         </p>
       </header>
@@ -33,7 +33,7 @@ export default function DashboardPage() {
         <CardHeader>
           <div>
             <span
-              className="inline-flex items-center rounded-md border border-[--color-border] bg-[--color-muted] px-2 py-1 text-xs font-medium uppercase tracking-wide text-[--color-muted-foreground]"
+              className="inline-flex items-center rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground"
               data-testid="placeholder-badge"
             >
               Placeholder — not implemented
@@ -42,7 +42,7 @@ export default function DashboardPage() {
           <CardTitle className="pt-1 text-base">Phase 0 foundation</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-[--color-muted-foreground]">
+          <p className="text-sm text-muted-foreground">
             You are signed in and inside the protected application shell. This confirms
             the authentication boundary works — nothing more. No business workflow, data
             model, or permission system exists yet.

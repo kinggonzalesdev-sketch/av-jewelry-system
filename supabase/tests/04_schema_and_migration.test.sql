@@ -3,7 +3,7 @@
 -- Bible §22.16 (Migration), §22.19 (To-be-confirmed items), §31 (Audit)
 -- ============================================================================
 begin;
-select plan(22);
+select plan(23);
 
 -- ============================================================================
 -- Stable identifiers + separate business-facing references
@@ -42,13 +42,24 @@ select is(
   'Every SECURITY DEFINER function pins an explicit search_path'
 );
 
--- Phase 1 needs no definer functions at all: nothing yet requires escalation.
+-- Phase 2 introduces SECURITY DEFINER helpers, which is justified: RLS policies
+-- must read staff_profiles/grants, and as the calling user they cannot (those
+-- tables have forced RLS). The guard is therefore no longer "none exist" but
+-- "every one is narrow and confined".
+select ok(
+  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'app_private' and p.prosecdef = true) > 0,
+  'Phase 2 defines SECURITY DEFINER authorization helpers'
+);
+
+-- Every definer function lives in app_private, never in the PostgREST-exposed
+-- public schema: no definer function is directly callable over the API.
 select is(
   (select count(*)::int
    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-   where n.nspname in ('public', 'app_private') and p.prosecdef = true),
+   where n.nspname = 'public' and p.prosecdef = true),
   0,
-  'Phase 1 introduces no SECURITY DEFINER function (none is yet justified)'
+  'No SECURITY DEFINER function is exposed in the public (API-reachable) schema'
 );
 
 -- ============================================================================

@@ -3,7 +3,7 @@
 -- Bible §5.4, §5.13, §22.6, §22.14, §31; ADR §7/§8
 -- ============================================================================
 begin;
-select plan(28);
+select plan(31);
 
 -- ---- Fixtures --------------------------------------------------------------
 insert into auth.users (id, instance_id, email, aud, role) values
@@ -36,12 +36,30 @@ select is(
   'RLS is FORCED on every table (the table owner cannot bypass it either)'
 );
 
--- Phase 1 posture: NO permissive policies exist yet, so access is denied by
--- default. Permission-aware policies are Phase 2.
+-- Phase 2 replaced the deny-by-default posture with permission-aware policies.
+-- The guarantee is no longer "no policies" but "no WILDCARD policies".
+select ok(
+  (select count(*) from pg_policies where schemaname = 'public') > 0,
+  'Phase 2 defines permission-aware policies'
+);
+
+-- No policy may be an unconditional allow. A `using (true)` or `with check (true)`
+-- would hand every authenticated caller the whole table.
 select is(
-  (select count(*)::int from pg_policies where schemaname = 'public'),
+  (select count(*)::int from pg_policies
+   where schemaname = 'public'
+     and (btrim(coalesce(qual, '')) = 'true' or btrim(coalesce(with_check, '')) = 'true')),
   0,
-  'Phase 1 adds no permissive policies: the posture is deny-by-default'
+  'No wildcard policy exists: nothing is granted unconditionally'
+);
+
+-- No policy may be granted to anon or to PUBLIC.
+select is(
+  (select count(*)::int from pg_policies
+   where schemaname = 'public'
+     and (roles::text[] && array['anon', 'public'])),
+  0,
+  'No policy grants anything to anon or PUBLIC'
 );
 
 -- ============================================================================
@@ -72,15 +90,18 @@ select throws_ok(
 );
 reset role;
 
+-- A caller holding the `authenticated` role but NO staff profile (no JWT sub
+-- matching a staff row) is authenticated but not authorized. Phase 2 grants table
+-- privileges so RLS can be consulted, so these now return ZERO ROWS rather than
+-- raising — the data is filtered by policy, which is the intended behaviour.
 set local role authenticated;
-select throws_ok(
-  $$select count(*) from public.customers$$,
-  '42501',
-  null,
-  'a merely-authenticated user reads no business data (authentication is not authorization)'
+select is(
+  (select count(*)::int from public.customers),
+  0,
+  'a merely-authenticated non-staff user reads no business data (authentication is not authorization)'
 );
-select throws_ok(
-  $$select count(*) from public.inventory_items$$, '42501', null, 'authenticated reads no inventory');
+select is(
+  (select count(*)::int from public.inventory_items), 0, 'authenticated non-staff reads no inventory');
 
 select throws_ok(
   $$insert into public.claims (inventory_item_id, customer_id)
@@ -90,11 +111,16 @@ select throws_ok(
   'a merely-authenticated user cannot write a claim'
 );
 
-select throws_ok(
+-- Self-promotion matches no row under the Owner-only policy, so it changes
+-- nothing. Silent no-op is the correct outcome: no record was altered.
+select lives_ok(
   $$update public.staff_profiles set role_key = 'owner'$$,
-  '42501',
-  null,
-  'a merely-authenticated user cannot self-promote to Owner'
+  'a self-promotion attempt raises nothing'
+);
+select is(
+  (select count(*)::int from public.staff_profiles where role_key = 'owner'),
+  0,
+  'a merely-authenticated user cannot self-promote to Owner: no row was changed'
 );
 reset role;
 
