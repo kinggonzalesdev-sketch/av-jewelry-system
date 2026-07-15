@@ -75,15 +75,85 @@ describe('prototype code is not production code (Invariant #17)', () => {
   });
 });
 
-describe('Phase 0 scope boundary', () => {
-  it('creates no business migrations', () => {
-    // The business schema is Phase 1. Only the README may exist here.
-    const migrationsDir = join(projectRoot, 'supabase', 'migrations');
-    const sqlFiles = readdirSync(migrationsDir).filter((file) => file.endsWith('.sql'));
+describe('Phase 1 migration boundary', () => {
+  const migrationsDir = join(projectRoot, 'supabase', 'migrations');
+  const sqlFiles = readdirSync(migrationsDir)
+    .filter((file) => file.endsWith('.sql'))
+    .sort();
 
-    expect(sqlFiles).toEqual([]);
+  // Phase 0 asserted this directory was empty. Phase 1's job is to fill it, so
+  // that guard is replaced — not relaxed — by the stronger checks below.
+  it('has version-controlled migrations', () => {
+    expect(sqlFiles.length).toBeGreaterThan(0);
   });
 
+  it('enables RLS in every migration that creates a table', () => {
+    // ADR §7 / Bible §30: a business table must never exist in an exposed state,
+    // so RLS must be enabled in the SAME migration that creates it. This catches
+    // the mistake statically, before a reviewer or the database has to.
+    const offenders = sqlFiles.filter((file) => {
+      const sql = readFileSync(join(migrationsDir, file), 'utf8');
+      const createdTables = [
+        ...sql.matchAll(/create table (?:if not exists )?public\.(\w+)/gi),
+      ].map((match) => match[1]);
+
+      return createdTables.some(
+        (table) =>
+          !new RegExp(
+            `alter table public\\.${table} enable row level security`,
+            'i',
+          ).test(sql),
+      );
+    });
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('never disables RLS', () => {
+    const offenders = sqlFiles.filter((file) =>
+      /disable row level security/i.test(readFileSync(join(migrationsDir, file), 'utf8')),
+    );
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('pins search_path on every security definer function', () => {
+    // An unpinned search_path on a SECURITY DEFINER function is a privilege
+    // escalation path. Phase 1 defines none, but this guards future additions.
+    const offenders = sqlFiles.filter((file) => {
+      const sql = readFileSync(join(migrationsDir, file), 'utf8');
+      if (!/security definer/i.test(sql)) return false;
+      return !/set search_path/i.test(sql);
+    });
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('seeds no real staff, customer, item, claim, or order data', () => {
+    // Only structural reference data (roles, permissions, device-limit targets)
+    // may be seeded. Real operational rows must never ship in a migration.
+    const businessTables = [
+      'staff_profiles',
+      'customers',
+      'inventory_items',
+      'claims',
+      'official_orders',
+      'payments',
+      'live_batches',
+    ];
+
+    const offenders = sqlFiles.flatMap((file) => {
+      const sql = readFileSync(join(migrationsDir, file), 'utf8');
+      return businessTables
+        .filter((table) => new RegExp(`insert into public\\.${table}\\b`, 'i').test(sql))
+        .map((table) => `${file}: ${table}`);
+    });
+
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('Phase 1 scope boundary', () => {
   it('creates no business domain modules', () => {
     const modulesDir = join(projectRoot, 'src', 'modules');
     const moduleFiles = readdirSync(modulesDir).filter((file) => file !== 'README.md');
