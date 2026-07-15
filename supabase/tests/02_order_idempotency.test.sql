@@ -15,9 +15,14 @@ insert into public.customers (id, display_name)
 values ('cccccccc-0000-0000-0000-00000000000a', 'Order Customer');
 insert into public.inventory_items (id, item_code, is_unique_item, quantity_total)
 values ('11111111-0000-0000-0000-00000000000a', 'ORD-ITEM-1', true, 1);
-insert into public.claims (id, inventory_item_id, customer_id, status, confirmed_at)
+-- Born pending, then confirmed. Phase 3 forbids inserting a claim that is
+-- already confirmed (capture creates a Pending Claim only, §12.3/§13.2), so the
+-- fixture takes the same two steps the real workflow does.
+insert into public.claims (id, inventory_item_id, customer_id, status)
 values ('dddddddd-0000-0000-0000-00000000000a', '11111111-0000-0000-0000-00000000000a',
-        'cccccccc-0000-0000-0000-00000000000a', 'confirmed_claim', now());
+        'cccccccc-0000-0000-0000-00000000000a', 'pending_claim');
+update public.claims set status = 'confirmed_claim', confirmed_at = now()
+where id = 'dddddddd-0000-0000-0000-00000000000a';
 insert into public.invoice_drafts (id, customer_id, status)
 values ('ffffffff-0000-0000-0000-00000000000a', 'cccccccc-0000-0000-0000-00000000000a', 'in_review'),
        ('ffffffff-0000-0000-0000-00000000000b', 'cccccccc-0000-0000-0000-00000000000a', 'draft');

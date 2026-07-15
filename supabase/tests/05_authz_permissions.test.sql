@@ -45,9 +45,13 @@ insert into public.customers (id, display_name) values
 insert into public.inventory_items (id, item_code, is_unique_item, quantity_total)
 values ('10000000-0000-0000-0000-000000000001', 'AUTHZ-ITEM', true, 1);
 
-insert into public.claims (id, inventory_item_id, customer_id, status, confirmed_at)
+-- Born pending, then confirmed — Phase 3 forbids inserting an already-confirmed
+-- claim (capture creates a Pending Claim only, §12.3/§13.2).
+insert into public.claims (id, inventory_item_id, customer_id, status)
 values ('d0000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001',
-        'c0000000-0000-0000-0000-000000000001', 'confirmed_claim', now());
+        'c0000000-0000-0000-0000-000000000001', 'pending_claim');
+update public.claims set status = 'confirmed_claim', confirmed_at = now()
+where id = 'd0000000-0000-0000-0000-000000000001';
 
 -- Helper: impersonate a user exactly as PostgREST does.
 create or replace function pg_temp.act_as(p_uid text, p_aal text default 'aal1')

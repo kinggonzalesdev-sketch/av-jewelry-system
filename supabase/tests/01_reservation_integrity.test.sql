@@ -76,9 +76,14 @@ select is(
 -- claim. Proven on the MULTI-stock item, where spare quantity exists — so the
 -- quantity guard cannot mask the result and UNIQUE(claim_id) is demonstrably
 -- what blocks the duplicate.
-insert into public.claims (id, inventory_item_id, customer_id, status, quantity, confirmed_at)
+-- Born pending, then confirmed. Phase 3 forbids inserting an already-confirmed
+-- claim (capture creates a Pending Claim only, §12.3/§13.2), so the fixture
+-- takes the same two steps the real workflow does.
+insert into public.claims (id, inventory_item_id, customer_id, status, quantity)
 values ('dddddddd-0000-0000-0000-0000000000f1', '11111111-0000-0000-0000-000000000002',
-        'cccccccc-0000-0000-0000-000000000001', 'confirmed_claim', 1, now());
+        'cccccccc-0000-0000-0000-000000000001', 'pending_claim', 1);
+update public.claims set status = 'confirmed_claim', confirmed_at = now()
+where id = 'dddddddd-0000-0000-0000-0000000000f1';
 
 insert into public.inventory_reservations (inventory_item_id, claim_id, quantity)
 values ('11111111-0000-0000-0000-000000000002', 'dddddddd-0000-0000-0000-0000000000f1', 1);
@@ -158,11 +163,14 @@ select throws_ok(
 -- ============================================================================
 -- RULE: Multi-stock confirmation cannot exceed available quantity (§19.8)
 -- ============================================================================
-insert into public.claims (id, inventory_item_id, customer_id, status, quantity, confirmed_at)
+-- Born pending, then confirmed (Phase 3: capture creates a Pending Claim only).
+insert into public.claims (id, inventory_item_id, customer_id, status, quantity)
 values ('dddddddd-0000-0000-0000-000000000010', '11111111-0000-0000-0000-000000000002',
-        'cccccccc-0000-0000-0000-000000000001', 'confirmed_claim', 2, now()),
+        'cccccccc-0000-0000-0000-000000000001', 'pending_claim', 2),
        ('dddddddd-0000-0000-0000-000000000011', '11111111-0000-0000-0000-000000000002',
-        'cccccccc-0000-0000-0000-000000000002', 'confirmed_claim', 2, now());
+        'cccccccc-0000-0000-0000-000000000002', 'pending_claim', 2);
+update public.claims set status = 'confirmed_claim', confirmed_at = now()
+where id in ('dddddddd-0000-0000-0000-000000000010', 'dddddddd-0000-0000-0000-000000000011');
 
 insert into public.inventory_reservations (inventory_item_id, claim_id, quantity)
 values ('11111111-0000-0000-0000-000000000002', 'dddddddd-0000-0000-0000-000000000010', 2);
