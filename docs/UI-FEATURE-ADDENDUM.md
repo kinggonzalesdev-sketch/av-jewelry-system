@@ -7,7 +7,7 @@
 > means. It does **not** change any approved business rule — where this document and
 > `Development-Bible.md` disagree, the **Bible governs**.
 
-**Preview URL (local dev only):** `http://localhost:3000/preview/orders`
+**Preview URL (local dev only):** `http://localhost:3000/preview/dashboard-report`
 
 ---
 
@@ -15,32 +15,47 @@
 
 Sidebar order, exactly as approved:
 
-| #   | Item              | Route                  |
-| --- | ----------------- | ---------------------- |
-| 1   | **Orders**        | `/preview/orders`      |
-| 2   | **Invoice**       | `/preview/invoice`     |
-| 3   | **Live**          | `/preview/live`        |
-| 4   | Customers         | `/preview/customers`   |
-| 5   | Items / Inventory | `/preview/items`       |
-| 6   | Payments          | `/preview/payments`    |
-| 7   | Fulfillment       | `/preview/fulfillment` |
-| 8   | Reports           | `/preview/reports`     |
-| 9   | **Settings**      | `/preview/settings`    |
+| #   | Item                 | Route                       |
+| --- | -------------------- | --------------------------- |
+| 1   | **Dashboard Report** | `/preview/dashboard-report` |
+| 2   | **Orders**           | `/preview/orders`           |
+| 3   | **Invoice**          | `/preview/invoice`          |
+| 4   | **Live**             | `/preview/live`             |
+| 5   | Customers            | `/preview/customers`        |
+| 6   | Items / Inventory    | `/preview/items`            |
+| 7   | Payments             | `/preview/payments`         |
+| 8   | Fulfillment          | `/preview/fulfillment`      |
+| 9   | Reports              | `/preview/reports`          |
+| 10  | **Settings**         | `/preview/settings`         |
 
-**There is no separate multi-platform Connections tab.** Pancake lives at
-**Settings → Integrations → Pancake** (`/preview/settings/integrations/pancake`).
+**Dashboard Report is restored as its own tab.** **There is no separate
+multi-platform Connections tab** — Pancake lives at **Settings → Integrations →
+Pancake** (`/preview/settings/integrations/pancake`). **There is no Disassembly
+Report** anywhere.
 
-## 2. Orders-first landing
+## 2. Landing page
 
-After login the first visual page is **Orders**. Live is never opened first.
+For Owner prototype review the landing page is **Dashboard Report**.
 
 **Production rule (Phase 3+, not implemented here):**
 
-- a user with Orders access → Orders;
-- a user without Orders access → their first authorized page;
-- otherwise → Not Authorized.
+- Owner and users with Dashboard / Reports access → **Dashboard Report**;
+- users without Dashboard access → **Orders**, or their first authorized page;
+- otherwise → **Not Authorized**.
 
-The prototype has no permissions, so it always lands on Orders.
+The prototype has no permissions, so it always lands on Dashboard Report.
+**UI visibility is not authority** — production must resolve the landing page from
+the caller's real grants, server-side.
+
+### Dashboard Report vs Orders vs Reports
+
+| Area                 | Purpose                                                           |
+| -------------------- | ----------------------------------------------------------------- |
+| **Dashboard Report** | Summary overview: KPIs, charts, and the Gross Profit preview      |
+| **Orders**           | The daily operational workspace — **not** a Dashboard replacement |
+| **Reports**          | Separate future area: detailed exports and historical analysis    |
+
+Dashboard Report deliberately does **not** duplicate the Reports module.
 
 ---
 
@@ -58,6 +73,62 @@ connection. Click the row in the prototype to cycle states for review.
 
 **Mobile:** compact header (branding, user, printer badge) + bottom nav with Orders,
 Invoice, Live, Customers, and **More** (holds the remaining pages + Logout).
+
+---
+
+## 3b. Dashboard Report
+
+The summary overview. **Two internal tabs only: Dashboard and Gross Profit.**
+No Disassembly Report tab, card, or chart exists — a test enforces this.
+
+Requires `export_data_reports` in production.
+
+### Date filters
+
+**Today · 7 Days · 14 Days · 30 Days · This Month · Custom Date Range**
+
+The active filter is highlighted, and the resolved **start and end date** are shown
+(e.g. "Active: 7 Days · Showing 2026-07-09 to 2026-07-15"). KPI cards and charts
+**visibly recalculate** with the range — Today shows ₱42,000 over 1 point, 7 Days
+shows ₱209,100 over 7 points. **Refresh** and **Export Report** are present;
+Export Report is a **visual prototype action only** — no file is produced.
+
+### Dashboard tab
+
+**Primary KPI row:** Total Sales · Checked Out · Items Sold · Shipments Today ·
+Verified Payment · Unverified Payment.
+
+**Secondary operational row:** For Invoice · Pending Payment Verification · Active
+Layaway · For Preparation · Shipping Confirmed · Cancelled Orders. Kept as a
+compact second row so the primary KPIs stay readable.
+
+**Charts:**
+
+| Chart                              | Shape                       | Notes                                                                                                                               |
+| ---------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| **Sales for the Period**           | Line + area, hover tooltips | Dates on X, sales on Y; follows the selected range                                                                                  |
+| **Order Status**                   | Horizontal bars             | Pending · For Invoice · For Preparation · Shipped · Cancelled                                                                       |
+| **Payment Verification Breakdown** | Donut                       | Added because it earns its place: it shows Verified vs Evidence Submitted vs Awaiting, reinforcing that **Verified ≠ Paid in Full** |
+
+Charts are hand-rolled SVG — no chart library was added, so the approved stack
+stays pinned.
+
+### Gross Profit tab
+
+Month selector · **COGS Costing Mode (System / Manual)** · As Of · Company / Shop ·
+Total Items Sold · Average Selling Price · Total Sales · COGS · Gross Profit ·
+Gross Profit Rate · Export Report.
+
+**Graph:** Sales vs COGS vs Gross Profit, grouped bars, month periods on the X axis.
+
+**Always visible on the tab:**
+
+> Preview calculation using sample data. Final COGS rules remain subject to business validation.
+
+**This is not accounting logic.** It is arithmetic on invented numbers, shown to
+review the shape of the screen. System vs Manual only changes a sample cost ratio
+(₱716,582 vs ₱709,760 for Jul 26) so the control is demonstrably live — it models
+no real costing method. No production formula is implied.
 
 ---
 
@@ -291,15 +362,23 @@ global printer settings · archive actions · Reset Test Data.
 
 ## 13. Responsive behaviour
 
-| Screen    | Desktop                               | Mobile                                   |
-| --------- | ------------------------------------- | ---------------------------------------- |
-| Sidebar   | Fixed 256px rail, collapsible to 68px | Compact header + bottom nav + More sheet |
-| Orders    | Full table, 12 columns                | Card list, no horizontal overflow        |
-| New Entry | Two-column (form + photo rail)        | Stacked                                  |
-| Invoice   | Queue + preview side by side          | Stacked                                  |
-| Live      | Workspace + connection rail           | Stacked                                  |
-| Settings  | Section list + panel                  | Stacked                                  |
-| Pancake   | Panel + rail                          | Stacked                                  |
+| Screen           | Desktop                               | Mobile                                     |
+| ---------------- | ------------------------------------- | ------------------------------------------ |
+| Sidebar          | Fixed 256px rail, collapsible to 68px | Compact header + bottom nav + More sheet   |
+| Dashboard Report | KPI row of 6, full-width charts       | KPI cards 2-up, filters wrap, charts scale |
+| Gross Profit     | Controls in a row, 3×2 figures        | Stacked controls, 2-up figures             |
+| Orders           | Full table, 12 columns                | Card list, no horizontal overflow          |
+| New Entry        | Two-column (form + photo rail)        | Stacked                                    |
+| Invoice          | Queue + preview side by side          | Stacked                                    |
+| Live             | Workspace + connection rail           | Stacked                                    |
+| Settings         | Section list + panel                  | Stacked                                    |
+| Pancake          | Panel + rail                          | Stacked                                    |
+
+**Mobile bottom nav** carries Orders · Invoice · Live · Customers · More.
+Dashboard Report is the landing page but deliberately **not** in the bottom four:
+on a phone the daily work is Orders/Invoice/Live, and a summary screen would
+displace one of them. It sits one tap away under **More**. Verified: no horizontal
+overflow at 375px.
 
 ---
 
@@ -327,47 +406,57 @@ global printer settings · archive actions · Reset Test Data.
 
 ## 15. Acceptance criteria
 
-| #   | Criterion                                              | Status                  |
-| --- | ------------------------------------------------------ | ----------------------- |
-| 1   | Sidebar order matches the approved list                | ✅ tested               |
-| 2   | No separate Connections tab                            | ✅ tested               |
-| 3   | Landing is Orders, not Live                            | ✅ tested               |
-| 4   | Printer status sits directly above Logout, Logout last | ✅                      |
-| 5   | "Connected" never shown without a verified connection  | ✅ default Disconnected |
-| 6   | All 10 status cards present                            | ✅                      |
-| 7   | All filters + search fields present                    | ✅                      |
-| 8   | No direct Cancel for an Official Order                 | ✅ tested               |
-| 9   | Dynamic entry-mode button, no generic Confirm Order    | ✅                      |
-| 10  | Item photo visibly required                            | ✅                      |
-| 11  | Invoice All is two-step with confirmation              | ✅                      |
-| 12  | Exclusions shown with reasons                          | ✅ tested               |
-| 13  | Copy ≠ Sent ≠ Delivered ≠ Read stated                  | ✅                      |
-| 14  | Pancake-first, Facebook-only, no other connectors      | ✅ tested               |
-| 15  | Owner-only controls labelled                           | ✅                      |
-| 16  | Reset Test Data requires typed phrase + reason         | ✅                      |
-| 17  | Sample data clearly labelled                           | ✅ tested               |
-| 18  | Desktop + mobile for all 7 screens                     | ✅                      |
-| 19  | No production migration                                | ✅ none created         |
-| 20  | No real integration or credential                      | ✅ tested               |
+| #   | Criterion                                                     | Status                  |
+| --- | ------------------------------------------------------------- | ----------------------- |
+| 1   | Sidebar order matches approved list (Dashboard Report first)  | ✅ tested               |
+| 2   | No separate Connections tab                                   | ✅ tested               |
+| 3   | Landing is Dashboard Report                                   | ✅ tested               |
+| 3a  | Dashboard Report is its own tab, separate from Orders/Reports | ✅ tested               |
+| 3b  | **No Disassembly Report** anywhere — tab, card, or chart      | ✅ tested               |
+| 3c  | Dashboard Report has exactly two internal tabs                | ✅ tested               |
+| 3d  | All six date filters; cards and charts respond to range       | ✅ tested               |
+| 3e  | Selected start and end dates displayed                        | ✅ tested               |
+| 3f  | Gross Profit preview note always visible                      | ✅ tested               |
+| 3g  | Costing Mode visibly changes the figures                      | ✅ tested               |
+| 3h  | Reports module not duplicated inside Dashboard Report         | ✅ tested               |
+| 4   | Printer status sits directly above Logout, Logout last        | ✅                      |
+| 5   | "Connected" never shown without a verified connection         | ✅ default Disconnected |
+| 6   | All 10 status cards present                                   | ✅                      |
+| 7   | All filters + search fields present                           | ✅                      |
+| 8   | No direct Cancel for an Official Order                        | ✅ tested               |
+| 9   | Dynamic entry-mode button, no generic Confirm Order           | ✅                      |
+| 10  | Item photo visibly required                                   | ✅                      |
+| 11  | Invoice All is two-step with confirmation                     | ✅                      |
+| 12  | Exclusions shown with reasons                                 | ✅ tested               |
+| 13  | Copy ≠ Sent ≠ Delivered ≠ Read stated                         | ✅                      |
+| 14  | Pancake-first, Facebook-only, no other connectors             | ✅ tested               |
+| 15  | Owner-only controls labelled                                  | ✅                      |
+| 16  | Reset Test Data requires typed phrase + reason                | ✅                      |
+| 17  | Sample data clearly labelled                                  | ✅ tested               |
+| 18  | Desktop + mobile for all 7 screens                            | ✅                      |
+| 19  | No production migration                                       | ✅ none created         |
+| 20  | No real integration or credential                             | ✅ tested               |
 
 ---
 
 ## 16. Phase assignment for production implementation
 
-| Screen / feature                               | Production phase                               |
-| ---------------------------------------------- | ---------------------------------------------- |
-| Sidebar, navigation, Orders-first landing      | **Phase 3** (shell)                            |
-| New Entry — Pending/Confirmed Claim, photo     | **Phase 3–4**                                  |
-| Reprint Last Label, print attempts             | **Phase 4**                                    |
-| Invoice workspace, Approve & Send, Invoice All | **Phase 5**                                    |
-| Live workspace, Quick Add, Current Flex Item   | **Phase 3**                                    |
-| Payments, deposit, layaway                     | **Phase 6**                                    |
-| Fulfillment                                    | **Phase 7**                                    |
-| Customers, Items, Import Records               | **Phase 8**                                    |
-| Reports, Audit Log surfacing                   | **Phase 9**                                    |
-| Pancake integration                            | **Phase 10** (gated, non-blocking, unverified) |
-| Printer / Bluetooth                            | **Phase 10** (unverified)                      |
-| Settings, Owner-only controls                  | alongside the phase that owns each setting     |
+| Screen / feature                               | Production phase                                                |
+| ---------------------------------------------- | --------------------------------------------------------------- |
+| Sidebar, navigation, permission-aware landing  | **Phase 3** (shell)                                             |
+| Dashboard Report — KPIs and charts             | **Phase 9** (reads records built in Phases 1–8)                 |
+| Gross Profit tab                               | **Phase 9+**, and only after COGS/accounting rules are approved |
+| New Entry — Pending/Confirmed Claim, photo     | **Phase 3–4**                                                   |
+| Reprint Last Label, print attempts             | **Phase 4**                                                     |
+| Invoice workspace, Approve & Send, Invoice All | **Phase 5**                                                     |
+| Live workspace, Quick Add, Current Flex Item   | **Phase 3**                                                     |
+| Payments, deposit, layaway                     | **Phase 6**                                                     |
+| Fulfillment                                    | **Phase 7**                                                     |
+| Customers, Items, Import Records               | **Phase 8**                                                     |
+| Reports, Audit Log surfacing                   | **Phase 9**                                                     |
+| Pancake integration                            | **Phase 10** (gated, non-blocking, unverified)                  |
+| Printer / Bluetooth                            | **Phase 10** (unverified)                                       |
+| Settings, Owner-only controls                  | alongside the phase that owns each setting                      |
 
 **Nothing in this addendum authorises Phase 3 to begin.**
 
@@ -376,8 +465,12 @@ global printer settings · archive actions · Reset Test Data.
 ## 17. Open questions for the Owner
 
 1. **Keep** — is it a distinct order status, or a flag on an order? Modelled here as a status.
-2. **Payment Evidence Submitted** vs **For Payment Confirmation** — these overlap; are they one queue or two?
-3. **Mobile bottom nav** currently carries Orders/Invoice/Live/Customers + More. Should Customers be swapped for another page?
+2. **Payment Evidence Submitted** vs **For Payment Confirmation** — these overlap; are they one queue or two? Both currently appear as Orders status cards AND as Dashboard counts.
+3. **Mobile bottom nav** carries Orders/Invoice/Live/Customers + More, with Dashboard Report under More. Should Dashboard Report replace one of the four?
 4. **Reports** and **Payments** were not designed in this round — placeholders only.
 5. **Green accent depth** — currently emerald-600. Lighter or deeper?
 6. **Sidebar default** — expanded or collapsed on first load?
+7. **COGS rules are undefined.** The Gross Profit tab shows a _shape_, not a calculation. Before it can be built for real we need: what counts as cost (metal, labour, freight, wastage?), what System vs Manual costing actually means, and whether Gross Profit is per shop, per period, or both.
+8. **"Checked Out"** — the KPI is shown as approved, but its definition is not in the Bible. What event marks an order as checked out?
+9. **"Shipments Today"** ignores the date filter by design (it is a _today_ metric). Should it instead follow the selected range?
+10. **Dashboard vs Reports overlap** — Dashboard Report has Export Report buttons. Do exports belong only in Reports, to keep the boundary clean?
