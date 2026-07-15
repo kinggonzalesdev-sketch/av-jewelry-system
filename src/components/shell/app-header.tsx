@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import { SignOutButton } from '@/components/shell/sign-out-button';
 
 /**
@@ -9,7 +11,13 @@ import { SignOutButton } from '@/components/shell/sign-out-button';
  * delivered in Roadmap Phase 9. It is disabled rather than omitted so the approved
  * navigation model is visible without pretending the feature works.
  */
-export function AppHeader({ userEmail }: { userEmail: string }) {
+export function AppHeader({
+  userEmail,
+  roleKey,
+}: {
+  userEmail: string;
+  roleKey?: string | undefined;
+}) {
   return (
     <header className="sticky top-0 z-10 border-b border-[--color-border] bg-[--color-background]">
       <div className="flex min-h-14 items-center justify-between gap-3 px-4">
@@ -23,6 +31,26 @@ export function AppHeader({ userEmail }: { userEmail: string }) {
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
+          {/*
+            Owner-only entry point. Hiding it from non-Owners is a CONVENIENCE,
+            not a security control (Bible §30.3 r2): the page itself re-checks
+            Owner authority server-side, and RLS restricts the underlying data to
+            the Owner regardless of what this header renders.
+          */}
+          {roleKey === 'owner' ? (
+            <Link
+              href="/admin/staff"
+              className="hidden h-9 items-center rounded-md border border-[--color-border] px-3 text-xs font-medium sm:flex"
+            >
+              Staff
+            </Link>
+          ) : null}
+          <Link
+            href="/security"
+            className="hidden h-9 items-center rounded-md border border-[--color-border] px-3 text-xs font-medium sm:flex"
+          >
+            Security
+          </Link>
           <button
             type="button"
             disabled
