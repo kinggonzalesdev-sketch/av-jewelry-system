@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils';
 const BASE = '/preview';
 
 export const PREVIEW_NAV = [
+  { href: `${BASE}/dashboard-report`, label: 'Dashboard Report', icon: '▥' },
   { href: `${BASE}/orders`, label: 'Orders', icon: '□' },
   { href: `${BASE}/invoice`, label: 'Invoice', icon: '▤' },
   { href: `${BASE}/live`, label: 'Live', icon: '◉' },
@@ -30,9 +31,16 @@ export const PREVIEW_NAV = [
   { href: `${BASE}/settings`, label: 'Settings', icon: '⚙' },
 ] as const;
 
-/** Mobile bottom nav carries the four most-used; the rest live under More. */
-const MOBILE_PRIMARY = PREVIEW_NAV.slice(0, 4);
-const MOBILE_MORE = PREVIEW_NAV.slice(4);
+/**
+ * Mobile bottom nav carries the four most-used; the rest live under More.
+ *
+ * Dashboard Report is the landing page but NOT in the bottom four: on a phone the
+ * daily work is Orders/Invoice/Live, and a summary screen would displace one of
+ * them. It stays one tap away under More.
+ */
+const MOBILE_PRIMARY = PREVIEW_NAV.slice(1, 5);
+// PREVIEW_NAV is `as const`, so index 0 is known-present — no assertion needed.
+const MOBILE_MORE = [PREVIEW_NAV[0], ...PREVIEW_NAV.slice(5)];
 
 const PRINTER_TONE: Record<PrinterState, 'green' | 'amber' | 'red' | 'slate'> = {
   Connected: 'green',
