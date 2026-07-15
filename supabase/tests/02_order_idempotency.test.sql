@@ -23,6 +23,13 @@ values ('dddddddd-0000-0000-0000-00000000000a', '11111111-0000-0000-0000-0000000
         'cccccccc-0000-0000-0000-00000000000a', 'pending_claim');
 update public.claims set status = 'confirmed_claim', confirmed_at = now()
 where id = 'dddddddd-0000-0000-0000-00000000000a';
+
+-- A Confirmed Claim already holds a provisional reservation (§22.3). Phase 5
+-- refuses to invoice a claim without one, so the fixture reflects the real
+-- state rather than a confirmed claim that never reserved anything.
+insert into public.inventory_reservations (inventory_item_id, claim_id, quantity, state)
+values ('11111111-0000-0000-0000-00000000000a', 'dddddddd-0000-0000-0000-00000000000a', 1, 'provisional');
+
 insert into public.invoice_drafts (id, customer_id, status)
 values ('ffffffff-0000-0000-0000-00000000000a', 'cccccccc-0000-0000-0000-00000000000a', 'in_review'),
        ('ffffffff-0000-0000-0000-00000000000b', 'cccccccc-0000-0000-0000-00000000000a', 'draft');
