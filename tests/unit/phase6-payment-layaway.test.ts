@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { formatPeso } from '@/lib/payments/balances';
+import { formatPeso } from '@/lib/payments/format';
 import {
   LAYAWAY_DEPOSIT_PERCENT,
   LAYAWAY_MAX_GRACE_DAYS,

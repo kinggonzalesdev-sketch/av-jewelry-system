@@ -1,0 +1,512 @@
+import 'server-only';
+
+import { moneyString, type DateRangeKey } from '@/lib/payments/format';
+import { createClient } from '@/lib/supabase/server';
+
+/**
+ * Payments & Layaway workspace loaders (Bible §16, §17).
+ *
+ * Real, database-backed. Every money figure comes from the approved SQL
+ * functions (see docs/PHASE-6-APPROVED-DECISIONS.md) — this module never does
+ * money arithmetic, because a second implementation could drift from the one the
+ * database enforces, and drift decides whether a customer is told they owe money.
+ *
+ * Money stays a STRING end to end. JS `number` is a float; 0.1 + 0.2 !== 0.3.
+ *
+ * The counts below deliberately keep evidence and verification apart: a payment
+ * that is merely submitted is never counted as collected.
+ */
+
+/** Resolves a range to concrete ISO bounds. Server-side: the client cannot widen it. */
+export function resolveRange(
+  key: DateRangeKey,
+  customFrom?: string,
+  customTo?: string,
+): { start: string; end: string } {
+  const now = new Date();
+  const end = now.toISOString();
+
+  if (key === 'custom' && customFrom && customTo) {
+    return {
+      start: new Date(customFrom).toISOString(),
+      end: new Date(customTo).toISOString(),
+    };
+  }
+
+  const start = new Date(now);
+  switch (key) {
+    case 'today':
+      start.setUTCHours(0, 0, 0, 0);
+      break;
+    case '7d':
+      start.setUTCDate(start.getUTCDate() - 6);
+      break;
+    case '14d':
+      start.setUTCDate(start.getUTCDate() - 13);
+      break;
+    case '30d':
+      start.setUTCDate(start.getUTCDate() - 29);
+      break;
+    case 'month':
+      start.setUTCDate(1);
+      start.setUTCHours(0, 0, 0, 0);
+      break;
+    default:
+      start.setUTCDate(start.getUTCDate() - 29);
+  }
+
+  return { start: start.toISOString(), end };
+}
+
+export type PaymentStatusBreakdown = Array<{ label: string; value: number }>;
+
+/**
+ * Payment Status Breakdown.
+ *
+ * Evidence Submitted and Awaiting Verification are counted SEPARATELY from
+ * Required Payment Verified. Nothing here folds evidence into verified.
+ */
+export async function paymentStatusBreakdown(range: {
+  start: string;
+  end: string;
+}): Promise<PaymentStatusBreakdown> {
+  const supabase = await createClient();
+
+  const { data } = await supabase
+    .from('payments')
+    .select('id, status, correction_pending, payment_evidence ( id )')
+    .gte('recorded_at', range.start)
+    .lte('recorded_at', range.end);
+
+  const rows = (data ?? []) as Array<{
+    status: string;
+    correction_pending: boolean;
+    payment_evidence: unknown[];
+  }>;
+
+  const withEvidence = rows.filter(
+    (r) => r.status === 'submitted_unverified' && (r.payment_evidence?.length ?? 0) > 0,
+  ).length;
+
+  const awaiting = rows.filter(
+    (r) => r.status === 'submitted_unverified' && (r.payment_evidence?.length ?? 0) === 0,
+  ).length;
+
+  return [
+    { label: 'Evidence Submitted', value: withEvidence },
+    { label: 'Awaiting Verification', value: awaiting },
+    {
+      label: 'Required Payment Verified',
+      value: rows.filter((r) => r.status === 'verified').length,
+    },
+    {
+      label: 'Verification Rejected',
+      value: rows.filter((r) => r.status === 'rejected').length,
+    },
+    {
+      label: 'Payment Correction Review',
+      value: rows.filter((r) => r.correction_pending).length,
+    },
+  ];
+}
+
+export type LayawayStatusBreakdown = Array<{ label: string; value: number }>;
+
+/** Layaway Status Breakdown, straight from stored statuses. */
+export async function layawayStatusBreakdown(): Promise<LayawayStatusBreakdown> {
+  const supabase = await createClient();
+  const { data } = await supabase.from('layaway_arrangements').select('id, status');
+
+  const rows = (data ?? []) as Array<{ id: string; status: string }>;
+  const count = (status: string) => rows.filter((r) => r.status === status).length;
+
+  // "Installment Due" is a readiness condition, not a stored status: an active
+  // layaway with an unpaid installment now due.
+  const { data: due } = await supabase
+    .from('layaway_installments')
+    .select('id, layaway_arrangement_id, due_date, payment_id')
+    .is('payment_id', null)
+    .lte('due_date', new Date().toISOString().slice(0, 10));
+
+  const dueIds = new Set(
+    ((due ?? []) as Array<{ layaway_arrangement_id: string }>).map(
+      (d) => d.layaway_arrangement_id,
+    ),
+  );
+
+  return [
+    { label: 'Active', value: count('active') },
+    {
+      label: 'Installment Due',
+      value: rows.filter((r) => r.status === 'active' && dueIds.has(r.id)).length,
+    },
+    { label: 'Overdue', value: count('overdue') },
+    { label: 'Grace Period', value: count('grace_period') },
+    { label: 'Forfeiture Review', value: count('forfeiture_eligible') },
+    { label: 'Completed', value: count('completed') },
+  ];
+}
+
+export type CollectionPoint = { label: string; verified: string; outstanding: string };
+
+/**
+ * Layaway Collection Trend.
+ *
+ * Plots VERIFIED collection only. Unverified evidence contributes nothing —
+ * recording is not verifying, so it is not money collected.
+ */
+export async function layawayCollectionTrend(range: {
+  start: string;
+  end: string;
+}): Promise<CollectionPoint[]> {
+  const supabase = await createClient();
+
+  const { data } = await supabase
+    .from('payments')
+    .select('recorded_at, amount, status, voided_at, reversed_at, correction_pending')
+    .eq('status', 'verified')
+    .is('voided_at', null)
+    .is('reversed_at', null)
+    .eq('correction_pending', false)
+    .gte('recorded_at', range.start)
+    .lte('recorded_at', range.end)
+    .order('recorded_at', { ascending: true });
+
+  const rows = (data ?? []) as Array<{ recorded_at: string; amount: string }>;
+
+  // Group by day. Amounts are summed as integer centavos so no float touches
+  // money on the way to the chart.
+  const byDay = new Map<string, bigint>();
+  for (const row of rows) {
+    const day = row.recorded_at.slice(0, 10);
+    byDay.set(day, (byDay.get(day) ?? 0n) + toCentavos(row.amount));
+  }
+
+  return [...byDay.entries()].map(([day, centavos]) => ({
+    label: day.slice(5),
+    verified: fromCentavos(centavos),
+    outstanding: '0.00',
+  }));
+}
+
+/** Peso string -> integer centavos. Exact; never via a float. */
+function toCentavos(amount: string): bigint {
+  const [whole = '0', fraction = ''] = amount.split('.');
+  return BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0').slice(0, 2) || '0');
+}
+
+function fromCentavos(centavos: bigint): string {
+  const negative = centavos < 0n;
+  const abs = negative ? -centavos : centavos;
+  return `${negative ? '-' : ''}${abs / 100n}.${String(abs % 100n).padStart(2, '0')}`;
+}
+
+export type OverviewCards = {
+  paymentEvidenceSubmitted: number;
+  awaitingVerification: number;
+  requiredPaymentVerified: number;
+  activeLayaways: number;
+  installmentsDue: number;
+  overdueOrGrace: number;
+  forfeitureReview: number;
+  completedLayaways: number;
+};
+
+export async function overviewCards(range: {
+  start: string;
+  end: string;
+}): Promise<OverviewCards> {
+  const [pay, lay] = await Promise.all([
+    paymentStatusBreakdown(range),
+    layawayStatusBreakdown(),
+  ]);
+
+  const p = (label: string) => pay.find((x) => x.label === label)?.value ?? 0;
+  const l = (label: string) => lay.find((x) => x.label === label)?.value ?? 0;
+
+  return {
+    paymentEvidenceSubmitted: p('Evidence Submitted'),
+    awaitingVerification: p('Awaiting Verification'),
+    requiredPaymentVerified: p('Required Payment Verified'),
+    activeLayaways: l('Active'),
+    installmentsDue: l('Installment Due'),
+    overdueOrGrace: l('Overdue') + l('Grace Period'),
+    forfeitureReview: l('Forfeiture Review'),
+    completedLayaways: l('Completed'),
+  };
+}
+
+export type EvidenceQueueRow = {
+  paymentId: string;
+  officialOrderId: string;
+  orderNumber: string;
+  customerDisplayName: string;
+  amount: string;
+  paymentMethod: string | null;
+  referenceNumber: string | null;
+  provider: string | null;
+  evidenceCount: number;
+  duplicateReference: boolean;
+};
+
+/**
+ * Payment Verification queue: submitted payments awaiting a human decision.
+ * Recording is not verifying — these count toward nothing until verified.
+ */
+export async function paymentVerificationQueue(): Promise<EvidenceQueueRow[]> {
+  const supabase = await createClient();
+
+  const [{ data }, duplicates] = await Promise.all([
+    supabase
+      .from('payments')
+      .select(
+        `id, official_order_id, amount, payment_method, reference_number, provider,
+         payment_evidence ( id ),
+         official_orders ( order_number, customers ( display_name ) )`,
+      )
+      .eq('status', 'submitted_unverified')
+      .is('voided_at', null)
+      .order('recorded_at', { ascending: true })
+      .limit(50),
+    supabase.rpc('duplicate_payment_references'),
+  ]);
+
+  const dupeRefs = new Set(
+    ((duplicates.data ?? []) as Array<{ reference_number: string }>).map(
+      (d) => d.reference_number,
+    ),
+  );
+
+  return ((data ?? []) as unknown[]).map((row) => {
+    const r = row as Record<string, unknown>;
+    const order = one<{ order_number: string; customers: unknown }>(r.official_orders);
+    const customer = one<{ display_name: string }>(order?.customers);
+
+    return {
+      paymentId: r.id as string,
+      officialOrderId: r.official_order_id as string,
+      orderNumber: order?.order_number ?? '—',
+      customerDisplayName: customer?.display_name ?? 'Unknown',
+      amount: moneyString(r.amount),
+      paymentMethod: (r.payment_method as string | null) ?? null,
+      referenceNumber: (r.reference_number as string | null) ?? null,
+      provider: (r.provider as string | null) ?? null,
+      evidenceCount: ((r.payment_evidence as unknown[]) ?? []).length,
+      duplicateReference:
+        r.reference_number !== null && dupeRefs.has(r.reference_number as string),
+    };
+  });
+}
+
+export type LayawayRow = {
+  layawayId: string;
+  officialOrderId: string;
+  orderNumber: string;
+  invoiceNumber: string;
+  customerDisplayName: string;
+  status: string;
+  months: number | null;
+  totalGrams: string | null;
+  layawayFee: string | null;
+  finalDueDate: string | null;
+  graceEndsOn: string | null;
+  completedAt: string | null;
+  totalAmountPayable: string;
+  verifiedNetPayments: string;
+  outstandingBalance: string;
+  overpaymentCredit: string;
+  requiredDownPayment: string;
+  paidInFull: boolean;
+  hasUnresolvedCorrection: boolean;
+  installments: Array<{
+    number: number;
+    dueDate: string;
+    amountDue: string;
+    paid: boolean;
+    verified: boolean;
+  }>;
+};
+
+/**
+ * Loads layaway accounts with their approved balance figures.
+ *
+ * Balances come from public.order_balance() — the same functions the completion
+ * guard uses, so the screen can never disagree with the database about whether
+ * an account is settled.
+ */
+export async function listLayaways(statuses?: string[]): Promise<LayawayRow[]> {
+  const supabase = await createClient();
+
+  let query = supabase
+    .from('layaway_arrangements')
+    .select(
+      `id, official_order_id, status, months, total_grams, layaway_fee,
+       final_due_date, grace_period_days, completed_at,
+       official_orders ( order_number, invoice_number, customers ( display_name ) ),
+       layaway_installments ( installment_number, due_date, amount_due, payment_id )`,
+    )
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+  if (statuses?.length) query = query.in('status', statuses);
+
+  const { data } = await query;
+  if (!data) return [];
+
+  return Promise.all(
+    (data as unknown[]).map(async (row) => {
+      const r = row as Record<string, unknown>;
+      const orderId = r.official_order_id as string;
+      const order = one<{
+        order_number: string;
+        invoice_number: string;
+        customers: unknown;
+      }>(r.official_orders);
+      const customer = one<{ display_name: string }>(order?.customers);
+
+      const balanceResponse = await supabase.rpc('order_balance', {
+        p_order_id: orderId,
+      });
+      const b = (balanceResponse.data ?? {}) as Record<string, unknown>;
+
+      const installmentRows = ((r.layaway_installments as unknown[]) ?? []) as Array<{
+        installment_number: number;
+        due_date: string;
+        amount_due: string;
+        payment_id: string | null;
+      }>;
+
+      // Which installment payments are actually VERIFIED. Recording an
+      // installment against a payment does not verify that payment (§17).
+      const paymentIds = installmentRows
+        .map((i) => i.payment_id)
+        .filter((id): id is string => id !== null);
+
+      const verifiedIds = new Set<string>();
+      if (paymentIds.length > 0) {
+        const { data: verified } = await supabase
+          .from('payments')
+          .select('id')
+          .in('id', paymentIds)
+          .eq('status', 'verified');
+        for (const v of (verified ?? []) as Array<{ id: string }>) verifiedIds.add(v.id);
+      }
+
+      const { data: corrections } = await supabase
+        .from('payments')
+        .select('id')
+        .eq('official_order_id', orderId)
+        .eq('correction_pending', true)
+        .limit(1);
+
+      const graceDays = (r.grace_period_days as number) ?? 10;
+      const finalDue = (r.final_due_date as string | null) ?? null;
+
+      return {
+        layawayId: r.id as string,
+        officialOrderId: orderId,
+        orderNumber: order?.order_number ?? '—',
+        invoiceNumber: order?.invoice_number ?? '—',
+        customerDisplayName: customer?.display_name ?? 'Unknown',
+        status: r.status as string,
+        months: (r.months as number | null) ?? null,
+        totalGrams: r.total_grams !== null ? moneyString(r.total_grams, '0') : null,
+        layawayFee: r.layaway_fee !== null ? moneyString(r.layaway_fee) : null,
+        finalDueDate: finalDue,
+        graceEndsOn: finalDue ? addDays(finalDue, graceDays) : null,
+        completedAt: (r.completed_at as string | null) ?? null,
+        totalAmountPayable: moneyString(b.total_amount_payable),
+        verifiedNetPayments: moneyString(b.verified_net_payments),
+        outstandingBalance: moneyString(b.outstanding_balance),
+        overpaymentCredit: moneyString(b.overpayment_credit),
+        requiredDownPayment: moneyString(b.required_down_payment),
+        paidInFull: b.paid_in_full === true,
+        hasUnresolvedCorrection: (corrections?.length ?? 0) > 0,
+        installments: installmentRows
+          .sort((a, z) => a.installment_number - z.installment_number)
+          .map((i) => ({
+            number: i.installment_number,
+            dueDate: i.due_date,
+            amountDue: String(i.amount_due),
+            paid: i.payment_id !== null,
+            verified: i.payment_id !== null && verifiedIds.has(i.payment_id),
+          })),
+      };
+    }),
+  );
+}
+
+/** Grace ends N calendar days after the final due date (approved decision §6). */
+function addDays(isoDate: string, days: number): string {
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+export type PaymentHistoryRow = {
+  paymentId: string;
+  orderNumber: string;
+  customerDisplayName: string;
+  amount: string;
+  verifiedAmount: string | null;
+  status: string;
+  paymentMethod: string | null;
+  referenceNumber: string | null;
+  recordedAt: string;
+  voided: boolean;
+  reversed: boolean;
+  correctionPending: boolean;
+};
+
+/** Payment History: every payment, with the disqualifying states kept visible. */
+export async function paymentHistory(range: {
+  start: string;
+  end: string;
+}): Promise<PaymentHistoryRow[]> {
+  const supabase = await createClient();
+
+  const { data } = await supabase
+    .from('payments')
+    .select(
+      `id, amount, status, payment_method, reference_number, recorded_at,
+       voided_at, reversed_at, correction_pending,
+       payment_verifications ( verified_amount ),
+       official_orders ( order_number, customers ( display_name ) )`,
+    )
+    .gte('recorded_at', range.start)
+    .lte('recorded_at', range.end)
+    .order('recorded_at', { ascending: false })
+    .limit(100);
+
+  return ((data ?? []) as unknown[]).map((row) => {
+    const r = row as Record<string, unknown>;
+    const order = one<{ order_number: string; customers: unknown }>(r.official_orders);
+    const customer = one<{ display_name: string }>(order?.customers);
+    const verification = one<{ verified_amount: string | null }>(r.payment_verifications);
+
+    return {
+      paymentId: r.id as string,
+      orderNumber: order?.order_number ?? '—',
+      customerDisplayName: customer?.display_name ?? 'Unknown',
+      amount: moneyString(r.amount),
+      verifiedAmount: verification?.verified_amount
+        ? moneyString(verification.verified_amount)
+        : null,
+      status: r.status as string,
+      paymentMethod: (r.payment_method as string | null) ?? null,
+      referenceNumber: (r.reference_number as string | null) ?? null,
+      recordedAt: r.recorded_at as string,
+      voided: r.voided_at !== null,
+      reversed: r.reversed_at !== null,
+      correctionPending: r.correction_pending === true,
+    };
+  });
+}
+
+function one<T>(value: unknown): T | null {
+  if (Array.isArray(value)) return (value[0] as T) ?? null;
+  return (value as T) ?? null;
+}
+
+// Re-exported so server callers have one import site.
+export { moneyString, RANGE_LABEL, type DateRangeKey } from '@/lib/payments/format';

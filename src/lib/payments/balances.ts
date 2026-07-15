@@ -75,10 +75,3 @@ export async function listDuplicateReferences(): Promise<
     }),
   );
 }
-
-/** Formats a peso string for display. Never converts through a float. */
-export function formatPeso(amount: string): string {
-  const [whole = '0', fraction = '00'] = amount.split('.');
-  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  return `₱${grouped}.${fraction.padEnd(2, '0').slice(0, 2)}`;
-}
