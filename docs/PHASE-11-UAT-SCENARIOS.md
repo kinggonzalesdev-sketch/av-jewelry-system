@@ -8,6 +8,22 @@ UAT means _real staff running real scenarios_ — a session cannot perform it, a
 recording it as passed would be a fabrication of the exact kind §34.2 r1 warns
 about. These scenarios are the artifact the Owner needs to run it.
 
+> ## 👉 To actually run UAT, use the execution pack
+>
+> **This document is the _rationale_** — why each scenario exists and what
+> failing it means. It is the reference, not the worksheet.
+>
+> | Do this                                      | Document                                  |
+> | -------------------------------------------- | ----------------------------------------- |
+> | **1. Set up** accounts, sample data, devices | `docs/UAT-SETUP-ACCOUNTS-DATA-DEVICES.md` |
+> | **2. Run the tests** and record results      | `docs/UAT-EXECUTION-CHECKLIST.md`         |
+> | **3. Prove the backup restores**             | `docs/BACKUP-RESTORE-DRILL.md`            |
+> | **4. Decide** whether to pilot               | `docs/PILOT-READINESS-DECISION.md`        |
+>
+> The 14 scenarios are the same in both places. The execution checklist carries
+> the fill-in fields, exact data, and devices; this document explains what each
+> one is defending and why it was written that way.
+
 ---
 
 ## 1. How to use this document

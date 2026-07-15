@@ -85,7 +85,13 @@ Nothing here is a code task. Each is a §34.9 or §35.18 open item.
 
 - [ ] **Name the sign-off authority** (§34.9) — who declares Production Ready
 - [ ] **Name UAT participants** (§34.9) — Owner, up to 2 Selected Admins, Staff
-- [ ] **Run Staff UAT** — `docs/PHASE-11-UAT-SCENARIOS.md`; UAT-12 is decisive
+- [ ] **Set up UAT** — `docs/UAT-SETUP-ACCOUNTS-DATA-DEVICES.md` (accounts,
+      synthetic sample data, devices)
+- [ ] **Run Staff UAT** — `docs/UAT-EXECUTION-CHECKLIST.md`; UAT-12 is decisive
+- [ ] **Decide the §2 printer question** in `docs/PILOT-READINESS-DECISION.md` —
+      does "printer basics" (§34.6) require a physical XP-236B print, or is
+      manual fallback sufficient given §35 r10–11? Recommendation: manual is
+      sufficient.
 - [ ] **Set pilot duration and transaction volume** (§34.9)
 - [ ] **Confirm Supabase plan** — Pro **before** real customer/order/payment
       data (§35.14)
@@ -93,7 +99,8 @@ Nothing here is a code task. Each is a §34.9 or §35.18 open item.
       prices fresh at purchase (§35.14)
 - [ ] **Domain** (§35.18)
 - [ ] **Backup schedule + a real restore drill** (§35.18) — a backup that has
-      never been restored is a hope. This is a hard §34.6 blocker.
+      never been restored is a hope. This is a hard §34.6 blocker. Procedure:
+      `docs/BACKUP-RESTORE-DRILL.md` (staging only).
 - [ ] **Monitoring and alerts baseline** (§35.18)
 - [ ] **Name the support owner** (§35.18)
 - [ ] **Incident-response contacts** (§30.17)
