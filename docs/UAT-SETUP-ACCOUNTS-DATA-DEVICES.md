@@ -66,20 +66,30 @@ operational action during UAT, grant it explicitly and note it on the checklist.
 
 ### 2.2 Inventory items
 
-| Code      | Name                  | Type            | Qty   | Grams/pc | Price/pc   | Used by                          |
-| --------- | --------------------- | --------------- | ----- | -------- | ---------- | -------------------------------- |
-| `UAT-U01` | Test Ring Solitaire   | **Unique**      | 1     | 5.000    | ₱10,000.00 | UAT-03, 07                       |
-| `UAT-U02` | Test Necklace Rope    | **Unique**      | 1     | 8.000    | ₱20,000.00 | 1st/2nd miner · **RTS (UAT-11)** |
-| `UAT-M01` | Test Bangle Classic   | **Multi-stock** | **5** | 12.500   | ₱8,000.00  | UAT-04, 05, 07                   |
-| `UAT-M02` | Test Earrings Pair    | **Multi-stock** | **3** | 3.000    | ₱6,000.00  | Waitlist · UAT-07, 12            |
-| `UAT-L01` | Test Layaway Chain    | Unique          | 1     | 5.000    | ₱25,000.00 | Layaway (healthy)                |
-| `UAT-L02` | Test Layaway Bracelet | Unique          | 1     | 6.000    | ₱30,000.00 | Layaway (overdue)                |
+| Code      | Name                  | Type            | Stocked | **Available at UAT start** | Grams/pc | Price/pc   | Used by                          |
+| --------- | --------------------- | --------------- | ------- | -------------------------- | -------- | ---------- | -------------------------------- |
+| `UAT-U01` | Test Ring Solitaire   | **Unique**      | 1       | 0 (already claimed)        | 5.000    | ₱10,000.00 | UAT-03, 07                       |
+| `UAT-U02` | Test Necklace Rope    | **Unique**      | 1       | 0 (1st miner holds it)     | 8.000    | ₱20,000.00 | 1st/2nd miner · **RTS (UAT-11)** |
+| `UAT-M01` | Test Bangle Classic   | **Multi-stock** | **7**   | **5**                      | 12.500   | ₱8,000.00  | UAT-04, 05, 07                   |
+| `UAT-M02` | Test Earrings Pair    | **Multi-stock** | **5**   | **2**                      | 3.000    | ₱6,000.00  | Waitlist · UAT-07, 12            |
+| `UAT-L01` | Test Layaway Chain    | Unique          | 1       | 1                          | 5.000    | ₱25,000.00 | Layaway (healthy)                |
+| `UAT-L02` | Test Layaway Bracelet | Unique          | 1       | 1                          | 6.000    | ₱30,000.00 | Layaway (overdue)                |
 
-> **`UAT-M01` has 5 units on purpose.** UAT-04 consumes 2 and UAT-07 consumes 1,
-> leaving 2 spare. Multi-stock also matters for a subtler reason: on a _unique_
-> item the quantity guard fires before the one-reservation-per-claim rule, so a
-> "reserved exactly once" test on a unique item can pass for the wrong reason.
-> UAT-04 and UAT-05 must use `UAT-M01`.
+> **Read the "Available" column, not "Stocked".** Some claims ship already
+> confirmed (the UAT-07 grouping, the payment cases, the cancellation target),
+> and **a confirmed claim holds a reservation** — so it consumes stock the moment
+> the dataset loads. The stocked totals are chosen to leave the availability a
+> tester actually sees matching what the checklist expects:
+>
+> | Item      | Stocked | − pre-confirmed | **= available** | Then                      |
+> | --------- | ------- | --------------- | --------------- | ------------------------- |
+> | `UAT-M01` | 7       | 2               | **5**           | UAT-04 confirms 2 → **3** |
+> | `UAT-M02` | 5       | 3               | **2**           | leaves UAT-12 a unit      |
+>
+> **`UAT-M01` and `UAT-M02` are multi-stock on purpose.** On a _unique_ item the
+> quantity guard fires before the one-reservation-per-claim rule, so a "reserved
+> exactly once" test on a unique item can pass for the wrong reason. UAT-04 and
+> UAT-05 must use `UAT-M01`.
 
 ### 2.3 First and second miners
 
