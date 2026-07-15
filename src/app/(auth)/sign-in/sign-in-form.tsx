@@ -61,7 +61,7 @@ export function SignInForm() {
         <p
           id="sign-in-error"
           role="alert"
-          className="text-sm text-[--color-destructive]"
+          className="text-sm text-destructive"
           data-testid="sign-in-error"
         >
           {state.error}

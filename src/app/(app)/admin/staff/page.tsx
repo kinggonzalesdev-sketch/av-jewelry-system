@@ -46,7 +46,7 @@ export default async function StaffManagementPage() {
     <div className="space-y-4">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Staff management</h1>
-        <p className="text-sm text-[--color-muted-foreground]">
+        <p className="text-sm text-muted-foreground">
           Owner-only. Accounts, roles, and permission grants.
         </p>
       </header>
@@ -57,7 +57,7 @@ export default async function StaffManagementPage() {
             Selected Admins: {activeSelectedAdmins} of 2
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3 text-sm text-[--color-muted-foreground]">
+        <CardContent className="space-y-3 text-sm text-muted-foreground">
           <p>
             A maximum of two Selected Admin accounts may be active at once. The limit is
             enforced by the database, not by this screen.
@@ -75,15 +75,12 @@ export default async function StaffManagementPage() {
         </CardHeader>
         <CardContent>
           {accounts.length === 0 ? (
-            <p
-              className="text-sm text-[--color-muted-foreground]"
-              data-testid="empty-state"
-            >
+            <p className="text-sm text-muted-foreground" data-testid="empty-state">
               No staff accounts exist yet. Accounts are created through an authorized
               internal process — there is no public registration.
             </p>
           ) : (
-            <ul className="divide-y divide-[--color-border]">
+            <ul className="divide-y divide-border">
               {accounts.map((account) => (
                 <li
                   key={account.id}
@@ -91,7 +88,7 @@ export default async function StaffManagementPage() {
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{account.fullName}</p>
-                    <p className="text-xs text-[--color-muted-foreground]">
+                    <p className="text-xs text-muted-foreground">
                       {account.roleKey.replace('_', ' ')}
                       {account.mfaEnrolled ? ' · MFA enrolled' : ' · no MFA'}
                     </p>
@@ -99,8 +96,8 @@ export default async function StaffManagementPage() {
                   <span
                     className={
                       account.isActive
-                        ? 'shrink-0 rounded border border-[--color-border] px-2 py-0.5 text-xs'
-                        : 'shrink-0 rounded border border-[--color-border] px-2 py-0.5 text-xs text-[--color-muted-foreground]'
+                        ? 'shrink-0 rounded border border-border px-2 py-0.5 text-xs'
+                        : 'shrink-0 rounded border border-border px-2 py-0.5 text-xs text-muted-foreground'
                     }
                   >
                     {account.isActive ? 'Active' : 'Disabled'}
@@ -116,7 +113,7 @@ export default async function StaffManagementPage() {
         <CardHeader>
           <div>
             <span
-              className="inline-flex items-center rounded-md border border-[--color-border] bg-[--color-muted] px-2 py-1 text-xs font-medium uppercase tracking-wide text-[--color-muted-foreground]"
+              className="inline-flex items-center rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground"
               data-testid="placeholder-badge"
             >
               Placeholder — not implemented
@@ -124,7 +121,7 @@ export default async function StaffManagementPage() {
           </div>
           <CardTitle className="pt-1 text-base">Account creation</CardTitle>
         </CardHeader>
-        <CardContent className="text-sm text-[--color-muted-foreground]">
+        <CardContent className="text-sm text-muted-foreground">
           <p>
             Creating or inviting an account requires the Supabase Admin API and the
             service-role key, which is intentionally not wired in Phase 2. Create

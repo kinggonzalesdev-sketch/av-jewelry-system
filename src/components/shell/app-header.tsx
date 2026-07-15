@@ -19,13 +19,13 @@ export function AppHeader({
   roleKey?: string | undefined;
 }) {
   return (
-    <header className="sticky top-0 z-10 border-b border-[--color-border] bg-[--color-background]">
+    <header className="sticky top-0 z-10 border-b border-border bg-background">
       <div className="flex min-h-14 items-center justify-between gap-3 px-4">
         <div className="flex min-w-0 items-center gap-3">
           <span className="truncate text-sm font-semibold tracking-tight">
             A.V. Jewelry Operations
           </span>
-          <span className="hidden shrink-0 rounded border border-[--color-border] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[--color-muted-foreground] sm:inline">
+          <span className="hidden shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:inline">
             Phase 0 foundation
           </span>
         </div>
@@ -40,14 +40,14 @@ export function AppHeader({
           {roleKey === 'owner' ? (
             <Link
               href="/admin/staff"
-              className="hidden h-9 items-center rounded-md border border-[--color-border] px-3 text-xs font-medium sm:flex"
+              className="hidden h-9 items-center rounded-md border border-border px-3 text-xs font-medium sm:flex"
             >
               Staff
             </Link>
           ) : null}
           <Link
             href="/security"
-            className="hidden h-9 items-center rounded-md border border-[--color-border] px-3 text-xs font-medium sm:flex"
+            className="hidden h-9 items-center rounded-md border border-border px-3 text-xs font-medium sm:flex"
           >
             Security
           </Link>
@@ -56,12 +56,12 @@ export function AppHeader({
             disabled
             aria-label="Global search (not implemented — Phase 9)"
             title="Global Search is not implemented yet (Phase 9)"
-            className="hidden h-9 items-center rounded-md border border-[--color-border] px-3 text-xs text-[--color-muted-foreground] disabled:cursor-not-allowed disabled:opacity-50 sm:flex"
+            className="hidden h-9 items-center rounded-md border border-border px-3 text-xs text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 sm:flex"
           >
             Search — not implemented
           </button>
           <span
-            className="hidden max-w-[16ch] truncate text-xs text-[--color-muted-foreground] sm:inline"
+            className="hidden max-w-[16ch] truncate text-xs text-muted-foreground sm:inline"
             data-testid="authenticated-user-email"
           >
             {userEmail}

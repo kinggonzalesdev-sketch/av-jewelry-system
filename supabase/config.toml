@@ -56,7 +56,15 @@ enable_anonymous_sign_ins = false
 enable_manual_linking = false
 
 [auth.email]
-enable_signup = false
+# ⚠️  TRAP: `[auth.email] enable_signup` maps to GOTRUE_EXTERNAL_EMAIL_ENABLED,
+# which is the EMAIL PROVIDER switch — not a registration switch. Setting it to
+# false disables email/password SIGN-IN for everyone, which breaks the only auth
+# flow this system has. It must stay true.
+#
+# Public registration is blocked by `[auth] enable_signup = false` above, which
+# maps to GOTRUE_DISABLE_SIGNUP=true and refuses /signup globally. That is the
+# correct control, and it is verified by test.
+enable_signup = true
 double_confirm_changes = true
 enable_confirmations = false
 secure_password_change = true

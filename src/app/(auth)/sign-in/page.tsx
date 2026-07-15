@@ -41,7 +41,7 @@ export default function SignInPage() {
           </CardContent>
         </Card>
 
-        <p className="mt-4 text-center text-xs text-[--color-muted-foreground]">
+        <p className="mt-4 text-center text-xs text-muted-foreground">
           Phase 0 foundation. This system is not production-ready.
         </p>
       </div>

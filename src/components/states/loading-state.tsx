@@ -12,7 +12,7 @@ export function LoadingState({ label = 'Loading…' }: { label?: string }) {
       aria-live="polite"
       data-testid="loading-state"
     >
-      <span className="text-sm text-[--color-muted-foreground]">{label}</span>
+      <span className="text-sm text-muted-foreground">{label}</span>
     </div>
   );
 }

@@ -27,7 +27,7 @@ export default async function SecurityPage() {
     <div className="space-y-4">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Security</h1>
-        <p className="text-sm text-[--color-muted-foreground]">
+        <p className="text-sm text-muted-foreground">
           Multi-factor authentication for your account.
         </p>
       </header>
@@ -38,20 +38,20 @@ export default async function SecurityPage() {
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <div className="flex items-center justify-between gap-3">
-            <span className="text-[--color-muted-foreground]">Enrolled factor</span>
+            <span className="text-muted-foreground">Enrolled factor</span>
             <span className="font-medium" data-testid="mfa-factor-state">
               {mfa.hasVerifiedFactor ? 'Yes' : 'No'}
             </span>
           </div>
           <div className="flex items-center justify-between gap-3">
-            <span className="text-[--color-muted-foreground]">This session</span>
+            <span className="text-muted-foreground">This session</span>
             <span className="font-medium" data-testid="mfa-aal-state">
               {mfa.currentLevel ?? 'unknown'}
             </span>
           </div>
 
           {mfa.elevationPending ? (
-            <p className="rounded-md border border-[--color-border] bg-[--color-muted] p-3 text-xs text-[--color-muted-foreground]">
+            <p className="rounded-md border border-border bg-muted p-3 text-xs text-muted-foreground">
               You have an authenticator enrolled, but this session has not been verified
               with a code. It is running at aal1.
             </p>
@@ -64,9 +64,9 @@ export default async function SecurityPage() {
           <CardHeader>
             <CardTitle className="text-base">Owner readiness</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm text-[--color-muted-foreground]">
+          <CardContent className="space-y-2 text-sm text-muted-foreground">
             <p>
-              <span className="font-medium text-[--color-foreground]">
+              <span className="font-medium text-foreground">
                 Owner MFA is required before the controlled pilot and before production.
               </span>{' '}
               It is not required in development, because an Owner must be able to sign in
@@ -85,7 +85,7 @@ export default async function SecurityPage() {
         <CardHeader>
           <div>
             <span
-              className="inline-flex items-center rounded-md border border-[--color-border] bg-[--color-muted] px-2 py-1 text-xs font-medium uppercase tracking-wide text-[--color-muted-foreground]"
+              className="inline-flex items-center rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground"
               data-testid="placeholder-badge"
             >
               Not enforced
@@ -93,10 +93,10 @@ export default async function SecurityPage() {
           </div>
           <CardTitle className="pt-1 text-base">MFA enforcement status</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2 text-sm text-[--color-muted-foreground]">
+        <CardContent className="space-y-2 text-sm text-muted-foreground">
           <p>
             Enrollment, verification, and aal1/aal2 detection are implemented and tested.
-            <span className="font-medium text-[--color-foreground]">
+            <span className="font-medium text-foreground">
               {' '}
               MFA is not currently required for any action.
             </span>{' '}

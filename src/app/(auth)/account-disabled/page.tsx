@@ -43,7 +43,7 @@ export default function AccountDisabledPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm text-[--color-muted-foreground]">
+            <p className="text-sm text-muted-foreground">
               Your sign-in was valid, but the account is not active.
             </p>
             <SignOutButton />

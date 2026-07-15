@@ -18,16 +18,12 @@ export function NotAuthorized({
 }) {
   return (
     <div
-      className="flex flex-col items-center justify-center rounded-lg border border-[--color-border] px-6 py-12 text-center"
+      className="flex flex-col items-center justify-center rounded-lg border border-border px-6 py-12 text-center"
       data-testid="not-authorized"
     >
       <p className="text-sm font-medium">{title}</p>
-      <p className="mt-1 max-w-sm text-sm text-[--color-muted-foreground]">
-        {description}
-      </p>
-      <p className="mt-3 text-xs text-[--color-muted-foreground]">
-        No record was changed.
-      </p>
+      <p className="mt-1 max-w-sm text-sm text-muted-foreground">{description}</p>
+      <p className="mt-3 text-xs text-muted-foreground">No record was changed.</p>
     </div>
   );
 }

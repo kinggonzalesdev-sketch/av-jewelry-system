@@ -29,14 +29,14 @@ export function PlaceholderPage({
     <div className="space-y-4">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        <p className="text-sm text-[--color-muted-foreground]">{description}</p>
+        <p className="text-sm text-muted-foreground">{description}</p>
       </header>
 
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center gap-2">
             <span
-              className="inline-flex items-center rounded-md border border-[--color-border] bg-[--color-muted] px-2 py-1 text-xs font-medium uppercase tracking-wide text-[--color-muted-foreground]"
+              className="inline-flex items-center rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground"
               data-testid="placeholder-badge"
             >
               Placeholder — not implemented
@@ -44,7 +44,7 @@ export function PlaceholderPage({
           </div>
           <CardTitle className="pt-1 text-base">No workflow is built here yet</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3 text-sm text-[--color-muted-foreground]">
+        <CardContent className="space-y-3 text-sm text-muted-foreground">
           <p>
             This screen is a navigation placeholder created in Phase 0 (application
             foundation). It contains no business logic and displays no operational data.
