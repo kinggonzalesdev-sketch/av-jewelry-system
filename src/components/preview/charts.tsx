@@ -15,9 +15,18 @@ import { peso } from '@/components/preview/sample-data';
  * its container (see the callers).
  */
 
-const AXIS = '#cbd5e1'; // slate-300
-const GRID = '#f1f5f9'; // slate-100
-const LABEL = '#64748b'; // slate-500
+/**
+ * Chart chrome colours are CLASSES, not literals, so the `night:` variant can
+ * flip them. A hard-coded slate-100 gridline is invisible on white but glares
+ * on a night-mode card, so the axis, grid, and tick labels each carry both.
+ */
+const AXIS = 'stroke-slate-300 night:stroke-slate-600';
+const GRID = 'stroke-slate-100 night:stroke-slate-800';
+const LABEL = 'fill-slate-500 night:fill-slate-400';
+/** Emphasised figure, e.g. the donut's centre total. Near-black would vanish on a night card. */
+const TOTAL = 'fill-slate-900 night:fill-slate-100';
+/** Ring around a data point — matches the card behind it, not always white. */
+const POINT_RING = 'stroke-white night:stroke-slate-900';
 
 export type Point = { label: string; value: number };
 
@@ -83,10 +92,16 @@ export function LineChart({
                 y1={vy}
                 x2={W - padR}
                 y2={vy}
-                stroke={GRID}
+                className={GRID}
                 strokeWidth={1}
               />
-              <text x={padL - 8} y={vy + 4} textAnchor="end" fontSize={11} fill={LABEL}>
+              <text
+                x={padL - 8}
+                y={vy + 4}
+                textAnchor="end"
+                fontSize={11}
+                className={LABEL}
+              >
                 {formatValue(Math.round(max * t))}
               </text>
             </g>
@@ -117,7 +132,7 @@ export function LineChart({
               cy={y(d.value)}
               r={hover === i ? 4.5 : 2.5}
               fill="#059669"
-              stroke="#fff"
+              className={POINT_RING}
               strokeWidth={1.5}
             />
             <rect
@@ -140,7 +155,7 @@ export function LineChart({
           y1={padT + innerH}
           x2={W - padR}
           y2={padT + innerH}
-          stroke={AXIS}
+          className={AXIS}
           strokeWidth={1}
         />
         {data.map((d, i) =>
@@ -151,7 +166,7 @@ export function LineChart({
               y={H - 10}
               textAnchor="middle"
               fontSize={10}
-              fill={LABEL}
+              className={LABEL}
             >
               {d.label}
             </text>
@@ -168,6 +183,174 @@ export function LineChart({
             {formatValue(data[hover].value)}
           </span>
           <span className="ml-1 text-slate-400 night:text-slate-500">sample</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Two-series line chart. Used for the Layaway Collection Trend.
+ *
+ * The series are named explicitly in the legend and tooltips so a reader can
+ * never mistake one for the other — in particular, "Verified collected" must
+ * never read as including payment evidence.
+ */
+export function MultiLineChart({
+  data,
+  series,
+  height = 220,
+}: {
+  data: Array<{ label: string } & Record<string, number | string>>;
+  series: Array<{ key: string; name: string; color: string }>;
+  height?: number;
+}) {
+  const [hover, setHover] = useState<number | null>(null);
+
+  const W = 720;
+  const H = height;
+  const padL = 60;
+  const padR = 12;
+  const padT = 12;
+  const padB = 30;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+
+  const values = data.flatMap((d) => series.map((s) => Number(d[s.key] ?? 0)));
+  const max = niceMax(Math.max(...values, 1));
+  const stepX = data.length > 1 ? innerW / (data.length - 1) : innerW;
+  const x = (i: number) => padL + i * stepX;
+  const y = (v: number) => padT + innerH - (v / max) * innerH;
+  const labelEvery = Math.max(1, Math.ceil(data.length / 7));
+
+  return (
+    <div className="relative w-full">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full"
+        role="img"
+        aria-label="Layaway collection trend, sample data. Verified collection only."
+      >
+        {[0, 0.25, 0.5, 0.75, 1].map((t) => {
+          const vy = padT + innerH - t * innerH;
+          return (
+            <g key={t}>
+              <line
+                x1={padL}
+                y1={vy}
+                x2={W - padR}
+                y2={vy}
+                className={GRID}
+                strokeWidth={1}
+              />
+              <text
+                x={padL - 8}
+                y={vy + 4}
+                textAnchor="end"
+                fontSize={11}
+                className={LABEL}
+              >
+                {peso(Math.round(max * t))}
+              </text>
+            </g>
+          );
+        })}
+
+        {series.map((s) => {
+          const path = data
+            .map((d, i) => `${i === 0 ? 'M' : 'L'}${x(i)},${y(Number(d[s.key] ?? 0))}`)
+            .join(' ');
+          return (
+            <path
+              key={s.key}
+              d={path}
+              fill="none"
+              stroke={s.color}
+              strokeWidth={2}
+              strokeLinejoin="round"
+            />
+          );
+        })}
+
+        {data.map((d, i) => (
+          <g key={d.label}>
+            {series.map((s) => (
+              <circle
+                key={s.key}
+                cx={x(i)}
+                cy={y(Number(d[s.key] ?? 0))}
+                r={hover === i ? 4 : 2}
+                fill={s.color}
+                className={POINT_RING}
+                strokeWidth={1.2}
+              />
+            ))}
+            <rect
+              x={x(i) - stepX / 2}
+              y={padT}
+              width={Math.max(stepX, 8)}
+              height={innerH}
+              fill="transparent"
+              onMouseEnter={() => setHover(i)}
+              onMouseLeave={() => setHover(null)}
+            >
+              <title>
+                {`${d.label} — ${series.map((s) => `${s.name}: ${peso(Number(d[s.key] ?? 0))}`).join(' · ')} (sample)`}
+              </title>
+            </rect>
+          </g>
+        ))}
+
+        <line
+          x1={padL}
+          y1={padT + innerH}
+          x2={W - padR}
+          y2={padT + innerH}
+          className={AXIS}
+          strokeWidth={1}
+        />
+        {data.map((d, i) =>
+          i % labelEvery === 0 || i === data.length - 1 ? (
+            <text
+              key={`x-${d.label}`}
+              x={x(i)}
+              y={H - 10}
+              textAnchor="middle"
+              fontSize={10}
+              className={LABEL}
+            >
+              {d.label}
+            </text>
+          ) : null,
+        )}
+      </svg>
+
+      <div className="mt-2 flex flex-wrap justify-center gap-3">
+        {series.map((s) => (
+          <span
+            key={s.key}
+            className="flex items-center gap-1.5 text-[11px] text-slate-600 night:text-slate-300"
+          >
+            <span
+              className="h-2.5 w-2.5 rounded-sm"
+              style={{ backgroundColor: s.color }}
+              aria-hidden="true"
+            />
+            {s.name}
+          </span>
+        ))}
+      </div>
+
+      {hover !== null && data[hover] ? (
+        <div className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 rounded-md border border-slate-200 night:border-slate-700 bg-white night:bg-slate-900 px-2 py-1 text-[11px] shadow-sm">
+          <span className="font-medium text-slate-900 night:text-slate-100">
+            {data[hover].label}
+          </span>
+          {series.map((s) => (
+            <span key={s.key} className="ml-2 tabular-nums" style={{ color: s.color }}>
+              {s.name}: {peso(Number(data[hover]![s.key] ?? 0))}
+            </span>
+          ))}
         </div>
       ) : null}
     </div>
@@ -252,10 +435,16 @@ export function GroupedBarChart({
                 y1={vy}
                 x2={W - padR}
                 y2={vy}
-                stroke={GRID}
+                className={GRID}
                 strokeWidth={1}
               />
-              <text x={padL - 8} y={vy + 4} textAnchor="end" fontSize={11} fill={LABEL}>
+              <text
+                x={padL - 8}
+                y={vy + 4}
+                textAnchor="end"
+                fontSize={11}
+                className={LABEL}
+              >
                 {peso(Math.round(max * t))}
               </text>
             </g>
@@ -296,7 +485,7 @@ export function GroupedBarChart({
                 y={H - 12}
                 textAnchor="middle"
                 fontSize={10}
-                fill={LABEL}
+                className={LABEL}
               >
                 {p}
               </text>
@@ -309,7 +498,7 @@ export function GroupedBarChart({
           y1={padT + innerH}
           x2={W - padR}
           y2={padT + innerH}
-          stroke={AXIS}
+          className={AXIS}
           strokeWidth={1}
         />
       </svg>
@@ -384,11 +573,11 @@ export function DonutChart({ data }: { data: Array<Point & { color: string }> })
           textAnchor="middle"
           fontSize={20}
           fontWeight={700}
-          fill="#0f172a"
+          className={TOTAL}
         >
           {total}
         </text>
-        <text x="70" y="84" textAnchor="middle" fontSize={9} fill={LABEL}>
+        <text x="70" y="84" textAnchor="middle" fontSize={9} className={LABEL}>
           payments
         </text>
       </svg>

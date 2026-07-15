@@ -14,9 +14,14 @@ import {
 import {
   LAYAWAY_FEE_NOTE,
   LAYAWAY_RULES,
+  SAMPLE_COMPLETED,
   SAMPLE_LAYAWAYS,
+  layawayCollectionTrend,
   layawayFeeConcept,
+  layawayStatusBreakdown,
   layawaySummary,
+  paymentStatusBreakdown,
+  verifiedPaidTotal,
 } from '@/components/preview/layaway-data';
 import { PREVIEW_NAV } from '@/components/preview/shell';
 import {
@@ -201,7 +206,7 @@ describe('Payments & Layaway workspace', () => {
     'utf8',
   );
 
-  it('has the six approved internal tabs', () => {
+  it('has the seven approved internal tabs', () => {
     const tabs = view
       .slice(view.indexOf('const TABS'), view.indexOf('] as const'))
       .match(/'([^']+)'/g)
@@ -214,6 +219,7 @@ describe('Payments & Layaway workspace', () => {
       'Overdue / Grace Period',
       'Forfeiture Review',
       'Payment History',
+      'Completed Layaways',
     ]);
   });
 
@@ -558,5 +564,218 @@ describe('invoice grouping rules (prototype logic)', () => {
   it('never places one claim in two groups', () => {
     const ids = groups.flatMap((g) => g.orders.map((o) => o.id));
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe('completed layaways', () => {
+  it('reaches zero remaining balance through verified payments only', () => {
+    for (const l of SAMPLE_COMPLETED) {
+      expect(verifiedPaidTotal(l)).toBe(l.totalOrderAmount);
+      expect(l.remainingBalance).toBe(0);
+      expect(l.status).toBe('Completed');
+    }
+  });
+
+  it('never counts unverified evidence toward completion', () => {
+    // An account whose installments are merely evidenced must not total up as
+    // paid — recording is not verifying.
+    const evidenced = SAMPLE_LAYAWAYS.find((l) =>
+      l.installments.some((i) => i.evidence !== null && i.verification !== 'Verified'),
+    );
+
+    expect(evidenced).toBeDefined();
+    expect(verifiedPaidTotal(evidenced!)).toBeLessThan(evidenced!.totalOrderAmount);
+  });
+
+  it('keeps every completed account inside its own Official Order', () => {
+    for (const l of SAMPLE_COMPLETED) {
+      expect(l.officialOrderNumber).toMatch(/^ORD-/);
+      expect(l.months).toBeLessThanOrEqual(LAYAWAY_RULES.maximumMonths);
+    }
+  });
+
+  it('offers no reopen, cancel, or forfeit control on a terminal account', () => {
+    const view = readFileSync(
+      join(projectRoot, 'src', 'components', 'preview', 'payments-view.tsx'),
+      'utf8',
+    );
+    const detail = view.slice(view.indexOf('function CompletedDetail'));
+
+    expect(detail).toMatch(/terminal for normal operations/i);
+    expect(detail).not.toMatch(/>\s*(Reopen|Cancel Layaway|Forfeit)\s*</);
+  });
+});
+
+describe('payment and layaway graphs', () => {
+  it('reports evidence and verification as separate series', () => {
+    const labels = paymentStatusBreakdown().map((p) => p.label);
+
+    expect(labels).toEqual([
+      'Evidence Submitted',
+      'Awaiting Verification',
+      'Required Payment Verified',
+      'Verification Rejected',
+      'Payment Correction Review',
+    ]);
+  });
+
+  it('covers the approved layaway status set', () => {
+    expect(layawayStatusBreakdown().map((s) => s.label)).toEqual([
+      'Active',
+      'Installment Due',
+      'Overdue',
+      'Grace Period',
+      'Forfeiture Review',
+      'Completed',
+    ]);
+  });
+
+  it('plots verified collection separately from outstanding balance', () => {
+    const trend = layawayCollectionTrend(7);
+
+    expect(trend).toHaveLength(7);
+    for (const point of trend) {
+      expect(point.verified).toBeGreaterThanOrEqual(0);
+      expect(point).toHaveProperty('outstanding');
+    }
+  });
+});
+
+describe('footer branding', () => {
+  it('carries the exact approved wording', () => {
+    const shell = readFileSync(
+      join(projectRoot, 'src', 'components', 'preview', 'shell.tsx'),
+      'utf8',
+    );
+
+    expect(shell).toContain('Powered by King GenZ Digital');
+  });
+
+  it('keeps Logout last, with the printer row directly above it', () => {
+    const shell = readFileSync(
+      join(projectRoot, 'src', 'components', 'preview', 'shell.tsx'),
+      'utf8',
+    );
+
+    const branding = shell.indexOf('Powered by King GenZ Digital');
+    const printer = shell.indexOf('<PrinterRow');
+    const logout = shell.indexOf('Log out (prototype');
+
+    expect(branding).toBeLessThan(printer);
+    expect(printer).toBeLessThan(logout);
+  });
+});
+
+describe('simplified New Entry', () => {
+  const view = readFileSync(
+    join(projectRoot, 'src', 'components', 'preview', 'new-entry-view.tsx'),
+    'utf8',
+  );
+
+  /** The compact modal body: everything above the collapsed More Details. */
+  const body = view.slice(
+    view.indexOf('{/* Body */}'),
+    view.indexOf('<MoreDetails mode={mode}'),
+  );
+
+  it('keeps only the approved fields visible on the form', () => {
+    for (const field of [
+      'Shop Name',
+      'Salesperson',
+      'Customer',
+      'Item Name',
+      'Unit Price',
+      'Qty',
+    ]) {
+      expect(body).toContain(`>${field}</L>`);
+    }
+  });
+
+  it('never surfaces the optional fields on the main form', () => {
+    for (const hidden of [
+      'Item Code',
+      'Grams Per Piece',
+      'Notes',
+      'Payment Arrangement',
+      'Fulfillment Arrangement',
+      'Entry Mode',
+    ]) {
+      expect(body).not.toContain(`>${hidden}</L>`);
+    }
+  });
+
+  it('keeps Shop Name and Salesperson paired, stacking only on narrow phones', () => {
+    // Two columns from 360px up, so common phones (375/390/414) stay paired.
+    // Only genuinely narrow devices stack.
+    expect(body).toContain('grid-cols-1 gap-3 min-[360px]:grid-cols-2');
+  });
+
+  it('auto-fills shop and salesperson from the session', () => {
+    expect(view).toContain('defaultValue={SESSION.shop}');
+    expect(view).toContain('defaultValue={SESSION.salesperson}');
+  });
+
+  it('gates changing the shop or salesperson behind a permission', () => {
+    expect(view).toContain('disabled={!SESSION.canChangeShop}');
+    expect(view).toContain('disabled={!SESSION.canChangeSalesperson}');
+  });
+
+  it('collapses the optional fields into More Details', () => {
+    const more = view.slice(
+      view.indexOf('function MoreDetails'),
+      view.indexOf('export function NewEntryView'),
+    );
+
+    for (const field of [
+      'Entry Mode',
+      'Item Code',
+      'Grams Per Piece',
+      'Payment Arrangement',
+      'Fulfillment Arrangement',
+      'Notes',
+    ]) {
+      expect(more).toContain(`>${field}</L>`);
+    }
+    expect(more).toContain('Existing Record / Migration');
+  });
+
+  it('defaults to Save Pending Claim and never says Confirm Order', () => {
+    // The visual reference says CONFIRM ORDER. New Entry creates no Official
+    // Order, so that label must not ship no matter what the mockup shows.
+    // Scanned with comments stripped: a comment explaining WHY the label is
+    // rejected is documentation, not a rendered button.
+    const codeOnly = view.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+    expect(view).toMatch(/useState<EntryMode>\('pending_claim'\)/);
+    expect(view).toContain("button: 'Save Pending Claim'");
+    expect(codeOnly).not.toMatch(/confirm order/i);
+  });
+
+  it('keeps Reprint Last honest about what it does not create', () => {
+    expect(view).toContain('Reprint Last');
+    expect(view).toMatch(/Does NOT create a new claim/);
+    expect(view).toMatch(/does NOT create another reservation/i);
+    expect(view).toMatch(/does NOT create another Official Order/i);
+  });
+
+  it('offers the approved photo actions', () => {
+    for (const action of [
+      'Use Camera',
+      'Open Gallery',
+      'Load Latest',
+      'Retake',
+      'Remove',
+    ]) {
+      expect(view).toContain(action);
+    }
+  });
+
+  it('hides the technical upload controls until something actually fails', () => {
+    const failureBlock = view.slice(view.indexOf('{failed ?'));
+    expect(failureBlock).toContain('Retry');
+
+    // No progress bar or explicit Upload button anywhere in the normal flow.
+    expect(view).not.toMatch(/Uploading…/);
+    expect(view).not.toMatch(/>\s*Upload\s*</);
   });
 });

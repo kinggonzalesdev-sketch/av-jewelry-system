@@ -177,9 +177,15 @@ export function PreviewShell({ children }: { children: ReactNode }) {
 
       <div className="flex flex-1">
         {/* ---------------- Desktop sidebar ---------------- */}
+        {/*
+          Pinned to the viewport so the footer row really is a fixed bottom:
+          branding, Bluetooth / Printer, and Logout stay visible on long pages
+          instead of sinking to the bottom of the scrolled document. The nav
+          below scrolls inside the sidebar rather than pushing the footer down.
+        */}
         <aside
           className={cn(
-            'hidden shrink-0 flex-col border-r border-slate-200 night:border-slate-700 bg-white night:bg-slate-900 transition-all lg:flex',
+            'hidden shrink-0 flex-col border-r border-slate-200 night:border-slate-700 bg-white night:bg-slate-900 transition-all lg:sticky lg:top-0 lg:flex lg:h-dvh',
             collapsed ? 'w-[68px]' : 'w-64',
           )}
           data-testid="preview-sidebar"
@@ -243,6 +249,21 @@ export function PreviewShell({ children }: { children: ReactNode }) {
             after Logout — anything below Logout would break that rule.
           */}
           <div className="space-y-1.5 border-t border-slate-100 night:border-slate-800 p-2">
+            {/*
+              Approved footer branding (Bible §2 project identity, §36.2):
+              "Powered by King GenZ Digital" — exact wording and capitalisation.
+              Sits above the printer row so that Bluetooth / Printer stays
+              directly above Logout, and Logout stays last.
+            */}
+            {collapsed ? null : (
+              <p
+                className="px-2.5 py-1 text-center text-[10px] leading-tight text-slate-400 night:text-slate-500"
+                data-testid="footer-branding"
+              >
+                Powered by King GenZ Digital
+              </p>
+            )}
+
             <button
               type="button"
               onClick={() => setNight((n) => !n)}
@@ -397,10 +418,23 @@ export function PreviewShell({ children }: { children: ReactNode }) {
             <div className="mt-1 border-t border-slate-100 night:border-slate-800 pt-1">
               <button
                 type="button"
+                onClick={() => setNight((n) => !n)}
+                aria-pressed={night}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2.5 text-xs font-medium text-slate-600 night:text-slate-300 hover:bg-slate-100 night:hover:bg-slate-800"
+              >
+                <span aria-hidden="true">{night ? '☀' : '☾'}</span>
+                {night ? 'Day mode' : 'Night mode'}
+              </button>
+              <button
+                type="button"
                 className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2.5 text-xs font-medium text-rose-700 night:text-rose-300 hover:bg-rose-50 night:hover:bg-rose-950"
               >
                 <span aria-hidden="true">⏻</span> Logout
               </button>
+              {/* Approved footer branding, mobile placement (Bible §36.2). */}
+              <p className="px-2.5 pb-1 pt-2 text-center text-[10px] text-slate-400 night:text-slate-500">
+                Powered by King GenZ Digital
+              </p>
             </div>
           </div>
         ) : null}
