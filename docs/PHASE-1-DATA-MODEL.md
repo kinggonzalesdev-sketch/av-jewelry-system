@@ -14,7 +14,9 @@ was invented; see [Deliberately not modelled](#deliberately-not-modelled).
 
 ## Schema overview
 
-37 tables in `public`, plus a private `app_private` schema for helper functions.
+41 tables in `public`, plus a private `app_private` schema for helper functions.
+Every one has RLS enabled and forced, with privileges revoked from `anon` and
+`authenticated`.
 
 | Area                          | Tables                                                                                                                                            |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
