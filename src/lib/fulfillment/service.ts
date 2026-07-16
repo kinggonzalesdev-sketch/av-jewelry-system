@@ -541,11 +541,19 @@ export type FulfillmentRow = {
   balanceUnavailable: string | null;
 };
 
-/** The fulfillment queue, with the release preconditions made visible. */
-export async function listFulfillments(): Promise<FulfillmentRow[]> {
+export type FulfillmentListResult =
+  { ok: true; rows: FulfillmentRow[] } | { ok: false; reason: string };
+
+/**
+ * The fulfillment queue, with the release preconditions made visible.
+ *
+ * Returns an explicit failure rather than an empty array on a read error — an
+ * unreadable queue must never look like "nothing to fulfill" (the session's rule).
+ */
+export async function listFulfillments(): Promise<FulfillmentListResult> {
   const supabase = await createClient();
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('fulfillment_records')
     .select(
       `official_order_id, status, method, courier, tracking_number, is_cod, cod_approved_at,
@@ -554,7 +562,11 @@ export async function listFulfillments(): Promise<FulfillmentRow[]> {
     .order('created_at', { ascending: false })
     .limit(50);
 
-  return Promise.all(
+  if (error) {
+    return { ok: false, reason: error.message };
+  }
+
+  const rows = await Promise.all(
     ((data ?? []) as unknown[]).map(async (row) => {
       const r = row as Record<string, unknown>;
       const orderId = r.official_order_id as string;
@@ -603,6 +615,8 @@ export async function listFulfillments(): Promise<FulfillmentRow[]> {
       };
     }),
   );
+
+  return { ok: true, rows };
 }
 
 function one<T>(value: unknown): T | null {

@@ -12,12 +12,13 @@ import type { InventoryActionState } from '@/lib/inventory/action-state';
 import { EMPTY_INVENTORY_STATE } from '@/lib/inventory/action-state';
 import type {
   DuplicateRow,
-  InventoryRow,
+  InventoryListResult,
   MigrationBatchRow,
   RtsRow,
 } from '@/lib/inventory/service';
 import { EmptyState } from '@/components/states/empty-state';
 import { Button } from '@/components/ui/button';
+import { ReadError } from '@/components/ui/page-primitives';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -58,7 +59,7 @@ export function InventoryWorkspace({
   canReview,
   canMigrate,
 }: {
-  inventory: InventoryRow[];
+  inventory: InventoryListResult;
   reviews: RtsRow[];
   duplicates: DuplicateRow[];
   batches: MigrationBatchRow[];
@@ -121,7 +122,10 @@ export function InventoryWorkspace({
       )}
 
       {tab === 'Inventory' ? (
-        inventory.length === 0 ? (
+        !inventory.ok ? (
+          // A FAILED read, not an empty result — say so, never a false "no items".
+          <ReadError title="Inventory could not be loaded" detail={inventory.reason} />
+        ) : inventory.rows.length === 0 ? (
           <EmptyState title="No inventory items" />
         ) : (
           <div className="overflow-x-auto">
@@ -137,7 +141,7 @@ export function InventoryWorkspace({
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {inventory.map((i) => (
+                {inventory.rows.map((i) => (
                   <tr key={i.inventoryItemId}>
                     <td className="px-2.5 py-2">
                       <span className="font-mono">{i.itemCode}</span>

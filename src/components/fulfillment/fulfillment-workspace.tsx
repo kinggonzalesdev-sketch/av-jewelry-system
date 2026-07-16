@@ -12,10 +12,11 @@ import {
 } from '@/lib/fulfillment/actions';
 import type { FulfillmentActionState } from '@/lib/fulfillment/action-state';
 import { EMPTY_FULFILLMENT_STATE } from '@/lib/fulfillment/action-state';
-import type { ApprovalRow, FulfillmentRow } from '@/lib/fulfillment/service';
+import type { ApprovalRow, FulfillmentListResult } from '@/lib/fulfillment/service';
 import { formatPeso } from '@/lib/payments/format';
 import { PrepareFulfillmentForm } from '@/components/fulfillment/prepare-fulfillment-form';
 import { EmptyState } from '@/components/states/empty-state';
+import { ReadError } from '@/components/ui/page-primitives';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -44,7 +45,7 @@ export function FulfillmentWorkspace({
   canRequest,
   isOwner,
 }: {
-  fulfillments: FulfillmentRow[];
+  fulfillments: FulfillmentListResult;
   approvals: ApprovalRow[];
   canPrepare: boolean;
   canRelease: boolean;
@@ -121,14 +122,20 @@ export function FulfillmentWorkspace({
       )}
 
       {tab === 'Fulfillment Queue' ? (
-        fulfillments.length === 0 ? (
+        !fulfillments.ok ? (
+          // A FAILED read, not an empty queue — say so, never a false "nothing".
+          <ReadError
+            title="Fulfillment queue could not be loaded"
+            detail={fulfillments.reason}
+          />
+        ) : fulfillments.rows.length === 0 ? (
           <EmptyState
             title="Nothing to fulfill"
             description="Official Orders appear here for shipping or pickup preparation."
           />
         ) : (
           <ul className="space-y-2">
-            {fulfillments.map((f) => (
+            {fulfillments.rows.map((f) => (
               <li key={f.officialOrderId}>
                 <Card>
                   <CardContent className="space-y-2 pt-6">

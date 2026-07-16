@@ -32,18 +32,26 @@ export type InventoryRow = {
   isForfeited: boolean;
 };
 
+export type InventoryListResult =
+  { ok: true; rows: InventoryRow[] } | { ok: false; reason: string };
+
 /**
  * Inventory monitoring (§20.3): available vs remaining.
  * Availability is derived by the database, never a stored counter.
+ *
+ * Returns an explicit failure rather than an empty array on a read error — an
+ * unreadable list must never look like "no inventory" (the session's rule).
  */
-export async function listInventory(): Promise<InventoryRow[]> {
+export async function listInventory(): Promise<InventoryListResult> {
   const supabase = await createClient();
   const response = await supabase.rpc('inventory_monitor');
 
-  if (response.error || !response.data) return [];
+  if (response.error) {
+    return { ok: false, reason: response.error.message };
+  }
 
-  return (
-    response.data as Array<{
+  const rows = (
+    (response.data ?? []) as Array<{
       inventory_item_id: string;
       item_code: string;
       item_name: string | null;
@@ -65,6 +73,8 @@ export async function listInventory(): Promise<InventoryRow[]> {
     inRtsReview: r.in_rts_review,
     isForfeited: r.is_forfeited,
   }));
+
+  return { ok: true, rows };
 }
 
 export type RtsRow = {
