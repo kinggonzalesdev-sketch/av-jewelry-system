@@ -17,6 +17,7 @@ import type {
 } from '@/lib/dashboard/service';
 import { formatPeso } from '@/lib/payments/format';
 import { EmptyState } from '@/components/states/empty-state';
+import { BarChart } from '@/components/ui/bar-chart';
 import { MetricCard, ReadError } from '@/components/ui/page-primitives';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -163,6 +164,25 @@ export function DashboardView({
                   are non-additive by construction: an Active Layaway <strong>is</strong>{' '}
                   an Official Order and appears in exactly one tile, never two.
                 </p>
+
+                {/*
+                  Real graph — the SAME disjoint bucket counts from
+                  dashboard_counts(), drawn to scale. No sample arrays; the chart
+                  and the tiles are one aggregation.
+                */}
+                <div className="mt-3 border-t border-border pt-3">
+                  <BarChart
+                    ariaLabel="Official Orders by status"
+                    data={[
+                      { label: 'Active Layaway', value: counts.ordersActiveLayaway },
+                      { label: 'Awaiting Payment', value: counts.ordersAwaitingPayment },
+                      { label: 'For Fulfillment', value: counts.ordersForFulfillment },
+                      { label: 'Closed', value: counts.ordersClosed },
+                      { label: 'Cancelled', value: counts.ordersCancelled },
+                    ]}
+                    emptyLabel="No Official Orders to chart yet."
+                  />
+                </div>
               </CardContent>
             </Card>
 
@@ -365,6 +385,24 @@ export function DashboardView({
                   </dd>
                 </div>
               </dl>
+            ) : null}
+
+            {reportState.report ? (
+              // Real graph — the SAME report_sales_summary aggregation, drawn to
+              // scale. Verified vs unverified is a count breakdown, not money math.
+              <div className="mt-3 border-t border-border pt-3">
+                <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                  Payments in range, by verification
+                </p>
+                <BarChart
+                  ariaLabel="Payments by verification status"
+                  data={[
+                    { label: 'Verified', value: reportState.report.paymentsVerified },
+                    { label: 'Unverified', value: reportState.report.paymentsUnverified },
+                  ]}
+                  emptyLabel="No payments recorded in this range."
+                />
+              </div>
             ) : null}
 
             <p className="mt-2 text-xs text-muted-foreground">
