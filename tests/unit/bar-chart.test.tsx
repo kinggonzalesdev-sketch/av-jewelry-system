@@ -36,6 +36,18 @@ describe('BarChart (real aggregation only, honest empty)', () => {
     expect((fills[1] as HTMLElement).style.width).toBe('100%');
   });
 
+  it('shows an authoritative display string instead of the numeric value when given', () => {
+    render(
+      <BarChart
+        ariaLabel="money"
+        data={[{ label: 'Mon', value: 12345.67, display: '₱12,345.67' }]}
+      />,
+    );
+    expect(screen.getByText('₱12,345.67')).toBeInTheDocument();
+    // The raw float is never shown — no frontend money math on the display.
+    expect(screen.queryByText('12345.67')).not.toBeInTheDocument();
+  });
+
   it('shows an honest empty note instead of a blank chart when there is nothing', () => {
     render(<BarChart ariaLabel="empty" data={[]} emptyLabel="No data yet." />);
     expect(screen.getByTestId('bar-chart-empty')).toHaveTextContent('No data yet.');

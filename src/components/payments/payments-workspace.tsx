@@ -19,6 +19,7 @@ import type {
 } from '@/lib/payments/workspace';
 import { RecordPaymentForm } from '@/components/payments/record-payment-form';
 import { EmptyState } from '@/components/states/empty-state';
+import { BarChart } from '@/components/ui/bar-chart';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -69,7 +70,7 @@ export function PaymentsWorkspace({
   cards: OverviewCards;
   paymentBreakdown: Array<{ label: string; value: number }>;
   layawayBreakdown: Array<{ label: string; value: number }>;
-  trend: Array<{ label: string; verified: string }>;
+  trend: Array<{ label: string; verified: string; weightCentavos: number }>;
   queue: EvidenceQueueRow[];
   /** Set when the queue read FAILED. An empty list and a failed read differ. */
   queueUnavailable: string | null;
@@ -204,16 +205,17 @@ export function PaymentsWorkspace({
           {trend.length === 0 ? (
             <EmptyState title="No verified collection in this period" />
           ) : (
-            <ul className="space-y-1 text-xs">
-              {trend.map((point) => (
-                <li key={point.label} className="flex justify-between gap-4">
-                  <span className="text-muted-foreground">{point.label}</span>
-                  <span className="font-medium tabular-nums">
-                    {formatPeso(point.verified)}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <BarChart
+              ariaLabel="Verified layaway collection per period"
+              // value scales the bar width only; the DISPLAYED figure is the
+              // authoritative money string from the database — no frontend math.
+              data={trend.map((point) => ({
+                label: point.label,
+                value: point.weightCentavos,
+                display: formatPeso(point.verified),
+              }))}
+              emptyLabel="No verified collection in this period."
+            />
           )}
           <p className="mt-2 text-xs text-muted-foreground">
             Verified collection only. Payment evidence that has not been verified

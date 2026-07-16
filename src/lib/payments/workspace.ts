@@ -148,7 +148,14 @@ export async function layawayStatusBreakdown(): Promise<LayawayStatusBreakdown> 
   ];
 }
 
-export type CollectionPoint = { label: string; verified: string; outstanding: string };
+export type CollectionPoint = {
+  label: string;
+  verified: string;
+  outstanding: string;
+  /** Exact integer centavos, for scaling a chart bar WITHOUT any float money
+   *  math in the client (the displayed figure stays the `verified` string). */
+  weightCentavos: number;
+};
 
 /**
  * Layaway Collection Trend.
@@ -196,6 +203,8 @@ export async function layawayCollectionTrend(range: {
     label: day.slice(5),
     verified: fromCentavos(centavos),
     outstanding: '0.00',
+    // Server-side integer centavos → a numeric bar weight. Not shown as money.
+    weightCentavos: Number(centavos),
   }));
 }
 

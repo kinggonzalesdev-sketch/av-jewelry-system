@@ -10,7 +10,15 @@
  * Theme-aware: bars use the brand gold token; the track uses muted. Accessible:
  * the container carries an aria-label, and every value is shown as text.
  */
-export type BarDatum = { label: string; value: number };
+export type BarDatum = {
+  label: string;
+  /** Drives bar WIDTH only (scaled to the max). Never shown as-is when `display`
+   *  is set — so an authoritative money string can be shown while a numeric value
+   *  scales the bar, without any frontend money math on the displayed figure. */
+  value: number;
+  /** Authoritative text to show instead of `valueFormat(value)` (e.g. peso). */
+  display?: string;
+};
 
 export function BarChart({
   data,
@@ -49,7 +57,7 @@ export function BarChart({
               />
             </span>
             <span className="w-16 shrink-0 text-right font-medium tabular-nums">
-              {valueFormat(d.value)}
+              {d.display ?? valueFormat(d.value)}
             </span>
           </li>
         );
