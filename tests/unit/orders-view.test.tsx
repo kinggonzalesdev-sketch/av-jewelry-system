@@ -5,8 +5,9 @@ import { OrdersView } from '@/components/orders/orders-view';
 import type { OrderListRow, OrdersResult } from '@/lib/orders/service';
 
 /**
- * Orders screen — completeness beyond a bare table (status cards, search,
- * filters) over REAL data, plus the honest empty/error distinction.
+ * Orders screen — the approved status cards (11), search, and filters over REAL
+ * data, plus the honest empty/error distinction. The existing search + table are
+ * preserved; the cards sit above them.
  */
 
 function row(over: Partial<OrderListRow>): OrderListRow {
@@ -15,30 +16,28 @@ function row(over: Partial<OrderListRow>): OrderListRow {
     orderNumber: 'ORD-0001',
     invoiceNumber: 'INV-0001',
     customerDisplayName: 'Maria Santos',
-    status: 'official_order',
+    status: 'invoiced',
     createdAt: '2026-07-16T00:00:00.000Z',
     totalAmountPayable: '1000.00',
     outstandingBalance: '0.00',
-    paymentStatus: 'paid_in_full',
+    paymentStatus: 'awaiting',
     fulfillmentStatus: null,
+    layawayStatus: null,
     ...over,
   };
 }
 
 const sample: OrderListRow[] = [
-  row({
-    orderNumber: 'ORD-1',
-    customerDisplayName: 'Maria Santos',
-    paymentStatus: 'paid_in_full',
-  }),
+  row({ orderNumber: 'ORD-1', customerDisplayName: 'Maria Santos', status: 'invoiced' }),
   row({
     orderNumber: 'ORD-2',
     customerDisplayName: 'Jose Cruz',
-    paymentStatus: 'awaiting',
+    status: 'awaiting_required_payment',
   }),
   row({
     orderNumber: 'ORD-3',
     customerDisplayName: 'Ana Reyes',
+    status: 'for_preparation',
     paymentStatus: 'partial',
     outstandingBalance: '250.00',
     fulfillmentStatus: 'for_shipping',
@@ -46,7 +45,14 @@ const sample: OrderListRow[] = [
   row({
     orderNumber: 'ORD-4',
     customerDisplayName: 'Ben Tan',
+    status: 'cancelled',
     paymentStatus: 'unavailable',
+  }),
+  row({
+    orderNumber: 'ORD-5',
+    customerDisplayName: 'Lito Uy',
+    status: 'invoiced',
+    layawayStatus: 'active',
   }),
 ];
 
@@ -67,8 +73,6 @@ describe('OrdersView — honest states', () => {
 
   it('still shows the status cards and search when there are no orders (features never vanish)', () => {
     render(<OrdersView result={ok([])} />);
-    // The toolbar must remain visible at zero — the empty state lives in the
-    // table region only, so the screen never looks "feature-less".
     expect(screen.getByTestId('orders-card-all')).toBeInTheDocument();
     expect(screen.getByTestId('orders-search')).toBeInTheDocument();
     expect(screen.getByTestId('orders-filter-fulfillment')).toBeInTheDocument();
@@ -76,37 +80,67 @@ describe('OrdersView — honest states', () => {
   });
 });
 
-describe('OrdersView — status cards count real data', () => {
-  it('shows the correct counts per payment bucket', () => {
+describe('OrdersView — the approved 11 status cards over real data', () => {
+  it('renders all 11 cards including For Layaway', () => {
+    render(<OrdersView result={ok(sample)} />);
+    for (const key of [
+      'all',
+      'for_invoice',
+      'for_reminder',
+      'for_prepare',
+      'for_confirm',
+      'ship_confirm',
+      'keep',
+      'for_cancel',
+      'cancelled',
+      'unverified_pay',
+      'for_layaway',
+    ]) {
+      expect(screen.getByTestId(`orders-card-${key}`)).toBeInTheDocument();
+    }
+  });
+
+  it('counts each card from the real order status / layaway signals', () => {
     render(<OrdersView result={ok(sample)} />);
     expect(
-      within(screen.getByTestId('orders-card-all')).getByText('4'),
+      within(screen.getByTestId('orders-card-all')).getByText('5'),
+    ).toBeInTheDocument();
+    // ORD-1 + ORD-5 are 'invoiced'.
+    expect(
+      within(screen.getByTestId('orders-card-for_invoice')).getByText('2'),
     ).toBeInTheDocument();
     expect(
-      within(screen.getByTestId('orders-card-awaiting')).getByText('1'),
+      within(screen.getByTestId('orders-card-for_reminder')).getByText('1'),
     ).toBeInTheDocument();
     expect(
-      within(screen.getByTestId('orders-card-partial')).getByText('1'),
+      within(screen.getByTestId('orders-card-cancelled')).getByText('1'),
+    ).toBeInTheDocument();
+    // ORD-5 has an active layaway.
+    expect(
+      within(screen.getByTestId('orders-card-for_layaway')).getByText('1'),
+    ).toBeInTheDocument();
+  });
+
+  it('shows an honest 0 for cards with no backing yet (Keep / For Cancel)', () => {
+    render(<OrdersView result={ok(sample)} />);
+    expect(
+      within(screen.getByTestId('orders-card-keep')).getByText('0'),
     ).toBeInTheDocument();
     expect(
-      within(screen.getByTestId('orders-card-paid_in_full')).getByText('1'),
-    ).toBeInTheDocument();
-    // Only ORD-3 has an open (non-terminal) fulfillment record.
-    expect(
-      within(screen.getByTestId('orders-card-for_fulfillment')).getByText('1'),
+      within(screen.getByTestId('orders-card-for_cancel')).getByText('0'),
     ).toBeInTheDocument();
   });
 
   it('filters the table when a status card is clicked', () => {
     render(<OrdersView result={ok(sample)} />);
-    fireEvent.click(screen.getByTestId('orders-card-awaiting'));
-    // Only the awaiting order (Jose Cruz) remains.
+    fireEvent.click(screen.getByTestId('orders-card-for_reminder'));
+    // Only ORD-2 (Jose Cruz, awaiting_required_payment) remains.
     expect(screen.getByText('Jose Cruz')).toBeInTheDocument();
     expect(screen.queryByText('Maria Santos')).not.toBeInTheDocument();
   });
 });
 
-describe('OrdersView — search and filters', () => {
+describe('OrdersView — search and filters (existing, preserved)', () => {
   it('search narrows by customer / order / invoice text', () => {
     render(<OrdersView result={ok(sample)} />);
     fireEvent.change(screen.getByTestId('orders-search'), { target: { value: 'ana' } });
@@ -117,7 +151,6 @@ describe('OrdersView — search and filters', () => {
   it('the fulfillment filter offers only statuses present in the data', () => {
     render(<OrdersView result={ok(sample)} />);
     const select = screen.getByTestId('orders-filter-fulfillment');
-    // "for_shipping" is present (ORD-3); "dispatched" is not.
     expect(
       within(select).getByRole('option', { name: /For Shipping/i }),
     ).toBeInTheDocument();

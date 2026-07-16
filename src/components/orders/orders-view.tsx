@@ -46,9 +46,12 @@ const PAYMENT_TONE: Record<PaymentStatus, BadgeTone> = {
   unavailable: 'danger',
 };
 
-/** A fulfillment status counts as "needs action" (For Fulfillment) unless it is
- *  already a terminal/dispatched state. Terminal states are not open work. */
-const FULFILLMENT_DONE = new Set(['dispatched', 'picked_up', 'completed']);
+/** Order statuses that count as "Ship Confirm" (shipping / pickup confirmed). */
+const SHIP_CONFIRMED = new Set([
+  'for_shipping_or_pickup',
+  'approved_for_release',
+  'dispatched_or_picked_up',
+]);
 
 function fulfillmentTone(status: string): BadgeTone {
   if (['for_shipping', 'for_pickup'].includes(status)) return 'gold';
@@ -59,9 +62,51 @@ function fulfillmentTone(status: string): BadgeTone {
   return 'neutral';
 }
 
-/** The quick-filter status cards, in the approved order. `key` is a payment
- *  bucket ('all' = every row); each card both COUNTS and FILTERS the same set. */
-type CardKey = 'all' | PaymentStatus | 'for_fulfillment';
+/**
+ * The Owner-approved Orders status cards, in order (reference mockup):
+ * Total · For Invoice · For Reminder · For Prepare · For Confirm · Ship Confirm ·
+ * Keep · For Cancel · Cancelled · Unverified Payment · For Layaway.
+ *
+ * Each card both COUNTS and FILTERS the loaded orders. Cards map to REAL signals
+ * (official_orders.status / paymentStatus / layaway). "Keep" and "For Cancel"
+ * have no backing concept in the current model yet, so they show an honest 0 —
+ * never a fabricated count.
+ */
+type CardKey =
+  | 'all'
+  | 'for_invoice'
+  | 'for_reminder'
+  | 'for_prepare'
+  | 'for_confirm'
+  | 'ship_confirm'
+  | 'keep'
+  | 'for_cancel'
+  | 'cancelled'
+  | 'unverified_pay'
+  | 'for_layaway';
+
+const CARD_DEFS: Array<{ key: CardKey; label: string; icon: string; tone: BadgeTone }> = [
+  { key: 'all', label: 'Total', icon: '▤', tone: 'gold' },
+  { key: 'for_invoice', label: 'For Invoice', icon: '▦', tone: 'warning' },
+  { key: 'for_reminder', label: 'For Reminder', icon: '⏱', tone: 'neutral' },
+  { key: 'for_prepare', label: 'For Prepare', icon: '◈', tone: 'neutral' },
+  { key: 'for_confirm', label: 'For Confirm', icon: '▣', tone: 'gold' },
+  { key: 'ship_confirm', label: 'Ship Confirm', icon: '➤', tone: 'strong' },
+  { key: 'keep', label: 'Keep', icon: '❏', tone: 'neutral' },
+  { key: 'for_cancel', label: 'For Cancel', icon: '⚠', tone: 'warning' },
+  { key: 'cancelled', label: 'Cancelled', icon: '✕', tone: 'danger' },
+  { key: 'unverified_pay', label: 'Unverified Payment', icon: '⚠', tone: 'warning' },
+  { key: 'for_layaway', label: 'For Layaway', icon: '₱', tone: 'gold' },
+];
+
+/** Icon-badge tint per tone (matches the mockup's coloured card icons). */
+const CARD_ICON_TONE: Record<BadgeTone, string> = {
+  gold: 'bg-gold/15 text-gold-strong',
+  neutral: 'bg-secondary text-muted-foreground',
+  strong: 'bg-foreground/10 text-foreground',
+  warning: 'bg-amber-100 text-amber-800',
+  danger: 'bg-destructive/10 text-destructive',
+};
 
 function OrderRow({ order }: { order: OrderListRow }) {
   return (
@@ -121,13 +166,31 @@ function OrderRow({ order }: { order: OrderListRow }) {
 }
 
 function matchesCard(order: OrderListRow, key: CardKey): boolean {
-  if (key === 'all') return true;
-  if (key === 'for_fulfillment') {
-    return (
-      order.fulfillmentStatus !== null && !FULFILLMENT_DONE.has(order.fulfillmentStatus)
-    );
+  switch (key) {
+    case 'all':
+      return true;
+    case 'for_invoice':
+      return order.status === 'invoiced';
+    case 'for_reminder':
+      return order.status === 'awaiting_required_payment';
+    case 'for_prepare':
+      return order.status === 'for_preparation';
+    case 'for_confirm':
+      return order.status === 'required_payment_verified';
+    case 'ship_confirm':
+      return SHIP_CONFIRMED.has(order.status);
+    case 'cancelled':
+      return order.status === 'cancelled';
+    case 'unverified_pay':
+      // Closest real signal: an order with no verified payment yet.
+      return order.paymentStatus === 'awaiting';
+    case 'for_layaway':
+      return order.layawayStatus !== null;
+    case 'keep':
+    case 'for_cancel':
+      // No backing concept in the current model — honest 0, never fabricated.
+      return false;
   }
-  return order.paymentStatus === key;
 }
 
 export function OrdersView({ result }: { result: OrdersResult }) {
@@ -148,18 +211,12 @@ export function OrdersView({ result }: { result: OrdersResult }) {
   }, [rows]);
 
   const counts = useMemo(() => {
-    const c: Record<CardKey, number> = {
-      all: rows.length,
-      awaiting: 0,
-      partial: 0,
-      paid_in_full: 0,
-      unavailable: 0,
-      for_fulfillment: 0,
-    };
-    for (const o of rows) {
-      c[o.paymentStatus] += 1;
-      if (matchesCard(o, 'for_fulfillment')) c.for_fulfillment += 1;
-    }
+    const c = Object.fromEntries(CARD_DEFS.map((d) => [d.key, 0])) as Record<
+      CardKey,
+      number
+    >;
+    for (const o of rows)
+      for (const d of CARD_DEFS) if (matchesCard(o, d.key)) c[d.key] += 1;
     return c;
   }, [rows]);
 
@@ -193,41 +250,42 @@ export function OrdersView({ result }: { result: OrdersResult }) {
   // structure — the empty state lives in the TABLE region only. (Orders populate
   // from the workflow: Live → Confirm → Invoice → Approve & Send.)
 
-  const CARDS: Array<{ key: CardKey; label: string; tone: BadgeTone }> = [
-    { key: 'all', label: 'Total Active', tone: 'gold' },
-    { key: 'awaiting', label: 'Awaiting Payment', tone: 'neutral' },
-    { key: 'partial', label: 'Partially Paid', tone: 'warning' },
-    { key: 'paid_in_full', label: 'Paid in Full', tone: 'gold' },
-    { key: 'for_fulfillment', label: 'For Fulfillment', tone: 'strong' },
-    { key: 'unavailable', label: 'Balance Unavailable', tone: 'danger' },
-  ];
-
   return (
     <div className="space-y-4">
-      {/* Status summary cards — real counts of the loaded orders; each is a
-          quick filter. Active card is ringed in gold (brand accent). */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-        {CARDS.map((cardDef) => {
-          const active = card === cardDef.key;
+      {/* Approved status cards (11) — real counts of the loaded orders; each is a
+          quick filter with a coloured icon badge. Active card is ringed in the
+          brand accent. "Keep" / "For Cancel" have no backing yet → honest 0. */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-11">
+        {CARD_DEFS.map((def) => {
+          const active = card === def.key;
           return (
             <button
-              key={cardDef.key}
+              key={def.key}
               type="button"
-              onClick={() => setCard(cardDef.key)}
+              onClick={() => setCard(def.key)}
               aria-pressed={active}
-              data-testid={`orders-card-${cardDef.key}`}
+              data-testid={`orders-card-${def.key}`}
               className={cn(
-                'flex min-h-[74px] flex-col justify-between rounded-xl border bg-card p-3 text-left transition-colors',
+                'flex min-h-[84px] flex-col items-start gap-1.5 rounded-xl border bg-card p-2.5 text-left transition-colors',
                 active
                   ? 'border-gold ring-1 ring-gold'
                   : 'border-border hover:border-gold/40',
               )}
             >
-              <span className="text-[11px] font-medium leading-tight text-muted-foreground">
-                {cardDef.label}
+              <span
+                aria-hidden="true"
+                className={cn(
+                  'flex h-7 w-7 items-center justify-center rounded-lg text-sm',
+                  CARD_ICON_TONE[def.tone],
+                )}
+              >
+                {def.icon}
               </span>
-              <span className="mt-1.5 text-2xl font-bold leading-none tabular-nums text-foreground">
-                {counts[cardDef.key]}
+              <span className="text-[10px] font-medium uppercase leading-tight tracking-wide text-muted-foreground [hyphens:auto]">
+                {def.label}
+              </span>
+              <span className="text-xl font-bold leading-none tabular-nums text-foreground">
+                {counts[def.key]}
               </span>
             </button>
           );

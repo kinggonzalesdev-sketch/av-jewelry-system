@@ -30,6 +30,9 @@ export type OrderListRow = {
   outstandingBalance: string;
   paymentStatus: PaymentStatus;
   fulfillmentStatus: string | null;
+  /** Layaway arrangement status if this order is a layaway (one per order),
+   *  else null. Used by the "For Layaway" status card. */
+  layawayStatus: string | null;
 };
 
 function one<T>(value: unknown): T | undefined {
@@ -54,9 +57,11 @@ export async function listOrders(limit = 100): Promise<OrdersResult> {
     .select(
       // fulfillment_records has a single FK back to official_orders, so this
       // embed is unambiguous. official_orders → customers is likewise single.
+      // layaway_arrangements is UNIQUE(official_order_id) — one per order.
       `id, order_number, invoice_number, status, created_at,
        customers ( display_name ),
-       fulfillment_records ( status )`,
+       fulfillment_records ( status ),
+       layaway_arrangements ( status )`,
     )
     .order('created_at', { ascending: false })
     .limit(limit);
@@ -76,6 +81,7 @@ export async function listOrders(limit = 100): Promise<OrdersResult> {
     const r = row as Record<string, unknown>;
     const customer = one<{ display_name: string }>(r.customers);
     const fulfillment = one<{ status: string }>(r.fulfillment_records);
+    const layaway = one<{ status: string }>(r.layaway_arrangements);
     const balance = balances[index];
 
     let paymentStatus: PaymentStatus;
@@ -107,6 +113,7 @@ export async function listOrders(limit = 100): Promise<OrdersResult> {
       outstandingBalance,
       paymentStatus,
       fulfillmentStatus: fulfillment?.status ?? null,
+      layawayStatus: layaway?.status ?? null,
     };
   });
 
