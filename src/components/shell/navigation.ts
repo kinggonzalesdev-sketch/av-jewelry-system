@@ -62,7 +62,7 @@ export const PRIMARY_NAV: readonly NavItem[] = [
     label: 'Customers',
     icon: '☺',
     mobilePrimary: true,
-    available: false,
+    available: true,
   },
   {
     href: '/orders/inventory',

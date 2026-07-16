@@ -90,9 +90,11 @@ describe('approved navigation model (navigation.ts is the source of truth)', () 
     }
   });
 
-  it('marks Customers / Reports / Settings as not-yet-available (honest state, not a dead link)', () => {
+  it('marks only the not-yet-built modules as unavailable (honest state, not a dead link)', () => {
+    // Customers is now a real read-only module; Reports and Settings remain
+    // honest "unavailable" placeholders until built.
     const unavailable = PRIMARY_NAV.filter((i) => !i.available).map((i) => i.href);
-    expect(unavailable).toEqual(['/customers', '/reports', '/settings']);
+    expect(unavailable).toEqual(['/reports', '/settings']);
   });
 });
 
