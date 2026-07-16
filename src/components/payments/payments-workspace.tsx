@@ -56,6 +56,7 @@ export function PaymentsWorkspace({
   layawayBreakdown,
   trend,
   queue,
+  queueUnavailable,
   layaways,
   completed,
   history,
@@ -70,6 +71,8 @@ export function PaymentsWorkspace({
   layawayBreakdown: Array<{ label: string; value: number }>;
   trend: Array<{ label: string; verified: string }>;
   queue: EvidenceQueueRow[];
+  /** Set when the queue read FAILED. An empty list and a failed read differ. */
+  queueUnavailable: string | null;
   layaways: LayawayRow[];
   completed: LayawayRow[];
   history: PaymentHistoryRow[];
@@ -262,7 +265,27 @@ export function PaymentsWorkspace({
         </div>
       )}
 
-      {tab === 'Payment Verification' ? (
+      {/* A failed read is NEVER shown as an empty queue. "No payments awaiting
+          verification" against money that is actually waiting is the reason this
+          defect survived: nobody investigates an empty list. */}
+      {tab === 'Payment Verification' && queueUnavailable ? (
+        <div
+          role="alert"
+          data-testid="queue-unavailable"
+          className="rounded-md border border-destructive/50 p-3 text-sm"
+        >
+          <p className="font-semibold text-destructive">
+            The verification queue could not be read
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            This is <strong>not</strong> an empty queue — payments may be awaiting
+            verification and are not shown. Do not treat this screen as “nothing to do”.
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">{queueUnavailable}</p>
+        </div>
+      ) : null}
+
+      {tab === 'Payment Verification' && !queueUnavailable ? (
         queue.length === 0 ? (
           <EmptyState
             title="No payments awaiting verification"
@@ -280,10 +303,25 @@ export function PaymentsWorkspace({
                           {p.customerDisplayName}
                         </p>
                         <p className="truncate font-mono text-xs text-muted-foreground">
-                          {p.orderNumber} · {formatPeso(p.amount)} ·{' '}
+                          {p.orderNumber} · {p.invoiceNumber} · {formatPeso(p.amount)} ·{' '}
                           {p.paymentMethod?.replace('_', ' ') ?? '—'}
                           {p.referenceNumber ? ` · ${p.referenceNumber}` : ''}
+                          {p.provider ? ` · ${p.provider}` : ''}
                         </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          Submitted {new Date(p.recordedAt).toLocaleString()} ·{' '}
+                          <span className="font-medium">
+                            {p.status.replace(/_/g, ' ')}
+                          </span>
+                        </p>
+                        {p.evidenceReferences.length > 0 ? (
+                          <p
+                            className="truncate text-xs text-muted-foreground"
+                            data-testid="evidence-reference"
+                          >
+                            Evidence: {p.evidenceReferences.join(', ')}
+                          </p>
+                        ) : null}
                       </div>
                       <span className="rounded-full border px-2 py-0.5 text-xs">
                         {p.evidenceCount} evidence

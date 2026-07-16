@@ -86,7 +86,8 @@ export default async function PaymentsPage({
         paymentBreakdown={paymentBreakdown}
         layawayBreakdown={layawayBreakdown}
         trend={trend}
-        queue={queue}
+        queue={queue.ok ? queue.rows : []}
+        queueUnavailable={queue.ok ? null : queue.reason}
         layaways={layaways}
         completed={completed}
         history={history}

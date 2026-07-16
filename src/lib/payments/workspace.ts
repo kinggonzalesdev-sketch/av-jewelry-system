@@ -173,14 +173,23 @@ export async function layawayCollectionTrend(range: {
     .lte('recorded_at', range.end)
     .order('recorded_at', { ascending: true });
 
-  const rows = (data ?? []) as Array<{ recorded_at: string; amount: string }>;
+  // `amount` is NOT necessarily a string. The cast here used to claim it was,
+  // and toCentavos() called .split() on it — which threw
+  // "amount.split is not a function" and took down the whole Payments page.
+  //
+  // It stayed hidden because this loop only runs over VERIFIED payments, and
+  // until the first payment was ever verified there was nothing to iterate. The
+  // bug was one successful verification away the entire time.
+  //
+  // moneyString() normalises both shapes without going through a float.
+  const rows = (data ?? []) as Array<{ recorded_at: string; amount: unknown }>;
 
   // Group by day. Amounts are summed as integer centavos so no float touches
   // money on the way to the chart.
   const byDay = new Map<string, bigint>();
   for (const row of rows) {
     const day = row.recorded_at.slice(0, 10);
-    byDay.set(day, (byDay.get(day) ?? 0n) + toCentavos(row.amount));
+    byDay.set(day, (byDay.get(day) ?? 0n) + toCentavos(moneyString(row.amount)));
   }
 
   return [...byDay.entries()].map(([day, centavos]) => ({
@@ -241,14 +250,43 @@ export type EvidenceQueueRow = {
   paymentId: string;
   officialOrderId: string;
   orderNumber: string;
+  invoiceNumber: string;
   customerDisplayName: string;
   amount: string;
   paymentMethod: string | null;
   referenceNumber: string | null;
   provider: string | null;
+  /** When the evidence was submitted. Not when it was paid, and not verified. */
+  recordedAt: string;
+  /** Always `submitted_unverified` here — the queue is what awaits a decision. */
+  status: string;
   evidenceCount: number;
+  /** The reference each evidence row points at. V1 stores a pointer, not a file. */
+  evidenceReferences: string[];
   duplicateReference: boolean;
 };
+
+/**
+ * The queue, or an explicit failure.
+ *
+ * ⚠️  AN EMPTY QUEUE AND A FAILED READ ARE DIFFERENT FACTS.
+ *
+ * This function used to return EvidenceQueueRow[] and discard the error:
+ *
+ *     const [{ data }, duplicates] = await Promise.all([...]);
+ *     return ((data ?? []) as unknown[]).map(...);
+ *
+ * The query was returning PGRST201 (ambiguous embed) on every call. The
+ * destructure threw the error away, `data` was null, the map produced [], and
+ * the screen said "No payments awaiting verification" — while the overview card
+ * beside it counted 1. The queue was not empty; it was broken, and it said
+ * "nothing to do".
+ *
+ * A verification queue that hides money awaiting a decision is worse than one
+ * that errors: nobody investigates an empty list.
+ */
+export type VerificationQueueResult =
+  { ok: true; rows: EvidenceQueueRow[] } | { ok: false; reason: string };
 
 /**
  * An Official Order a payment may be recorded against, with the approved money
@@ -355,16 +393,29 @@ export async function listPayableOrders(limit = 50): Promise<PayableOrderRow[]> 
  * Payment Verification queue: submitted payments awaiting a human decision.
  * Recording is not verifying — these count toward nothing until verified.
  */
-export async function paymentVerificationQueue(): Promise<EvidenceQueueRow[]> {
+export async function paymentVerificationQueue(): Promise<VerificationQueueResult> {
   const supabase = await createClient();
 
-  const [{ data }, duplicates] = await Promise.all([
+  const [queue, duplicates] = await Promise.all([
     supabase
       .from('payments')
       .select(
+        // The FK is named explicitly, and MUST be. `payments` has TWO foreign
+        // keys to `official_orders` — official_order_id and
+        // reassigned_from_order_id (Phase 6 wrong-payment correction) — so a
+        // bare `official_orders(...)` embed is ambiguous and PostgREST refuses
+        // the whole request with PGRST201. That is what emptied this queue.
+        //
+        // Naming the constraint also pins the MEANING: this row is the order the
+        // payment is FOR, never the order it was reassigned away from. An embed
+        // that silently resolved to the other FK would attribute a payment to
+        // the wrong order — which is exactly why PostgREST refuses to guess.
         `id, official_order_id, amount, payment_method, reference_number, provider,
-         payment_evidence ( id ),
-         official_orders ( order_number, customers ( display_name ) )`,
+         recorded_at, status,
+         payment_evidence ( id, storage_path ),
+         official_orders!payments_official_order_id_fkey (
+           order_number, invoice_number, customers ( display_name )
+         )`,
       )
       .eq('status', 'submitted_unverified')
       .is('voided_at', null)
@@ -373,31 +424,51 @@ export async function paymentVerificationQueue(): Promise<EvidenceQueueRow[]> {
     supabase.rpc('duplicate_payment_references'),
   ]);
 
+  // The error is handled, not discarded. An unreadable queue reports itself.
+  if (queue.error) {
+    return { ok: false, reason: queue.error.message };
+  }
+
   const dupeRefs = new Set(
     ((duplicates.data ?? []) as Array<{ reference_number: string }>).map(
       (d) => d.reference_number,
     ),
   );
 
-  return ((data ?? []) as unknown[]).map((row) => {
+  const rows = ((queue.data ?? []) as unknown[]).map((row) => {
     const r = row as Record<string, unknown>;
-    const order = one<{ order_number: string; customers: unknown }>(r.official_orders);
+    const order = one<{
+      order_number: string;
+      invoice_number: string;
+      customers: unknown;
+    }>(r.official_orders);
     const customer = one<{ display_name: string }>(order?.customers);
+    const evidence = ((r.payment_evidence as unknown[]) ?? []) as Array<{
+      storage_path: string | null;
+    }>;
 
     return {
       paymentId: r.id as string,
       officialOrderId: r.official_order_id as string,
       orderNumber: order?.order_number ?? '—',
+      invoiceNumber: order?.invoice_number ?? '—',
       customerDisplayName: customer?.display_name ?? 'Unknown',
       amount: moneyString(r.amount),
       paymentMethod: (r.payment_method as string | null) ?? null,
       referenceNumber: (r.reference_number as string | null) ?? null,
       provider: (r.provider as string | null) ?? null,
-      evidenceCount: ((r.payment_evidence as unknown[]) ?? []).length,
+      recordedAt: r.recorded_at as string,
+      status: r.status as string,
+      evidenceCount: evidence.length,
+      evidenceReferences: evidence
+        .map((e) => e.storage_path)
+        .filter((p): p is string => typeof p === 'string'),
       duplicateReference:
         r.reference_number !== null && dupeRefs.has(r.reference_number as string),
     };
   });
+
+  return { ok: true, rows };
 }
 
 export type LayawayRow = {
@@ -567,18 +638,31 @@ export async function paymentHistory(range: {
 }): Promise<PaymentHistoryRow[]> {
   const supabase = await createClient();
 
-  const { data } = await supabase
+  // Same ambiguity as the verification queue: `payments` has two FKs to
+  // `official_orders`, so the embed must name the one that means "the order this
+  // payment is for". Without it PostgREST refuses with PGRST201 and the Payment
+  // History tab renders empty — silently, exactly as the queue did.
+  const { data, error } = await supabase
     .from('payments')
     .select(
       `id, amount, status, payment_method, reference_number, recorded_at,
        voided_at, reversed_at, correction_pending,
        payment_verifications ( verified_amount ),
-       official_orders ( order_number, customers ( display_name ) )`,
+       official_orders!payments_official_order_id_fkey (
+         order_number, customers ( display_name )
+       )`,
     )
     .gte('recorded_at', range.start)
     .lte('recorded_at', range.end)
     .order('recorded_at', { ascending: false })
     .limit(100);
+
+  // History is a read-only report: an unreadable one is reported to the server
+  // log rather than silently shown as "no payments", which would read as
+  // "nothing was ever collected".
+  if (error) {
+    console.error('paymentHistory read failed:', error.message);
+  }
 
   return ((data ?? []) as unknown[]).map((row) => {
     const r = row as Record<string, unknown>;
