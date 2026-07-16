@@ -8,6 +8,7 @@ import {
   ALL_OWNER_ONLY_ACTIONS,
   ALL_PERMISSION_KEYS,
   PERMISSIONS,
+  permissionsForRole,
   ROLES,
 } from '@/lib/authz/permissions';
 import {
@@ -93,12 +94,23 @@ describe('permission catalog (approved 23)', () => {
     expect(ALL_OWNER_ONLY_ACTIONS).toContain('wrong_payment_to_order_correction');
   });
 
-  it('defines no role-to-permission mapping (role title is not authority)', () => {
-    // A ROLE_PERMISSIONS map would make role imply permission — exactly what the
-    // Bible forbids. Its absence is the guarantee, so assert the absence.
+  it('has no general role-to-permission map; only the approved Owner rule confers by role', () => {
+    // A general ROLE_PERMISSIONS map would make ANY role imply permissions —
+    // forbidden for Selected Admin / Staff (Bible §5.13). Its absence stands.
     const source = readCode('src', 'lib', 'authz', 'permissions.ts');
+    expect(source).not.toMatch(/ROLE_PERMISSIONS|roleGrants/);
 
-    expect(source).not.toMatch(/ROLE_PERMISSIONS|roleGrants|permissionsForRole/);
+    // The ONE approved role rule (Owner-approved): the Owner is the main
+    // administrator and holds every permission (Bible §5); every other role
+    // holds ONLY its explicit grants — role title is still not authority for them.
+    expect(permissionsForRole('owner', []).size).toBe(ALL_PERMISSION_KEYS.length);
+    expect(permissionsForRole('staff', []).size).toBe(0);
+    expect(
+      permissionsForRole('selected_admin', ['claim_review']).has('claim_review'),
+    ).toBe(true);
+    expect(
+      permissionsForRole('staff', ['claim_review']).has('payment_verification'),
+    ).toBe(false);
   });
 });
 

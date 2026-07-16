@@ -48,10 +48,11 @@ export const ALL_PERMISSION_KEYS: readonly PermissionKey[] = Object.values(PERMI
 /**
  * The three approved roles (Bible §5).
  *
- * ⚠️  A role is a TITLE, not authority. There is deliberately no
- *     ROLE_PERMISSIONS map in this file: adding one would make role imply
- *     permission, which the Bible explicitly forbids. The Owner role is the sole
- *     exception, and only for the six non-delegable approvals below.
+ * ⚠️  A role is a TITLE, not authority — for Selected Admin and Staff. There is
+ *     deliberately no ROLE_PERMISSIONS map: no non-Owner role implies a
+ *     permission (Bible §5.13). The OWNER is the highest authority (Bible §5)
+ *     and is the sole exception: the Owner holds every permission and decides
+ *     the six non-delegable approvals below. See {@link permissionsForRole}.
  */
 export const ROLES = {
   OWNER: 'owner',
@@ -79,3 +80,24 @@ export type OwnerOnlyAction =
 
 export const ALL_OWNER_ONLY_ACTIONS: readonly OwnerOnlyAction[] =
   Object.values(OWNER_ONLY_ACTIONS);
+
+/**
+ * The permissions a caller effectively holds.
+ *
+ * Mirrors the database rule in `app_private.has_permission` exactly (Bible §5,
+ * §5.13):
+ *   - the OWNER holds EVERY permission (highest authority — an explicit
+ *     owner-level rule, not the visible label);
+ *   - every other role holds ONLY its explicit grants.
+ *
+ * Keep this in lockstep with the SQL: the UI gates on this, and RLS gates on the
+ * SQL — a drift would show a control the database then refuses, or hide one it
+ * would allow.
+ */
+export function permissionsForRole(
+  roleKey: RoleKey,
+  grantedKeys: readonly PermissionKey[],
+): Set<PermissionKey> {
+  if (roleKey === ROLES.OWNER) return new Set(ALL_PERMISSION_KEYS);
+  return new Set(grantedKeys);
+}

@@ -4,7 +4,11 @@ import type { User } from '@supabase/supabase-js';
 import { redirect } from 'next/navigation';
 
 import { getCurrentUser } from '@/lib/auth/session';
-import type { PermissionKey, RoleKey } from '@/lib/authz/permissions';
+import {
+  permissionsForRole,
+  type PermissionKey,
+  type RoleKey,
+} from '@/lib/authz/permissions';
 import { createClient } from '@/lib/supabase/server';
 
 /**
@@ -135,13 +139,22 @@ export async function requireActiveStaff(): Promise<StaffContext> {
 }
 
 /**
- * Returns the caller's explicitly granted permissions.
+ * Returns the permissions the caller effectively holds.
  *
- * Reads grants only — it never infers anything from `role_key`. An Owner with no
- * grants holds no operational permissions, which is exactly the Bible's rule.
+ * Mirrors `app_private.has_permission` (Bible §5, §5.13): the OWNER is the main
+ * administrator and holds EVERY permission by an explicit owner-level rule; every
+ * other role holds ONLY its explicit grants — role title is not authority for
+ * Selected Admin or Staff. This must agree with the SQL, so the UI never shows a
+ * control the database then refuses.
  */
 export async function getGrantedPermissions(): Promise<Set<PermissionKey>> {
   const staff = await requireActiveStaff();
+
+  // The Owner holds all permissions regardless of grants — no query needed.
+  if (staff.roleKey === 'owner') {
+    return permissionsForRole('owner', []);
+  }
+
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -154,7 +167,10 @@ export async function getGrantedPermissions(): Promise<Set<PermissionKey>> {
     return new Set();
   }
 
-  return new Set(data.map((row) => row.permission_key as PermissionKey));
+  return permissionsForRole(
+    staff.roleKey,
+    data.map((row) => row.permission_key as PermissionKey),
+  );
 }
 
 export async function hasPermission(permission: PermissionKey): Promise<boolean> {
@@ -214,9 +230,11 @@ export async function requireScope(scopeId: string | null): Promise<StaffContext
 /**
  * Requires the Owner.
  *
- * This is the one place where identity IS authority — and only because the Bible
- * makes the Owner the highest authority (§5). It still grants no operational
- * permission: an Owner needs an explicit grant like anyone else.
+ * Identity IS authority here, because the Bible makes the Owner the highest
+ * authority (§5). This gate is for OWNER-ONLY surfaces (e.g. staff management).
+ * Operational permissions are handled separately by has_permission, where the
+ * Owner now holds every permission by the same §5 rule — but a Selected Admin or
+ * Staff member never passes THIS gate, whatever grants they hold.
  */
 export async function requireOwner(): Promise<StaffContext> {
   const staff = await requireActiveStaff();

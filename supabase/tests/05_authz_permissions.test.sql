@@ -6,7 +6,7 @@
 -- role to shortcut a check.
 -- ============================================================================
 begin;
-select plan(33);
+select plan(35);
 
 -- ---- Fixtures --------------------------------------------------------------
 insert into auth.users (id, instance_id, email, aud, role) values
@@ -82,22 +82,25 @@ select throws_ok($$select count(*) from public.claims$$, '42501', null,
 reset role;
 
 -- ============================================================================
--- ROLE TITLE ALONE GRANTS NOTHING
--- The Owner holds no permission grants. Owner is the highest authority, yet must
--- still hold an explicit grant to perform an operational action (Bible §5.13).
+-- THE OWNER IS THE MAIN ADMINISTRATOR — holds EVERY permission (Bible §5).
+-- Owner-approved rule: Owner authority is an explicit owner-level rule, not the
+-- visible label. has_permission() returns true for the Owner with NO grant row.
+-- (Role title is still not authority for Selected Admin / Staff — proved below.)
 -- ============================================================================
 select pg_temp.act_as('a0000000-0000-0000-0000-000000000001');
 
 select is(app_private.is_owner(), true, 'Owner is recognised as Owner');
 select is(app_private.current_staff_role(), 'owner', 'Owner role title reads back');
-select is(app_private.has_permission('claim_capture'), false,
-  'Owner role alone confers NO claim_capture permission (role title is not authority)');
+select is(app_private.has_permission('claim_capture'), true,
+  'Owner holds claim_capture by the owner-level rule, with no grant row');
+select is(app_private.has_permission('payment_verification'), true,
+  'Owner holds payment_verification too — the Owner holds every permission');
+select is(app_private.has_permission('export_data_reports'), true,
+  'Owner holds export_data_reports by the owner-level rule');
 
-select throws_ok(
-  $$insert into public.claims (inventory_item_id, customer_id)
-    values (gen_random_uuid(), 'c0000000-0000-0000-0000-000000000001')$$,
-  '42501', null,
-  'Owner without an explicit grant cannot capture a claim');
+select lives_ok(
+  $$insert into public.customers (display_name) values ('Owner Created Customer')$$,
+  'Owner can WRITE (create a customer) via the owner-level permission rule');
 reset role;
 
 -- ============================================================================
