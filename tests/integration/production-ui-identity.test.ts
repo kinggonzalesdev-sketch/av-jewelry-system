@@ -121,6 +121,17 @@ describe('the shell shows REAL authenticated identity, never hardcoded', () => {
     expect(existsSync(routeFileFor('/admin/staff'))).toBe(true);
     expect(existsSync(routeFileFor('/admin/capabilities'))).toBe(true);
   });
+
+  it('surfaces New Entry inside Orders, linking to the real capture flow — not a nav item', () => {
+    const orders = read('app/(app)/orders/page.tsx');
+    // New Entry is an action IN Orders, gated on the capture permission, that
+    // links to the real /live claim-capture flow — it never re-implements it.
+    expect(orders).toMatch(/New Entry/);
+    expect(orders).toMatch(/href="\/live"/);
+    expect(orders).toMatch(/claim_capture|post_live_item_entry/);
+    // And it is NOT a sidebar item.
+    expect(PRIMARY_NAV.some((i) => /new entry/i.test(i.label))).toBe(false);
+  });
 });
 
 describe('no prototype contamination in the production shell', () => {
