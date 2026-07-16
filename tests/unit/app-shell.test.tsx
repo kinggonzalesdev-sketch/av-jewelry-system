@@ -94,7 +94,7 @@ describe('approved navigation model (navigation.ts is the source of truth)', () 
     // Customers is now a real read-only module; Reports and Settings remain
     // honest "unavailable" placeholders until built.
     const unavailable = PRIMARY_NAV.filter((i) => !i.available).map((i) => i.href);
-    expect(unavailable).toEqual(['/reports', '/settings']);
+    expect(unavailable).toEqual(['/settings']);
   });
 });
 

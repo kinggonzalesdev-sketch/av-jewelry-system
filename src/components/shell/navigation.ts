@@ -92,7 +92,7 @@ export const PRIMARY_NAV: readonly NavItem[] = [
     label: 'Reports',
     icon: '▦',
     mobilePrimary: false,
-    available: false,
+    available: true,
   },
   {
     href: '/settings',
