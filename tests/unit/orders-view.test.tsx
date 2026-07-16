@@ -64,6 +64,16 @@ describe('OrdersView — honest states', () => {
     expect(screen.getByTestId('empty-state')).toBeInTheDocument();
     expect(screen.queryByTestId('read-error')).not.toBeInTheDocument();
   });
+
+  it('still shows the status cards and search when there are no orders (features never vanish)', () => {
+    render(<OrdersView result={ok([])} />);
+    // The toolbar must remain visible at zero — the empty state lives in the
+    // table region only, so the screen never looks "feature-less".
+    expect(screen.getByTestId('orders-card-all')).toBeInTheDocument();
+    expect(screen.getByTestId('orders-search')).toBeInTheDocument();
+    expect(screen.getByTestId('orders-filter-fulfillment')).toBeInTheDocument();
+    expect(screen.getByTestId('empty-state')).toBeInTheDocument();
+  });
 });
 
 describe('OrdersView — status cards count real data', () => {

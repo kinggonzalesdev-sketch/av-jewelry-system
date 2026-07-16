@@ -188,15 +188,10 @@ export function OrdersView({ result }: { result: OrdersResult }) {
     return <ReadError title="Orders could not be loaded" detail={result.reason} />;
   }
 
-  // A genuinely empty dataset — honest, distinct from a read error.
-  if (rows.length === 0) {
-    return (
-      <EmptyState
-        title="No Official Orders yet"
-        description="Approve & Send an Invoice to create the first Official Order."
-      />
-    );
-  }
+  // NOTE: an empty dataset does NOT hide the screen's features. The status cards,
+  // search, and filters render even at zero so the Orders screen always shows its
+  // structure — the empty state lives in the TABLE region only. (Orders populate
+  // from the workflow: Live → Confirm → Invoice → Approve & Send.)
 
   const CARDS: Array<{ key: CardKey; label: string; tone: BadgeTone }> = [
     { key: 'all', label: 'Total Active', tone: 'gold' },
@@ -274,8 +269,14 @@ export function OrdersView({ result }: { result: OrdersResult }) {
         </p>
       </div>
 
-      {/* Table (or an honest "no matches" note when filters exclude everything). */}
-      {filtered.length === 0 ? (
+      {/* Table region: honest empty state at zero, "no matches" when filters
+          exclude everything, otherwise the table. */}
+      {rows.length === 0 ? (
+        <EmptyState
+          title="No Official Orders yet"
+          description="Approve & Send an Invoice to create the first Official Order. New Entry (above) starts the capture flow on Live."
+        />
+      ) : filtered.length === 0 ? (
         <div className="rounded-xl border border-border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
           No orders match these filters.
         </div>

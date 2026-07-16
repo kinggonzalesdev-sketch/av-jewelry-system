@@ -6,6 +6,7 @@ import { captureClaimAction, setCurrentFlexItemAction } from '@/lib/live/actions
 import type { ActionState } from '@/lib/live/action-state';
 import { EMPTY_ACTION_STATE } from '@/lib/live/action-state';
 import type { LiveBatchItemRow } from '@/lib/live/batches';
+import { PhotoCapture } from '@/components/attachments/photo-capture';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -150,82 +151,96 @@ export function LiveCapturePanel({
                 flexed.
               </p>
             ) : (
-              <form
-                action={capture}
-                className="space-y-3"
-                onSubmit={() => setCaptureNonce((n) => n + 1)}
-              >
-                <input type="hidden" name="liveBatchId" value={liveBatchId} />
-                <input
-                  type="hidden"
-                  name="liveBatchItemId"
-                  value={currentFlex.liveBatchItemId}
+              <div className="space-y-3">
+                {/* Photograph the flexed item with the rear camera (or upload a
+                    file on desktop). The photo attaches to the ITEM record, so it
+                    is captured even before the claim exists — exactly what "take a
+                    photo of the item the client claimed" needs. */}
+                <PhotoCapture
+                  key={currentFlex.inventoryItemId}
+                  relatedEntityType="inventory_item"
+                  relatedEntityId={currentFlex.inventoryItemId}
+                  purpose="photo"
+                  label={`Photo of ${currentFlex.itemCode}${currentFlex.itemName ? ` — ${currentFlex.itemName}` : ''}`}
                 />
-                <input
-                  type="hidden"
-                  name="inventoryItemId"
-                  value={currentFlex.inventoryItemId}
-                />
-                <input type="hidden" name="captureMethod" value="manual_live_entry" />
-                <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
 
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <Label htmlFor={`customer-${liveBatchId}`}>Customer</Label>
-                    <select
-                      id={`customer-${liveBatchId}`}
-                      name="customerId"
-                      required
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    >
-                      <option value="">Select a customer…</option>
-                      {customers.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.displayName}
-                        </option>
-                      ))}
-                    </select>
+                <form
+                  action={capture}
+                  className="space-y-3"
+                  onSubmit={() => setCaptureNonce((n) => n + 1)}
+                >
+                  <input type="hidden" name="liveBatchId" value={liveBatchId} />
+                  <input
+                    type="hidden"
+                    name="liveBatchItemId"
+                    value={currentFlex.liveBatchItemId}
+                  />
+                  <input
+                    type="hidden"
+                    name="inventoryItemId"
+                    value={currentFlex.inventoryItemId}
+                  />
+                  <input type="hidden" name="captureMethod" value="manual_live_entry" />
+                  <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`customer-${liveBatchId}`}>Customer</Label>
+                      <select
+                        id={`customer-${liveBatchId}`}
+                        name="customerId"
+                        required
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      >
+                        <option value="">Select a customer…</option>
+                        {customers.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.displayName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`qty-${liveBatchId}`}>Quantity</Label>
+                      <Input
+                        id={`qty-${liveBatchId}`}
+                        name="quantity"
+                        type="number"
+                        min={1}
+                        defaultValue={1}
+                        required
+                      />
+                    </div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label htmlFor={`qty-${liveBatchId}`}>Quantity</Label>
-                    <Input
-                      id={`qty-${liveBatchId}`}
-                      name="quantity"
-                      type="number"
-                      min={1}
-                      defaultValue={1}
-                      required
-                    />
+                    <Label htmlFor={`note-${liveBatchId}`}>Note (optional)</Label>
+                    <Input id={`note-${liveBatchId}`} name="note" />
                   </div>
-                </div>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor={`note-${liveBatchId}`}>Note (optional)</Label>
-                  <Input id={`note-${liveBatchId}`} name="note" />
-                </div>
-
-                <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
-                  Capture creates a <strong>Pending Claim only</strong>. No stock is
-                  reserved, nothing is confirmed, no label is queued and no order is
-                  created. Confirm Claim &amp; Print Label is where stock moves.
-                </p>
-
-                <Button type="submit" disabled={capturing}>
-                  {capturing ? 'Capturing…' : 'Capture Pending Claim'}
-                </Button>
-
-                {captureState.error && (
-                  <p role="alert" className="text-sm font-medium text-destructive">
-                    {captureState.error}
+                  <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
+                    Capture creates a <strong>Pending Claim only</strong>. No stock is
+                    reserved, nothing is confirmed, no label is queued and no order is
+                    created. Confirm Claim &amp; Print Label is where stock moves.
                   </p>
-                )}
-                {captureState.success && (
-                  <p role="status" className="text-sm font-medium">
-                    {captureState.success}
-                  </p>
-                )}
-              </form>
+
+                  <Button type="submit" disabled={capturing}>
+                    {capturing ? 'Capturing…' : 'Capture Pending Claim'}
+                  </Button>
+
+                  {captureState.error && (
+                    <p role="alert" className="text-sm font-medium text-destructive">
+                      {captureState.error}
+                    </p>
+                  )}
+                  {captureState.success && (
+                    <p role="status" className="text-sm font-medium">
+                      {captureState.success}
+                    </p>
+                  )}
+                </form>
+              </div>
             )}
           </CardContent>
         </Card>
