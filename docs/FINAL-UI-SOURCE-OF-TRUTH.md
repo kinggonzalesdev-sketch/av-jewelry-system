@@ -21,7 +21,7 @@ document is updated first by Owner decision.
 
 | #   | Label              | Route                 | Icon |
 | --- | ------------------ | --------------------- | ---- |
-| 1   | Dashboard Report   | `/dashboard`          | ▥    |
+| 1   | Dashboard Profile  | `/dashboard`          | ▥    |
 | 2   | Orders             | `/orders`             | □    |
 | 3   | Invoice            | `/orders/invoice`     | ▤    |
 | 4   | Live               | `/live`               | ◉    |
@@ -35,7 +35,7 @@ document is updated first by Owner decision.
 ### Mobile navigation
 
 - **Bottom bar (four primary + More):** Orders · Invoice · Live · Customers · **More**
-- **Under More (Dashboard Report first):** Dashboard Report · Items / Inventory ·
+- **Under More (Dashboard Profile first):** Dashboard Profile · Items / Inventory ·
   Payments & Layaway · Fulfillment · Reports · Settings — plus the theme toggle,
   Logout, and the footer.
 
@@ -124,3 +124,12 @@ limitation (§5).
 **Change control:** to change anything above, the Owner requests it explicitly,
 this document is updated, then the locking tests are updated to match — in that
 order.
+
+### Change log
+
+- **2026-07-16 — Nav item #1 renamed `Dashboard Report` → `Dashboard Profile`.**
+  Explicit Owner decision. Route unchanged (`/dashboard`). Applied in this order:
+  this document (§1 + mobile), then the lock tests (`ui-lock.test.tsx`,
+  `app-shell.test.tsx`), then the shell (`navigation.ts`) and the page heading /
+  metadata (`app/(app)/dashboard/page.tsx`). The frozen `/preview` prototype keeps
+  its original `Dashboard Report` wording as a historical reference (§5).

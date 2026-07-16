@@ -25,7 +25,7 @@ describe('LOCKED: desktop sidebar (exact order, labels, routes, icons)', () => {
     expect(
       PRIMARY_NAV.map((i) => ({ label: i.label, href: i.href, icon: i.icon })),
     ).toEqual([
-      { label: 'Dashboard Report', href: '/dashboard', icon: '▥' },
+      { label: 'Dashboard Profile', href: '/dashboard', icon: '▥' },
       { label: 'Orders', href: '/orders', icon: '□' },
       { label: 'Invoice', href: '/orders/invoice', icon: '▤' },
       { label: 'Live', href: '/live', icon: '◉' },
@@ -49,9 +49,9 @@ describe('LOCKED: mobile navigation', () => {
     ]);
   });
 
-  it('More carries the rest, Dashboard Report first', () => {
+  it('More carries the rest, Dashboard Profile first', () => {
     expect(mobileMoreItems().map((i) => i.label)).toEqual([
-      'Dashboard Report',
+      'Dashboard Profile',
       'Items / Inventory',
       'Payments & Layaway',
       'Fulfillment',

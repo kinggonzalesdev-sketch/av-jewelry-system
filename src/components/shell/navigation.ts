@@ -6,8 +6,13 @@
  * frozen `ui-owner-approved-preview` prototype (`components/preview/shell.tsx`,
  * `PREVIEW_NAV`) and must not be reordered without a new Owner decision:
  *
- *   Dashboard Report · Orders · Invoice · Live · Customers · Items / Inventory ·
+ *   Dashboard Profile · Orders · Invoice · Live · Customers · Items / Inventory ·
  *   Payments & Layaway · Fulfillment · Reports · Settings
+ *
+ * NOTE ON THE FIRST LABEL: the recovered prototype named this "Dashboard Report".
+ * The Owner has since renamed it to "Dashboard Profile" (explicit change-control
+ * decision; docs/FINAL-UI-SOURCE-OF-TRUTH.md §1 and the lock tests were updated
+ * to match, in that order). The route is unchanged (/dashboard).
  *
  * Deliberate consequences of "prototype verbatim":
  *   - Fulfillment is a STANDALONE item (as the prototype shows), even though its
@@ -43,7 +48,7 @@ export type NavItem = {
 export const PRIMARY_NAV: readonly NavItem[] = [
   {
     href: '/dashboard',
-    label: 'Dashboard Report',
+    label: 'Dashboard Profile',
     icon: '▥',
     mobilePrimary: false,
     available: true,
@@ -108,7 +113,7 @@ export const mobilePrimaryItems = (): readonly NavItem[] =>
   PRIMARY_NAV.filter((item) => item.mobilePrimary);
 
 /**
- * Everything not in the mobile primary four, in approved order. Dashboard Report
+ * Everything not in the mobile primary four, in approved order. Dashboard Profile
  * leads because it is not one of the mobile primary four but is the landing page.
  */
 export const mobileMoreItems = (): readonly NavItem[] =>

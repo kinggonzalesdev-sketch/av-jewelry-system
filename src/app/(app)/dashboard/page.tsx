@@ -12,7 +12,7 @@ import {
 } from '@/lib/dashboard/service';
 
 export const metadata: Metadata = {
-  title: 'Dashboard — A.V. Jewelry Operations',
+  title: 'Dashboard Profile — A.V. Jewelry Operations',
 };
 
 /**
@@ -48,7 +48,7 @@ export default async function DashboardPage({
   return (
     <div>
       <PageHeader
-        title="Dashboard"
+        title="Dashboard Profile"
         description="Work queues, search, reports, reminders, and audit."
       />
 

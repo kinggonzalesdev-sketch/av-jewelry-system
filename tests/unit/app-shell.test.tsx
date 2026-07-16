@@ -37,7 +37,7 @@ beforeEach(() => {
 describe('approved navigation model (navigation.ts is the source of truth)', () => {
   it('lists the exact approved desktop sidebar order', () => {
     expect(PRIMARY_NAV.map((i) => i.label)).toEqual([
-      'Dashboard Report',
+      'Dashboard Profile',
       'Orders',
       'Invoice',
       'Live',
@@ -59,9 +59,9 @@ describe('approved navigation model (navigation.ts is the source of truth)', () 
     ]);
   });
 
-  it('puts the rest under More, Dashboard Report first', () => {
+  it('puts the rest under More, Dashboard Profile first', () => {
     expect(mobileMoreItems().map((i) => i.label)).toEqual([
-      'Dashboard Report',
+      'Dashboard Profile',
       'Items / Inventory',
       'Payments & Layaway',
       'Fulfillment',
