@@ -20,7 +20,7 @@ function buildNav(isOwner: boolean): ShellNavItem[] {
     // The Bible §8.2 four — must lead, so the mobile bottom nav slices them.
     { href: '/dashboard', label: 'Dashboard', icon: '▥', mobilePrimary: true },
     { href: '/live', label: 'Live', icon: '◉', mobilePrimary: true },
-    { href: '/claims', label: 'Claim Review', icon: '☑', mobilePrimary: true },
+    { href: '/claims', label: 'Claim Review', icon: '▧', mobilePrimary: true },
     { href: '/orders', label: 'Orders', icon: '□', mobilePrimary: true },
     // Desktop-only continuation — all real, functional routes.
     { href: '/orders/invoice', label: 'Invoice', icon: '▤' },
@@ -30,7 +30,7 @@ function buildNav(isOwner: boolean): ShellNavItem[] {
   ];
 
   if (isOwner) {
-    items.push({ href: '/admin/staff', label: 'Staff', icon: '☺' });
+    items.push({ href: '/admin/staff', label: 'Staff', icon: '◆' });
   }
   items.push({ href: '/admin/capabilities', label: 'Capabilities', icon: '⚙' });
 

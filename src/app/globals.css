@@ -43,61 +43,79 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  /* A.V. Jewelry brand gold — for accents, active states, selected nav,
+     highlights. `gold` is the accent tone; `gold-strong` is deep enough to be
+     readable as text on cream. Both shift to a muted gold in dark mode. */
+  --color-gold: var(--gold);
+  --color-gold-strong: var(--gold-strong);
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
 }
 
 /*
- * Approved MineFlow palette (matches the /preview prototype): emerald primary,
- * a clean slate/white neutral system. Every token-driven primitive
+ * A.V. JEWELRY BRAND PALETTE — warm beige, black, gold. The authoritative brand
+ * direction (the /preview prototype is layout/interaction reference only; its
+ * emerald/slate colors are NOT the brand). Every token-driven primitive
  * (ui/button, ui/card, ui/input …) inherits these, so the whole application
- * takes the prototype's look from this one place — no per-page color edits.
+ * takes the brand look from this one place.
  *
- * Dark mode stays OS-driven (prefers-color-scheme), refined to slate. A manual
- * day/night toggle is a deliberate follow-up, not a dead affordance rendered
- * before it works.
+ * Roles:
+ *   - primary  = charcoal/black — strong-contrast buttons and primary text.
+ *   - gold     = accents, active states, highlights, SELECTED navigation.
+ *   - surfaces = cream / warm white / soft beige.
+ *   - neutrals = restrained warm grays (Tailwind `stone` family in oklch).
+ *
+ * No emerald, no SaaS blue/green, no gradients, no glow, no fake metal.
+ * Dark mode stays OS-driven (prefers-color-scheme). A manual day/night toggle
+ * is a deliberate follow-up, not a dead affordance rendered before it works.
  */
 :root {
-  --background: oklch(0.984 0.003 247.86); /* slate-50 — clean page canvas */
-  --foreground: oklch(0.208 0.042 265.8); /* slate-900 */
-  --card: oklch(1 0 0); /* white cards on the slate canvas */
-  --card-foreground: oklch(0.208 0.042 265.8);
-  --primary: oklch(0.596 0.145 162.5); /* emerald-600 */
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.968 0.007 247.9); /* slate-100 */
-  --secondary-foreground: oklch(0.208 0.042 265.8);
-  --muted: oklch(0.968 0.007 247.9); /* slate-100 */
-  --muted-foreground: oklch(0.554 0.041 257); /* slate-500 */
-  --accent: oklch(0.968 0.007 247.9); /* slate-100 hover */
-  --accent-foreground: oklch(0.208 0.042 265.8);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.929 0.013 255.5); /* slate-200 */
-  --input: oklch(0.929 0.013 255.5);
-  --ring: oklch(0.596 0.145 162.5); /* emerald focus ring */
-  --radius: 0.75rem; /* rounded-xl feel from the prototype */
+  --background: oklch(0.977 0.008 84); /* cream / warm white canvas */
+  --foreground: oklch(0.24 0.006 60); /* near-black charcoal text */
+  --card: oklch(0.995 0.004 84); /* soft warm-white card */
+  --card-foreground: oklch(0.24 0.006 60);
+  --primary: oklch(0.28 0.006 60); /* charcoal — dark buttons */
+  --primary-foreground: oklch(0.977 0.008 84); /* cream on charcoal */
+  --secondary: oklch(0.945 0.012 83); /* soft beige */
+  --secondary-foreground: oklch(0.28 0.006 60);
+  --muted: oklch(0.945 0.012 83); /* soft beige */
+  --muted-foreground: oklch(0.51 0.012 66); /* muted warm gray */
+  --accent: oklch(0.94 0.02 85); /* warm beige hover */
+  --accent-foreground: oklch(0.28 0.006 60);
+  --destructive: oklch(0.55 0.19 27); /* restrained brick red */
+  --destructive-foreground: oklch(0.985 0.004 84);
+  --border: oklch(0.9 0.014 80); /* warm light gray/beige */
+  --input: oklch(0.9 0.014 80);
+  --ring: oklch(0.7 0.1 85); /* gold focus ring */
+  --radius: 0.75rem;
+
+  --gold: oklch(0.72 0.098 85); /* accent gold on cream */
+  --gold-strong: oklch(0.57 0.088 78); /* deep gold — readable as text */
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: oklch(0.208 0.042 265.8); /* slate-900 */
-    --foreground: oklch(0.968 0.007 247.9); /* slate-100 */
-    --card: oklch(0.279 0.041 260); /* slate-800 */
-    --card-foreground: oklch(0.968 0.007 247.9);
-    --primary: oklch(0.696 0.17 162.5); /* emerald-500 */
-    --primary-foreground: oklch(0.208 0.042 265.8);
-    --secondary: oklch(0.372 0.039 257); /* slate-700 */
-    --secondary-foreground: oklch(0.968 0.007 247.9);
-    --muted: oklch(0.372 0.039 257);
-    --muted-foreground: oklch(0.704 0.04 256.8); /* slate-400 */
-    --accent: oklch(0.372 0.039 257);
-    --accent-foreground: oklch(0.968 0.007 247.9);
-    --destructive: oklch(0.704 0.191 22.216);
-    --destructive-foreground: oklch(0.985 0 0);
-    --border: oklch(0.372 0.039 257); /* slate-700 */
-    --input: oklch(0.372 0.039 257);
-    --ring: oklch(0.696 0.17 162.5);
+    --background: oklch(0.19 0.004 66); /* near-black warm */
+    --foreground: oklch(0.94 0.01 83); /* warm off-white */
+    --card: oklch(0.24 0.005 66); /* charcoal surface */
+    --card-foreground: oklch(0.94 0.01 83);
+    --primary: oklch(0.94 0.01 83); /* warm off-white — light buttons on dark */
+    --primary-foreground: oklch(0.22 0.005 66);
+    --secondary: oklch(0.3 0.008 70); /* restrained beige-charcoal */
+    --secondary-foreground: oklch(0.94 0.01 83);
+    --muted: oklch(0.3 0.008 70);
+    --muted-foreground: oklch(0.72 0.012 78); /* muted warm gray */
+    --accent: oklch(0.32 0.014 78); /* warm charcoal hover */
+    --accent-foreground: oklch(0.94 0.01 83);
+    --destructive: oklch(0.62 0.17 25);
+    --destructive-foreground: oklch(0.985 0.004 84);
+    --border: oklch(0.34 0.01 74); /* warm charcoal border */
+    --input: oklch(0.34 0.01 74);
+    --ring: oklch(0.78 0.09 86); /* muted gold ring */
+
+    --gold: oklch(0.8 0.09 87); /* muted gold on near-black */
+    --gold-strong: oklch(0.83 0.1 88);
   }
 }
 
