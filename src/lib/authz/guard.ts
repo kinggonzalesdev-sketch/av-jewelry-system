@@ -66,6 +66,45 @@ export async function requireAuthenticatedStaff(): Promise<User> {
  * The profile is read through the user-scoped client, so RLS applies: a caller
  * can only ever read their own profile here.
  */
+/**
+ * The authenticated staff member's OWN display identity.
+ *
+ * This is what the shell renders in place of the prototype's hardcoded
+ * "A.V. Owner / Owner". Every field is the caller's real, database-backed
+ * profile — never a fixture, never a guess.
+ *
+ * Readable by any role: the `staff_profiles_read_self` RLS policy lets a staff
+ * member read their own row (auth_user_id = auth.uid()), independently of the
+ * Owner-only policy that governs reading OTHER people's rows. So a Staff member
+ * sees their own name here without being able to see anyone else's.
+ */
+export type CurrentStaffProfile = {
+  fullName: string;
+  roleKey: RoleKey;
+  isSelectedAdmin: boolean;
+  isActive: boolean;
+};
+
+export async function getCurrentStaffProfile(): Promise<CurrentStaffProfile> {
+  const staff = await requireActiveStaff();
+  const supabase = await createClient();
+
+  const { data } = await supabase
+    .from('staff_profiles')
+    .select('full_name')
+    .eq('auth_user_id', staff.authUserId)
+    .maybeSingle<{ full_name: string }>();
+
+  return {
+    // Falls back to a neutral label rather than a fabricated name if the
+    // self-read ever returns nothing — never "A.V. Owner".
+    fullName: data?.full_name ?? 'Staff member',
+    roleKey: staff.roleKey,
+    isSelectedAdmin: staff.roleKey === 'selected_admin',
+    isActive: staff.isActive,
+  };
+}
+
 export async function requireActiveStaff(): Promise<StaffContext> {
   const user = await requireAuthenticatedStaff();
   const supabase = await createClient();

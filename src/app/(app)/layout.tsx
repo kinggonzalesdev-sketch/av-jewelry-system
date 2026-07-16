@@ -1,7 +1,11 @@
 import type { ReactNode } from 'react';
 
 import { AppShell } from '@/components/shell/app-shell';
-import { requireActiveStaff, requireUser } from '@/lib/authz/guard';
+import {
+  getCurrentStaffProfile,
+  requireActiveStaff,
+  requireUser,
+} from '@/lib/authz/guard';
 
 /**
  * Protected application route boundary.
@@ -29,11 +33,15 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // Authentication AND active-account status are both re-checked here on every
   // request. A deactivated account is redirected to /account-disabled: its
   // credentials are valid, but the account is not (Bible §30.6).
-  const staff = await requireActiveStaff();
-  const user = await requireUser();
+  await requireActiveStaff();
+  const [profile, user] = await Promise.all([getCurrentStaffProfile(), requireUser()]);
 
   return (
-    <AppShell userEmail={user.email ?? 'Unknown user'} roleKey={staff.roleKey}>
+    <AppShell
+      userEmail={user.email ?? 'Unknown user'}
+      fullName={profile.fullName}
+      roleKey={profile.roleKey}
+    >
       {children}
     </AppShell>
   );

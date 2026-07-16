@@ -11,13 +11,23 @@ import { SignOutButton } from '@/components/shell/sign-out-button';
  * delivered in Roadmap Phase 9. It is disabled rather than omitted so the approved
  * navigation model is visible without pretending the feature works.
  */
+/** Human role label. The prototype's hardcoded "Owner" is replaced by this. */
+const ROLE_LABEL: Record<string, string> = {
+  owner: 'Owner',
+  selected_admin: 'Selected Admin',
+  staff: 'Staff',
+};
+
 export function AppHeader({
   userEmail,
+  fullName,
   roleKey,
 }: {
   userEmail: string;
+  fullName: string;
   roleKey?: string | undefined;
 }) {
+  const roleLabel = roleKey ? (ROLE_LABEL[roleKey] ?? roleKey) : null;
   return (
     <header className="sticky top-0 z-10 border-b border-border bg-background">
       <div className="flex min-h-14 items-center justify-between gap-3 px-4">
@@ -60,10 +70,30 @@ export function AppHeader({
           >
             Search — not implemented
           </button>
+          {/* Real authenticated identity — never a hardcoded "A.V. Owner".
+              The full name comes from the caller's own staff_profiles row
+              (self-read RLS); the role label is derived from their real role. */}
           <span
-            className="hidden max-w-[16ch] truncate text-xs text-muted-foreground sm:inline"
-            data-testid="authenticated-user-email"
+            className="hidden min-w-0 flex-col items-end leading-tight sm:flex"
+            data-testid="authenticated-identity"
           >
+            <span
+              className="max-w-[20ch] truncate text-xs font-medium text-foreground"
+              data-testid="authenticated-full-name"
+            >
+              {fullName}
+            </span>
+            {roleLabel ? (
+              <span
+                className="text-[10px] text-muted-foreground"
+                data-testid="authenticated-role"
+              >
+                {roleLabel}
+              </span>
+            ) : null}
+          </span>
+          {/* Kept for the title attribute so the email is still discoverable. */}
+          <span className="sr-only" data-testid="authenticated-user-email">
             {userEmail}
           </span>
           <SignOutButton />

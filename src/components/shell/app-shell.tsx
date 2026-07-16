@@ -11,16 +11,18 @@ import { BottomNav, SideNav } from '@/components/shell/bottom-nav';
  */
 export function AppShell({
   userEmail,
+  fullName,
   roleKey,
   children,
 }: {
   userEmail: string;
+  fullName: string;
   roleKey?: string | undefined;
   children: ReactNode;
 }) {
   return (
     <div className="flex min-h-dvh flex-col">
-      <AppHeader userEmail={userEmail} roleKey={roleKey} />
+      <AppHeader userEmail={userEmail} fullName={fullName} roleKey={roleKey} />
 
       <div className="flex flex-1">
         <SideNav />
