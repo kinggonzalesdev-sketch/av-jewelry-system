@@ -122,6 +122,24 @@ describe('the shell shows REAL authenticated identity, never hardcoded', () => {
     expect(existsSync(routeFileFor('/admin/capabilities'))).toBe(true);
   });
 
+  it('Settings is a real unified page of existing functionality, not a placeholder', () => {
+    const settings = read('app/(app)/settings/page.tsx');
+    // Real identity, not hardcoded.
+    expect(settings).toMatch(/getCurrentStaffProfile/);
+    expect(settings).toMatch(/requireUser/);
+    expect(settings).not.toMatch(/A\.V\.\s*Owner/);
+    // Links to existing admin routes; Staff is Owner-gated.
+    expect(settings).toMatch(/href="\/admin\/staff"/);
+    expect(settings).toMatch(/isOwner/);
+    expect(settings).toMatch(/href="\/admin\/capabilities"/);
+    expect(settings).toMatch(/href="\/security"/);
+    // Reuses the real shell controls, invents no new config.
+    expect(settings).toMatch(/PrinterStatusRow/);
+    expect(settings).toMatch(/ThemeToggle/);
+    // No longer the honest placeholder.
+    expect(settings).not.toMatch(/UnavailablePage/);
+  });
+
   it('surfaces New Entry inside Orders, linking to the real capture flow — not a nav item', () => {
     const orders = read('app/(app)/orders/page.tsx');
     // New Entry is an action IN Orders, gated on the capture permission, that

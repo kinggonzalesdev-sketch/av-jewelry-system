@@ -99,7 +99,7 @@ export const PRIMARY_NAV: readonly NavItem[] = [
     label: 'Settings',
     icon: '⚙',
     mobilePrimary: false,
-    available: false,
+    available: true,
   },
 ] as const;
 
