@@ -119,33 +119,82 @@ export type SalesSummary = {
   paymentsUnverified: number;
 };
 
+/** Audited business totals (Bible §7, §25). Money fields are strings, never floats. */
+export type DashboardMetrics = {
+  totalOfficialOrders: number;
+  orderCountValid: number;
+  totalSales: string;
+  verifiedCollections: string;
+  outstandingBalance: string;
+  fullPaymentSales: string;
+  totalLayawaySales: string;
+  layawayCollections: string;
+  pendingPayments: string;
+  cancelledAmount: string;
+  forfeitedAmount: string;
+  salesToday: string;
+  salesWeek: string;
+  salesMonth: string;
+  averageOrderValue: string;
+  collectionTrend: Array<{ day: string; verified: string; weight: number }>;
+};
+
+/**
+ * Business totals for the dashboard (§7, §25).
+ *
+ * VIEWABLE BY ANY ACTIVE STAFF — the DB function is security invoker (RLS scopes
+ * every row) and granted to authenticated. Every peso figure is summed from the
+ * tested per-order readers in the database; nothing is recomputed here.
+ *
+ * Returns null on a read failure so the UI can show an explicit error, never a
+ * false zero (matching getDashboardCounts).
+ */
+export async function getDashboardMetrics(): Promise<DashboardMetrics | null> {
+  const supabase = await createClient();
+  const response = await supabase.rpc('dashboard_metrics');
+
+  if (response.error || !response.data) return null;
+
+  const r = response.data as Record<string, unknown>;
+  const trend = Array.isArray(r.collection_trend) ? r.collection_trend : [];
+
+  return {
+    totalOfficialOrders: Number(r.total_official_orders ?? 0),
+    orderCountValid: Number(r.order_count_valid ?? 0),
+    totalSales: moneyString(r.total_sales),
+    verifiedCollections: moneyString(r.verified_collections),
+    outstandingBalance: moneyString(r.outstanding_balance),
+    fullPaymentSales: moneyString(r.full_payment_sales),
+    totalLayawaySales: moneyString(r.total_layaway_sales),
+    layawayCollections: moneyString(r.layaway_collections),
+    pendingPayments: moneyString(r.pending_payments),
+    cancelledAmount: moneyString(r.cancelled_amount),
+    forfeitedAmount: moneyString(r.forfeited_amount),
+    salesToday: moneyString(r.sales_today),
+    salesWeek: moneyString(r.sales_week),
+    salesMonth: moneyString(r.sales_month),
+    averageOrderValue: moneyString(r.average_order_value),
+    collectionTrend: (trend as Array<Record<string, unknown>>).map((p) => ({
+      day: String(p.day),
+      verified: moneyString(p.verified),
+      // Integer centavos for bar-width scaling — not money math on the display.
+      weight: Number(p.weight ?? 0),
+    })),
+  };
+}
+
 /**
  * Sales summary report (§25).
  *
- * Gated by `export_data_reports` in the DATABASE — reading a summary is taking
- * data, so it carries the export permission rather than plain visibility. The
- * report cannot contain a row the caller could not already read, because RLS
- * still applies underneath.
+ * VIEWING is broad: any active staff may see the on-screen summary (the DB
+ * function enforces active-staff and security invoker keeps it within the
+ * caller's RLS scope). Only actual export/download is gated by
+ * `export_data_reports` — added when a download feature exists.
  */
 export async function getSalesSummary(
   from: string,
   to: string,
 ): Promise<{ ok: true; data: SalesSummary } | { ok: false; error: string }> {
-  try {
-    await requirePermission('export_data_reports');
-  } catch (cause) {
-    if (cause instanceof AuthorizationError) {
-      await recordAuditEvent({
-        action: 'report.sales_summary',
-        entityType: 'report',
-        outcome: 'denied',
-        reason: cause.message,
-      });
-      return { ok: false, error: cause.message };
-    }
-    throw cause;
-  }
-
   const supabase = await createClient();
   const response = await supabase.rpc('report_sales_summary', { p_from: from, p_to: to });
 

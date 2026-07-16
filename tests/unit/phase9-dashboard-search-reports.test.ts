@@ -35,8 +35,13 @@ describe('dashboard service', () => {
     expect(code).not.toMatch(/from\('payments'\)[\s\S]{0,60}\.(insert|update)/);
   });
 
-  it('gates reports behind the export permission, not plain visibility', () => {
-    expect(service).toContain("requirePermission('export_data_reports')");
+  it('makes on-screen report/total VIEWING broad, not export-gated', () => {
+    // Owner-approved visibility: any active staff may view on-screen totals;
+    // only export/download is gated. So the summary reader no longer requires
+    // export_data_reports, and the broad business-totals reader exists.
+    expect(service).not.toContain("requirePermission('export_data_reports')");
+    expect(service).toContain("rpc('dashboard_metrics')");
+    expect(service).toContain("rpc('report_sales_summary'");
   });
 
   it('states that a report grants no authority and is scope-limited', () => {
@@ -144,9 +149,10 @@ describe('Phase 9 migration', () => {
     expect(sql).toContain('total_official_orders');
   });
 
-  it('gates the report behind the export permission inside the database', () => {
-    expect(sql).toContain("app_private.has_permission('export_data_reports')");
-  });
+  // NOTE: this migration originally gated report_sales_summary on
+  // export_data_reports. That gate is SUPERSEDED by
+  // 20260716250000_dashboard_metrics (viewing is broad; only export is gated) —
+  // asserted in tests/unit/dashboard-metrics.test.ts.
 
   it('counts only verified, non-void, non-reversed money in the report', () => {
     expect(sql).toContain("p.status = 'verified'");

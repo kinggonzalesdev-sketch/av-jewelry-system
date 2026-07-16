@@ -5,6 +5,7 @@ import { DashboardView } from '@/components/dashboard/dashboard-view';
 import { getGrantedPermissions } from '@/lib/authz/guard';
 import {
   getDashboardCounts,
+  getDashboardMetrics,
   listAuditEvents,
   listNotifications,
   search,
@@ -33,13 +34,16 @@ export default async function DashboardPage({
   const params = await searchParams;
   const query = typeof params.q === 'string' ? params.q : '';
 
-  const [counts, notifications, audit, results, permissions] = await Promise.all([
-    getDashboardCounts(),
-    listNotifications(),
-    listAuditEvents(),
-    search(query),
-    getGrantedPermissions(),
-  ]);
+  const [counts, metrics, notifications, audit, results, permissions] = await Promise.all(
+    [
+      getDashboardCounts(),
+      getDashboardMetrics(),
+      listNotifications(),
+      listAuditEvents(),
+      search(query),
+      getGrantedPermissions(),
+    ],
+  );
 
   return (
     <div>
@@ -50,6 +54,7 @@ export default async function DashboardPage({
 
       <DashboardView
         counts={counts}
+        metrics={metrics}
         notifications={notifications}
         audit={audit}
         results={results}

@@ -12,6 +12,7 @@ import { EMPTY_DASHBOARD_STATE } from '@/lib/dashboard/action-state';
 import type {
   AuditRow,
   DashboardCounts,
+  DashboardMetrics,
   NotificationRow,
   SearchResult,
 } from '@/lib/dashboard/service';
@@ -37,11 +38,12 @@ import { Label } from '@/components/ui/label';
  * server re-checks regardless.
  */
 
-const TABS = ['Queues', 'Search', 'Reports', 'Reminders', 'Audit'] as const;
+const TABS = ['Totals', 'Queues', 'Search', 'Reports', 'Reminders', 'Audit'] as const;
 type Tab = (typeof TABS)[number];
 
 export function DashboardView({
   counts,
+  metrics,
   notifications,
   audit,
   results,
@@ -51,6 +53,7 @@ export function DashboardView({
   canMonitorInventory,
 }: {
   counts: DashboardCounts | null;
+  metrics: DashboardMetrics | null;
   notifications: NotificationRow[];
   audit: AuditRow[];
   results: SearchResult[];
@@ -59,7 +62,7 @@ export function DashboardView({
   canVerifyPayments: boolean;
   canMonitorInventory: boolean;
 }) {
-  const [tab, setTab] = useState<Tab>('Queues');
+  const [tab, setTab] = useState<Tab>('Totals');
 
   const [refreshState, refresh, refreshing] = useActionState<
     DashboardActionState,
@@ -125,6 +128,109 @@ export function DashboardView({
           </p>
         ) : null,
       )}
+
+      {tab === 'Totals' ? (
+        metrics === null ? (
+          // A FAILED read, not zero business — say so, never a false zero.
+          <ReadError
+            title="Business totals unavailable"
+            detail="The dashboard totals could not be read."
+          />
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <MetricCard
+                label="Total Sales"
+                value={formatPeso(metrics.totalSales)}
+                accent
+              />
+              <MetricCard
+                label="Verified Collections"
+                value={formatPeso(metrics.verifiedCollections)}
+              />
+              <MetricCard
+                label="Outstanding Balance"
+                value={formatPeso(metrics.outstandingBalance)}
+              />
+            </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Sales by period</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <MetricCard label="Today" value={formatPeso(metrics.salesToday)} />
+                  <MetricCard label="This Week" value={formatPeso(metrics.salesWeek)} />
+                  <MetricCard label="This Month" value={formatPeso(metrics.salesMonth)} />
+                  <MetricCard
+                    label="Avg Order Value"
+                    value={formatPeso(metrics.averageOrderValue)}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Breakdown</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                  <MetricCard
+                    label="Full-Payment Sales"
+                    value={formatPeso(metrics.fullPaymentSales)}
+                  />
+                  <MetricCard
+                    label="Layaway Sales"
+                    value={formatPeso(metrics.totalLayawaySales)}
+                  />
+                  <MetricCard
+                    label="Layaway Collections"
+                    value={formatPeso(metrics.layawayCollections)}
+                  />
+                  <MetricCard
+                    label="Pending Payments"
+                    value={formatPeso(metrics.pendingPayments)}
+                  />
+                  <MetricCard
+                    label="Cancelled Amount"
+                    value={formatPeso(metrics.cancelledAmount)}
+                  />
+                  <MetricCard
+                    label="Forfeited Amount"
+                    value={formatPeso(metrics.forfeitedAmount)}
+                  />
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {metrics.totalOfficialOrders} Official Orders. Verified money only —
+                  unverified evidence is not counted as collected. On-screen totals are
+                  visible to all staff; export stays permission-gated.
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  Collection Trend (last 30 days)
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <BarChart
+                  ariaLabel="Verified collections per day"
+                  data={metrics.collectionTrend.map((p) => ({
+                    label: p.day.slice(5),
+                    value: p.weight,
+                    display: formatPeso(p.verified),
+                  }))}
+                  emptyLabel="No verified collections in the last 30 days."
+                />
+              </CardContent>
+            </Card>
+          </div>
+        )
+      ) : null}
 
       {tab === 'Queues' ? (
         counts === null ? (
@@ -332,31 +438,29 @@ export function DashboardView({
             <CardTitle className="text-base">Sales summary</CardTitle>
           </CardHeader>
           <CardContent>
-            {canExport ? (
-              <form action={runReport} className="flex flex-wrap items-end gap-2">
-                <div>
-                  <Label htmlFor="rfrom" className="text-xs">
-                    From
-                  </Label>
-                  <Input id="rfrom" name="from" type="date" required className="h-8" />
-                </div>
-                <div>
-                  <Label htmlFor="rto" className="text-xs">
-                    To
-                  </Label>
-                  <Input id="rto" name="to" type="date" required className="h-8" />
-                </div>
-                <Button type="submit" size="sm" disabled={running}>
-                  {running ? 'Running…' : 'Run Report'}
-                </Button>
-              </form>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Reports require the Export Data / Reports permission. Reading a summary is
-                taking data, so it carries the export permission rather than plain
-                visibility.
-              </p>
-            )}
+            {/* Viewing the summary is broad (any active staff). Only export is gated. */}
+            <form action={runReport} className="flex flex-wrap items-end gap-2">
+              <div>
+                <Label htmlFor="rfrom" className="text-xs">
+                  From
+                </Label>
+                <Input id="rfrom" name="from" type="date" required className="h-8" />
+              </div>
+              <div>
+                <Label htmlFor="rto" className="text-xs">
+                  To
+                </Label>
+                <Input id="rto" name="to" type="date" required className="h-8" />
+              </div>
+              <Button type="submit" size="sm" disabled={running}>
+                {running ? 'Running…' : 'Run Report'}
+              </Button>
+              {canExport ? null : (
+                <span className="self-center text-xs text-muted-foreground">
+                  Export/download needs the Export Data permission.
+                </span>
+              )}
+            </form>
 
             {reportState.report ? (
               <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-4">

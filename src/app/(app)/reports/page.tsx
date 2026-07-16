@@ -31,8 +31,10 @@ export default async function ReportsPage({
   const permissions = await getGrantedPermissions();
   const canExport = permissions.has('export_data_reports');
 
+  // Viewing is broad: any active staff may run the on-screen summary. Only
+  // export/download is gated by export_data_reports (canExport, passed through).
   let result: ReportsResult | null = null;
-  if (canExport && from && to) {
+  if (from && to) {
     result = await getSalesSummary(
       new Date(from).toISOString(),
       new Date(to).toISOString(),

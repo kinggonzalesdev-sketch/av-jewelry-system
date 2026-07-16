@@ -13,10 +13,13 @@ const summary = {
 };
 
 describe('ReportsView (only the approved sales summary)', () => {
-  it('shows a permission-denied state without the export permission', () => {
+  it('lets any staff VIEW the summary; only export is noted as gated', () => {
+    // Owner-approved visibility: viewing on-screen totals is broad; only
+    // export/download is gated by export_data_reports.
     render(<ReportsView canExport={false} from="" to="" result={null} />);
-    expect(screen.getByTestId('reports-denied')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /run report/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /run report/i })).toBeInTheDocument();
+    expect(screen.getByTestId('reports-export-note')).toBeInTheDocument();
+    expect(screen.queryByTestId('reports-denied')).not.toBeInTheDocument();
   });
 
   it('prompts for a range before any report has been run', () => {

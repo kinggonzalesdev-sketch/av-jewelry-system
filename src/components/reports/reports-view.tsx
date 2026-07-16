@@ -27,25 +27,15 @@ export function ReportsView({
   to: string;
   result: ReportsResult | null;
 }) {
-  if (!canExport) {
-    return (
-      <div
-        className="rounded-xl border border-border bg-card p-6 text-center"
-        data-testid="reports-denied"
-      >
-        <p className="text-sm font-medium text-foreground">
-          Reports require the Export Data / Reports permission
-        </p>
-        <p className="mx-auto mt-1 max-w-md text-xs text-muted-foreground">
-          Reading a summary is taking data, so it carries the export permission rather
-          than plain visibility. Ask the Owner to grant it.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4">
+      {/* Viewing is broad (any active staff); only export/download is gated. */}
+      {canExport ? null : (
+        <p className="text-xs text-muted-foreground" data-testid="reports-export-note">
+          You can view these totals. Export/download needs the Export Data / Reports
+          permission.
+        </p>
+      )}
       <form
         method="GET"
         className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-card p-4"
