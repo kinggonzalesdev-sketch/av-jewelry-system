@@ -148,17 +148,31 @@ export function FulfillmentWorkspace({
                       </span>
                     </div>
 
+                    {f.balanceUnavailable ? (
+                      <p
+                        role="alert"
+                        data-testid="fulfillment-balance-unavailable"
+                        className="rounded border border-destructive/50 px-2 py-1.5 text-xs"
+                      >
+                        <strong className="text-destructive">Balance unavailable.</strong>{' '}
+                        The authoritative payment figures could not be read, so they are
+                        not shown — this is <strong>not</strong> ₱0.00 paid. Release is
+                        unaffected: the database re-checks payment at release time and
+                        will refuse if the rule is not met. {f.balanceUnavailable}
+                      </p>
+                    ) : null}
+
                     <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
                       <div>
                         <dt className="text-muted-foreground">Verified paid</dt>
                         <dd className="font-medium tabular-nums">
-                          {formatPeso(f.verifiedNetPayments)}
+                          {f.balanceUnavailable ? '—' : formatPeso(f.verifiedNetPayments)}
                         </dd>
                       </div>
                       <div>
                         <dt className="text-muted-foreground">Total payable</dt>
                         <dd className="font-medium tabular-nums">
-                          {formatPeso(f.totalAmountPayable)}
+                          {f.balanceUnavailable ? '—' : formatPeso(f.totalAmountPayable)}
                         </dd>
                       </div>
                       <div>
@@ -170,13 +184,19 @@ export function FulfillmentWorkspace({
                       <div>
                         <dt className="text-muted-foreground">Deposit floor</dt>
                         <dd className="font-medium">
-                          {f.meetsDepositFloor ? 'Met' : 'Below'}
+                          {f.balanceUnavailable
+                            ? 'Unknown'
+                            : f.meetsDepositFloor
+                              ? 'Met'
+                              : 'Below'}
                         </dd>
                       </div>
                     </dl>
 
                     {/* Advisory only — the database decides at release time. */}
-                    {f.method === 'shipping' && !f.meetsDepositFloor ? (
+                    {f.method === 'shipping' &&
+                    !f.balanceUnavailable &&
+                    !f.meetsDepositFloor ? (
                       <p className="rounded border border-amber-500 px-2 py-1.5 text-xs">
                         Verified payment is below the ₱1,000 shipping deposit floor.
                         Normal release will be refused — an Owner-approved exceptional

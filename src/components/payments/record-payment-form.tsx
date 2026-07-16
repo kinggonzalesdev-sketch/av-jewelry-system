@@ -133,8 +133,33 @@ export function RecordPaymentForm({ orders }: { orders: PayableOrderRow[] }) {
             </select>
           </div>
 
-          {/* --- Authoritative order facts, straight from the database ----- */}
-          {selected && (
+          {/* --- Authoritative order facts, straight from the database -----
+              If the balance could not be read, this says so. It NEVER renders
+              ₱0.00 from a failed read: a zero balance means "nothing is owed",
+              and showing that against an unpaid order is how a customer gets
+              told they are square when they are not. */}
+          {selected && selected.balanceUnavailable && (
+            <div
+              role="alert"
+              data-testid="balance-unavailable"
+              className="rounded-md border border-destructive/50 p-3 text-sm"
+            >
+              <p className="font-semibold text-destructive">Balance unavailable</p>
+              <p className="mt-1 text-muted-foreground">
+                The authoritative balance for {selected.orderNumber} could not be read, so
+                it is not shown. This is <strong>not</strong> a zero balance.
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {selected.balanceUnavailable}
+              </p>
+              <p className="mt-2 text-xs">
+                You may still record evidence — the amount you enter is what the customer
+                paid, and verification decides the balance either way.
+              </p>
+            </div>
+          )}
+
+          {selected && !selected.balanceUnavailable && (
             <dl
               className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-md border p-3 text-sm"
               data-testid="order-summary"
@@ -156,6 +181,17 @@ export function RecordPaymentForm({ orders }: { orders: PayableOrderRow[] }) {
 
               <dt className="text-muted-foreground">Outstanding balance</dt>
               <dd className="font-semibold">{formatPeso(selected.outstandingBalance)}</dd>
+
+              {selected.overpaymentCredit !== '0' &&
+                selected.overpaymentCredit !== '0.00' && (
+                  <>
+                    <dt className="text-muted-foreground">Overpayment Credit</dt>
+                    <dd className="font-medium">
+                      {formatPeso(selected.overpaymentCredit)} — flagged for review. Never
+                      auto-refunded or moved to another order.
+                    </dd>
+                  </>
+                )}
 
               {selected.paidInFull && (
                 <>

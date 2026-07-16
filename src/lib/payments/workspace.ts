@@ -266,7 +266,15 @@ export type PayableOrderRow = {
   verifiedNetPayments: string;
   /** max(payable − verified, 0). Never negative. */
   outstandingBalance: string;
+  /** The verified excess when payments exceed the payable amount. */
+  overpaymentCredit: string;
   paidInFull: boolean;
+  /**
+   * Set when the balance could NOT be read. The money fields are meaningless in
+   * that case and the UI must say so rather than render a zero — a denied read
+   * that displays ₱0.00 reads as "nothing is owed".
+   */
+  balanceUnavailable: string | null;
 };
 
 /**
@@ -307,18 +315,38 @@ export async function listPayableOrders(limit = 50): Promise<PayableOrderRow[]> 
   return rows.map((row, index) => {
     const r = row as Record<string, unknown>;
     const customer = one<{ display_name: string }>(r.customers);
-    const balance = balances[index];
+    const result = balances[index];
 
-    return {
+    const base = {
       officialOrderId: r.id as string,
       orderNumber: (r.order_number as string | null) ?? '—',
       invoiceNumber: (r.invoice_number as string | null) ?? '—',
       customerDisplayName: customer?.display_name ?? 'Unknown',
       status: (r.status as string | null) ?? 'unknown',
-      totalAmountPayable: balance?.totalAmountPayable ?? '0.00',
-      verifiedNetPayments: balance?.verifiedNetPayments ?? '0.00',
-      outstandingBalance: balance?.outstandingBalance ?? '0.00',
-      paidInFull: balance?.paidInFull ?? false,
+    };
+
+    // A failed read is reported as unavailable, never as zero. The empty strings
+    // below are never rendered: the UI branches on balanceUnavailable first.
+    if (!result || !result.ok) {
+      return {
+        ...base,
+        totalAmountPayable: '',
+        verifiedNetPayments: '',
+        outstandingBalance: '',
+        overpaymentCredit: '',
+        paidInFull: false,
+        balanceUnavailable: result?.reason ?? 'The balance could not be read.',
+      };
+    }
+
+    return {
+      ...base,
+      totalAmountPayable: result.balance.totalAmountPayable,
+      verifiedNetPayments: result.balance.verifiedNetPayments,
+      outstandingBalance: result.balance.outstandingBalance,
+      overpaymentCredit: result.balance.overpaymentCredit,
+      paidInFull: result.balance.paidInFull,
+      balanceUnavailable: null,
     };
   });
 }

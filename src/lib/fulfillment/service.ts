@@ -6,7 +6,7 @@ import {
   requireOwnerApprovalAuthority,
   requirePermission,
 } from '@/lib/authz/guard';
-import { moneyString } from '@/lib/payments/format';
+import { getOrderBalance } from '@/lib/payments/balances';
 import { createClient } from '@/lib/supabase/server';
 
 /**
@@ -504,6 +504,8 @@ export type FulfillmentRow = {
   verifiedNetPayments: string;
   totalAmountPayable: string;
   meetsDepositFloor: boolean;
+  /** Set when the balance could not be read. Money fields are meaningless then. */
+  balanceUnavailable: string | null;
 };
 
 /** The fulfillment queue, with the release preconditions made visible. */
@@ -526,12 +528,13 @@ export async function listFulfillments(): Promise<FulfillmentRow[]> {
       const order = one<{ order_number: string; customers: unknown }>(r.official_orders);
       const customer = one<{ display_name: string }>(order?.customers);
 
-      const balance = await supabase.rpc('order_balance', { p_order_id: orderId });
-      const b = (balance.data ?? {}) as Record<string, unknown>;
+      // Reuses the authoritative reader. This used to call order_balance()
+      // itself and fall back to '0.00' when the read failed — which made every
+      // order read "₱0.00 verified, below the deposit floor" while the database
+      // held the real figure. Fail-closed on release, but a lie on screen.
+      const result = await getOrderBalance(orderId);
 
-      const verified = moneyString(b.verified_net_payments);
-
-      return {
+      const base = {
         officialOrderId: orderId,
         orderNumber: order?.order_number ?? '—',
         customerDisplayName: customer?.display_name ?? 'Unknown',
@@ -541,10 +544,29 @@ export async function listFulfillments(): Promise<FulfillmentRow[]> {
         trackingNumber: (r.tracking_number as string | null) ?? null,
         isCod: r.is_cod === true,
         codApproved: r.cod_approved_at !== null,
+      };
+
+      if (!result.ok) {
+        return {
+          ...base,
+          verifiedNetPayments: '',
+          totalAmountPayable: '',
+          // Unknown is NOT "met". The database decides at release time either
+          // way, so this only governs what the operator is told.
+          meetsDepositFloor: false,
+          balanceUnavailable: result.reason,
+        };
+      }
+
+      const verified = result.balance.verifiedNetPayments;
+
+      return {
+        ...base,
         verifiedNetPayments: verified,
-        totalAmountPayable: moneyString(b.total_amount_payable),
+        totalAmountPayable: result.balance.totalAmountPayable,
         // Advisory only. The database decides at release time.
         meetsDepositFloor: toCentavos(verified) >= 100000n,
+        balanceUnavailable: null,
       };
     }),
   );

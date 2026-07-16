@@ -46,13 +46,19 @@ export function PrepareFulfillmentForm({ row }: { row: FulfillmentRow }) {
         <dd className="font-medium">{row.status}</dd>
 
         <dt className="text-muted-foreground">Verified payments</dt>
-        <dd className="font-medium">{formatPeso(row.verifiedNetPayments)}</dd>
+        <dd className="font-medium">
+          {row.balanceUnavailable ? '—' : formatPeso(row.verifiedNetPayments)}
+        </dd>
 
         <dt className="text-muted-foreground">Amount payable</dt>
-        <dd className="font-medium">{formatPeso(row.totalAmountPayable)}</dd>
+        <dd className="font-medium">
+          {row.balanceUnavailable ? '—' : formatPeso(row.totalAmountPayable)}
+        </dd>
 
         <dt className="text-muted-foreground">Meets ₱1,000 deposit floor</dt>
-        <dd className="font-medium">{row.meetsDepositFloor ? 'Yes' : 'No'}</dd>
+        <dd className="font-medium">
+          {row.balanceUnavailable ? 'Unknown' : row.meetsDepositFloor ? 'Yes' : 'No'}
+        </dd>
       </dl>
 
       <div className="space-y-1.5">

@@ -1,0 +1,82 @@
+-- ============================================================================
+-- Fix: restore the table privilege that makes order_balance() readable by Staff
+-- (Bible §16, §30.3 r1-r4; docs/PHASE-6-APPROVED-DECISIONS.md §1-§4)
+-- ----------------------------------------------------------------------------
+-- THE DEFECT
+-- The production UI rendered every Official Order balance as ₱0.00 while the
+-- database held the real figure (ORD-2026-000017 = ₱6,000.00).
+--
+-- Proved by calling the reader as the actual Staff JWT rather than as postgres:
+--
+--   ERROR:  permission denied for table official_order_charges
+--   CONTEXT: SQL function "approved_charge_total"
+--            SQL function "total_amount_payable"
+--            SQL function "order_balance"
+--
+-- public.order_balance() is SECURITY INVOKER — deliberately, so a caller can
+-- only ever read money for an order they were already allowed to see. That
+-- means app_private.approved_charge_total() runs as the Staff member, and it
+-- reads public.official_order_charges. Staff had no SELECT privilege on that
+-- table, so Postgres refused at the privilege layer, the whole RPC threw, and
+-- the TypeScript reader turned the error into null — which the UI rendered as
+-- a financial zero.
+--
+-- WHY THE PRIVILEGE WAS MISSING
+-- Phase 6 created this table with the Phase 1 deny-by-default posture:
+--
+--   revoke all on public.official_order_charges from anon, authenticated;
+--
+-- and then wrote three permission-aware policies FOR `authenticated`
+-- (order_charges_read / _insert / _update). Those policies were correct and
+-- have never once been consulted: RLS is never reached on a table the caller
+-- cannot touch at all.
+--
+-- The re-grant that every other business table received lives in Phase 2:
+--
+--   grant select, insert, update on all tables in schema public to authenticated;
+--
+-- Phase 2 is migration 20260715130100. This table arrives in 20260715170000 —
+-- four migrations later. `on all tables` is a POINT-IN-TIME snapshot, not a
+-- standing rule, so every table added afterwards silently got nothing.
+--
+-- This is the same root cause as the Phase 11 security finding, pointed the
+-- other way. There, a blanket grant swept up a table that wanted no privilege
+-- (audit_events) and eroded a defence. Here, a blanket grant missed tables that
+-- needed one and left their policies as dead code. Same instrument, opposite
+-- failure, both silent.
+--
+-- THE FIX
+-- Grant this ONE table exactly the privileges Phase 2 gives every other
+-- business table, so its already-written policies finally run.
+--
+-- This does not weaken anything:
+--   * RLS stays ENABLED and FORCED on the table.
+--   * order_charges_read still demands app_private.is_active_staff().
+--   * order_charges_update still demands payment_correction or Owner.
+--   * DELETE stays revoked, matching Phase 2's global `revoke delete`.
+--   * anon receives nothing.
+--   * order_balance() stays SECURITY INVOKER — a Staff member still cannot read
+--     money for an order RLS hides from them. The privilege is the gate; the
+--     policy is the control. This restores the gate, not the control.
+--
+-- Deliberately NOT fixed here: claim_evidence, conditional_capabilities, and
+-- capability_validations have the identical latent defect (policies written,
+-- privileges never granted). They are out of scope for this balance fix and are
+-- reported separately rather than folded in silently.
+--
+-- Locked by supabase/tests/17_order_balance_authorization.test.sql, which
+-- executes order_balance() as a real Staff JWT — the check that would have
+-- caught this, and which no prior test performed.
+-- ============================================================================
+
+grant select, insert, update on public.official_order_charges to authenticated;
+
+-- Restated for this table rather than inherited, so the posture is readable in
+-- one place. Phase 2 revokes DELETE globally; charges are corrected, never
+-- deleted (approved decision §4: financial history is never silently
+-- overwritten).
+revoke delete on public.official_order_charges from authenticated;
+revoke all on public.official_order_charges from anon;
+
+comment on table public.official_order_charges is
+  'Approved charges on an Official Order. RLS enabled + FORCED; readable by an active staff member, updatable only with payment_correction or by the Owner. Phase 6 revoked the privilege and Phase 2''s blanket re-grant predated this table, so its policies were unreachable until migration 20260716210000 restored SELECT — which is why every order balance rendered as zero.';
