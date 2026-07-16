@@ -17,6 +17,7 @@ import type {
   PayableOrderRow,
   PaymentHistoryRow,
 } from '@/lib/payments/workspace';
+import { NewLayawayForm } from '@/components/payments/new-layaway-form';
 import { RecordPaymentForm } from '@/components/payments/record-payment-form';
 import { EmptyState } from '@/components/states/empty-state';
 import { BarChart } from '@/components/ui/bar-chart';
@@ -405,7 +406,24 @@ export function PaymentsWorkspace({
       ) : null}
 
       {tab === 'Layaway Accounts' ? (
-        <LayawayList rows={layaways} emptyTitle="No Layaway accounts" />
+        <>
+          {/* New Layaway Entry sits at the head of Layaway Accounts — it activates
+              a Layaway on a real Official Order. Gated on layaway monitoring; the
+              domain module re-checks server-side and the DB enforces the 20%. */}
+          {canMonitorLayaway ? (
+            <NewLayawayForm
+              payableOrders={payableOrders}
+              verifiedPayments={history
+                .filter((h) => h.status === 'verified' && !h.voided && !h.reversed)
+                .map((h) => ({
+                  paymentId: h.paymentId,
+                  orderNumber: h.orderNumber,
+                  verifiedAmount: h.verifiedAmount,
+                }))}
+            />
+          ) : null}
+          <LayawayList rows={layaways} emptyTitle="No Layaway accounts" />
+        </>
       ) : null}
 
       {tab === 'Installments' ? (
