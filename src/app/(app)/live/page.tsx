@@ -2,7 +2,12 @@ import type { Metadata } from 'next';
 
 import { LiveBatchesView } from '@/components/live/live-batches-view';
 import { getGrantedPermissions } from '@/lib/authz/guard';
-import { listLiveBatches } from '@/lib/live/batches';
+import {
+  listCaptureCustomers,
+  listLiveBatchItems,
+  listLiveBatches,
+  type LiveBatchItemRow,
+} from '@/lib/live/batches';
 
 export const metadata: Metadata = {
   title: 'Live — A.V. Jewelry Operations',
@@ -20,10 +25,21 @@ export const metadata: Metadata = {
  * (ADR §7, Bible §29.8).
  */
 export default async function LivePage() {
-  const [batches, permissions] = await Promise.all([
+  const [batches, customers, permissions] = await Promise.all([
     listLiveBatches(),
+    listCaptureCustomers(),
     getGrantedPermissions(),
   ]);
+
+  // Items are loaded for the batches that can still be captured against — a
+  // closed batch cannot take a claim, so it needs no item list.
+  const openBatches = batches.filter((b) => b.status !== 'closed');
+  const itemLists = await Promise.all(
+    openBatches.map((b) =>
+      listLiveBatchItems(b.id).then((items) => [b.id, items] as const),
+    ),
+  );
+  const batchItems: Record<string, LiveBatchItemRow[]> = Object.fromEntries(itemLists);
 
   return (
     <div className="space-y-4">
@@ -36,8 +52,12 @@ export default async function LivePage() {
 
       <LiveBatchesView
         batches={batches}
+        batchItems={batchItems}
+        customers={customers}
         canOperate={permissions.has('live_batch_operation')}
         canClose={permissions.has('live_batch_closure')}
+        canControlFlex={permissions.has('current_flex_item_control')}
+        canCapture={permissions.has('claim_capture')}
       />
     </div>
   );

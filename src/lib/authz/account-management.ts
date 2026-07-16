@@ -222,33 +222,123 @@ export async function removeScope(
  * Lists staff accounts for the Owner's management screen.
  * RLS restricts this to the Owner; a non-Owner would simply see nothing.
  */
-export async function listStaffAccounts(): Promise<
-  Array<{
-    id: string;
-    fullName: string;
-    roleKey: RoleKey;
-    isActive: boolean;
-    mfaEnrolled: boolean;
-  }>
-> {
+export type StaffAccountRow = {
+  id: string;
+  fullName: string;
+  roleKey: RoleKey;
+  isActive: boolean;
+  mfaEnrolled: boolean;
+  /** Explicit grants only. Nothing here is implied by the role (§5.13). */
+  permissions: PermissionKey[];
+  /** Scopes NARROW where a granted permission reaches; they grant nothing (§5). */
+  scopes: Array<{ id: string; label: string }>;
+};
+
+export async function listStaffAccounts(): Promise<StaffAccountRow[]> {
   await requireOwner();
   const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('staff_profiles')
-    .select('id, full_name, role_key, is_active, mfa_enrolled')
+    .select(
+      `id, full_name, role_key, is_active, mfa_enrolled,
+       staff_permission_grants ( permission_key ),
+       staff_scope_assignments ( scope_id, scopes ( id, label ) )`,
+    )
     .order('full_name');
 
   if (error || !data) {
     return [];
   }
 
+  return (data as unknown[]).map((row) => {
+    const r = row as Record<string, unknown>;
+
+    const grants = ((r.staff_permission_grants as unknown[]) ?? []).map(
+      (g) => (g as { permission_key: string }).permission_key as PermissionKey,
+    );
+
+    const scopes = ((r.staff_scope_assignments as unknown[]) ?? []).map((s) => {
+      const assignment = s as { scope_id: string; scopes: unknown };
+      const scope = Array.isArray(assignment.scopes)
+        ? (assignment.scopes[0] as { id: string; label: string } | undefined)
+        : (assignment.scopes as { id: string; label: string } | undefined);
+      return {
+        id: assignment.scope_id,
+        label: scope?.label ?? assignment.scope_id,
+      };
+    });
+
+    return {
+      id: r.id as string,
+      fullName: r.full_name as string,
+      roleKey: r.role_key as RoleKey,
+      isActive: r.is_active as boolean,
+      mfaEnrolled: r.mfa_enrolled as boolean,
+      permissions: grants.sort(),
+      scopes,
+    };
+  });
+}
+
+/** The approved scope catalog, for the Assign Scope control. Owner-only. */
+export async function listScopes(): Promise<Array<{ id: string; label: string }>> {
+  await requireOwner();
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('scopes')
+    .select('id, label')
+    .order('label');
+
+  if (error || !data) return [];
+
+  return data.map((row) => ({ id: row.id as string, label: row.label as string }));
+}
+
+/**
+ * Recent audit events for one account — the "View Audit Trail" control.
+ *
+ * Read-only and append-only underneath: `audit_events` refuses UPDATE and DELETE
+ * at the privilege, policy, and trigger layers (Phase 11). Attribution is a
+ * snapshot, so a renamed or deactivated actor still reads correctly here.
+ */
+export async function listAccountAuditTrail(
+  staffProfileId: string,
+  limit = 20,
+): Promise<
+  Array<{ occurredAt: string; action: string; entityType: string; outcome: string }>
+> {
+  await requireOwner();
+  const supabase = await createClient();
+
+  // Typed at the query rather than asserted afterwards: the audit trail is keyed
+  // on auth uid, and a wrong key here would silently return an empty trail —
+  // which reads as "this account did nothing", the most misleading possible
+  // answer from an audit screen.
+  const { data: profile } = await supabase
+    .from('staff_profiles')
+    .select('auth_user_id')
+    .eq('id', staffProfileId)
+    .maybeSingle<{ auth_user_id: string | null }>();
+
+  const authUserId = profile?.auth_user_id;
+  if (!authUserId) return [];
+
+  const { data, error } = await supabase
+    .from('audit_events')
+    .select('occurred_at, action, entity_type, outcome')
+    .eq('actor_auth_uid', authUserId)
+    .order('occurred_at', { ascending: false })
+    .limit(limit);
+
+  if (error || !data) return [];
+
   return data.map((row) => ({
-    id: row.id as string,
-    fullName: row.full_name as string,
-    roleKey: row.role_key as RoleKey,
-    isActive: row.is_active as boolean,
-    mfaEnrolled: row.mfa_enrolled as boolean,
+    occurredAt: row.occurred_at as string,
+    action: row.action as string,
+    entityType: row.entity_type as string,
+    outcome: row.outcome as string,
   }));
 }
 

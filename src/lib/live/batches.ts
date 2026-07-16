@@ -229,6 +229,86 @@ export async function transitionLiveBatch(input: unknown): Promise<LiveResult> {
  * Lists Live Batches the caller may see. RLS narrows this to their scope; the
  * query does not re-implement that filter, it relies on it.
  */
+export type LiveBatchItemRow = {
+  liveBatchItemId: string;
+  inventoryItemId: string;
+  itemCode: string;
+  itemName: string | null;
+  isCurrentFlexItem: boolean;
+  /** From the approved SQL. Advisory here: capture reserves nothing anyway. */
+  availableQuantity: number | null;
+};
+
+/**
+ * The items on one Live Batch, for Current Flex Item control and capture.
+ *
+ * Withdrawn items are excluded — a withdrawn item is not something to flex to.
+ */
+export async function listLiveBatchItems(
+  liveBatchId: string,
+): Promise<LiveBatchItemRow[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('live_batch_items')
+    .select(
+      'id, inventory_item_id, is_current_flex_item, inventory_items ( item_code, item_name )',
+    )
+    .eq('live_batch_id', liveBatchId)
+    .is('withdrawn_at', null)
+    .order('added_at', { ascending: true });
+
+  if (error || !data) return [];
+
+  const rows = data as unknown[];
+
+  const availability = await Promise.all(
+    rows.map((row) =>
+      supabase.rpc('available_quantity_for', {
+        p_item_id: (row as Record<string, unknown>).inventory_item_id as string,
+      }),
+    ),
+  );
+
+  return rows.map((row, index) => {
+    const r = row as Record<string, unknown>;
+    const item = Array.isArray(r.inventory_items)
+      ? (r.inventory_items[0] as { item_code: string; item_name: string | null })
+      : (r.inventory_items as { item_code: string; item_name: string | null } | null);
+
+    return {
+      liveBatchItemId: r.id as string,
+      inventoryItemId: r.inventory_item_id as string,
+      itemCode: item?.item_code ?? '—',
+      itemName: item?.item_name ?? null,
+      isCurrentFlexItem: r.is_current_flex_item === true,
+      availableQuantity:
+        typeof availability[index]?.data === 'number' ? availability[index].data : null,
+    };
+  });
+}
+
+/** Customers a claim can be captured against. RLS scopes this. */
+export async function listCaptureCustomers(
+  limit = 200,
+): Promise<Array<{ id: string; displayName: string }>> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('customers')
+    .select('id, display_name')
+    .eq('is_active', true)
+    .order('display_name')
+    .limit(limit);
+
+  if (error || !data) return [];
+
+  return data.map((row) => ({
+    id: row.id as string,
+    displayName: row.display_name as string,
+  }));
+}
+
 export async function listLiveBatches(): Promise<
   Array<{ id: string; batchReference: string; title: string; status: string }>
 > {

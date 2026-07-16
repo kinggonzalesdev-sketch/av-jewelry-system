@@ -8,7 +8,9 @@ import {
   transitionLiveBatchAction,
   type ActionState,
 } from '@/lib/live/actions';
+import type { LiveBatchItemRow } from '@/lib/live/batches';
 import { LIVE_BATCH_ALLOWED_TRANSITIONS } from '@/lib/validation/live';
+import { LiveCapturePanel } from '@/components/live/live-capture-panel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -34,12 +36,21 @@ export type LiveBatchRow = {
  */
 export function LiveBatchesView({
   batches,
+  batchItems,
+  customers,
   canOperate,
   canClose,
+  canControlFlex,
+  canCapture,
 }: {
   batches: LiveBatchRow[];
+  /** Items per batch id, for Current Flex Item control and capture. */
+  batchItems: Record<string, LiveBatchItemRow[]>;
+  customers: Array<{ id: string; displayName: string }>;
   canOperate: boolean;
   canClose: boolean;
+  canControlFlex: boolean;
+  canCapture: boolean;
 }) {
   const [createState, createAction, creating] = useActionState<ActionState, FormData>(
     createLiveBatchAction,
@@ -156,6 +167,23 @@ export function LiveBatchesView({
                       ) : null}
                     </div>
                   </CardContent>
+
+                  {/* Current Flex Item control and capture live with the batch
+                      they belong to. Rendered only for an open batch, and only
+                      for a caller holding one of the two permissions — both of
+                      which are re-checked server-side at execution. */}
+                  {(canControlFlex || canCapture) && batch.status !== 'closed' && (
+                    <CardContent className="pt-0">
+                      <LiveCapturePanel
+                        liveBatchId={batch.id}
+                        batchStatus={batch.status}
+                        items={batchItems[batch.id] ?? []}
+                        customers={customers}
+                        canControlFlex={canControlFlex}
+                        canCapture={canCapture}
+                      />
+                    </CardContent>
+                  )}
                 </Card>
               </li>
             );

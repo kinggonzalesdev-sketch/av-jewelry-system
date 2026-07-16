@@ -14,8 +14,10 @@ import type {
   EvidenceQueueRow,
   LayawayRow,
   OverviewCards,
+  PayableOrderRow,
   PaymentHistoryRow,
 } from '@/lib/payments/workspace';
+import { RecordPaymentForm } from '@/components/payments/record-payment-form';
 import { EmptyState } from '@/components/states/empty-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -58,6 +60,7 @@ export function PaymentsWorkspace({
   completed,
   history,
   range,
+  payableOrders,
   canVerify,
   canMonitorLayaway,
   canRequestForfeiture,
@@ -71,6 +74,7 @@ export function PaymentsWorkspace({
   completed: LayawayRow[];
   history: PaymentHistoryRow[];
   range: DateRangeKey;
+  payableOrders: PayableOrderRow[];
   canVerify: boolean;
   canMonitorLayaway: boolean;
   canRequestForfeiture: boolean;
@@ -245,6 +249,17 @@ export function PaymentsWorkspace({
             {n.success}
           </p>
         ) : null,
+      )}
+
+      {/* Record Payment sits at the head of the Payment Verification tab because
+          that is the step BEFORE verification, and the two must stay visibly
+          distinct: what is recorded here counts toward no balance until someone
+          verifies it below. Gated on the same permission the domain module
+          re-checks server-side — the gate here is convenience, not the control. */}
+      {tab === 'Payment Verification' && canVerify && (
+        <div className="mb-4">
+          <RecordPaymentForm orders={payableOrders} />
+        </div>
       )}
 
       {tab === 'Payment Verification' ? (

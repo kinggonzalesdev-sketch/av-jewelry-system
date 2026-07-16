@@ -1,8 +1,13 @@
 import type { Metadata } from 'next';
 
+import { StaffConsole } from '@/components/admin/staff-console';
 import { NotAuthorized } from '@/components/states/not-authorized';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { listStaffAccounts } from '@/lib/authz/account-management';
+import {
+  listAccountAuditTrail,
+  listScopes,
+  listStaffAccounts,
+} from '@/lib/authz/account-management';
 import { requireActiveStaff } from '@/lib/authz/guard';
 
 export const metadata: Metadata = {
@@ -37,10 +42,20 @@ export default async function StaffManagementPage() {
     );
   }
 
-  const accounts = await listStaffAccounts();
+  const [accounts, scopes] = await Promise.all([listStaffAccounts(), listScopes()]);
+
   const activeSelectedAdmins = accounts.filter(
     (a) => a.roleKey === 'selected_admin' && a.isActive,
   ).length;
+
+  // Audit trails are loaded server-side per account: the trail is Owner-only and
+  // must not become a client-callable endpoint just to power a disclosure toggle.
+  const trails = await Promise.all(
+    accounts.map((a) =>
+      listAccountAuditTrail(a.id).then((events) => [a.id, events] as const),
+    ),
+  );
+  const auditTrails = Object.fromEntries(trails);
 
   return (
     <div className="space-y-4">
@@ -69,45 +84,21 @@ export default async function StaffManagementPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Accounts</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {accounts.length === 0 ? (
+      {accounts.length === 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Accounts</CardTitle>
+          </CardHeader>
+          <CardContent>
             <p className="text-sm text-muted-foreground" data-testid="empty-state">
               No staff accounts exist yet. Accounts are created through an authorized
               internal process — there is no public registration.
             </p>
-          ) : (
-            <ul className="divide-y divide-border">
-              {accounts.map((account) => (
-                <li
-                  key={account.id}
-                  className="flex items-center justify-between gap-3 py-3"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{account.fullName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {account.roleKey.replace('_', ' ')}
-                      {account.mfaEnrolled ? ' · MFA enrolled' : ' · no MFA'}
-                    </p>
-                  </div>
-                  <span
-                    className={
-                      account.isActive
-                        ? 'shrink-0 rounded border border-border px-2 py-0.5 text-xs'
-                        : 'shrink-0 rounded border border-border px-2 py-0.5 text-xs text-muted-foreground'
-                    }
-                  >
-                    {account.isActive ? 'Active' : 'Disabled'}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      ) : (
+        <StaffConsole accounts={accounts} scopes={scopes} auditTrails={auditTrails} />
+      )}
 
       <Card>
         <CardHeader>
@@ -124,8 +115,10 @@ export default async function StaffManagementPage() {
         <CardContent className="text-sm text-muted-foreground">
           <p>
             Creating or inviting an account requires the Supabase Admin API and the
-            service-role key, which is intentionally not wired in Phase 2. Create
-            development accounts directly in your local Supabase project.
+            service-role key, which bypasses Row Level Security entirely and is
+            intentionally not wired (ADR §11). It is the one path that can mint
+            credentials, so it stays an explicit decision rather than a side-effect of a
+            UI pass. Create accounts directly in your Supabase project.
           </p>
         </CardContent>
       </Card>

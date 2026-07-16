@@ -6,6 +6,7 @@ import {
   layawayCollectionTrend,
   layawayStatusBreakdown,
   listLayaways,
+  listPayableOrders,
   overviewCards,
   paymentHistory,
   paymentStatusBreakdown,
@@ -56,6 +57,7 @@ export default async function PaymentsPage({
     layaways,
     completed,
     history,
+    payableOrders,
     permissions,
   ] = await Promise.all([
     overviewCards(bounds),
@@ -66,6 +68,7 @@ export default async function PaymentsPage({
     listLayaways(['active', 'overdue', 'grace_period', 'forfeiture_eligible']),
     listLayaways(['completed']),
     paymentHistory(bounds),
+    listPayableOrders(),
     getGrantedPermissions(),
   ]);
 
@@ -88,6 +91,7 @@ export default async function PaymentsPage({
         completed={completed}
         history={history}
         range={range}
+        payableOrders={payableOrders}
         canVerify={permissions.has('payment_verification')}
         canMonitorLayaway={permissions.has('layaway_monitoring')}
         canRequestForfeiture={permissions.has('initiate_high_risk_action')}

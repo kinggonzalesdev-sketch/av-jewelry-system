@@ -14,6 +14,7 @@ import {
 } from '@/lib/fulfillment/actions';
 import type { ApprovalRow, FulfillmentRow } from '@/lib/fulfillment/service';
 import { formatPeso } from '@/lib/payments/format';
+import { PrepareFulfillmentForm } from '@/components/fulfillment/prepare-fulfillment-form';
 import { EmptyState } from '@/components/states/empty-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -290,6 +291,11 @@ export function FulfillmentWorkspace({
                       release needs verified payment; it is permission-based, not
                       Owner-only. Requesting an exceptional release releases nothing.
                     </p>
+
+                    {/* Gated on the permission the domain module re-checks
+                        server-side. Hiding it here is convenience; the control is
+                        requirePermission('fulfillment_preparation') underneath. */}
+                    {canPrepare && <PrepareFulfillmentForm row={f} />}
 
                     {!canPrepare && !canRelease ? (
                       <p className="text-xs text-muted-foreground">

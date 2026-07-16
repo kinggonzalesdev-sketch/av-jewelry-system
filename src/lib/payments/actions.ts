@@ -8,7 +8,7 @@ import {
   recordInstallment,
   requestForfeiture,
 } from '@/lib/payments/layaway';
-import { verifyPayment } from '@/lib/payments/verification';
+import { recordPayment, verifyPayment } from '@/lib/payments/verification';
 
 /**
  * Phase 6 server actions (Bible §16, §17).
@@ -22,9 +22,81 @@ export type PaymentActionState = { error: string | null; success: string | null 
 
 export const EMPTY_PAYMENT_STATE: PaymentActionState = { error: null, success: null };
 
+/**
+ * Recording carries one extra fact the caller must see: whether the reference
+ * number collided with an existing payment. It is FLAGGED, never rejected
+ * (approved decision §3) — rejecting it would hide the collision instead of
+ * putting it in front of a human.
+ */
+export type RecordPaymentActionState = PaymentActionState & {
+  duplicateReferenceFlagged: boolean;
+};
+
+export const EMPTY_RECORD_PAYMENT_STATE: RecordPaymentActionState = {
+  error: null,
+  success: null,
+  duplicateReferenceFlagged: false,
+};
+
 function text(formData: FormData, name: string): string | null {
   const value = formData.get(name);
   return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/**
+ * Record a submitted payment.
+ *
+ * The payment is born `submitted_unverified` — always. This action cannot
+ * verify, cannot mark Paid in Full, and takes no `status` or `verifiedAmount`
+ * field, because recording and verifying are different acts by different
+ * authority (§16). Collapsing them would let a screenshot pay for a ring.
+ *
+ * ⚠️  NO CARD DATA. There is no field here for a card number, CVV, or PIN, and
+ *     none may be added — `provider` holds the channel and `referenceNumber` the
+ *     approval reference, which is the entire permitted card footprint (§3).
+ *     Zod strips anything else a caller sends.
+ */
+export async function recordPaymentAction(
+  _prev: RecordPaymentActionState,
+  formData: FormData,
+): Promise<RecordPaymentActionState> {
+  // Evidence is a REFERENCE, not an upload. V1 records where the proof lives;
+  // Storage wiring was never built (documented, not forgotten), so the form
+  // captures the reference the staff member can produce on request rather than
+  // pretending a file was stored.
+  const evidenceRef = text(formData, 'evidenceReference');
+  const evidenceNote = text(formData, 'evidenceNote');
+
+  const result = await recordPayment({
+    officialOrderId: text(formData, 'officialOrderId'),
+    amount: text(formData, 'amount'),
+    paymentMethod: text(formData, 'paymentMethod'),
+    referenceNumber: text(formData, 'referenceNumber'),
+    provider: text(formData, 'provider'),
+    transactedAt: text(formData, 'transactedAt'),
+    collectionLocation: text(formData, 'collectionLocation'),
+    note: text(formData, 'note'),
+    evidence: evidenceRef
+      ? [{ storagePath: evidenceRef, note: evidenceNote }]
+      : undefined,
+  });
+
+  if (!result.ok) {
+    return { error: result.error, success: null, duplicateReferenceFlagged: false };
+  }
+
+  revalidatePath('/orders/payments');
+
+  return {
+    error: null,
+    duplicateReferenceFlagged: result.duplicateReferenceFlagged,
+    // Says exactly what happened, and what did NOT. An operator who reads
+    // "payment recorded" and walks away believing the order is paid is the
+    // failure this wording exists to prevent.
+    success: result.duplicateReferenceFlagged
+      ? 'Payment evidence recorded as UNVERIFIED — and its reference number matches an existing payment. Flagged for review, not rejected. It counts toward no balance until verified.'
+      : 'Payment evidence recorded as UNVERIFIED. It counts toward no balance until someone with Payment Verification verifies it.',
+  };
 }
 
 export async function verifyPaymentAction(

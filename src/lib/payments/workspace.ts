@@ -250,6 +250,77 @@ export type EvidenceQueueRow = {
 };
 
 /**
+ * An Official Order a payment may be recorded against, with the approved money
+ * figures already decided by the database.
+ */
+export type PayableOrderRow = {
+  officialOrderId: string;
+  orderNumber: string;
+  invoiceNumber: string;
+  customerDisplayName: string;
+  status: string;
+  /** Item total + approved fee/charges − approved discounts. Already a string. */
+  totalAmountPayable: string;
+  /** Verified payments ONLY. Evidence never counts here. */
+  verifiedNetPayments: string;
+  /** max(payable − verified, 0). Never negative. */
+  outstandingBalance: string;
+  paidInFull: boolean;
+};
+
+/**
+ * Official Orders a payment can be recorded against (Bible §16).
+ *
+ * Cancelled orders are excluded — recording a payment against a cancelled order
+ * is not a money decision the UI should offer. Paid-in-full orders are KEPT:
+ * an overpayment is a real event that must be recordable and flagged, never
+ * silently prevented (approved decision §4).
+ *
+ * Every peso figure comes from `order_balance()`. This function does no money
+ * arithmetic; a second implementation in TypeScript could drift from the SQL the
+ * database enforces.
+ */
+export async function listPayableOrders(limit = 50): Promise<PayableOrderRow[]> {
+  const supabase = await createClient();
+
+  const { data } = await supabase
+    .from('official_orders')
+    .select('id, order_number, invoice_number, status, customers ( display_name )')
+    .neq('status', 'cancelled')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  const rows = (data ?? []) as unknown[];
+
+  // The balance for each order comes from the approved SQL, one call per order.
+  const balances = await Promise.all(
+    rows.map((row) =>
+      supabase.rpc('order_balance', {
+        p_order_id: (row as Record<string, unknown>).id as string,
+      }),
+    ),
+  );
+
+  return rows.map((row, index) => {
+    const r = row as Record<string, unknown>;
+    const customer = one<{ display_name: string }>(r.customers);
+    const balance = (balances[index]?.data ?? {}) as Record<string, unknown>;
+
+    return {
+      officialOrderId: r.id as string,
+      orderNumber: (r.order_number as string | null) ?? '—',
+      invoiceNumber: (r.invoice_number as string | null) ?? '—',
+      customerDisplayName: customer?.display_name ?? 'Unknown',
+      status: (r.status as string | null) ?? 'unknown',
+      totalAmountPayable: moneyString(balance.total_amount_payable),
+      verifiedNetPayments: moneyString(balance.verified_net_payments),
+      outstandingBalance: moneyString(balance.outstanding_balance),
+      paidInFull: balance.paid_in_full === true,
+    };
+  });
+}
+
+/**
  * Payment Verification queue: submitted payments awaiting a human decision.
  * Recording is not verifying — these count toward nothing until verified.
  */

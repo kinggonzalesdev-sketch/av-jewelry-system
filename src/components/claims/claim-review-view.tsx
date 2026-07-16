@@ -8,6 +8,7 @@ import {
   confirmClaimAction,
   reprintLabelAction,
   retryPrintAction,
+  voidLabelJobAction,
   type ConfirmActionState,
   type LabelActionState,
 } from '@/lib/claims/actions';
@@ -43,6 +44,10 @@ export function ClaimReviewView({
     EMPTY_LABEL_STATE,
   );
 
+  const [voidState, voidAction, voiding] = useActionState<LabelActionState, FormData>(
+    voidLabelJobAction,
+    EMPTY_LABEL_STATE,
+  );
   const [reprintState, reprintAction, reprinting] = useActionState<
     LabelActionState,
     FormData
@@ -138,6 +143,90 @@ export function ClaimReviewView({
       ) : null}
       {confirmState.success ? (
         <p className="text-sm text-muted-foreground">{confirmState.success}</p>
+      ) : null}
+
+      {/* Label controls for a job that DID print.
+          Retry belongs to a failed job; a reprint deliberately prints again one
+          that already succeeded, and voiding cancels the paper. Without this
+          block those two had no path in the UI at all — the label job existed
+          and nothing could act on it. */}
+      {confirmState.confirmed && !confirmState.printProblem ? (
+        <Card>
+          <CardContent className="space-y-3 pt-6">
+            <p className="text-sm font-semibold">Label job</p>
+
+            <div className="flex flex-wrap items-end gap-2">
+              <form action={reprintAction} className="flex items-end gap-2">
+                <input
+                  type="hidden"
+                  name="labelJobId"
+                  value={confirmState.confirmed.labelJobId}
+                />
+                <div>
+                  <Label htmlFor="reprint-reason-ok" className="text-xs">
+                    Reprint reason
+                  </Label>
+                  <Input
+                    id="reprint-reason-ok"
+                    name="reason"
+                    required
+                    placeholder="Why reprint?"
+                    className="h-8 w-48"
+                  />
+                </div>
+                <Button type="submit" size="sm" variant="outline" disabled={reprinting}>
+                  Reprint with Reason
+                </Button>
+              </form>
+
+              <form action={voidAction} className="flex items-end gap-2">
+                <input
+                  type="hidden"
+                  name="labelJobId"
+                  value={confirmState.confirmed.labelJobId}
+                />
+                <div>
+                  <Label htmlFor="void-reason" className="text-xs">
+                    Void reason
+                  </Label>
+                  <Input
+                    id="void-reason"
+                    name="reason"
+                    required
+                    placeholder="Why void?"
+                    className="h-8 w-48"
+                  />
+                </div>
+                <Button type="submit" size="sm" variant="destructive" disabled={voiding}>
+                  Void Label Job
+                </Button>
+              </form>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              A reprint produces another sheet of paper — it never creates a second claim
+              or a second reservation. Voiding cancels the <strong>label only</strong>:
+              the claim stands and the stock stays reserved.
+            </p>
+
+            {reprintState.error ? (
+              <p role="alert" className="text-sm text-destructive">
+                {reprintState.error}
+              </p>
+            ) : null}
+            {reprintState.success ? (
+              <p className="text-sm text-muted-foreground">{reprintState.success}</p>
+            ) : null}
+            {voidState.error ? (
+              <p role="alert" className="text-sm text-destructive">
+                {voidState.error}
+              </p>
+            ) : null}
+            {voidState.success ? (
+              <p className="text-sm text-muted-foreground">{voidState.success}</p>
+            ) : null}
+          </CardContent>
+        </Card>
       ) : null}
 
       <ul className="space-y-3">
