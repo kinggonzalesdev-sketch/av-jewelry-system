@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { PageHeader } from '@/components/ui/page-primitives';
 
 import { FulfillmentWorkspace } from '@/components/fulfillment/fulfillment-workspace';
 import { getGrantedPermissions, requireActiveStaff } from '@/lib/authz/guard';
@@ -29,13 +30,11 @@ export default async function FulfillmentPage() {
   ]);
 
   return (
-    <div className="space-y-4">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Fulfillment</h1>
-        <p className="text-sm text-muted-foreground">
-          Shipping and pickup preparation, release, and the six Owner approvals.
-        </p>
-      </header>
+    <div>
+      <PageHeader
+        title="Fulfillment"
+        description="Shipping and pickup preparation, release, and the six Owner approvals."
+      />
 
       <FulfillmentWorkspace
         fulfillments={fulfillments}

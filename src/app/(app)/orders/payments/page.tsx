@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { PageHeader } from '@/components/ui/page-primitives';
 
 import { PaymentsWorkspace } from '@/components/payments/payments-workspace';
 import { getGrantedPermissions } from '@/lib/authz/guard';
@@ -73,13 +74,11 @@ export default async function PaymentsPage({
   ]);
 
   return (
-    <div className="space-y-4">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Payments &amp; Layaway</h1>
-        <p className="text-sm text-muted-foreground">
-          Payment verification and the full layaway lifecycle.
-        </p>
-      </header>
+    <div>
+      <PageHeader
+        title="Payments & Layaway"
+        description="Payment verification and the full layaway lifecycle."
+      />
 
       <PaymentsWorkspace
         cards={cards}

@@ -51,7 +51,9 @@ describe('approved module shape is preserved', () => {
 
   it('names the module Payments & Layaway', () => {
     const page = read('src', 'app', '(app)', 'orders', 'payments', 'page.tsx');
-    expect(page).toContain('Payments &amp; Layaway');
+    // The title is now a PageHeader string prop, so the ampersand is raw — not
+    // the &amp; HTML entity it needed when it was JSX text.
+    expect(page).toContain('Payments & Layaway');
   });
 });
 
