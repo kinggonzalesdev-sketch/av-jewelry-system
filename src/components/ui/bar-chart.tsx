@@ -29,11 +29,15 @@ export function BarChart({
   ariaLabel,
   valueFormat = (v) => String(v),
   emptyLabel = 'No data to chart.',
+  noDataLabel = 'No data yet',
 }: {
   data: BarDatum[];
   ariaLabel: string;
   valueFormat?: (value: number) => string;
+  /** Shown when there are NO categories at all. */
   emptyLabel?: string;
+  /** Shown inside the chart when categories exist but every value is zero. */
+  noDataLabel?: string;
 }) {
   const max = data.reduce((m, d) => Math.max(m, d.value), 0);
 
@@ -57,7 +61,7 @@ export function BarChart({
           className="mb-1.5 text-xs font-medium text-muted-foreground"
           data-testid="bar-chart-nodata"
         >
-          No data yet
+          {noDataLabel}
         </p>
       ) : null}
       <ul className="space-y-1.5">

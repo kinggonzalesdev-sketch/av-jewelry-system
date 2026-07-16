@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useState } from 'react';
+import { useActionState, useMemo, useState } from 'react';
 
 import {
   acknowledgeNotificationAction,
@@ -26,20 +26,71 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 /**
- * Dashboard (Bible §7, §23, §25, §26, §31).
+ * Dashboard Profile — the approved prototype's Dashboard Report structure, backed
+ * by REAL aggregation (Bible §7, §23, §25, §26, §31; FINAL-UI-SOURCE-OF-TRUTH §4).
  *
- * ⚠️  THE ORDER TILES ARE DISJOINT AND MUST STAY THAT WAY.
- *     An Active Layaway IS an Official Order. It appears in exactly one tile.
- *     The tiles sum to the total — the screen shows that sum so a wrong number
- *     is visible rather than silent. Queues are rendered in a SEPARATE section
- *     because they overlap the tiles by nature.
+ * Restored to match the /preview prototype: two primary tabs (Dashboard, Gross
+ * Profit), a date-range selector with the current range shown, Refresh, and
+ * Export Reports; metric cards, an Order Status chart, and a Sales for the Period
+ * chart. The existing real Reports / Search / Reminders / Audit functionality is
+ * RETAINED (regression rule — never removed).
  *
- * Seeing a count grants nothing: quick actions are permission-gated, and the
- * server re-checks regardless.
+ * Honesty that must not regress:
+ *   - Every figure is real aggregation. A FAILED read shows an explicit error,
+ *     never a false zero (ReadError).
+ *   - Charts stay VISIBLE at zero: the categories/axis render and the plot area
+ *     says "No data for this period" — the container is never hidden.
+ *   - The ORDER TILES ARE DISJOINT: an Active Layaway IS an Official Order and
+ *     appears in exactly one bucket; the tiles sum to the total.
+ *   - Gross Profit is honest-unavailable: no cost/COGS rules exist, so no numbers
+ *     are invented.
  */
 
-const TABS = ['Totals', 'Queues', 'Search', 'Reports', 'Reminders', 'Audit'] as const;
+const TABS = [
+  'Dashboard',
+  'Gross Profit',
+  'Reports',
+  'Search',
+  'Reminders',
+  'Audit',
+] as const;
 type Tab = (typeof TABS)[number];
+
+const RANGES = [
+  { key: 'today', label: 'Today', days: 1 },
+  { key: '7d', label: 'Last 7 days', days: 7 },
+  { key: '14d', label: 'Last 14 days', days: 14 },
+  { key: '30d', label: 'Last 30 days', days: 30 },
+  { key: 'month', label: 'This Month', days: 0 },
+  { key: 'custom', label: 'Custom', days: 0 },
+] as const;
+type RangeKey = (typeof RANGES)[number]['key'];
+
+function isoDay(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/** Inclusive [start, end] ISO day bounds for a range. Client-side and honest:
+ *  it only scopes which real trend days are shown, never invents data. */
+function rangeBounds(
+  range: RangeKey,
+  from: string,
+  to: string,
+): { start: string; end: string } {
+  const today = new Date();
+  const end = isoDay(today);
+  if (range === 'custom') {
+    return { start: from || end, end: to || end };
+  }
+  if (range === 'month') {
+    const first = new Date(today.getFullYear(), today.getMonth(), 1);
+    return { start: isoDay(first), end };
+  }
+  const def = RANGES.find((r) => r.key === range)?.days ?? 30;
+  const start = new Date(today);
+  start.setDate(start.getDate() - (def - 1));
+  return { start: isoDay(start), end };
+}
 
 export function DashboardView({
   counts,
@@ -62,7 +113,10 @@ export function DashboardView({
   canVerifyPayments: boolean;
   canMonitorInventory: boolean;
 }) {
-  const [tab, setTab] = useState<Tab>('Totals');
+  const [tab, setTab] = useState<Tab>('Dashboard');
+  const [range, setRange] = useState<RangeKey>('30d');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
 
   const [refreshState, refresh, refreshing] = useActionState<
     DashboardActionState,
@@ -79,6 +133,18 @@ export function DashboardView({
 
   const notices = [refreshState, ackState, reportState];
 
+  const bounds = rangeBounds(range, from, to);
+
+  // Real 30-day collection trend, scoped to the selected range. Filtering only
+  // hides/shows real days — it never fabricates a point. `weight` scales the bar;
+  // `verified` is the authoritative money string shown as-is (no frontend math).
+  const trendInRange = useMemo(() => {
+    if (!metrics) return [];
+    return metrics.collectionTrend.filter(
+      (p) => p.day >= bounds.start && p.day <= bounds.end,
+    );
+  }, [metrics, bounds.start, bounds.end]);
+
   const bucketSum = counts
     ? counts.ordersActiveLayaway +
       counts.ordersAwaitingPayment +
@@ -89,29 +155,95 @@ export function DashboardView({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <div className="flex flex-wrap gap-1.5" role="tablist">
-          {TABS.map((t) => (
-            <Button
-              key={t}
-              type="button"
-              role="tab"
-              aria-selected={tab === t}
-              size="sm"
-              variant={tab === t ? 'default' : 'outline'}
-              onClick={() => setTab(t)}
-            >
-              {t}
-            </Button>
-          ))}
-        </div>
+      {/* ---- Header: date range + current range + Refresh + Export ---------- */}
+      <Card>
+        <CardContent className="space-y-2.5 pt-4">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {RANGES.map((r) => (
+              <Button
+                key={r.key}
+                type="button"
+                size="sm"
+                variant={range === r.key ? 'default' : 'outline'}
+                aria-pressed={range === r.key}
+                onClick={() => setRange(r.key)}
+                data-testid={`dash-range-${r.key}`}
+              >
+                {r.label}
+              </Button>
+            ))}
+            <div className="ml-auto flex items-center gap-1.5">
+              <form action={refresh}>
+                <Button type="submit" size="sm" variant="outline" disabled={refreshing}>
+                  {refreshing ? 'Refreshing…' : '⟳ Refresh'}
+                </Button>
+              </form>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setTab('Reports')}
+                data-testid="dash-export"
+              >
+                ⭳ Export Reports
+              </Button>
+            </div>
+          </div>
 
-        {/* Manual refresh (§7) — re-reads, changes nothing. */}
-        <form action={refresh} className="ml-auto">
-          <Button type="submit" size="sm" variant="outline" disabled={refreshing}>
-            {refreshing ? 'Refreshing…' : '⟳ Refresh'}
+          {range === 'custom' ? (
+            <div className="grid gap-2 sm:grid-cols-2 lg:max-w-md">
+              <div>
+                <Label htmlFor="range-from" className="text-xs">
+                  Start date
+                </Label>
+                <Input
+                  id="range-from"
+                  type="date"
+                  value={from}
+                  onChange={(e) => setFrom(e.target.value)}
+                  className="h-8"
+                />
+              </div>
+              <div>
+                <Label htmlFor="range-to" className="text-xs">
+                  End date
+                </Label>
+                <Input
+                  id="range-to"
+                  type="date"
+                  value={to}
+                  onChange={(e) => setTo(e.target.value)}
+                  className="h-8"
+                />
+              </div>
+            </div>
+          ) : null}
+
+          <p className="text-xs text-muted-foreground" data-testid="dash-range-active">
+            Showing <strong className="text-foreground">{bounds.start}</strong> to{' '}
+            <strong className="text-foreground">{bounds.end}</strong>. The range scopes
+            the Sales for the Period chart to real recorded days; export stays
+            permission-gated.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* ---- Tabs ----------------------------------------------------------- */}
+      <div className="flex flex-wrap gap-1.5" role="tablist">
+        {TABS.map((t) => (
+          <Button
+            key={t}
+            type="button"
+            role="tab"
+            aria-selected={tab === t}
+            size="sm"
+            variant={tab === t ? 'default' : 'outline'}
+            onClick={() => setTab(t)}
+            data-testid={`dash-tab-${t.replace(/\s+/g, '-').toLowerCase()}`}
+          >
+            {t}
           </Button>
-        </form>
+        ))}
       </div>
 
       {notices.map((n, i) =>
@@ -129,16 +261,17 @@ export function DashboardView({
         ) : null,
       )}
 
-      {tab === 'Totals' ? (
-        metrics === null ? (
-          // A FAILED read, not zero business — say so, never a false zero.
+      {/* ================= DASHBOARD TAB ================= */}
+      {tab === 'Dashboard' ? (
+        metrics === null || counts === null ? (
           <ReadError
-            title="Business totals unavailable"
-            detail="The dashboard totals could not be read."
+            title="Dashboard could not be loaded"
+            detail="The dashboard totals or counts could not be read."
           />
         ) : (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {/* Metric cards — real business totals. */}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
               <MetricCard
                 label="Total Sales"
                 value={formatPeso(metrics.totalSales)}
@@ -152,133 +285,27 @@ export function DashboardView({
                 label="Outstanding Balance"
                 value={formatPeso(metrics.outstandingBalance)}
               />
+              <MetricCard label="Sales Today" value={formatPeso(metrics.salesToday)} />
+              <MetricCard label="Sales This Week" value={formatPeso(metrics.salesWeek)} />
+              <MetricCard
+                label="Sales This Month"
+                value={formatPeso(metrics.salesMonth)}
+              />
             </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Sales by period</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <MetricCard label="Today" value={formatPeso(metrics.salesToday)} />
-                  <MetricCard label="This Week" value={formatPeso(metrics.salesWeek)} />
-                  <MetricCard label="This Month" value={formatPeso(metrics.salesMonth)} />
-                  <MetricCard
-                    label="Avg Order Value"
-                    value={formatPeso(metrics.averageOrderValue)}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Breakdown</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-                  <MetricCard
-                    label="Full-Payment Sales"
-                    value={formatPeso(metrics.fullPaymentSales)}
-                  />
-                  <MetricCard
-                    label="Layaway Sales"
-                    value={formatPeso(metrics.totalLayawaySales)}
-                  />
-                  <MetricCard
-                    label="Layaway Collections"
-                    value={formatPeso(metrics.layawayCollections)}
-                  />
-                  <MetricCard
-                    label="Pending Payments"
-                    value={formatPeso(metrics.pendingPayments)}
-                  />
-                  <MetricCard
-                    label="Cancelled Amount"
-                    value={formatPeso(metrics.cancelledAmount)}
-                  />
-                  <MetricCard
-                    label="Forfeited Amount"
-                    value={formatPeso(metrics.forfeitedAmount)}
-                  />
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {metrics.totalOfficialOrders} Official Orders. Verified money only —
-                  unverified evidence is not counted as collected. On-screen totals are
-                  visible to all staff; export stays permission-gated.
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  Collection Trend (last 30 days)
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <BarChart
-                  ariaLabel="Verified collections per day"
-                  data={metrics.collectionTrend.map((p) => ({
-                    label: p.day.slice(5),
-                    value: p.weight,
-                    display: formatPeso(p.verified),
-                  }))}
-                  emptyLabel="No verified collections in the last 30 days."
-                />
-              </CardContent>
-            </Card>
-          </div>
-        )
-      ) : null}
-
-      {tab === 'Queues' ? (
-        counts === null ? (
-          // A FAILED read, not an empty result — say so loudly (never a zero).
-          <ReadError
-            title="Counts unavailable"
-            detail="The dashboard counts could not be read."
-          />
-        ) : (
-          <div className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Official Orders</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-                  {(
-                    [
-                      ['Active Layaway', counts.ordersActiveLayaway],
-                      ['Awaiting Payment', counts.ordersAwaitingPayment],
-                      ['For Fulfillment', counts.ordersForFulfillment],
-                      ['Closed', counts.ordersClosed],
-                      ['Cancelled', counts.ordersCancelled],
-                    ] as const
-                  ).map(([label, value]) => (
-                    <MetricCard key={label} label={label} value={value} />
-                  ))}
-                </div>
-
-                {/*
-                  The sum is shown on purpose. These tiles are disjoint, so it
-                  must equal the total — printing both makes a double-count
-                  visible instead of silent.
-                */}
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {bucketSum} of {counts.totalOfficialOrders} Official Orders. These tiles
-                  are non-additive by construction: an Active Layaway <strong>is</strong>{' '}
-                  an Official Order and appears in exactly one tile, never two.
-                </p>
-
-                {/*
-                  Real graph — the SAME disjoint bucket counts from
-                  dashboard_counts(), drawn to scale. No sample arrays; the chart
-                  and the tiles are one aggregation.
-                */}
-                <div className="mt-3 border-t border-border pt-3">
+            {/* Charts row: Order Status + Sales for the Period. Both stay visible
+                at zero with "No data for this period" (never hidden). */}
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Order Status</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {/* The disjoint Official-Order buckets, always the same five
+                      categories so the chart is present even at zero. */}
                   <BarChart
                     ariaLabel="Official Orders by status"
+                    noDataLabel="No data for this period"
                     data={[
                       { label: 'Active Layaway', value: counts.ordersActiveLayaway },
                       { label: 'Awaiting Payment', value: counts.ordersAwaitingPayment },
@@ -286,47 +313,70 @@ export function DashboardView({
                       { label: 'Closed', value: counts.ordersClosed },
                       { label: 'Cancelled', value: counts.ordersCancelled },
                     ]}
-                    emptyLabel="No Official Orders to chart yet."
                   />
-                </div>
-              </CardContent>
-            </Card>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {bucketSum} of {counts.totalOfficialOrders} Official Orders. These
+                    tiles are non-additive by construction: an Active Layaway{' '}
+                    <strong>is</strong> an Official Order and appears in exactly one tile,
+                    never two. Claims are not Official Orders. Never add these to the
+                    order tiles.
+                  </p>
+                </CardContent>
+              </Card>
 
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Sales for the Period</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <BarChart
+                    ariaLabel="Verified collections per day in the selected range"
+                    noDataLabel="No data for this period"
+                    emptyLabel="No data for this period"
+                    data={trendInRange.map((p) => ({
+                      label: p.day.slice(5),
+                      value: p.weight,
+                      display: formatPeso(p.verified),
+                    }))}
+                  />
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Verified collections per day, {trendInRange.length} day(s) in range.
+                    Verified money only — unverified evidence is not counted.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Operational summary — real counts. */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Claims</CardTitle>
+                <CardTitle className="text-base">Operational summary</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
                   <MetricCard
-                    label="Pending Claims"
-                    value={counts.pendingClaims}
-                    accent
-                  />
-                  <MetricCard
-                    label="Confirmed, for Invoice"
+                    label="For Invoice"
                     value={counts.confirmedClaimsForInvoice}
                   />
+                  <MetricCard
+                    label="Pending Payment Verification"
+                    value={counts.paymentsAwaitingVerification}
+                  />
+                  <MetricCard label="Active Layaway" value={counts.ordersActiveLayaway} />
+                  <MetricCard
+                    label="For Fulfillment"
+                    value={counts.ordersForFulfillment}
+                  />
+                  <MetricCard label="Pending Claims" value={counts.pendingClaims} />
+                  <MetricCard label="Cancelled" value={counts.ordersCancelled} />
                 </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Claims are not Official Orders. Never add these to the order tiles.
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Work queues</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-1.5 text-sm">
-                  <li className="flex items-center justify-between gap-2">
-                    <span>Payments awaiting verification</span>
+                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  <div className="flex items-center justify-between rounded-lg border border-border px-2.5 py-1.5 text-sm">
+                    <span className="text-muted-foreground">Payments to verify</span>
                     <span className="flex items-center gap-2">
                       <span className="font-bold tabular-nums">
                         {counts.paymentsAwaitingVerification}
                       </span>
-                      {/* Quick action, permission-gated. Server re-checks. */}
                       {canVerifyPayments ? (
                         <a
                           href="/orders/payments"
@@ -336,9 +386,9 @@ export function DashboardView({
                         </a>
                       ) : null}
                     </span>
-                  </li>
-                  <li className="flex items-center justify-between gap-2">
-                    <span>Returned-to-Stock in review</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg border border-border px-2.5 py-1.5 text-sm">
+                    <span className="text-muted-foreground">Returned-to-Stock</span>
                     <span className="flex items-center gap-2">
                       <span className="font-bold tabular-nums">{counts.rtsInReview}</span>
                       {canMonitorInventory ? (
@@ -350,18 +400,52 @@ export function DashboardView({
                         </a>
                       ) : null}
                     </span>
-                  </li>
-                  <li className="flex items-center justify-between gap-2">
-                    <span>Owner approvals pending</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg border border-border px-2.5 py-1.5 text-sm">
+                    <span className="text-muted-foreground">Owner approvals</span>
                     <span className="font-bold tabular-nums">
                       {counts.ownerApprovalsPending}
                     </span>
-                  </li>
-                </ul>
+                  </div>
+                </div>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Queue counts overlap the tiles above by nature — they are work to do,
-                  not orders. Never sum them with order figures. Seeing a count grants no
+                  Claims are not Official Orders. Never add these to the order tiles.
+                  Queue counts overlap the tiles by nature — they are work to do, not
+                  orders. Never sum them with order figures. Seeing a count grants no
                   authority over it.
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Layaway summary — real money aggregation. */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Layaway</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <MetricCard
+                    label="Active Layaway"
+                    value={counts.ordersActiveLayaway}
+                    accent
+                  />
+                  <MetricCard
+                    label="Layaway Sales"
+                    value={formatPeso(metrics.totalLayawaySales)}
+                  />
+                  <MetricCard
+                    label="Layaway Collections"
+                    value={formatPeso(metrics.layawayCollections)}
+                  />
+                  <MetricCard
+                    label="Forfeited Amount"
+                    value={formatPeso(metrics.forfeitedAmount)}
+                  />
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {metrics.totalOfficialOrders} Official Orders. An Active Layaway is an
+                  Official Order — never double-counted. Forfeiture needs Owner approval;
+                  no automatic stock return.
                 </p>
               </CardContent>
             </Card>
@@ -369,6 +453,115 @@ export function DashboardView({
         )
       ) : null}
 
+      {/* ================= GROSS PROFIT TAB (honest-unavailable) ================= */}
+      {tab === 'Gross Profit' ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Gross Profit</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div
+              className="rounded-xl border border-dashed border-border bg-muted/30 p-6 text-center"
+              data-testid="gross-profit-unavailable"
+            >
+              <p className="text-sm font-medium text-foreground">
+                Gross Profit is not available yet
+              </p>
+              <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+                Gross Profit needs real cost / COGS rules (cost per item and the margin
+                formula), and those are not defined in the system yet. Rather than show
+                invented numbers, this stays honestly unavailable until the cost rules are
+                approved. The tab is retained so the approved structure is preserved.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* ================= REPORTS TAB (real, gated export) ================= */}
+      {tab === 'Reports' ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Sales summary</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form action={runReport} className="flex flex-wrap items-end gap-2">
+              <div>
+                <Label htmlFor="rfrom" className="text-xs">
+                  From
+                </Label>
+                <Input id="rfrom" name="from" type="date" required className="h-8" />
+              </div>
+              <div>
+                <Label htmlFor="rto" className="text-xs">
+                  To
+                </Label>
+                <Input id="rto" name="to" type="date" required className="h-8" />
+              </div>
+              <Button type="submit" size="sm" disabled={running}>
+                {running ? 'Running…' : 'Run Report'}
+              </Button>
+              {canExport ? null : (
+                <span className="self-center text-xs text-muted-foreground">
+                  Export/download needs the Export Data permission.
+                </span>
+              )}
+            </form>
+
+            {reportState.report ? (
+              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-4">
+                <div>
+                  <dt className="text-muted-foreground">Verified collected</dt>
+                  <dd className="text-lg font-bold tabular-nums">
+                    {formatPeso(reportState.report.verifiedCollected)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Payments recorded</dt>
+                  <dd className="font-medium tabular-nums">
+                    {reportState.report.paymentsRecorded}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Verified</dt>
+                  <dd className="font-medium tabular-nums">
+                    {reportState.report.paymentsVerified}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Unverified</dt>
+                  <dd className="font-medium tabular-nums">
+                    {reportState.report.paymentsUnverified}
+                  </dd>
+                </div>
+              </dl>
+            ) : null}
+
+            {reportState.report ? (
+              <div className="mt-3 border-t border-border pt-3">
+                <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                  Payments in range, by verification
+                </p>
+                <BarChart
+                  ariaLabel="Payments by verification status"
+                  noDataLabel="No data for this period"
+                  data={[
+                    { label: 'Verified', value: reportState.report.paymentsVerified },
+                    { label: 'Unverified', value: reportState.report.paymentsUnverified },
+                  ]}
+                />
+              </div>
+            ) : null}
+
+            <p className="mt-2 text-xs text-muted-foreground">
+              Verified money only — unverified evidence is not revenue. A report is
+              limited to records you can already see, and grants no authority over them.
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* ================= SEARCH TAB ================= */}
       {tab === 'Search' ? (
         <Card>
           <CardHeader>
@@ -432,91 +625,7 @@ export function DashboardView({
         </Card>
       ) : null}
 
-      {tab === 'Reports' ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Sales summary</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {/* Viewing the summary is broad (any active staff). Only export is gated. */}
-            <form action={runReport} className="flex flex-wrap items-end gap-2">
-              <div>
-                <Label htmlFor="rfrom" className="text-xs">
-                  From
-                </Label>
-                <Input id="rfrom" name="from" type="date" required className="h-8" />
-              </div>
-              <div>
-                <Label htmlFor="rto" className="text-xs">
-                  To
-                </Label>
-                <Input id="rto" name="to" type="date" required className="h-8" />
-              </div>
-              <Button type="submit" size="sm" disabled={running}>
-                {running ? 'Running…' : 'Run Report'}
-              </Button>
-              {canExport ? null : (
-                <span className="self-center text-xs text-muted-foreground">
-                  Export/download needs the Export Data permission.
-                </span>
-              )}
-            </form>
-
-            {reportState.report ? (
-              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-4">
-                <div>
-                  <dt className="text-muted-foreground">Verified collected</dt>
-                  <dd className="text-lg font-bold tabular-nums">
-                    {formatPeso(reportState.report.verifiedCollected)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Payments recorded</dt>
-                  <dd className="font-medium tabular-nums">
-                    {reportState.report.paymentsRecorded}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Verified</dt>
-                  <dd className="font-medium tabular-nums">
-                    {reportState.report.paymentsVerified}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Unverified</dt>
-                  <dd className="font-medium tabular-nums">
-                    {reportState.report.paymentsUnverified}
-                  </dd>
-                </div>
-              </dl>
-            ) : null}
-
-            {reportState.report ? (
-              // Real graph — the SAME report_sales_summary aggregation, drawn to
-              // scale. Verified vs unverified is a count breakdown, not money math.
-              <div className="mt-3 border-t border-border pt-3">
-                <p className="mb-1.5 text-xs font-medium text-muted-foreground">
-                  Payments in range, by verification
-                </p>
-                <BarChart
-                  ariaLabel="Payments by verification status"
-                  data={[
-                    { label: 'Verified', value: reportState.report.paymentsVerified },
-                    { label: 'Unverified', value: reportState.report.paymentsUnverified },
-                  ]}
-                  emptyLabel="No payments recorded in this range."
-                />
-              </div>
-            ) : null}
-
-            <p className="mt-2 text-xs text-muted-foreground">
-              Verified money only — unverified evidence is not revenue. A report is
-              limited to records you can already see, and grants no authority over them.
-            </p>
-          </CardContent>
-        </Card>
-      ) : null}
-
+      {/* ================= REMINDERS TAB ================= */}
       {tab === 'Reminders' ? (
         notifications.length === 0 ? (
           <EmptyState
@@ -566,6 +675,7 @@ export function DashboardView({
         )
       ) : null}
 
+      {/* ================= AUDIT TAB ================= */}
       {tab === 'Audit' ? (
         audit.length === 0 ? (
           <EmptyState title="No audit events" />

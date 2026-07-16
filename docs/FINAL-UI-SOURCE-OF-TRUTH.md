@@ -80,11 +80,40 @@ the brand). Dark mode is token-driven; the manual toggle is honest.
 
 ## 4. Approved page structure
 
-- **Orders** — real Official Orders list (authoritative money, payment +
-  fulfillment status) + the New Entry action. Read-only; row links lead to the
-  action workspaces.
-- **Dashboard / Payments** graphs use **real database aggregation only** (no
-  sample arrays); a failed query shows an error, never a blank/zero chart.
+> **Owner decision 2026-07-16 — production adopts the prototype's full layout.**
+> Earlier, production ran simpler real-data screens and the `/preview` prototype
+> was excluded (old §4/§5). The Owner has reversed this: **the production
+> Dashboard Profile, Orders, and New Order screens now match the `/preview`
+> prototype's full structure, backed by REAL data** (never sample arrays), plus a
+> newly-approved **Layaway** workflow. The prototype in `src/components/preview/*`
+> is the VISUAL reference; production is the real implementation.
+
+- **Dashboard Profile** — matches the prototype's Dashboard Report: two internal
+  tabs (**Dashboard**, **Gross Profit** — there is deliberately no third tab), a
+  **date-range selector** with the current selected range shown, **Refresh**, and
+  **Export Reports** (export gated by `export_data_reports`); **metric cards**, an
+  **Order Status chart**, and a **Sales for the Period chart**, plus the
+  operational and Layaway summary rows. All figures are real aggregation. **At
+  zero data the charts stay VISIBLE** — container, title, and axis labels remain,
+  with **"No data for this period"** inside the plot area (₱0.00 / 0 in cards).
+  A failed query still shows an explicit error, never a fake zero.
+  - **Gross Profit tab** is retained but **honest-unavailable**: no cost/COGS
+    rules exist in the backend, so it shows "unavailable — COGS rules not defined"
+    rather than invented numbers (§5).
+- **Orders** — matches the prototype: top workflow controls (**New Order**,
+  **Invoice**, **Confirm**, **Layaway**), the approved **status cards**, search +
+  **Order Date** / **Ship Date** / **Hide Keep** filters, the full table (row
+  selection, status, shop, order, customer, qty, amount, actions), pagination, and
+  status-specific row actions. Cards/filters use REAL order data; cards with no
+  real backing (e.g. Keep) show an honest 0, never fabricated counts.
+- **New Order Entry** — the approved form (Shop, Salesperson, Customer search,
+  Item search, Unit Price, Qty, **Photo Attachment** with camera / file / retake /
+  preview, **Reprint Last**, and a dynamic Confirm) wired to the REAL customer,
+  inventory, claim/order, attachment, invoice, and approval workflows.
+- **Layaway** — reachable from the Orders workflow control and from **New Layaway
+  Entry** in Payments & Layaway; both use the SAME Official Order + Layaway
+  records (no duplicates), reflected across Orders, Payments & Layaway, customer
+  history, reports, balances, installment schedule, and forfeiture status.
 - Every primary nav item is a **real route** — there are no placeholder pages in
   the primary navigation.
 
@@ -105,7 +134,10 @@ These stay in place, honest, and clearly labelled — never faked into "complete
 - **Sales-over-time trend chart** — deferred; needs a new read-only aggregation
   RPC (`report_sales_series`) validated by a real-Staff-JWT pgTAP test.
 - **`/preview`** — the Owner-approved prototype; **guarded to 404 in production**,
-  sample data only. Not part of the production app.
+  sample data only. It is the **visual reference** for the production screens (§4),
+  which are the real implementation; the prototype route itself is not shipped.
+- **Gross Profit** — the Dashboard's Gross Profit tab is retained in structure but
+  shows "unavailable" until real cost/COGS rules are defined; no invented numbers.
 
 None of these interfere with the core workflow below.
 
@@ -127,6 +159,13 @@ order.
 
 ### Change log
 
+- **2026-07-16 — Production adopts the prototype's full Dashboard/Orders/New
+  Order layout + Layaway.** Explicit Owner decision reversing the old §4/§5 split
+  (production had simpler real-data screens; the prototype was excluded). Now the
+  production screens match the `/preview` prototype's structure, backed by REAL
+  data, with charts kept visible at zero ("No data for this period"), a
+  honest-unavailable Gross Profit tab, and a newly-approved Layaway workflow.
+  Applied doc-first, then implemented Dashboard → Orders → New Order → Layaway.
 - **2026-07-16 — Nav item #1 renamed `Dashboard Report` → `Dashboard Profile`.**
   Explicit Owner decision. Route unchanged (`/dashboard`). Applied in this order:
   this document (§1 + mobile), then the lock tests (`ui-lock.test.tsx`,
