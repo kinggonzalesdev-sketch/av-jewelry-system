@@ -1,9 +1,11 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
+import { NewOrderWorkflow } from '@/components/orders/new-order-workflow';
 import { OrdersView } from '@/components/orders/orders-view';
-import { getGrantedPermissions } from '@/lib/authz/guard';
-import { listOrders } from '@/lib/orders/service';
+import { getCurrentStaffProfile, getGrantedPermissions } from '@/lib/authz/guard';
+import { listCaptureCustomers } from '@/lib/live/batches';
+import { listCaptureItems, listOrders } from '@/lib/orders/service';
 import { PageHeader } from '@/components/ui/page-primitives';
 
 export const metadata: Metadata = {
@@ -15,20 +17,23 @@ export const dynamic = 'force-dynamic';
 /**
  * Official Orders (Bible §7, §22.9).
  *
- * A consolidated, read-only list of real Official Orders with authoritative
- * money and fulfillment status. RLS scopes the rows; every peso figure comes
- * from the tested order_balance() reader. The row links lead to the workspaces
- * that own the actions — this page acts on nothing, so it adds no new authority.
+ * A consolidated, read-only list of real Official Orders with the approved status
+ * cards and the workflow controls (New Order · Invoice · Confirm · Layaway). New
+ * Order opens the approved form and creates a Pending Claim via the real,
+ * permission-guarded capture flow — never an Official Order (that is Approve &
+ * Send Invoice). RLS scopes the rows; every peso figure comes from the tested
+ * order_balance() reader.
  *
- * New Entry lives HERE as an action (not a nav item): it links to the real
- * claim-capture flow on /live. It does not re-implement capture, and /live
- * re-checks the permission server-side — hiding the link is a convenience only
- * (Bible §30.3 r2).
+ * New Entry (header) remains the live-capture shortcut to /live; New Order is the
+ * post-live entry form. Both re-check permission server-side (Bible §30.3 r2).
  */
 export default async function OrdersPage() {
-  const [result, permissions] = await Promise.all([
+  const [result, permissions, customers, items, profile] = await Promise.all([
     listOrders(),
     getGrantedPermissions(),
+    listCaptureCustomers(),
+    listCaptureItems(),
+    getCurrentStaffProfile(),
   ]);
 
   const canCreateEntry =
@@ -51,7 +56,17 @@ export default async function OrdersPage() {
           ) : null
         }
       />
-      <OrdersView result={result} />
+
+      <div className="space-y-4">
+        <NewOrderWorkflow
+          customers={customers}
+          items={items}
+          canCreate={permissions.has('claim_capture')}
+          shopName="A.V. Jewelry"
+          salesperson={profile.fullName}
+        />
+        <OrdersView result={result} />
+      </div>
     </div>
   );
 }

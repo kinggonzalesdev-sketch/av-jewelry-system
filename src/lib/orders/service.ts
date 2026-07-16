@@ -119,3 +119,41 @@ export async function listOrders(limit = 100): Promise<OrdersResult> {
 
   return { ok: true, rows };
 }
+
+export type CaptureItem = {
+  id: string;
+  itemCode: string;
+  itemName: string | null;
+  /** Catalogue unit price as an authoritative string (never a JS float), or null. */
+  unitPrice: string | null;
+  availabilityStatus: string;
+};
+
+/**
+ * Items the New Order form can pick from — id, code, name, and the catalogue
+ * unit price. Read directly (RLS scopes it to active staff); the price comes
+ * from the item catalogue, not entered per order. Read-only; creates nothing.
+ */
+export async function listCaptureItems(limit = 300): Promise<CaptureItem[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('inventory_items')
+    .select('id, item_code, item_name, total_price_per_piece, availability_status')
+    .order('item_code', { ascending: true })
+    .limit(limit);
+
+  if (error || !data) return [];
+
+  return (data as Array<Record<string, unknown>>).map((r) => ({
+    id: r.id as string,
+    itemCode: (r.item_code as string | null) ?? '—',
+    itemName: (r.item_name as string | null) ?? null,
+    // Money stays a string end-to-end — never coerced to a float here.
+    unitPrice:
+      r.total_price_per_piece === null || r.total_price_per_piece === undefined
+        ? null
+        : String(r.total_price_per_piece as string | number),
+    availabilityStatus: (r.availability_status as string | null) ?? 'unknown',
+  }));
+}
