@@ -67,8 +67,14 @@
  *   - neutrals = restrained warm grays (Tailwind `stone` family in oklch).
  *
  * No emerald, no SaaS blue/green, no gradients, no glow, no fake metal.
- * Dark mode stays OS-driven (prefers-color-scheme). A manual day/night toggle
- * is a deliberate follow-up, not a dead affordance rendered before it works.
+ *
+ * Theme resolution:
+ *   - default              → OS-driven (prefers-color-scheme).
+ *   - <html data-theme=…>  → a MANUAL override that wins over the OS. The shell's
+ *                            Light/Dark toggle sets it and persists it; the
+ *                            root-layout init script re-applies it before paint.
+ * The attribute selectors below carry higher specificity than the bare `:root`
+ * in the media query, so an explicit choice always beats the OS preference.
  */
 :root {
   --background: oklch(0.977 0.008 84); /* cream / warm white canvas */
@@ -94,8 +100,13 @@
   --gold-strong: oklch(0.57 0.088 78); /* deep gold — readable as text */
 }
 
+/*
+ * Dark tokens. Applied by the OS preference UNLESS the user forced light, and
+ * ALWAYS applied when the user forced dark. The two selectors below carry an
+ * identical token set — keep them in sync.
+ */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --background: oklch(0.19 0.004 66); /* near-black warm */
     --foreground: oklch(0.94 0.01 83); /* warm off-white */
     --card: oklch(0.24 0.005 66); /* charcoal surface */
@@ -117,6 +128,31 @@
     --gold: oklch(0.8 0.09 87); /* muted gold on near-black */
     --gold-strong: oklch(0.83 0.1 88);
   }
+}
+
+/* Manual dark: forced on regardless of the OS preference. Keep in sync with the
+   media-query block above. */
+:root[data-theme='dark'] {
+  --background: oklch(0.19 0.004 66); /* near-black warm */
+  --foreground: oklch(0.94 0.01 83); /* warm off-white */
+  --card: oklch(0.24 0.005 66); /* charcoal surface */
+  --card-foreground: oklch(0.94 0.01 83);
+  --primary: oklch(0.94 0.01 83); /* warm off-white — light buttons on dark */
+  --primary-foreground: oklch(0.22 0.005 66);
+  --secondary: oklch(0.3 0.008 70); /* restrained beige-charcoal */
+  --secondary-foreground: oklch(0.94 0.01 83);
+  --muted: oklch(0.3 0.008 70);
+  --muted-foreground: oklch(0.72 0.012 78); /* muted warm gray */
+  --accent: oklch(0.32 0.014 78); /* warm charcoal hover */
+  --accent-foreground: oklch(0.94 0.01 83);
+  --destructive: oklch(0.62 0.17 25);
+  --destructive-foreground: oklch(0.985 0.004 84);
+  --border: oklch(0.34 0.01 74); /* warm charcoal border */
+  --input: oklch(0.34 0.01 74);
+  --ring: oklch(0.78 0.09 86); /* muted gold ring */
+
+  --gold: oklch(0.8 0.09 87); /* muted gold on near-black */
+  --gold-strong: oklch(0.83 0.1 88);
 }
 
 @layer base {

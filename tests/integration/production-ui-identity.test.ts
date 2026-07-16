@@ -1,7 +1,9 @@
-import { globSync, readFileSync } from 'node:fs';
+import { existsSync, globSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
+
+import { PRIMARY_NAV } from '@/components/shell/navigation';
 
 /**
  * Production UI integration — Batch 1 groundwork: real identity, no prototype
@@ -37,7 +39,16 @@ const PRODUCTION_SHELL = [
   'app/(app)/layout.tsx',
   'components/shell/app-shell.tsx',
   'components/shell/app-sidebar.tsx',
+  'components/shell/navigation.ts',
+  'components/shell/theme-toggle.tsx',
+  'components/shell/printer-status.tsx',
+  'components/shell/unavailable.tsx',
 ];
+
+/** The production route file backing a nav href (page or, for /, root page). */
+function routeFileFor(href: string): string {
+  return join(srcRoot, 'app', '(app)', ...href.replace(/^\//, '').split('/'), 'page.tsx');
+}
 
 describe('the shell shows REAL authenticated identity, never hardcoded', () => {
   it('the sidebar user card renders identity from props, not a literal name', () => {
@@ -79,12 +90,36 @@ describe('the shell shows REAL authenticated identity, never hardcoded', () => {
     expect(sidebar).toMatch(/signOut\(\)/);
   });
 
-  it('links only to routes that exist — no dead Customers/Reports/Settings', () => {
-    const shell = read('components/shell/app-shell.tsx');
-    // The prototype linked these; production has no route for them yet.
-    for (const dead of ['/customers', '/reports', '/settings']) {
-      expect(shell).not.toMatch(new RegExp(`href: '${dead}'`));
+  it('every primary nav item resolves to a real route — no dead links, no 404', () => {
+    // Owner-approved decision: keep the approved prototype nav order verbatim.
+    // Items whose finished screen is not built (Customers/Reports/Settings) must
+    // still be REAL routes rendering an honest "unavailable" state — never a 404.
+    for (const item of PRIMARY_NAV) {
+      expect(
+        existsSync(routeFileFor(item.href)),
+        `${item.label} (${item.href}) must have a production page`,
+      ).toBe(true);
     }
+  });
+
+  it('unbuilt nav items render an HONEST unavailable state, not fake content', () => {
+    for (const item of PRIMARY_NAV.filter((i) => !i.available)) {
+      const rel = join('app', '(app)', item.href.replace(/^\//, ''), 'page.tsx');
+      const source = read(rel);
+      // Honest placeholder — the shared UnavailablePage, never sample fixtures.
+      expect(source).toMatch(/UnavailablePage/);
+      expect(source).not.toMatch(/sample-data|dashboard-data|layaway-data/);
+      expect(source).not.toMatch(/@\/components\/preview/);
+    }
+  });
+
+  it('does not promote Staff or Capabilities to standalone primary nav items', () => {
+    const navHrefs = PRIMARY_NAV.map((i) => i.href);
+    // They stay functional routes, reachable outside the primary nav.
+    expect(navHrefs).not.toContain('/admin/staff');
+    expect(navHrefs).not.toContain('/admin/capabilities');
+    expect(existsSync(routeFileFor('/admin/staff'))).toBe(true);
+    expect(existsSync(routeFileFor('/admin/capabilities'))).toBe(true);
   });
 });
 

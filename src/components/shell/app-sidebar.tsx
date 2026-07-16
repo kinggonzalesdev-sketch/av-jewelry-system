@@ -4,34 +4,31 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useTransition, type ReactNode } from 'react';
 
+import {
+  mobileLabel,
+  mobileMoreItems,
+  mobilePrimaryItems,
+  PRIMARY_NAV,
+  type NavItem,
+} from '@/components/shell/navigation';
+import { PrinterStatusBadge, PrinterStatusRow } from '@/components/shell/printer-status';
+import { ThemeToggle } from '@/components/shell/theme-toggle';
 import { signOut } from '@/lib/auth/actions';
 import { cn } from '@/lib/utils';
 
 /**
- * Production application shell — the approved prototype LAYOUT, dressed in the
- * A.V. Jewelry BRAND: warm beige / black / gold. Colours come from the design
- * tokens (globals.css), so light and dark are handled in one place and no
- * emerald/slate remains.
- *
- * What is REAL here and was hardcoded in the prototype:
- *   - the user card shows the caller's real name + real role (props), never
- *     "A.V. Owner / Owner";
+ * Production application shell — the approved prototype layout in the A.V.
+ * Jewelry brand. What is REAL here (and was hardcoded in the prototype):
+ *   - the user card shows the caller's real name + real role (props);
  *   - Logout runs the real signOut server action;
- *   - every nav link points at a route that EXISTS — no dead Customers/
- *     Reports/Settings links.
+ *   - the theme toggle and Bluetooth/printer status are honest and functional;
+ *   - every nav item is a real route — items without a finished screen open an
+ *     honest "not available yet" page (never a dead link or fake content).
  *
- * Navigation reconciles both approved sources: a fuller DESKTOP sidebar, and a
- * MOBILE bottom nav of exactly the five Bible §8.2 items (those four lead the
- * array so the mobile slice stays compliant). Hiding a nav item is convenience,
- * never authorization (Bible §30.3 r2).
+ * Approved footer order (desktop), which must not change:
+ *   branding → Light/Dark toggle → Bluetooth/Printer → Logout (last).
+ * Bluetooth/Printer sits DIRECTLY above Logout; Logout is last.
  */
-
-export type ShellNavItem = {
-  href: string;
-  label: string;
-  icon: string;
-  mobilePrimary?: boolean;
-};
 
 const ROLE_LABEL: Record<string, string> = {
   owner: 'Owner',
@@ -114,17 +111,24 @@ function UserCard({ fullName, roleLabel }: { fullName: string; roleLabel: string
   );
 }
 
+/** A tiny, honest marker that an approved item has no finished screen yet. */
+function SoonTag() {
+  return (
+    <span className="ml-auto shrink-0 rounded bg-muted px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+      Soon
+    </span>
+  );
+}
+
 export function AppSidebar({
   fullName,
   roleKey,
   userEmail,
-  nav,
   children,
 }: {
   fullName: string;
   roleKey?: string | undefined;
   userEmail: string;
-  nav: ShellNavItem[];
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -137,8 +141,26 @@ export function AppSidebar({
     // for /orders/invoice etc. — those are their own nav items.
     (href !== '/orders' && pathname.startsWith(`${href}/`));
 
-  const mobilePrimary = nav.filter((i) => i.mobilePrimary);
-  const mobileMore = nav.filter((i) => !i.mobilePrimary);
+  const renderSidebarLink = (item: NavItem) => (
+    <li key={item.href}>
+      <Link
+        href={item.href}
+        aria-current={isActive(item.href) ? 'page' : undefined}
+        className={cn(
+          'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors',
+          isActive(item.href)
+            ? 'bg-gold/15 text-gold-strong'
+            : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+        )}
+      >
+        <span aria-hidden="true" className="w-4 shrink-0 text-center text-xs">
+          {item.icon}
+        </span>
+        <span className="truncate">{item.label}</span>
+        {item.available ? null : <SoonTag />}
+      </Link>
+    </li>
+  );
 
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
@@ -164,29 +186,13 @@ export function AppSidebar({
           </div>
 
           <nav aria-label="Primary" className="flex-1 overflow-y-auto p-2">
-            <ul className="space-y-0.5">
-              {nav.map((item) => (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    aria-current={isActive(item.href) ? 'page' : undefined}
-                    className={cn(
-                      'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors',
-                      isActive(item.href)
-                        ? 'bg-gold/15 text-gold-strong'
-                        : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                    )}
-                  >
-                    <span aria-hidden="true" className="w-4 shrink-0 text-center text-xs">
-                      {item.icon}
-                    </span>
-                    <span className="truncate">{item.label}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            <ul className="space-y-0.5">{PRIMARY_NAV.map(renderSidebarLink)}</ul>
           </nav>
 
+          {/*
+            Approved fixed bottom. Order is part of the approved design:
+            branding → Light/Dark → Bluetooth/Printer → Logout (last).
+          */}
           <div className="space-y-1.5 border-t border-border p-2">
             {/* Approved footer branding — exact wording (Bible §2, §36.2). */}
             <p
@@ -195,13 +201,15 @@ export function AppSidebar({
             >
               Powered by King GenZ Digital
             </p>
+            <ThemeToggle />
+            <PrinterStatusRow />
             <LogoutButton />
           </div>
         </aside>
 
         {/* ---------------- Main ---------------- */}
         <div className="flex min-w-0 flex-1 flex-col">
-          {/* Compact mobile header with real identity */}
+          {/* Compact mobile header: real identity + honest printer + theme. */}
           <header className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-2.5 lg:hidden">
             <div className="flex min-w-0 items-center gap-2">
               <BrandMark size="sm" />
@@ -211,6 +219,10 @@ export function AppSidebar({
                   {fullName} · {roleLabel}
                 </p>
               </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <PrinterStatusBadge />
+              <ThemeToggle variant="compact" />
             </div>
           </header>
 
@@ -225,14 +237,14 @@ export function AppSidebar({
         {userEmail}
       </span>
 
-      {/* ---------------- Mobile bottom nav (Bible §8.2: five items) ---------------- */}
+      {/* ---------------- Mobile bottom nav: four primary + More ---------------- */}
       <nav
         aria-label="Primary"
         className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card pb-[env(safe-area-inset-bottom)] lg:hidden"
         data-testid="bottom-nav"
       >
         <ul className="grid grid-cols-5">
-          {mobilePrimary.map((item) => (
+          {mobilePrimaryItems().map((item) => (
             <li key={item.href}>
               <Link
                 href={item.href}
@@ -245,7 +257,7 @@ export function AppSidebar({
                 <span aria-hidden="true" className="text-sm">
                   {item.icon}
                 </span>
-                <span className="truncate">{item.label}</span>
+                <span className="truncate">{mobileLabel(item)}</span>
               </Link>
             </li>
           ))}
@@ -270,7 +282,7 @@ export function AppSidebar({
         {moreOpen ? (
           <div className="absolute inset-x-0 bottom-full border-t border-border bg-card p-2 shadow-lg">
             <ul className="grid grid-cols-2 gap-1">
-              {mobileMore.map((item) => (
+              {mobileMoreItems().map((item) => (
                 <li key={item.href}>
                   <Link
                     href={item.href}
@@ -278,12 +290,14 @@ export function AppSidebar({
                     className="flex items-center gap-2 rounded-lg px-2.5 py-2.5 text-xs font-medium text-foreground hover:bg-accent"
                   >
                     <span aria-hidden="true">{item.icon}</span>
-                    {item.label}
+                    <span className="truncate">{item.label}</span>
+                    {item.available ? null : <SoonTag />}
                   </Link>
                 </li>
               ))}
             </ul>
-            <div className="mt-1 border-t border-border pt-1">
+            <div className="mt-1 space-y-1 border-t border-border pt-1">
+              <ThemeToggle />
               <LogoutButton variant="more" />
               <p className="px-2.5 pb-1 pt-2 text-center text-[10px] text-muted-foreground">
                 Powered by King GenZ Digital

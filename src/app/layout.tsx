@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 
+import { THEME_INIT_SCRIPT } from '@/components/shell/theme';
+
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -22,7 +24,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    // suppressHydrationWarning: the theme init script below sets data-theme on
+    // <html> before React hydrates, so the server markup (no attribute) and the
+    // client DOM (attribute applied) intentionally differ on this element only.
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/*
+          Apply the persisted manual theme BEFORE first paint so a refresh never
+          flashes the wrong theme. No stored choice → the attribute is not set and
+          the OS preference (prefers-color-scheme) governs. See components/shell/theme.ts.
+        */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body>
         <a
           href="#main-content"
