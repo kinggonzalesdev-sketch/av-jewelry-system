@@ -54,16 +54,24 @@ describe('BarChart (real aggregation only, honest empty)', () => {
     expect(screen.queryByTestId('bar-chart')).not.toBeInTheDocument();
   });
 
-  it('treats all-zero data as nothing to chart (never a flat blank frame)', () => {
+  it('draws labelled categories at zero with a "No data yet" state (real zeros, no fake data)', () => {
     render(
       <BarChart
         ariaLabel="zeros"
         data={[
-          { label: 'A', value: 0 },
-          { label: 'B', value: 0 },
+          { label: 'Active Layaway', value: 0 },
+          { label: 'Closed', value: 0 },
         ]}
       />,
     );
-    expect(screen.getByTestId('bar-chart-empty')).toBeInTheDocument();
+    // The chart is visibly present with its categories, not hidden.
+    const chart = screen.getByTestId('bar-chart');
+    expect(within(chart).getByText('Active Layaway')).toBeInTheDocument();
+    expect(within(chart).getByText('Closed')).toBeInTheDocument();
+    expect(screen.getByTestId('bar-chart-nodata')).toHaveTextContent('No data yet');
+    // Every bar is at 0 width — no invented data.
+    for (const fill of document.querySelectorAll('span.bg-gold')) {
+      expect((fill as HTMLElement).style.width).toBe('0%');
+    }
   });
 });
