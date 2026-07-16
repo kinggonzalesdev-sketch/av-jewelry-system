@@ -73,10 +73,15 @@ document is updated first by Owner decision.
 
 ## 3. Branding (LOCKED palette)
 
-Warm **beige · black · gold · white/cream**, with restrained warm neutrals.
-Tokens live in `src/app/globals.css` (`--gold`, `--gold-strong`, cream/charcoal
-surfaces). **No emerald/slate** (that was the prototype's reference palette, not
-the brand). Dark mode is token-driven; the manual toggle is honest.
+**Emerald green** theme (2026-07-16 Owner decision, superseding the earlier
+beige/black/gold): green CTAs and accents, a very pale green canvas, white cards,
+with red reserved for destructive actions. Tokens live in `src/app/globals.css`.
+
+The accent tokens are still **named** `--gold` / `--gold-strong` (renaming them
+across the codebase would be large, risky churn) but they now **hold green** —
+read `bg-gold` / `text-gold-strong` as "the brand accent," which is green. Dark
+mode is token-driven; the manual toggle is honest. Components must use the brand
+TOKENS, never a hardcoded palette.
 
 ## 4. Approved page structure
 
@@ -159,6 +164,11 @@ order.
 
 ### Change log
 
+- **2026-07-16 — Brand switched to an EMERALD GREEN theme (§3).** Owner decision
+  from the reference mockups, superseding beige/black/gold. Applied in
+  `globals.css` (token values), with the `--gold*` token NAMES retained to avoid
+  codebase-wide churn — they now carry green. Lock-test descriptions updated to
+  match; the assertion that components use tokens (not hardcoded colors) stands.
 - **2026-07-16 — Production adopts the prototype's full Dashboard/Orders/New
   Order layout + Layaway.** Explicit Owner decision reversing the old §4/§5 split
   (production had simpler real-data screens; the prototype was excluded). Now the

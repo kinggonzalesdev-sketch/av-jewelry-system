@@ -106,21 +106,27 @@ describe('LOCKED: controls and footer', () => {
   });
 });
 
-describe('LOCKED: branding (beige / black / gold — no emerald/slate)', () => {
-  it('globals.css defines the gold brand tokens', () => {
+describe('LOCKED: branding (emerald green theme via tokens; no hardcoded palette)', () => {
+  it('globals.css defines the brand accent tokens (named --gold*, now holding green)', () => {
+    // The token NAMES are retained to avoid codebase-wide churn; per the
+    // 2026-07-16 Owner decision (SOT §3) they carry the approved GREEN.
     const css = read('app/globals.css');
     expect(css).toMatch(/--gold:/);
     expect(css).toMatch(/--gold-strong:/);
   });
 
-  it('the production shell uses the brand, not the prototype emerald/slate', () => {
+  it('the production shell uses brand TOKENS, never a hardcoded palette', () => {
+    // Components must theme through the tokens (bg-gold / text-gold-strong / etc.)
+    // rather than hardcoding a color family — so the one-place palette swap in
+    // globals.css re-themes the whole app. The prototype's night-mode `slate`
+    // classes must never leak into production.
     for (const file of [
       'components/shell/app-sidebar.tsx',
       'components/shell/theme-toggle.tsx',
       'components/shell/printer-status.tsx',
     ]) {
       const s = read(file);
-      expect(s, `${file} must not use emerald/slate`).not.toMatch(/emerald|slate/);
+      expect(s, `${file} must not hardcode a slate palette`).not.toMatch(/slate/);
     }
   });
 });

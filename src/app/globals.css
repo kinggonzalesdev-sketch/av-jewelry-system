@@ -43,9 +43,11 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  /* A.V. Jewelry brand gold — for accents, active states, selected nav,
-     highlights. `gold` is the accent tone; `gold-strong` is deep enough to be
-     readable as text on cream. Both shift to a muted gold in dark mode. */
+  /* A.V. Jewelry brand ACCENT. The `--gold` / `--gold-strong` token NAMES are
+     retained (they are referenced by `bg-gold` / `text-gold-strong` across the
+     app) but as of the 2026-07-16 Owner decision they carry the approved
+     EMERALD GREEN, not gold — see the palette block and SOT §3. `gold` is the
+     accent tone; `gold-strong` is deep enough to read as text. */
   --color-gold: var(--gold);
   --color-gold-strong: var(--gold-strong);
   --radius-lg: var(--radius);
@@ -54,19 +56,24 @@
 }
 
 /*
- * A.V. JEWELRY BRAND PALETTE — warm beige, black, gold. The authoritative brand
- * direction (the /preview prototype is layout/interaction reference only; its
- * emerald/slate colors are NOT the brand). Every token-driven primitive
- * (ui/button, ui/card, ui/input …) inherits these, so the whole application
- * takes the brand look from this one place.
+ * A.V. JEWELRY BRAND PALETTE — EMERALD GREEN (2026-07-16 Owner decision; SOT §3).
+ * Superseding the earlier warm beige/black/gold direction, the approved UI is a
+ * light emerald-green theme (green CTAs + accents, a very pale green canvas, and
+ * white cards), matching the Owner's reference mockups. Every token-driven
+ * primitive (ui/button, ui/card, ui/input …) inherits these, so the whole
+ * application takes the look from this one place.
+ *
+ * NOTE ON TOKEN NAMES: the accent tokens are still called `--gold` /
+ * `--gold-strong` (renaming them across the codebase would be large, risky
+ * churn). They now hold GREEN. Read `bg-gold` / `text-gold-strong` as "the brand
+ * accent", which is green.
  *
  * Roles:
- *   - primary  = charcoal/black — strong-contrast buttons and primary text.
- *   - gold     = accents, active states, highlights, SELECTED navigation.
- *   - surfaces = cream / warm white / soft beige.
- *   - neutrals = restrained warm grays (Tailwind `stone` family in oklch).
- *
- * No emerald, no SaaS blue/green, no gradients, no glow, no fake metal.
+ *   - primary  = emerald green — main CTA buttons (New Order, Confirm, Refresh…).
+ *   - gold     = green accents, active states, highlights, SELECTED navigation.
+ *   - surfaces = white cards on a very pale green canvas.
+ *   - neutrals = restrained cool grays.
+ *   - destructive = red — Cancel / delete only.
  *
  * Theme resolution:
  *   - default              → OS-driven (prefers-color-scheme).
@@ -77,27 +84,27 @@
  * in the media query, so an explicit choice always beats the OS preference.
  */
 :root {
-  --background: oklch(0.977 0.008 84); /* cream / warm white canvas */
-  --foreground: oklch(0.24 0.006 60); /* near-black charcoal text */
-  --card: oklch(0.995 0.004 84); /* soft warm-white card */
-  --card-foreground: oklch(0.24 0.006 60);
-  --primary: oklch(0.28 0.006 60); /* charcoal — dark buttons */
-  --primary-foreground: oklch(0.977 0.008 84); /* cream on charcoal */
-  --secondary: oklch(0.945 0.012 83); /* soft beige */
-  --secondary-foreground: oklch(0.28 0.006 60);
-  --muted: oklch(0.945 0.012 83); /* soft beige */
-  --muted-foreground: oklch(0.51 0.012 66); /* muted warm gray */
-  --accent: oklch(0.94 0.02 85); /* warm beige hover */
-  --accent-foreground: oklch(0.28 0.006 60);
-  --destructive: oklch(0.55 0.19 27); /* restrained brick red */
-  --destructive-foreground: oklch(0.985 0.004 84);
-  --border: oklch(0.9 0.014 80); /* warm light gray/beige */
-  --input: oklch(0.9 0.014 80);
-  --ring: oklch(0.7 0.1 85); /* gold focus ring */
+  --background: oklch(0.972 0.02 155); /* very pale green canvas */
+  --foreground: oklch(0.24 0.02 165); /* near-black, faint green-slate */
+  --card: oklch(1 0 0); /* white card */
+  --card-foreground: oklch(0.24 0.02 165);
+  --primary: oklch(0.6 0.14 155); /* emerald green — main CTAs */
+  --primary-foreground: oklch(0.99 0.01 155); /* near-white on green */
+  --secondary: oklch(0.95 0.03 155); /* pale green */
+  --secondary-foreground: oklch(0.3 0.05 160);
+  --muted: oklch(0.95 0.025 155); /* pale green */
+  --muted-foreground: oklch(0.5 0.03 160); /* muted green-gray */
+  --accent: oklch(0.93 0.05 155); /* pale green hover */
+  --accent-foreground: oklch(0.3 0.06 160);
+  --destructive: oklch(0.57 0.2 27); /* red — Cancel / delete only */
+  --destructive-foreground: oklch(0.99 0.004 150);
+  --border: oklch(0.9 0.02 155); /* light green-gray */
+  --input: oklch(0.9 0.02 155);
+  --ring: oklch(0.65 0.13 155); /* green focus ring */
   --radius: 0.75rem;
 
-  --gold: oklch(0.72 0.098 85); /* accent gold on cream */
-  --gold-strong: oklch(0.57 0.088 78); /* deep gold — readable as text */
+  --gold: oklch(0.62 0.14 155); /* brand accent — GREEN (token name retained) */
+  --gold-strong: oklch(0.52 0.13 158); /* deep green — readable as text */
 }
 
 /*
@@ -107,52 +114,52 @@
  */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --background: oklch(0.19 0.004 66); /* near-black warm */
-    --foreground: oklch(0.94 0.01 83); /* warm off-white */
-    --card: oklch(0.24 0.005 66); /* charcoal surface */
-    --card-foreground: oklch(0.94 0.01 83);
-    --primary: oklch(0.94 0.01 83); /* warm off-white — light buttons on dark */
-    --primary-foreground: oklch(0.22 0.005 66);
-    --secondary: oklch(0.3 0.008 70); /* restrained beige-charcoal */
-    --secondary-foreground: oklch(0.94 0.01 83);
-    --muted: oklch(0.3 0.008 70);
-    --muted-foreground: oklch(0.72 0.012 78); /* muted warm gray */
-    --accent: oklch(0.32 0.014 78); /* warm charcoal hover */
-    --accent-foreground: oklch(0.94 0.01 83);
-    --destructive: oklch(0.62 0.17 25);
-    --destructive-foreground: oklch(0.985 0.004 84);
-    --border: oklch(0.34 0.01 74); /* warm charcoal border */
-    --input: oklch(0.34 0.01 74);
-    --ring: oklch(0.78 0.09 86); /* muted gold ring */
+    --background: oklch(0.2 0.02 165); /* dark green-charcoal */
+    --foreground: oklch(0.94 0.02 155); /* off-white */
+    --card: oklch(0.25 0.02 165); /* darker green-charcoal surface */
+    --card-foreground: oklch(0.94 0.02 155);
+    --primary: oklch(0.66 0.14 155); /* emerald green buttons on dark */
+    --primary-foreground: oklch(0.15 0.02 165);
+    --secondary: oklch(0.3 0.02 165);
+    --secondary-foreground: oklch(0.94 0.02 155);
+    --muted: oklch(0.3 0.02 165);
+    --muted-foreground: oklch(0.72 0.02 158); /* muted green-gray */
+    --accent: oklch(0.33 0.03 160); /* green-charcoal hover */
+    --accent-foreground: oklch(0.94 0.02 155);
+    --destructive: oklch(0.63 0.18 25);
+    --destructive-foreground: oklch(0.985 0.004 150);
+    --border: oklch(0.35 0.02 165);
+    --input: oklch(0.35 0.02 165);
+    --ring: oklch(0.7 0.13 155); /* green ring */
 
-    --gold: oklch(0.8 0.09 87); /* muted gold on near-black */
-    --gold-strong: oklch(0.83 0.1 88);
+    --gold: oklch(0.74 0.13 155); /* brand accent — green on dark */
+    --gold-strong: oklch(0.8 0.13 155);
   }
 }
 
 /* Manual dark: forced on regardless of the OS preference. Keep in sync with the
    media-query block above. */
 :root[data-theme='dark'] {
-  --background: oklch(0.19 0.004 66); /* near-black warm */
-  --foreground: oklch(0.94 0.01 83); /* warm off-white */
-  --card: oklch(0.24 0.005 66); /* charcoal surface */
-  --card-foreground: oklch(0.94 0.01 83);
-  --primary: oklch(0.94 0.01 83); /* warm off-white — light buttons on dark */
-  --primary-foreground: oklch(0.22 0.005 66);
-  --secondary: oklch(0.3 0.008 70); /* restrained beige-charcoal */
-  --secondary-foreground: oklch(0.94 0.01 83);
-  --muted: oklch(0.3 0.008 70);
-  --muted-foreground: oklch(0.72 0.012 78); /* muted warm gray */
-  --accent: oklch(0.32 0.014 78); /* warm charcoal hover */
-  --accent-foreground: oklch(0.94 0.01 83);
-  --destructive: oklch(0.62 0.17 25);
-  --destructive-foreground: oklch(0.985 0.004 84);
-  --border: oklch(0.34 0.01 74); /* warm charcoal border */
-  --input: oklch(0.34 0.01 74);
-  --ring: oklch(0.78 0.09 86); /* muted gold ring */
+  --background: oklch(0.2 0.02 165); /* dark green-charcoal */
+  --foreground: oklch(0.94 0.02 155); /* off-white */
+  --card: oklch(0.25 0.02 165); /* darker green-charcoal surface */
+  --card-foreground: oklch(0.94 0.02 155);
+  --primary: oklch(0.66 0.14 155); /* emerald green buttons on dark */
+  --primary-foreground: oklch(0.15 0.02 165);
+  --secondary: oklch(0.3 0.02 165);
+  --secondary-foreground: oklch(0.94 0.02 155);
+  --muted: oklch(0.3 0.02 165);
+  --muted-foreground: oklch(0.72 0.02 158); /* muted green-gray */
+  --accent: oklch(0.33 0.03 160); /* green-charcoal hover */
+  --accent-foreground: oklch(0.94 0.02 155);
+  --destructive: oklch(0.63 0.18 25);
+  --destructive-foreground: oklch(0.985 0.004 150);
+  --border: oklch(0.35 0.02 165);
+  --input: oklch(0.35 0.02 165);
+  --ring: oklch(0.7 0.13 155); /* green ring */
 
-  --gold: oklch(0.8 0.09 87); /* muted gold on near-black */
-  --gold-strong: oklch(0.83 0.1 88);
+  --gold: oklch(0.74 0.13 155); /* brand accent — green on dark */
+  --gold-strong: oklch(0.8 0.13 155);
 }
 
 @layer base {
