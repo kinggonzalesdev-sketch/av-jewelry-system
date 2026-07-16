@@ -1,5 +1,7 @@
 'use server';
 
+import type { InvoiceActionState } from '@/lib/invoicing/action-state';
+import { EMPTY_INVOICE_STATE } from '@/lib/invoicing/action-state';
 import { revalidatePath } from 'next/cache';
 
 import {
@@ -25,27 +27,6 @@ function text(formData: FormData, name: string): string | null {
   const value = formData.get(name);
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
-
-export type InvoiceActionState = {
-  error: string | null;
-  success: string | null;
-  /** Set when the ORDER exists. Never cleared by a message failure. */
-  order: { officialOrderId: string; orderNumber: string; invoiceNumber: string } | null;
-  /** Set when the order was created but the message did not go out. */
-  messageProblem: string | null;
-  /** The prepared message body, for Copy Invoice Message. */
-  messageBody: string | null;
-  messageId: string | null;
-};
-
-export const EMPTY_INVOICE_STATE: InvoiceActionState = {
-  error: null,
-  success: null,
-  order: null,
-  messageProblem: null,
-  messageBody: null,
-  messageId: null,
-};
 
 export async function prepareAllEligibleAction(
   _prev: InvoiceActionState,

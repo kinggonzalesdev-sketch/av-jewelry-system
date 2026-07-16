@@ -1,5 +1,6 @@
 'use server';
 
+import type { CapabilityActionState } from '@/lib/capabilities/action-state';
 import { revalidatePath } from 'next/cache';
 
 import {
@@ -14,13 +15,6 @@ import {
  * Transport only. Owner authority and the validation gate live in the domain
  * module and the database.
  */
-
-export type CapabilityActionState = { error: string | null; success: string | null };
-
-export const EMPTY_CAPABILITY_STATE: CapabilityActionState = {
-  error: null,
-  success: null,
-};
 
 function text(formData: FormData, name: string): string | null {
   const value = formData.get(name);

@@ -1,5 +1,6 @@
 'use server';
 
+import type { ActionState } from '@/lib/live/action-state';
 import { revalidatePath } from 'next/cache';
 
 import { captureClaim } from '@/lib/claims/capture';
@@ -14,10 +15,6 @@ import { setCurrentFlexItem } from '@/lib/live/flex-item';
  * server-side, so an action invoked directly (bypassing the UI entirely) is
  * checked exactly the same way. The UI is never the control (ADR §7).
  */
-
-export type ActionState = { error: string | null; success: string | null };
-
-export const EMPTY_ACTION_STATE: ActionState = { error: null, success: null };
 
 /**
  * Reads a text field.

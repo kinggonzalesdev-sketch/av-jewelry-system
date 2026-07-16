@@ -3,12 +3,12 @@
 import { useActionState, useState } from 'react';
 
 import {
-  EMPTY_DASHBOARD_STATE,
   acknowledgeNotificationAction,
   refreshDashboardAction,
   runSalesReportAction,
-  type DashboardActionState,
 } from '@/lib/dashboard/actions';
+import type { DashboardActionState } from '@/lib/dashboard/action-state';
+import { EMPTY_DASHBOARD_STATE } from '@/lib/dashboard/action-state';
 import type {
   AuditRow,
   DashboardCounts,

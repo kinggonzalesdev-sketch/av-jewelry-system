@@ -1,5 +1,6 @@
 'use server';
 
+import type { FulfillmentActionState } from '@/lib/fulfillment/action-state';
 import { revalidatePath } from 'next/cache';
 
 import {
@@ -19,13 +20,6 @@ import {
  * Transport only. Authority, the release rules, execute-once, and audit all live
  * in the domain module and the database.
  */
-
-export type FulfillmentActionState = { error: string | null; success: string | null };
-
-export const EMPTY_FULFILLMENT_STATE: FulfillmentActionState = {
-  error: null,
-  success: null,
-};
 
 function text(formData: FormData, name: string): string | null {
   const value = formData.get(name);

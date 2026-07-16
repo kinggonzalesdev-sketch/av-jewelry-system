@@ -3,15 +3,14 @@
 import { useActionState } from 'react';
 
 import {
-  EMPTY_CONFIRM_STATE,
-  EMPTY_LABEL_STATE,
   confirmClaimAction,
   reprintLabelAction,
   retryPrintAction,
   voidLabelJobAction,
-  type ConfirmActionState,
-  type LabelActionState,
 } from '@/lib/claims/actions';
+import type { ConfirmActionState, LabelActionState } from '@/lib/claims/action-state';
+import { EMPTY_CONFIRM_STATE } from '@/lib/claims/action-state';
+import { EMPTY_LABEL_STATE } from '@/lib/claims/action-state';
 import type { ClaimReviewRow } from '@/lib/claims/review';
 import { EmptyState } from '@/components/states/empty-state';
 import { Button } from '@/components/ui/button';

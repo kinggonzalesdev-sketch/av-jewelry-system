@@ -3,7 +3,6 @@
 import { useActionState, useState } from 'react';
 
 import {
-  EMPTY_STAFF_ADMIN_STATE,
   assignScopeAction,
   deactivateAccountAction,
   grantPermissionAction,
@@ -11,8 +10,9 @@ import {
   removeScopeAction,
   revokePermissionAction,
   setSelectedAdminAction,
-  type StaffAdminActionState,
 } from '@/lib/authz/actions';
+import type { StaffAdminActionState } from '@/lib/authz/action-state';
+import { EMPTY_STAFF_ADMIN_STATE } from '@/lib/authz/action-state';
 import type { StaffAccountRow } from '@/lib/authz/account-management';
 import { PERMISSIONS } from '@/lib/authz/permissions';
 import { Button } from '@/components/ui/button';

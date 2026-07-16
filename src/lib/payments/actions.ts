@@ -1,5 +1,9 @@
 'use server';
 
+import type {
+  PaymentActionState,
+  RecordPaymentActionState,
+} from '@/lib/payments/action-state';
 import { revalidatePath } from 'next/cache';
 
 import {
@@ -17,26 +21,6 @@ import { recordPayment, verifyPayment } from '@/lib/payments/verification';
  * money math, and audit all live in the domain modules and the database, so an
  * action invoked directly — bypassing the UI — is checked identically.
  */
-
-export type PaymentActionState = { error: string | null; success: string | null };
-
-export const EMPTY_PAYMENT_STATE: PaymentActionState = { error: null, success: null };
-
-/**
- * Recording carries one extra fact the caller must see: whether the reference
- * number collided with an existing payment. It is FLAGGED, never rejected
- * (approved decision §3) — rejecting it would hide the collision instead of
- * putting it in front of a human.
- */
-export type RecordPaymentActionState = PaymentActionState & {
-  duplicateReferenceFlagged: boolean;
-};
-
-export const EMPTY_RECORD_PAYMENT_STATE: RecordPaymentActionState = {
-  error: null,
-  success: null,
-  duplicateReferenceFlagged: false,
-};
 
 function text(formData: FormData, name: string): string | null {
   const value = formData.get(name);

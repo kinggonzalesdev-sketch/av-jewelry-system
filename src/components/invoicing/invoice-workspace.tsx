@@ -3,7 +3,6 @@
 import { useActionState } from 'react';
 
 import {
-  EMPTY_INVOICE_STATE,
   approveAllReadyAction,
   approveAndSendAction,
   copyMessageAction,
@@ -11,8 +10,9 @@ import {
   markSentAction,
   prepareAllEligibleAction,
   retryMessageAction,
-  type InvoiceActionState,
 } from '@/lib/invoicing/actions';
+import type { InvoiceActionState } from '@/lib/invoicing/action-state';
+import { EMPTY_INVOICE_STATE } from '@/lib/invoicing/action-state';
 import type { ExcludedClaim } from '@/lib/invoicing/drafts';
 import type { DraftSummary } from '@/lib/invoicing/drafts';
 import { EmptyState } from '@/components/states/empty-state';

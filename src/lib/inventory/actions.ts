@@ -1,5 +1,6 @@
 'use server';
 
+import type { InventoryActionState } from '@/lib/inventory/action-state';
 import { revalidatePath } from 'next/cache';
 
 import {
@@ -16,10 +17,6 @@ import {
  * Transport only. Authority, the return rule, the no-auto-merge rule, and audit
  * all live in the domain module and the database.
  */
-
-export type InventoryActionState = { error: string | null; success: string | null };
-
-export const EMPTY_INVENTORY_STATE: InventoryActionState = { error: null, success: null };
 
 function text(formData: FormData, name: string): string | null {
   const value = formData.get(name);

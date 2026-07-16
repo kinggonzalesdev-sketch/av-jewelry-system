@@ -2,11 +2,9 @@
 
 import { useActionState, useState } from 'react';
 
-import {
-  EMPTY_RECORD_PAYMENT_STATE,
-  recordPaymentAction,
-  type RecordPaymentActionState,
-} from '@/lib/payments/actions';
+import { recordPaymentAction } from '@/lib/payments/actions';
+import type { RecordPaymentActionState } from '@/lib/payments/action-state';
+import { EMPTY_RECORD_PAYMENT_STATE } from '@/lib/payments/action-state';
 import { formatPeso } from '@/lib/payments/format';
 import type { PayableOrderRow } from '@/lib/payments/workspace';
 import { Button } from '@/components/ui/button';

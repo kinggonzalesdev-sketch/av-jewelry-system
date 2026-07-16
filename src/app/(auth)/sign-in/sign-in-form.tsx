@@ -6,6 +6,9 @@ import { useFormStatus } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+// SignInState is declared locally in auth/actions.ts, which SWC erases entirely
+// — that form is safe inside a 'use server' file. Only a `export type { X }`
+// RE-EXPORT survives into Next's action loader and breaks it.
 import { signIn, type SignInState } from '@/lib/auth/actions';
 
 const initialState: SignInState = { error: null };

@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { getOrderBalance } from '@/lib/payments/balances';
 import { moneyString, type DateRangeKey } from '@/lib/payments/format';
 import { createClient } from '@/lib/supabase/server';
 
@@ -292,19 +293,21 @@ export async function listPayableOrders(limit = 50): Promise<PayableOrderRow[]> 
 
   const rows = (data ?? []) as unknown[];
 
-  // The balance for each order comes from the approved SQL, one call per order.
+  // Reuses getOrderBalance() rather than calling order_balance() again here.
+  // The first draft of this function re-issued the RPC itself and silently
+  // rendered every figure as ₱0.00 — the shape it expected back was wrong, and
+  // moneyString()'s fallback turned that into a plausible-looking zero instead
+  // of an error. A balance that reads ₱0.00 when ₱6,000 is owed is the worst
+  // kind of wrong: it looks like an answer. The tested reader is the only
+  // reader.
   const balances = await Promise.all(
-    rows.map((row) =>
-      supabase.rpc('order_balance', {
-        p_order_id: (row as Record<string, unknown>).id as string,
-      }),
-    ),
+    rows.map((row) => getOrderBalance((row as Record<string, unknown>).id as string)),
   );
 
   return rows.map((row, index) => {
     const r = row as Record<string, unknown>;
     const customer = one<{ display_name: string }>(r.customers);
-    const balance = (balances[index]?.data ?? {}) as Record<string, unknown>;
+    const balance = balances[index];
 
     return {
       officialOrderId: r.id as string,
@@ -312,10 +315,10 @@ export async function listPayableOrders(limit = 50): Promise<PayableOrderRow[]> 
       invoiceNumber: (r.invoice_number as string | null) ?? '—',
       customerDisplayName: customer?.display_name ?? 'Unknown',
       status: (r.status as string | null) ?? 'unknown',
-      totalAmountPayable: moneyString(balance.total_amount_payable),
-      verifiedNetPayments: moneyString(balance.verified_net_payments),
-      outstandingBalance: moneyString(balance.outstanding_balance),
-      paidInFull: balance.paid_in_full === true,
+      totalAmountPayable: balance?.totalAmountPayable ?? '0.00',
+      verifiedNetPayments: balance?.verifiedNetPayments ?? '0.00',
+      outstandingBalance: balance?.outstandingBalance ?? '0.00',
+      paidInFull: balance?.paidInFull ?? false,
     };
   });
 }

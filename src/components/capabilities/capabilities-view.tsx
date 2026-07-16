@@ -2,12 +2,9 @@
 
 import { useActionState } from 'react';
 
-import {
-  EMPTY_CAPABILITY_STATE,
-  recordValidationAction,
-  setCapabilityAction,
-  type CapabilityActionState,
-} from '@/lib/capabilities/actions';
+import { recordValidationAction, setCapabilityAction } from '@/lib/capabilities/actions';
+import type { CapabilityActionState } from '@/lib/capabilities/action-state';
+import { EMPTY_CAPABILITY_STATE } from '@/lib/capabilities/action-state';
 import type { CapabilityStatus } from '@/lib/capabilities/service';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';

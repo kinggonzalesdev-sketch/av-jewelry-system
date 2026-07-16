@@ -3,15 +3,15 @@
 import { useActionState, useState } from 'react';
 
 import {
-  EMPTY_FULFILLMENT_STATE,
   completeFulfillmentAction,
   decideApprovalAction,
   dispatchAction,
   executeApprovalAction,
   releaseFulfillmentAction,
   requestApprovalAction,
-  type FulfillmentActionState,
 } from '@/lib/fulfillment/actions';
+import type { FulfillmentActionState } from '@/lib/fulfillment/action-state';
+import { EMPTY_FULFILLMENT_STATE } from '@/lib/fulfillment/action-state';
 import type { ApprovalRow, FulfillmentRow } from '@/lib/fulfillment/service';
 import { formatPeso } from '@/lib/payments/format';
 import { PrepareFulfillmentForm } from '@/components/fulfillment/prepare-fulfillment-form';

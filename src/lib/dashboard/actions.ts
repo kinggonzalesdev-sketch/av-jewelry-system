@@ -1,5 +1,7 @@
 'use server';
 
+import type { DashboardActionState } from '@/lib/dashboard/action-state';
+import { EMPTY_DASHBOARD_STATE } from '@/lib/dashboard/action-state';
 import { revalidatePath } from 'next/cache';
 
 import { acknowledgeNotification, getSalesSummary } from '@/lib/dashboard/service';
@@ -10,25 +12,6 @@ import { acknowledgeNotification, getSalesSummary } from '@/lib/dashboard/servic
  * Transport only. Authority, the export gate, and audit live in the domain
  * module and the database.
  */
-
-export type DashboardActionState = {
-  error: string | null;
-  success: string | null;
-  report: {
-    from: string;
-    to: string;
-    verifiedCollected: string;
-    paymentsRecorded: number;
-    paymentsVerified: number;
-    paymentsUnverified: number;
-  } | null;
-};
-
-export const EMPTY_DASHBOARD_STATE: DashboardActionState = {
-  error: null,
-  success: null,
-  report: null,
-};
 
 function text(formData: FormData, name: string): string | null {
   const value = formData.get(name);

@@ -1,5 +1,6 @@
 'use server';
 
+import type { StaffAdminActionState } from '@/lib/authz/action-state';
 import { revalidatePath } from 'next/cache';
 
 import {
@@ -27,13 +28,6 @@ import { PERMISSIONS, type PermissionKey } from '@/lib/authz/permissions';
  * credentials, so it stays an explicit decision rather than a side-effect of a
  * UI-completion pass. Accounts are provisioned out-of-band until then.
  */
-
-export type StaffAdminActionState = { error: string | null; success: string | null };
-
-export const EMPTY_STAFF_ADMIN_STATE: StaffAdminActionState = {
-  error: null,
-  success: null,
-};
 
 function text(formData: FormData, name: string): string | null {
   const value = formData.get(name);

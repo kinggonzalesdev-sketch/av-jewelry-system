@@ -3,12 +3,12 @@
 import { useActionState, useState } from 'react';
 
 import {
-  EMPTY_PAYMENT_STATE,
   rejectPaymentAction,
   requestForfeitureAction,
   verifyPaymentAction,
-  type PaymentActionState,
 } from '@/lib/payments/actions';
+import type { PaymentActionState } from '@/lib/payments/action-state';
+import { EMPTY_PAYMENT_STATE } from '@/lib/payments/action-state';
 import { RANGE_LABEL, formatPeso, type DateRangeKey } from '@/lib/payments/format';
 import type {
   EvidenceQueueRow,

@@ -1,5 +1,7 @@
 'use server';
 
+import type { ConfirmActionState, LabelActionState } from '@/lib/claims/action-state';
+import { EMPTY_CONFIRM_STATE } from '@/lib/claims/action-state';
 import { revalidatePath } from 'next/cache';
 
 import { confirmClaimAndPrint } from '@/lib/claims/confirm';
@@ -12,22 +14,6 @@ import { printLabelJob, reprintLabel, retryPrint, voidLabelJob } from '@/lib/lab
  * live in the domain modules and the database, so invoking these directly —
  * bypassing the UI entirely — is checked identically.
  */
-
-export type ConfirmActionState = {
-  error: string | null;
-  /** Set when the claim IS confirmed. Never cleared by a print failure. */
-  confirmed: { claimId: string; labelJobId: string; deduplicated: boolean } | null;
-  /** Set when confirmation succeeded but the label did not reach paper. */
-  printProblem: string | null;
-  success: string | null;
-};
-
-export const EMPTY_CONFIRM_STATE: ConfirmActionState = {
-  error: null,
-  confirmed: null,
-  printProblem: null,
-  success: null,
-};
 
 function text(formData: FormData, name: string): string | null {
   const value = formData.get(name);
@@ -97,10 +83,6 @@ export async function confirmClaimAction(
       : 'Claim confirmed and reserved. Label sent to preview.',
   };
 }
-
-export type LabelActionState = { error: string | null; success: string | null };
-
-export const EMPTY_LABEL_STATE: LabelActionState = { error: null, success: null };
 
 export async function retryPrintAction(
   _prev: LabelActionState,

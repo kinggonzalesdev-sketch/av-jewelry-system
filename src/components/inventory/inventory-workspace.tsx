@@ -3,13 +3,13 @@
 import { useActionState, useState } from 'react';
 
 import {
-  EMPTY_INVENTORY_STATE,
   decideRtsAction,
   openMigrationBatchAction,
   returnToAvailableAction,
   reviewDuplicateAction,
-  type InventoryActionState,
 } from '@/lib/inventory/actions';
+import type { InventoryActionState } from '@/lib/inventory/action-state';
+import { EMPTY_INVENTORY_STATE } from '@/lib/inventory/action-state';
 import type {
   DuplicateRow,
   InventoryRow,

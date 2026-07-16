@@ -2,12 +2,9 @@
 
 import { useActionState, useId, useState } from 'react';
 
-import {
-  EMPTY_ACTION_STATE,
-  captureClaimAction,
-  setCurrentFlexItemAction,
-  type ActionState,
-} from '@/lib/live/actions';
+import { captureClaimAction, setCurrentFlexItemAction } from '@/lib/live/actions';
+import type { ActionState } from '@/lib/live/action-state';
+import { EMPTY_ACTION_STATE } from '@/lib/live/action-state';
 import type { LiveBatchItemRow } from '@/lib/live/batches';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
