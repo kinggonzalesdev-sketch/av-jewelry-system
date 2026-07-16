@@ -48,6 +48,7 @@ import { Label } from '@/components/ui/label';
 
 const TABS = [
   'Dashboard',
+  'Disassembly Report',
   'Gross Profit',
   'Reports',
   'Search',
@@ -451,6 +452,33 @@ export function DashboardView({
             </Card>
           </div>
         )
+      ) : null}
+
+      {/* ================= DISASSEMBLY REPORT TAB (honest placeholder) ================= */}
+      {tab === 'Disassembly Report' ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Disassembly Report</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div
+              className="rounded-xl border border-dashed border-border bg-muted/30 p-6 text-center"
+              data-testid="disassembly-unavailable"
+            >
+              <p className="text-sm font-medium text-foreground">
+                Disassembly Report is not built yet
+              </p>
+              <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+                Reporting on disassembled / re-melted items needs a disassembly data model
+                (which items were broken down, resulting grams and value, and when) — that
+                does not exist in the system yet. The tab is retained so the approved
+                structure is preserved; it stays honestly empty rather than showing
+                invented figures, and will be built once the disassembly workflow is
+                defined.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       ) : null}
 
       {/* ================= GROSS PROFIT TAB (honest-unavailable) ================= */}

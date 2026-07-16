@@ -12,6 +12,7 @@ vi.mock('@/lib/dashboard/actions', () => ({
 }));
 
 const zeroMetrics: DashboardMetrics = {
+  orderCountValid: 0,
   totalSales: '0.00',
   verifiedCollections: '0.00',
   outstandingBalance: '0.00',
@@ -70,10 +71,11 @@ describe('DashboardView — approved structure restored', () => {
     expect(screen.getByText('⟳ Refresh')).toBeInTheDocument();
   });
 
-  it('renders both primary tabs (Dashboard, Gross Profit) plus retained ones', () => {
+  it('renders the primary tabs (Dashboard, Disassembly Report, Gross Profit) plus retained ones', () => {
     renderView();
     for (const t of [
       'dashboard',
+      'disassembly-report',
       'gross-profit',
       'reports',
       'search',
@@ -118,5 +120,13 @@ describe('DashboardView — honesty', () => {
     const panel = screen.getByTestId('gross-profit-unavailable');
     expect(panel).toBeInTheDocument();
     expect(within(panel).getByText(/not available yet/i)).toBeInTheDocument();
+  });
+
+  it('Disassembly Report is an honest placeholder (no invented data)', () => {
+    renderView();
+    fireEvent.click(screen.getByTestId('dash-tab-disassembly-report'));
+    const panel = screen.getByTestId('disassembly-unavailable');
+    expect(panel).toBeInTheDocument();
+    expect(within(panel).getByText(/not built yet/i)).toBeInTheDocument();
   });
 });
