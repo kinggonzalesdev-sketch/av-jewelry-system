@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { PageHeader } from '@/components/ui/page-primitives';
 
 import { ClaimReviewView } from '@/components/claims/claim-review-view';
 import { getGrantedPermissions } from '@/lib/authz/guard';
@@ -25,13 +26,11 @@ export default async function ClaimsPage() {
   ]);
 
   return (
-    <div className="space-y-4">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Claim Review</h1>
-        <p className="text-sm text-muted-foreground">
-          Pending Claims awaiting confirmation. Confirming reserves stock exactly once.
-        </p>
-      </header>
+    <div>
+      <PageHeader
+        title="Claim Review"
+        description="Pending Claims awaiting confirmation. Confirming reserves stock exactly once."
+      />
 
       <ClaimReviewView
         claims={claims}

@@ -17,6 +17,7 @@ import type {
 } from '@/lib/dashboard/service';
 import { formatPeso } from '@/lib/payments/format';
 import { EmptyState } from '@/components/states/empty-state';
+import { MetricCard, ReadError } from '@/components/ui/page-primitives';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -126,9 +127,10 @@ export function DashboardView({
 
       {tab === 'Queues' ? (
         counts === null ? (
-          <EmptyState
+          // A FAILED read, not an empty result — say so loudly (never a zero).
+          <ReadError
             title="Counts unavailable"
-            description="The dashboard could not be read."
+            detail="The dashboard counts could not be read."
           />
         ) : (
           <div className="space-y-4">
@@ -147,12 +149,7 @@ export function DashboardView({
                       ['Cancelled', counts.ordersCancelled],
                     ] as const
                   ).map(([label, value]) => (
-                    <div key={label} className="rounded-lg border p-2.5">
-                      <p className="text-[11px] leading-tight text-muted-foreground">
-                        {label}
-                      </p>
-                      <p className="mt-1 text-2xl font-bold tabular-nums">{value}</p>
-                    </div>
+                    <MetricCard key={label} label={label} value={value} />
                   ))}
                 </div>
 
@@ -175,20 +172,15 @@ export function DashboardView({
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-lg border p-2.5">
-                    <p className="text-[11px] text-muted-foreground">Pending Claims</p>
-                    <p className="mt-1 text-2xl font-bold tabular-nums">
-                      {counts.pendingClaims}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border p-2.5">
-                    <p className="text-[11px] text-muted-foreground">
-                      Confirmed, for Invoice
-                    </p>
-                    <p className="mt-1 text-2xl font-bold tabular-nums">
-                      {counts.confirmedClaimsForInvoice}
-                    </p>
-                  </div>
+                  <MetricCard
+                    label="Pending Claims"
+                    value={counts.pendingClaims}
+                    accent
+                  />
+                  <MetricCard
+                    label="Confirmed, for Invoice"
+                    value={counts.confirmedClaimsForInvoice}
+                  />
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">
                   Claims are not Official Orders. Never add these to the order tiles.

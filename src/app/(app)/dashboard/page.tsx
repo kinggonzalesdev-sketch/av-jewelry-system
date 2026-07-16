@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { PageHeader } from '@/components/ui/page-primitives';
 
 import { DashboardView } from '@/components/dashboard/dashboard-view';
 import { getGrantedPermissions } from '@/lib/authz/guard';
@@ -41,13 +42,11 @@ export default async function DashboardPage({
   ]);
 
   return (
-    <div className="space-y-4">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">
-          Work queues, search, reports, reminders, and audit.
-        </p>
-      </header>
+    <div>
+      <PageHeader
+        title="Dashboard"
+        description="Work queues, search, reports, reminders, and audit."
+      />
 
       <DashboardView
         counts={counts}

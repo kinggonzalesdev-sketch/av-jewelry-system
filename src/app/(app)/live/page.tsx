@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { PageHeader } from '@/components/ui/page-primitives';
 
 import { LiveBatchesView } from '@/components/live/live-batches-view';
 import { getGrantedPermissions } from '@/lib/authz/guard';
@@ -42,13 +43,8 @@ export default async function LivePage() {
   const batchItems: Record<string, LiveBatchItemRow[]> = Object.fromEntries(itemLists);
 
   return (
-    <div className="space-y-4">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Live</h1>
-        <p className="text-sm text-muted-foreground">
-          Live selling batches and item entry.
-        </p>
-      </header>
+    <div>
+      <PageHeader title="Live" description="Live selling batches and item entry." />
 
       <LiveBatchesView
         batches={batches}
