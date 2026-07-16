@@ -36,18 +36,24 @@ function code(relative: string): string {
 const PRODUCTION_SHELL = [
   'app/(app)/layout.tsx',
   'components/shell/app-shell.tsx',
-  'components/shell/app-header.tsx',
+  'components/shell/app-sidebar.tsx',
 ];
 
 describe('the shell shows REAL authenticated identity, never hardcoded', () => {
-  it('the header renders identity from props, not a literal name', () => {
-    const header = code('components/shell/app-header.tsx');
+  it('the sidebar user card renders identity from props, not a literal name', () => {
+    const sidebar = code('components/shell/app-sidebar.tsx');
 
-    // No hardcoded prototype identity anywhere in the production header.
-    expect(header).not.toMatch(/A\.V\.\s*Owner/);
-    // The name is rendered from the prop.
-    expect(header).toMatch(/\{fullName\}/);
-    expect(header).toMatch(/data-testid="authenticated-full-name"/);
+    // The prototype hardcoded "A.V. Owner / Owner" in its user card. The
+    // production sidebar must not — the name comes from the prop.
+    expect(sidebar).not.toMatch(/A\.V\.\s*Owner/);
+    expect(sidebar).toMatch(/\{fullName\}/);
+    expect(sidebar).toMatch(/data-testid="authenticated-full-name"/);
+    expect(sidebar).toMatch(/data-testid="authenticated-role"/);
+  });
+
+  it('keeps the approved footer branding, exact wording', () => {
+    const sidebar = read('components/shell/app-sidebar.tsx');
+    expect(sidebar).toMatch(/Powered by King GenZ Digital/);
   });
 
   it('the identity comes from the caller’s own profile via a self-read', () => {
@@ -65,6 +71,20 @@ describe('the shell shows REAL authenticated identity, never hardcoded', () => {
     const layout = read('app/(app)/layout.tsx');
     expect(layout).toMatch(/getCurrentStaffProfile/);
     expect(layout).toMatch(/fullName=\{profile\.fullName\}/);
+  });
+
+  it('Logout runs the real signOut server action, not a dead button', () => {
+    const sidebar = read('components/shell/app-sidebar.tsx');
+    expect(sidebar).toMatch(/import \{ signOut \}/);
+    expect(sidebar).toMatch(/signOut\(\)/);
+  });
+
+  it('links only to routes that exist — no dead Customers/Reports/Settings', () => {
+    const shell = read('components/shell/app-shell.tsx');
+    // The prototype linked these; production has no route for them yet.
+    for (const dead of ['/customers', '/reports', '/settings']) {
+      expect(shell).not.toMatch(new RegExp(`href: '${dead}'`));
+    }
   });
 });
 

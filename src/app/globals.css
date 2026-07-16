@@ -48,46 +48,56 @@
   --radius-sm: calc(var(--radius) - 4px);
 }
 
+/*
+ * Approved MineFlow palette (matches the /preview prototype): emerald primary,
+ * a clean slate/white neutral system. Every token-driven primitive
+ * (ui/button, ui/card, ui/input …) inherits these, so the whole application
+ * takes the prototype's look from this one place — no per-page color edits.
+ *
+ * Dark mode stays OS-driven (prefers-color-scheme), refined to slate. A manual
+ * day/night toggle is a deliberate follow-up, not a dead affordance rendered
+ * before it works.
+ */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
+  --background: oklch(0.984 0.003 247.86); /* slate-50 — clean page canvas */
+  --foreground: oklch(0.208 0.042 265.8); /* slate-900 */
+  --card: oklch(1 0 0); /* white cards on the slate canvas */
+  --card-foreground: oklch(0.208 0.042 265.8);
+  --primary: oklch(0.596 0.145 162.5); /* emerald-600 */
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.968 0.007 247.9); /* slate-100 */
+  --secondary-foreground: oklch(0.208 0.042 265.8);
+  --muted: oklch(0.968 0.007 247.9); /* slate-100 */
+  --muted-foreground: oklch(0.554 0.041 257); /* slate-500 */
+  --accent: oklch(0.968 0.007 247.9); /* slate-100 hover */
+  --accent-foreground: oklch(0.208 0.042 265.8);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --radius: 0.625rem;
+  --border: oklch(0.929 0.013 255.5); /* slate-200 */
+  --input: oklch(0.929 0.013 255.5);
+  --ring: oklch(0.596 0.145 162.5); /* emerald focus ring */
+  --radius: 0.75rem; /* rounded-xl feel from the prototype */
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.985 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
+    --background: oklch(0.208 0.042 265.8); /* slate-900 */
+    --foreground: oklch(0.968 0.007 247.9); /* slate-100 */
+    --card: oklch(0.279 0.041 260); /* slate-800 */
+    --card-foreground: oklch(0.968 0.007 247.9);
+    --primary: oklch(0.696 0.17 162.5); /* emerald-500 */
+    --primary-foreground: oklch(0.208 0.042 265.8);
+    --secondary: oklch(0.372 0.039 257); /* slate-700 */
+    --secondary-foreground: oklch(0.968 0.007 247.9);
+    --muted: oklch(0.372 0.039 257);
+    --muted-foreground: oklch(0.704 0.04 256.8); /* slate-400 */
+    --accent: oklch(0.372 0.039 257);
+    --accent-foreground: oklch(0.968 0.007 247.9);
     --destructive: oklch(0.704 0.191 22.216);
     --destructive-foreground: oklch(0.985 0 0);
-    --border: oklch(1 0 0 / 12%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
+    --border: oklch(0.372 0.039 257); /* slate-700 */
+    --input: oklch(0.372 0.039 257);
+    --ring: oklch(0.696 0.17 162.5);
   }
 }
 
