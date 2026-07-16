@@ -1,6 +1,9 @@
 import Link from 'next/link';
 
 import type { CustomerDetailResult, CustomersResult } from '@/lib/customers/service';
+import type { AttachmentRow } from '@/lib/attachments/types';
+import { AttachmentGallery } from '@/components/attachments/attachment-gallery';
+import { PhotoCapture } from '@/components/attachments/photo-capture';
 import { EmptyState } from '@/components/states/empty-state';
 import { ReadError, StatusBadge, type BadgeTone } from '@/components/ui/page-primitives';
 
@@ -109,7 +112,13 @@ const ORDER_TONE: Record<string, BadgeTone> = {
   cancelled: 'danger',
 };
 
-function CustomerDetailPanel({ detail }: { detail: CustomerDetailResult }) {
+function CustomerDetailPanel({
+  detail,
+  attachments,
+}: {
+  detail: CustomerDetailResult;
+  attachments: AttachmentRow[];
+}) {
   if (!detail.ok) {
     return (
       <ReadError title="Customer details could not be loaded" detail={detail.reason} />
@@ -203,6 +212,21 @@ function CustomerDetailPanel({ detail }: { detail: CustomerDetailResult }) {
         )}
       </section>
 
+      <section>
+        <h3 className="mb-1.5 text-sm font-semibold text-foreground">
+          Reference photos ({attachments.length})
+        </h3>
+        <div className="space-y-2">
+          <AttachmentGallery attachments={attachments} />
+          <PhotoCapture
+            relatedEntityType="customer"
+            relatedEntityId={customer.id}
+            purpose="photo"
+            label="Attach a reference photo"
+          />
+        </div>
+      </section>
+
       <p className="text-xs text-muted-foreground">
         Read-only. Related orders and claims are limited to records you may already see.
         Customer records are created through claim capture or migration, not here.
@@ -216,11 +240,13 @@ export function CustomersView({
   query,
   detail,
   selectedId,
+  attachments,
 }: {
   result: CustomersResult;
   query: string;
   detail: CustomerDetailResult | null;
   selectedId: string | null;
+  attachments: AttachmentRow[];
 }) {
   return (
     <div className="space-y-4">
@@ -259,7 +285,9 @@ export function CustomersView({
 
       <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
         <CustomerList result={result} query={query} selectedId={selectedId} />
-        {detail ? <CustomerDetailPanel detail={detail} /> : null}
+        {detail ? (
+          <CustomerDetailPanel detail={detail} attachments={attachments} />
+        ) : null}
       </div>
     </div>
   );

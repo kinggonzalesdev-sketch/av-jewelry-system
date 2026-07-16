@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 
 import { CustomersView } from '@/components/customers/customers-view';
 import { PageHeader } from '@/components/ui/page-primitives';
+import { listAttachments } from '@/lib/attachments/service';
 import { getCustomerDetail, listCustomers } from '@/lib/customers/service';
 
 export const metadata: Metadata = {
@@ -27,9 +28,10 @@ export default async function CustomersPage({
   const query = typeof params.q === 'string' ? params.q : '';
   const selectedId = typeof params.id === 'string' ? params.id : null;
 
-  const [result, detail] = await Promise.all([
+  const [result, detail, attachments] = await Promise.all([
     listCustomers(query),
     selectedId ? getCustomerDetail(selectedId) : Promise.resolve(null),
+    selectedId ? listAttachments('customer', selectedId) : Promise.resolve([]),
   ]);
 
   return (
@@ -43,6 +45,7 @@ export default async function CustomersPage({
         query={query}
         detail={detail}
         selectedId={selectedId}
+        attachments={attachments}
       />
     </div>
   );

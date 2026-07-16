@@ -1,8 +1,14 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { CustomersView } from '@/components/customers/customers-view';
 import type { CustomerDetailResult, CustomersResult } from '@/lib/customers/service';
+
+// The camera/upload control is exercised by its own tests; stub it here so the
+// directory view stays focused on list/detail rendering (and needs no router).
+vi.mock('@/components/attachments/photo-capture', () => ({
+  PhotoCapture: () => null,
+}));
 
 const rows: CustomersResult = {
   ok: true,
@@ -34,6 +40,7 @@ describe('CustomersView list states', () => {
         query=""
         detail={null}
         selectedId={null}
+        attachments={[]}
       />,
     );
     expect(screen.getByText(/could not be loaded/i)).toBeInTheDocument();
@@ -47,6 +54,7 @@ describe('CustomersView list states', () => {
         query=""
         detail={null}
         selectedId={null}
+        attachments={[]}
       />,
     );
     expect(screen.getByText(/No customers yet/i)).toBeInTheDocument();
@@ -59,13 +67,22 @@ describe('CustomersView list states', () => {
         query="zzz"
         detail={null}
         selectedId={null}
+        attachments={[]}
       />,
     );
     expect(screen.getByText(/No matches/i)).toBeInTheDocument();
   });
 
   it('renders customers with a detail link each', () => {
-    render(<CustomersView result={rows} query="" detail={null} selectedId={null} />);
+    render(
+      <CustomersView
+        result={rows}
+        query=""
+        detail={null}
+        selectedId={null}
+        attachments={[]}
+      />,
+    );
     expect(screen.getByText('Ana Reyes')).toBeInTheDocument();
     expect(screen.getByText('Bea Lim')).toBeInTheDocument();
     const links = screen.getAllByRole('link', { name: /view/i });
@@ -106,7 +123,15 @@ describe('CustomersView detail panel', () => {
       ],
     };
 
-    render(<CustomersView result={rows} query="" detail={detail} selectedId="c1" />);
+    render(
+      <CustomersView
+        result={rows}
+        query=""
+        detail={detail}
+        selectedId="c1"
+        attachments={[]}
+      />,
+    );
 
     expect(screen.getByText('ORD-2026-000101')).toBeInTheDocument();
     expect(screen.getByText('CLM-2026-000101')).toBeInTheDocument();
@@ -121,6 +146,7 @@ describe('CustomersView detail panel', () => {
         query=""
         detail={{ ok: true, customer: null, orders: [], claims: [] }}
         selectedId="missing"
+        attachments={[]}
       />,
     );
     expect(screen.getByText(/Customer not found/i)).toBeInTheDocument();
@@ -133,6 +159,7 @@ describe('CustomersView detail panel', () => {
         query=""
         detail={{ ok: false, reason: 'denied' }}
         selectedId="c1"
+        attachments={[]}
       />,
     );
     expect(screen.getByText(/details could not be loaded/i)).toBeInTheDocument();
