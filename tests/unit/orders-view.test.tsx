@@ -23,6 +23,7 @@ function row(over: Partial<OrderListRow>): OrderListRow {
     paymentStatus: 'awaiting',
     fulfillmentStatus: null,
     layawayStatus: null,
+    shipDate: null,
     ...over,
   };
 }
@@ -146,6 +147,26 @@ describe('OrdersView — search and filters (existing, preserved)', () => {
     fireEvent.change(screen.getByTestId('orders-search'), { target: { value: 'ana' } });
     expect(screen.getByText('Ana Reyes')).toBeInTheDocument();
     expect(screen.queryByText('Maria Santos')).not.toBeInTheDocument();
+  });
+
+  it('renders the approved Order Date, Ship Date, and Hide Keep filters', () => {
+    render(<OrdersView result={ok(sample)} />);
+    expect(screen.getByTestId('orders-filter-order-date')).toBeInTheDocument();
+    expect(screen.getByTestId('orders-filter-ship-date')).toBeInTheDocument();
+    expect(screen.getByTestId('orders-filter-hide-keep')).toBeInTheDocument();
+  });
+
+  it('Order Date filters to orders created on the selected day', () => {
+    const dated: OrderListRow[] = [
+      row({ customerDisplayName: 'Early Bird', createdAt: '2026-07-01T09:00:00.000Z' }),
+      row({ customerDisplayName: 'Late Comer', createdAt: '2026-07-16T09:00:00.000Z' }),
+    ];
+    render(<OrdersView result={ok(dated)} />);
+    fireEvent.change(screen.getByTestId('orders-filter-order-date'), {
+      target: { value: '2026-07-01' },
+    });
+    expect(screen.getByText('Early Bird')).toBeInTheDocument();
+    expect(screen.queryByText('Late Comer')).not.toBeInTheDocument();
   });
 
   it('the fulfillment filter offers only statuses present in the data', () => {

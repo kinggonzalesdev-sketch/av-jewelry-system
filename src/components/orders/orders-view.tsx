@@ -201,6 +201,9 @@ export function OrdersView({ result }: { result: OrdersResult }) {
   const [card, setCard] = useState<CardKey>('all');
   const [query, setQuery] = useState('');
   const [fulfillmentFilter, setFulfillmentFilter] = useState('all');
+  const [orderDate, setOrderDate] = useState('');
+  const [shipDate, setShipDate] = useState('');
+  const [hideKeep, setHideKeep] = useState(false);
 
   // Distinct fulfillment statuses present in the loaded data — the filter only
   // offers values that actually exist, so it never implies data we do not have.
@@ -224,6 +227,9 @@ export function OrdersView({ result }: { result: OrdersResult }) {
     const q = query.trim().toLowerCase();
     return rows.filter((o) => {
       if (!matchesCard(o, card)) return false;
+      if (hideKeep && matchesCard(o, 'keep')) return false;
+      if (orderDate && o.createdAt.slice(0, 10) !== orderDate) return false;
+      if (shipDate && (o.shipDate?.slice(0, 10) ?? '') !== shipDate) return false;
       if (fulfillmentFilter === 'none' && o.fulfillmentStatus !== null) return false;
       if (
         fulfillmentFilter !== 'all' &&
@@ -238,7 +244,7 @@ export function OrdersView({ result }: { result: OrdersResult }) {
         .toLowerCase()
         .includes(q);
     });
-  }, [rows, card, query, fulfillmentFilter]);
+  }, [rows, card, query, fulfillmentFilter, orderDate, shipDate, hideKeep]);
 
   // A FAILED read is not "no orders" — say so loudly (the session's hard rule).
   if (!result.ok) {
@@ -319,6 +325,50 @@ export function OrdersView({ result }: { result: OrdersResult }) {
               </option>
             ))}
           </select>
+
+          {/* Approved filters: Order Date · Ship Date · Hide Keep. Real:
+              Order Date filters on the order's created day, Ship Date on the
+              fulfillment dispatch day. Hide Keep excludes the Keep bucket (a
+              no-op until Keep has a backing concept — kept for the approved UI). */}
+          <label className="flex items-center gap-1 text-xs text-muted-foreground">
+            <span className="sr-only">Order date</span>
+            <span aria-hidden="true">🗓</span>
+            <input
+              type="date"
+              value={orderDate}
+              onChange={(e) => setOrderDate(e.target.value)}
+              aria-label="Filter by order date"
+              data-testid="orders-filter-order-date"
+              title="Order date"
+              className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+            />
+          </label>
+          <label className="flex items-center gap-1 text-xs text-muted-foreground">
+            <span className="sr-only">Ship date</span>
+            <span aria-hidden="true">🚚</span>
+            <input
+              type="date"
+              value={shipDate}
+              onChange={(e) => setShipDate(e.target.value)}
+              aria-label="Filter by ship date"
+              data-testid="orders-filter-ship-date"
+              title="Ship date"
+              className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+            />
+          </label>
+          <label
+            className="flex h-9 items-center gap-1.5 rounded-md border border-border px-2.5 text-sm"
+            data-testid="orders-filter-hide-keep"
+          >
+            <input
+              type="checkbox"
+              checked={hideKeep}
+              onChange={(e) => setHideKeep(e.target.checked)}
+              aria-label="Hide Keep"
+              className="h-4 w-4 accent-gold"
+            />
+            Hide Keep
+          </label>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
           Showing <span className="tabular-nums">{filtered.length}</span> of{' '}

@@ -33,6 +33,9 @@ export type OrderListRow = {
   /** Layaway arrangement status if this order is a layaway (one per order),
    *  else null. Used by the "For Layaway" status card. */
   layawayStatus: string | null;
+  /** Dispatch/ship timestamp from the fulfillment record, or null. Backs the
+   *  "Ship Date" filter. */
+  shipDate: string | null;
 };
 
 function one<T>(value: unknown): T | undefined {
@@ -60,7 +63,7 @@ export async function listOrders(limit = 100): Promise<OrdersResult> {
       // layaway_arrangements is UNIQUE(official_order_id) — one per order.
       `id, order_number, invoice_number, status, created_at,
        customers ( display_name ),
-       fulfillment_records ( status ),
+       fulfillment_records ( status, dispatched_at ),
        layaway_arrangements ( status )`,
     )
     .order('created_at', { ascending: false })
@@ -80,7 +83,9 @@ export async function listOrders(limit = 100): Promise<OrdersResult> {
   const rows: OrderListRow[] = raw.map((row, index) => {
     const r = row as Record<string, unknown>;
     const customer = one<{ display_name: string }>(r.customers);
-    const fulfillment = one<{ status: string }>(r.fulfillment_records);
+    const fulfillment = one<{ status: string; dispatched_at: string | null }>(
+      r.fulfillment_records,
+    );
     const layaway = one<{ status: string }>(r.layaway_arrangements);
     const balance = balances[index];
 
@@ -114,6 +119,7 @@ export async function listOrders(limit = 100): Promise<OrdersResult> {
       paymentStatus,
       fulfillmentStatus: fulfillment?.status ?? null,
       layawayStatus: layaway?.status ?? null,
+      shipDate: fulfillment?.dispatched_at ?? null,
     };
   });
 
