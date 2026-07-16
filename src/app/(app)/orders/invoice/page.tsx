@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { InvoiceWorkspace } from '@/components/invoicing/invoice-workspace';
 import { getGrantedPermissions } from '@/lib/authz/guard';
 import { computeEligibility, listInvoiceDrafts } from '@/lib/invoicing/drafts';
+import { PageHeader } from '@/components/ui/page-primitives';
 
 export const metadata: Metadata = {
   title: 'Invoice — A.V. Jewelry Operations',
@@ -26,13 +27,11 @@ export default async function InvoicePage() {
   ]);
 
   return (
-    <div className="space-y-4">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Invoice</h1>
-        <p className="text-sm text-muted-foreground">
-          Group Confirmed Claims into drafts, then approve to create one Official Order.
-        </p>
-      </header>
+    <div>
+      <PageHeader
+        title="Invoice"
+        description="Group Confirmed Claims into drafts, then approve to create one Official Order."
+      />
 
       <InvoiceWorkspace
         drafts={drafts}

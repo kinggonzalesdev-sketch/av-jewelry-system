@@ -1,23 +1,33 @@
 import type { Metadata } from 'next';
 
-import { PlaceholderPage } from '@/components/states/placeholder-page';
+import { OrdersView } from '@/components/orders/orders-view';
+import { listOrders } from '@/lib/orders/service';
+import { PageHeader } from '@/components/ui/page-primitives';
 
 export const metadata: Metadata = {
   title: 'Orders — A.V. Jewelry Operations',
 };
 
+export const dynamic = 'force-dynamic';
+
 /**
- * Orders navigation group placeholder.
+ * Official Orders (Bible §7, §22.9).
  *
- * Invoice Draft, Official Orders, payment, layaway, and fulfillment are delivered
- * in Roadmap Phases 5–7.
+ * A consolidated, read-only list of real Official Orders with authoritative
+ * money and fulfillment status. RLS scopes the rows; every peso figure comes
+ * from the tested order_balance() reader. The row links lead to the workspaces
+ * that own the actions — this page acts on nothing, so it adds no new authority.
  */
-export default function OrdersPage() {
+export default async function OrdersPage() {
+  const result = await listOrders();
+
   return (
-    <PlaceholderPage
-      title="Orders"
-      description="Invoicing, official orders, payment, and fulfillment."
-      phase="Phases 5–7 — Invoicing, Payment & Fulfillment"
-    />
+    <div>
+      <PageHeader
+        title="Orders"
+        description="Official Orders — invoicing, payment, and fulfillment status."
+      />
+      <OrdersView result={result} />
+    </div>
   );
 }
