@@ -71,7 +71,16 @@ export async function prepareFulfillment(
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
+
+  // `.select('id')` turns this from fire-and-forget into a statement that
+  // reports what it touched.
+  //
+  // Without it, an UPDATE matching ZERO rows returns no error — so when no
+  // fulfillment record existed (they were never created until migration
+  // 20260716230000), this function reported success and changed nothing. The
+  // operator pressed Prepare, saw "Prepared", and the order sat untouched. A
+  // silent no-op is worse than a visible failure: it ends the investigation.
+  const { data, error } = await supabase
     .from('fulfillment_records')
     .update({
       // Preparation sets the queue, never a released state.
@@ -85,9 +94,33 @@ export async function prepareFulfillment(
       prepared_at: new Date().toISOString(),
       prepared_by: staff.staffProfileId,
     })
-    .eq('official_order_id', officialOrderId);
+    .eq('official_order_id', officialOrderId)
+    .select('id');
 
   if (error) return { ok: false, error: 'The fulfillment could not be prepared.' };
+
+  // Zero rows matched. Every Official Order has had exactly one fulfillment
+  // record since 20260716230000 created it inside the Approve & Send
+  // transaction and backfilled the rest — so reaching here means the record is
+  // genuinely missing, or RLS hides this order from the caller.
+  //
+  // The record is NOT created here as a fallback. A missing row after that
+  // migration is a data-integrity fact, and quietly manufacturing one would
+  // paper over it and make the real cause unfindable.
+  if (!data || data.length === 0) {
+    await recordAuditEvent({
+      action: 'fulfillment.prepare',
+      entityType: 'fulfillment_record',
+      entityId: officialOrderId,
+      outcome: 'failed',
+      reason: 'No fulfillment record matched the Official Order.',
+    });
+
+    return {
+      ok: false,
+      error: 'Fulfillment record missing for Official Order. Preparation was not saved.',
+    };
+  }
 
   await recordAuditEvent({
     action: 'fulfillment.prepare',
