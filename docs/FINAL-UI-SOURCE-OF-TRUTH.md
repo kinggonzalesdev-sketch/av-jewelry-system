@@ -41,9 +41,12 @@ document is updated first by Owner decision.
 
 ### Placements that are LOCKED
 
-- **New Entry** is **not** a nav item. It is an action **inside Orders** (a
-  gold "＋ New Entry" button) that links to the real claim-capture flow on
-  `/live`. It never re-implements capture.
+- **Capture is not a nav item.** It is an action **inside Orders** — the green
+  "＋ New Order" button opens the New Order form, wired to the real,
+  permission-guarded capture flow (creates a Pending Claim only). The earlier
+  separate "New Entry → `/live`" header link and the Invoice / Confirm / Layaway
+  shortcut buttons were **removed by Owner request (2026-07-18)** as duplicates of
+  the sidebar navigation. New Order is the single capture entry.
 - **Fulfillment** is a **standalone** item at position 8 (route `/orders/fulfillment`).
 - **Invoice**, **Payments & Layaway**, **Items / Inventory** live under the
   `/orders/*` group but appear as their own sidebar items (prototype-verbatim).
@@ -105,8 +108,9 @@ TOKENS, never a hardcoded palette.
   - **Gross Profit tab** is retained but **honest-unavailable**: no cost/COGS
     rules exist in the backend, so it shows "unavailable — COGS rules not defined"
     rather than invented numbers (§5).
-- **Orders** — matches the prototype: top workflow controls (**New Order**,
-  **Invoice**, **Confirm**, **Layaway**), the approved **status cards**, search +
+- **Orders** — the **New Order** action (the Invoice / Confirm / Layaway shortcut
+  buttons and the "New Entry" header link were removed 2026-07-18 as duplicates of
+  the sidebar nav), the approved **status cards**, search +
   **Order Date** / **Ship Date** / **Hide Keep** filters, the full table (row
   selection, status, shop, order, customer, qty, amount, actions), pagination, and
   status-specific row actions. Cards/filters use REAL order data; cards with no
@@ -164,6 +168,11 @@ order.
 
 ### Change log
 
+- **2026-07-18 — Removed the Orders "New Entry" header link and the Invoice /
+  Confirm / Layaway shortcut buttons.** Owner request: they duplicated the sidebar
+  navigation (Invoice, Payments & Layaway) and the capture entry. Capture now has
+  a single entry — the New Order form. Lock tests (`ui-lock`,
+  `production-ui-identity`, `new-order-workflow`) updated to match.
 - **2026-07-16 — Brand switched to an EMERALD GREEN theme (§3).** Owner decision
   from the reference mockups, superseding beige/black/gold. Applied in
   `globals.css` (token values), with the `--gold*` token NAMES retained to avoid

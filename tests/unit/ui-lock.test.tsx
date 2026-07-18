@@ -62,11 +62,15 @@ describe('LOCKED: mobile navigation', () => {
 });
 
 describe('LOCKED: placements', () => {
-  it('New Entry is not a nav item; it lives inside Orders and links to /live', () => {
-    expect(PRIMARY_NAV.some((i) => /new entry/i.test(i.label))).toBe(false);
-    const orders = read('app/(app)/orders/page.tsx');
-    expect(orders).toMatch(/New Entry/);
-    expect(orders).toMatch(/href="\/live"/);
+  it('capture is not a nav item; it lives inside Orders as the New Order form', () => {
+    // Neither "New Entry" nor "New Order" is a primary nav item — capture is an
+    // in-page action. The old "New Entry → /live" header link was removed by
+    // Owner request (2026-07-18); New Order is the single capture entry, wired to
+    // the real, permission-guarded capture flow.
+    expect(PRIMARY_NAV.some((i) => /new (entry|order)/i.test(i.label))).toBe(false);
+    const workflow = read('components/orders/new-order-workflow.tsx');
+    expect(workflow).toMatch(/New Order/);
+    expect(workflow).toMatch(/captureClaimAction|post_live_manual/);
   });
 
   it('Fulfillment stays standalone at position 8 (/orders/fulfillment)', () => {

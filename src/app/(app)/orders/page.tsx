@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 
 import { NewOrderWorkflow } from '@/components/orders/new-order-workflow';
 import { OrdersView } from '@/components/orders/orders-view';
@@ -24,8 +23,10 @@ export const dynamic = 'force-dynamic';
  * Send Invoice). RLS scopes the rows; every peso figure comes from the tested
  * order_balance() reader.
  *
- * New Entry (header) remains the live-capture shortcut to /live; New Order is the
- * post-live entry form. Both re-check permission server-side (Bible §30.3 r2).
+ * Capture has ONE entry: the New Order form (permission-gated on claim_capture,
+ * re-checked server-side, Bible §30.3 r2). The old "New Entry → /live" header
+ * link and the Invoice/Confirm/Layaway shortcut buttons were removed by Owner
+ * request (2026-07-18) — they duplicated the sidebar navigation.
  */
 export default async function OrdersPage() {
   const [result, permissions, customers, items, profile] = await Promise.all([
@@ -36,25 +37,11 @@ export default async function OrdersPage() {
     getCurrentStaffProfile(),
   ]);
 
-  const canCreateEntry =
-    permissions.has('claim_capture') || permissions.has('post_live_item_entry');
-
   return (
     <div>
       <PageHeader
         title="Orders"
         description="Official Orders — invoicing, payment, and fulfillment status."
-        actions={
-          canCreateEntry ? (
-            <Link
-              href="/live"
-              data-testid="orders-new-entry"
-              className="inline-flex items-center gap-1.5 rounded-md bg-gold px-3 py-2 text-sm font-semibold text-black transition-colors hover:bg-gold/90"
-            >
-              <span aria-hidden="true">＋</span> New Entry
-            </Link>
-          ) : null
-        }
       />
 
       <div className="space-y-4">

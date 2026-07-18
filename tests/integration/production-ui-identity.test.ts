@@ -140,15 +140,18 @@ describe('the shell shows REAL authenticated identity, never hardcoded', () => {
     expect(settings).not.toMatch(/UnavailablePage/);
   });
 
-  it('surfaces New Entry inside Orders, linking to the real capture flow — not a nav item', () => {
+  it('surfaces the New Order capture form inside Orders — not a nav item', () => {
     const orders = read('app/(app)/orders/page.tsx');
-    // New Entry is an action IN Orders, gated on the capture permission, that
-    // links to the real /live claim-capture flow — it never re-implements it.
-    expect(orders).toMatch(/New Entry/);
-    expect(orders).toMatch(/href="\/live"/);
-    expect(orders).toMatch(/claim_capture|post_live_item_entry/);
+    const workflow = read('components/orders/new-order-workflow.tsx');
+    // Capture is an action IN Orders: the New Order form, gated on the capture
+    // permission, wired to the real capture flow — it never re-implements it. The
+    // old "New Entry → /live" link + Invoice/Confirm/Layaway shortcuts were
+    // removed by Owner request (2026-07-18) as duplicates of the sidebar nav.
+    expect(orders).toMatch(/NewOrderWorkflow/);
+    expect(orders).toMatch(/claim_capture/);
+    expect(workflow).toMatch(/captureClaimAction|post_live_manual/);
     // And it is NOT a sidebar item.
-    expect(PRIMARY_NAV.some((i) => /new entry/i.test(i.label))).toBe(false);
+    expect(PRIMARY_NAV.some((i) => /new (entry|order)/i.test(i.label))).toBe(false);
   });
 });
 

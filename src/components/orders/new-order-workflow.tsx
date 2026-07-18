@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useActionState, useEffect, useId, useState } from 'react';
 
@@ -13,11 +12,13 @@ import { formatPeso } from '@/lib/payments/format';
 import { cn } from '@/lib/utils';
 
 /**
- * Orders workflow controls + the New Order form (reference mockup).
+ * Orders "New Order" control + the New Order form (reference mockup).
  *
- * The top row is the approved workflow: New Order · Invoice · Confirm · Layaway.
- * "New Order" opens the approved New Order form; the others navigate to the real
- * workspaces that own those actions (nothing here re-implements them).
+ * Only the New Order action lives here. The earlier Invoice / Confirm / Layaway
+ * shortcut buttons (and the separate "New Entry → /live" header link) were
+ * removed by Owner request (2026-07-18) — they duplicated the sidebar navigation
+ * (Invoice, Payments & Layaway) and the capture entry. Capture now has ONE entry:
+ * this New Order form.
  *
  * The New Order form is Manual Post-Live Entry: it creates a PENDING CLAIM only
  * (via the real, permission-guarded captureClaim), never an Official Order — an
@@ -265,7 +266,7 @@ export function NewOrderWorkflow({
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div>
         <Button
           type="button"
           onClick={() => setOpen(true)}
@@ -280,21 +281,6 @@ export function NewOrderWorkflow({
         >
           ＋ New Order
         </Button>
-        <Link href="/orders/invoice" className="contents">
-          <Button type="button" variant="outline">
-            Invoice
-          </Button>
-        </Link>
-        <Link href="/claims" className="contents">
-          <Button type="button" variant="outline">
-            Confirm
-          </Button>
-        </Link>
-        <Link href="/orders/payments" className="contents">
-          <Button type="button" variant="outline">
-            Layaway
-          </Button>
-        </Link>
       </div>
 
       {open ? (

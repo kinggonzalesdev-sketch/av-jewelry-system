@@ -39,13 +39,14 @@ function renderWorkflow(canCreate = true) {
   );
 }
 
-describe('NewOrderWorkflow — approved workflow controls', () => {
-  it('renders New Order, Invoice, Confirm, and Layaway controls', () => {
+describe('NewOrderWorkflow — the New Order control', () => {
+  it('renders only New Order (the Invoice/Confirm/Layaway shortcuts were removed)', () => {
     renderWorkflow();
     expect(screen.getByTestId('orders-new-order')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /invoice/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /confirm/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /layaway/i })).toBeInTheDocument();
+    // The removed shortcut buttons must not reappear — the sidebar owns that nav.
+    expect(screen.queryByRole('button', { name: 'Invoice' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Confirm' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Layaway' })).not.toBeInTheDocument();
   });
 
   it('disables New Order without the capture permission', () => {
