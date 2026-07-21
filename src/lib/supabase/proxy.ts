@@ -24,7 +24,10 @@ import { getClientEnv } from '@/lib/env';
  * account must be able to see WHY they are blocked and sign out. It is not a
  * public page — it renders nothing sensitive and reveals no reason.
  */
-const PUBLIC_ROUTES = ['/sign-in', '/account-disabled'];
+// '/' is the public landing page (marketing). Because isPublicRoute matches
+// `pathname === route`, only the EXACT root is public — every other path stays
+// protected and unauthenticated visitors are still sent to sign-in.
+const PUBLIC_ROUTES = ['/', '/sign-in', '/account-disabled'];
 
 function isPublicRoute(pathname: string): boolean {
   return PUBLIC_ROUTES.some(

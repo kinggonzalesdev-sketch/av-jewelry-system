@@ -112,8 +112,11 @@ describe('protected route boundary (ADR §7, Invariant #3)', () => {
 
   it('keeps the public route list minimal and explicit', () => {
     // Phase 2 added /account-disabled: a signed-in user whose account was
-    // deactivated must be able to see they are blocked and sign out. It renders
-    // nothing sensitive and gives no reason. Any OTHER addition here would widen
+    // deactivated must be able to see they are blocked and sign out. `/` was
+    // added deliberately as the PUBLIC MARKETING LANDING page — it exposes no
+    // data, reads no database, and makes no authorization decision; and because
+    // isPublicRoute matches `pathname === route`, only the EXACT root is public,
+    // so every other path stays protected. Any OTHER addition here would widen
     // the unauthenticated surface and must be deliberate.
     const middleware = readFileSync(
       join(projectRoot, 'src', 'lib', 'supabase', 'proxy.ts'),
@@ -121,7 +124,7 @@ describe('protected route boundary (ADR §7, Invariant #3)', () => {
     );
 
     expect(middleware).toMatch(
-      /PUBLIC_ROUTES\s*=\s*\['\/sign-in',\s*'\/account-disabled'\]/,
+      /PUBLIC_ROUTES\s*=\s*\['\/',\s*'\/sign-in',\s*'\/account-disabled'\]/,
     );
   });
 });
