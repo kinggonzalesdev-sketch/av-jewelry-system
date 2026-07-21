@@ -17,6 +17,7 @@ import type {
   SearchResult,
 } from '@/lib/dashboard/service';
 import type { FollowUpQueue } from '@/lib/followups/service';
+import type { MoneyInTransitResult } from '@/lib/finance/money-in-transit';
 import { formatPeso } from '@/lib/payments/format';
 import { EmptyState } from '@/components/states/empty-state';
 import { FollowUpCards } from '@/components/dashboard/follow-up-cards';
@@ -104,6 +105,7 @@ export function DashboardView({
   results,
   query,
   followUps,
+  moneyInTransit,
   canExport,
   canVerifyPayments,
   canMonitorInventory,
@@ -115,6 +117,7 @@ export function DashboardView({
   results: SearchResult[];
   query: string;
   followUps: FollowUpQueue;
+  moneyInTransit: MoneyInTransitResult;
   canExport: boolean;
   canVerifyPayments: boolean;
   canMonitorInventory: boolean;
@@ -453,6 +456,49 @@ export function DashboardView({
                   Official Order — never double-counted. Forfeiture needs Owner approval;
                   no automatic stock return.
                 </p>
+              </CardContent>
+            </Card>
+
+            {/* Money in Transit — money not yet in the bank (problem #14). Real
+                SQL sums; a failed read shows an error, never a false ₱0. */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Money in Transit</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {moneyInTransit.ok ? (
+                  <>
+                    <div
+                      className="grid grid-cols-1 gap-2 sm:grid-cols-3"
+                      data-testid="money-in-transit"
+                    >
+                      <MetricCard
+                        label="Awaiting Verification"
+                        value={formatPeso(moneyInTransit.data.awaitingVerification)}
+                      />
+                      <MetricCard
+                        label="Customer Pending"
+                        value={formatPeso(moneyInTransit.data.customerPending)}
+                      />
+                      <MetricCard
+                        label="In Transit to Collect"
+                        value={formatPeso(moneyInTransit.data.inTransitToCollect)}
+                        accent
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Money not yet in the bank. In Transit = outstanding on COD orders
+                      dispatched but not completed. The rider-vs-LBC split and
+                      collected-but-not-remitted tracking come with the courier/remittance
+                      fields (next slice).
+                    </p>
+                  </>
+                ) : (
+                  <ReadError
+                    title="Money in Transit unavailable"
+                    detail="The money-in-transit totals could not be read."
+                  />
+                )}
               </CardContent>
             </Card>
           </div>

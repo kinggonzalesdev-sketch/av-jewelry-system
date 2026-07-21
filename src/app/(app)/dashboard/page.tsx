@@ -11,6 +11,7 @@ import {
   search,
 } from '@/lib/dashboard/service';
 import { getFollowUpQueue } from '@/lib/followups/service';
+import { getMoneyInTransit } from '@/lib/finance/money-in-transit';
 
 export const metadata: Metadata = {
   title: 'Dashboard Profile — A.V. Jewelry Operations',
@@ -35,16 +36,25 @@ export default async function DashboardPage({
   const params = await searchParams;
   const query = typeof params.q === 'string' ? params.q : '';
 
-  const [counts, metrics, notifications, audit, results, followUps, permissions] =
-    await Promise.all([
-      getDashboardCounts(),
-      getDashboardMetrics(),
-      listNotifications(),
-      listAuditEvents(),
-      search(query),
-      getFollowUpQueue(),
-      getGrantedPermissions(),
-    ]);
+  const [
+    counts,
+    metrics,
+    notifications,
+    audit,
+    results,
+    followUps,
+    moneyInTransit,
+    permissions,
+  ] = await Promise.all([
+    getDashboardCounts(),
+    getDashboardMetrics(),
+    listNotifications(),
+    listAuditEvents(),
+    search(query),
+    getFollowUpQueue(),
+    getMoneyInTransit(),
+    getGrantedPermissions(),
+  ]);
 
   return (
     <div>
@@ -61,6 +71,7 @@ export default async function DashboardPage({
         results={results}
         query={query}
         followUps={followUps}
+        moneyInTransit={moneyInTransit}
         canExport={permissions.has('export_data_reports')}
         canVerifyPayments={permissions.has('payment_verification')}
         canMonitorInventory={permissions.has('inventory_monitoring')}

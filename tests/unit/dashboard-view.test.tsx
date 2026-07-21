@@ -82,6 +82,14 @@ function renderView(over: Partial<Parameters<typeof DashboardView>[0]> = {}) {
           },
         ],
       }}
+      moneyInTransit={{
+        ok: true,
+        data: {
+          awaitingVerification: '5000.00',
+          customerPending: '12000.00',
+          inTransitToCollect: '8000.00',
+        },
+      }}
       canExport={false}
       canVerifyPayments={false}
       canMonitorInventory={false}
@@ -134,6 +142,20 @@ describe('DashboardView — charts stay VISIBLE at zero data', () => {
   it('keeps the Sales for the Period chart title visible at zero', () => {
     renderView();
     expect(screen.getByText('Sales for the Period')).toBeInTheDocument();
+  });
+
+  it('shows Money in Transit from real SQL sums', () => {
+    renderView();
+    const mit = screen.getByTestId('money-in-transit');
+    expect(mit).toBeInTheDocument();
+    expect(within(mit).getByText('₱5,000.00')).toBeInTheDocument();
+    expect(within(mit).getByText('₱12,000.00')).toBeInTheDocument();
+    expect(within(mit).getByText('₱8,000.00')).toBeInTheDocument();
+  });
+
+  it('shows an explicit error, not ₱0, when money-in-transit could not be read', () => {
+    renderView({ moneyInTransit: { ok: false } });
+    expect(screen.getByText(/Money in Transit unavailable/i)).toBeInTheDocument();
   });
 });
 
