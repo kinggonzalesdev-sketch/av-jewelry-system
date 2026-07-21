@@ -16,6 +16,7 @@ import type {
   MigrationBatchRow,
   RtsRow,
 } from '@/lib/inventory/service';
+import { ItemCustodyEditor } from '@/components/inventory/item-custody-editor';
 import { EmptyState } from '@/components/states/empty-state';
 import { Button } from '@/components/ui/button';
 import { ReadError } from '@/components/ui/page-primitives';
@@ -137,6 +138,7 @@ export function InventoryWorkspace({
                   <th className="px-2.5 py-2 text-right">Total</th>
                   <th className="px-2.5 py-2 text-right">Available</th>
                   <th className="px-2.5 py-2 text-right">Reserved</th>
+                  <th className="px-2.5 py-2">Custody</th>
                   <th className="px-2.5 py-2">Notes</th>
                 </tr>
               </thead>
@@ -158,6 +160,15 @@ export function InventoryWorkspace({
                     </td>
                     <td className="px-2.5 py-2 text-right tabular-nums">
                       {i.reservedQuantity}
+                    </td>
+                    <td className="px-2.5 py-2">
+                      <ItemCustodyEditor
+                        inventoryItemId={i.inventoryItemId}
+                        custodyHolder={i.custodyHolder}
+                        storageLocation={i.storageLocation}
+                        handlerName={i.handlerName}
+                        canEdit={canMonitor}
+                      />
                     </td>
                     <td className="px-2.5 py-2 text-muted-foreground">
                       {i.inRtsReview ? 'In RTS review' : ''}

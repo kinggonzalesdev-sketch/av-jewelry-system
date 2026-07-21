@@ -30,7 +30,13 @@ export type InventoryRow = {
   reservedQuantity: number;
   inRtsReview: boolean;
   isForfeited: boolean;
+  /** Custody: who holds the item and where (business requirement F). */
+  custodyHolder: 'av_jewelry' | 'financer';
+  storageLocation: string | null;
+  handlerName: string | null;
 };
+
+export type CustodyHolder = 'av_jewelry' | 'financer';
 
 export type InventoryListResult =
   { ok: true; rows: InventoryRow[] } | { ok: false; reason: string };
@@ -50,6 +56,28 @@ export async function listInventory(): Promise<InventoryListResult> {
     return { ok: false, reason: response.error.message };
   }
 
+  // Custody lives on inventory_items (not the monitor RPC). Read it separately
+  // and merge by id — RLS scopes both reads to active staff. A failed custody
+  // read must not blank the inventory list, so it degrades to "unknown custody".
+  const custodyResponse = await supabase
+    .from('inventory_items')
+    .select(
+      'id, custody_holder, storage_location, custody_handler:staff_profiles!custody_handler_id ( full_name )',
+    );
+
+  const custodyById = new Map<
+    string,
+    { holder: CustodyHolder; location: string | null; handler: string | null }
+  >();
+  for (const row of (custodyResponse.data ?? []) as Array<Record<string, unknown>>) {
+    const handler = one<{ full_name: string }>(row.custody_handler);
+    custodyById.set(row.id as string, {
+      holder: (row.custody_holder as CustodyHolder | null) ?? 'av_jewelry',
+      location: (row.storage_location as string | null) ?? null,
+      handler: handler?.full_name ?? null,
+    });
+  }
+
   const rows = (
     (response.data ?? []) as Array<{
       inventory_item_id: string;
@@ -62,19 +90,99 @@ export async function listInventory(): Promise<InventoryListResult> {
       in_rts_review: boolean;
       is_forfeited: boolean;
     }>
-  ).map((r) => ({
-    inventoryItemId: r.inventory_item_id,
-    itemCode: r.item_code,
-    itemName: r.item_name,
-    availabilityStatus: r.availability_status,
-    quantityTotal: r.quantity_total,
-    availableQuantity: r.available_quantity,
-    reservedQuantity: r.reserved_quantity,
-    inRtsReview: r.in_rts_review,
-    isForfeited: r.is_forfeited,
-  }));
+  ).map((r) => {
+    const custody = custodyById.get(r.inventory_item_id);
+    return {
+      inventoryItemId: r.inventory_item_id,
+      itemCode: r.item_code,
+      itemName: r.item_name,
+      availabilityStatus: r.availability_status,
+      quantityTotal: r.quantity_total,
+      availableQuantity: r.available_quantity,
+      reservedQuantity: r.reserved_quantity,
+      inRtsReview: r.in_rts_review,
+      isForfeited: r.is_forfeited,
+      custodyHolder: custody?.holder ?? 'av_jewelry',
+      storageLocation: custody?.location ?? null,
+      handlerName: custody?.handler ?? null,
+    };
+  });
 
   return { ok: true, rows };
+}
+
+/** First element of a Supabase embed (array or single). */
+function one<T>(value: unknown): T | undefined {
+  if (Array.isArray(value)) return value[0] as T | undefined;
+  return (value as T) ?? undefined;
+}
+
+/**
+ * Updates an item's custody: who holds it (A.V. Jewelry / financer), the physical
+ * location, and the responsible staff member. Guarded on inventory_monitoring,
+ * re-checked here and by RLS. Records the change on the row and in the audit.
+ */
+export async function updateItemCustody(input: {
+  inventoryItemId: string | null;
+  custodyHolder: string | null;
+  storageLocation: string | null;
+  handlerStaffId: string | null;
+}): Promise<InventoryResult> {
+  if (!input.inventoryItemId) return { ok: false, error: 'An item is required.' };
+  if (input.custodyHolder !== 'av_jewelry' && input.custodyHolder !== 'financer') {
+    return { ok: false, error: 'Custody must be A.V. Jewelry or financer.' };
+  }
+
+  let staff;
+  try {
+    staff = await requirePermission('inventory_monitoring');
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) {
+      await recordAuditEvent({
+        action: 'inventory_item.update_custody',
+        entityType: 'inventory_item',
+        entityId: input.inventoryItemId,
+        outcome: 'denied',
+        reason: cause.message,
+      });
+      return { ok: false, error: cause.message };
+    }
+    throw cause;
+  }
+
+  const supabase = await createClient();
+  const location = input.storageLocation?.trim() || null;
+
+  const { error } = await supabase
+    .from('inventory_items')
+    .update({
+      custody_holder: input.custodyHolder,
+      storage_location: location,
+      custody_handler_id: input.handlerStaffId ?? null,
+      custody_updated_at: new Date().toISOString(),
+      custody_updated_by: staff.staffProfileId,
+    })
+    .eq('id', input.inventoryItemId);
+
+  if (error) {
+    await recordAuditEvent({
+      action: 'inventory_item.update_custody',
+      entityType: 'inventory_item',
+      entityId: input.inventoryItemId,
+      outcome: 'failed',
+      reason: error.message,
+    });
+    return { ok: false, error: 'The custody update could not be saved.' };
+  }
+
+  await recordAuditEvent({
+    action: 'inventory_item.update_custody',
+    entityType: 'inventory_item',
+    entityId: input.inventoryItemId,
+    context: { custody_holder: input.custodyHolder, storage_location: location },
+  });
+
+  return { ok: true };
 }
 
 export type RtsRow = {

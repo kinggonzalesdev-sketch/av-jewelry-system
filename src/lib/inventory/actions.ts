@@ -8,6 +8,7 @@ import {
   openMigrationBatch,
   returnItemToAvailable,
   reviewDuplicate,
+  updateItemCustody,
   type FreedUnitOutcome,
 } from '@/lib/inventory/service';
 
@@ -21,6 +22,23 @@ import {
 function text(formData: FormData, name: string): string | null {
   const value = formData.get(name);
   return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+export async function updateItemCustodyAction(
+  _prev: InventoryActionState,
+  formData: FormData,
+): Promise<InventoryActionState> {
+  const result = await updateItemCustody({
+    inventoryItemId: text(formData, 'inventoryItemId'),
+    custodyHolder: text(formData, 'custodyHolder'),
+    storageLocation: text(formData, 'storageLocation'),
+    handlerStaffId: text(formData, 'handlerStaffId'),
+  });
+
+  if (!result.ok) return { error: result.error, success: null };
+
+  revalidatePath('/orders/inventory');
+  return { error: null, success: 'Custody updated.' };
 }
 
 export async function decideRtsAction(
