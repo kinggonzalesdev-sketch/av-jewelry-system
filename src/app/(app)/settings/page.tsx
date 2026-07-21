@@ -115,6 +115,17 @@ export default async function SettingsPage() {
             </li>
             <li>
               <Link
+                href="/admin/attendance"
+                className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium text-foreground hover:bg-accent"
+              >
+                <span aria-hidden="true" className="w-4 text-center text-xs">
+                  ⏱
+                </span>
+                Attendance &amp; Payroll
+              </Link>
+            </li>
+            <li>
+              <Link
                 href="/security"
                 className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium text-foreground hover:bg-accent"
               >

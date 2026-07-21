@@ -1,0 +1,21 @@
+/**
+ * Pure, client-safe HR display helpers. Duration is a time span (not money), so
+ * a float is fine here — SALARY, which is money, is computed in SQL and never
+ * touched as a float in TS.
+ */
+
+/** Hours between two ISO timestamps, or null if the session is still open. */
+export function durationHours(timeIn: string, timeOut: string | null): number | null {
+  if (!timeOut) return null;
+  const ms = new Date(timeOut).getTime() - new Date(timeIn).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  return Math.round((ms / 3_600_000) * 100) / 100;
+}
+
+/** "8h 30m" style label for a fractional hours value. */
+export function formatDuration(hours: number | null): string {
+  if (hours === null) return '—';
+  const whole = Math.floor(hours);
+  const mins = Math.round((hours - whole) * 60);
+  return mins === 0 ? `${whole}h` : `${whole}h ${mins}m`;
+}
