@@ -16,8 +16,10 @@ import type {
   NotificationRow,
   SearchResult,
 } from '@/lib/dashboard/service';
+import type { FollowUpQueue } from '@/lib/followups/service';
 import { formatPeso } from '@/lib/payments/format';
 import { EmptyState } from '@/components/states/empty-state';
+import { FollowUpCards } from '@/components/dashboard/follow-up-cards';
 import { BarChart } from '@/components/ui/bar-chart';
 import { MetricCard, ReadError } from '@/components/ui/page-primitives';
 import { Button } from '@/components/ui/button';
@@ -50,6 +52,7 @@ const TABS = [
   'Dashboard',
   'Disassembly Report',
   'Gross Profit',
+  'Follow-ups',
   'Reports',
   'Search',
   'Reminders',
@@ -100,6 +103,7 @@ export function DashboardView({
   audit,
   results,
   query,
+  followUps,
   canExport,
   canVerifyPayments,
   canMonitorInventory,
@@ -110,6 +114,7 @@ export function DashboardView({
   audit: AuditRow[];
   results: SearchResult[];
   query: string;
+  followUps: FollowUpQueue;
   canExport: boolean;
   canVerifyPayments: boolean;
   canMonitorInventory: boolean;
@@ -504,6 +509,11 @@ export function DashboardView({
             </div>
           </CardContent>
         </Card>
+      ) : null}
+
+      {/* ================= FOLLOW-UPS TAB (real live counts) ================= */}
+      {tab === 'Follow-ups' ? (
+        <FollowUpCards categories={followUps.categories} total={followUps.total} />
       ) : null}
 
       {/* ================= REPORTS TAB (real, gated export) ================= */}
