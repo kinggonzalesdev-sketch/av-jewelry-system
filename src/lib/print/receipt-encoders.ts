@@ -1,4 +1,9 @@
-import { stickerLines, type OrderReceiptData } from '@/lib/print/order-receipt';
+import {
+  formatStickerPeso,
+  stickerLines,
+  type OrderReceiptData,
+  type OrderSlipData,
+} from '@/lib/print/order-receipt';
 
 /**
  * Pure encoders that turn an order slip into printer bytes. No I/O here, so they
@@ -90,6 +95,61 @@ export function encodeReceipt(
   language: ReceiptLanguage,
 ): Uint8Array {
   return language === 'tspl' ? encodeLabelTspl(d) : encodeReceiptEscPos(d);
+}
+
+/** ESC/POS byte stream for the combined multi-item slip (full itemized receipt). */
+export function encodeSlipEscPos(d: OrderSlipData): Uint8Array {
+  const out: number[] = [];
+  const line = (s: string) => out.push(...bytesFromText(s), LF);
+
+  out.push(ESC, 0x40); // init
+  out.push(ESC, 0x61, 0x01); // centre
+  out.push(ESC, 0x45, 0x01); // bold on
+  line('A.V. JEWELRY');
+  out.push(ESC, 0x45, 0x00); // bold off
+  line(`Order ${d.orderNumber || '-'}`);
+  out.push(ESC, 0x61, 0x00); // left
+  line(`Customer: ${d.customerName || '-'}`);
+  line('------------------------------');
+  for (const it of d.items) {
+    line(`${it.code}${it.name ? ` ${it.name}` : ''}${it.grams ? ` ${it.grams}g` : ''}`);
+    line(`  Qty ${it.quantity} x ${formatStickerPeso(it.unitPrice)} = ${formatStickerPeso(it.lineTotal)}`);
+  }
+  line('------------------------------');
+  out.push(ESC, 0x45, 0x01);
+  line(`GRAND TOTAL: ${formatStickerPeso(d.grandTotal)}`);
+  out.push(ESC, 0x45, 0x00);
+  line(`Salesperson: ${d.salesperson || '-'}`);
+  line(d.dateTime);
+  out.push(LF, LF, LF);
+  out.push(GS, 0x56, 0x42, 0x00); // partial cut (no-op on label printers)
+  return new Uint8Array(out);
+}
+
+/**
+ * TSPL for the combined slip on a 40×30 mm LABEL. A small label cannot list many
+ * items, so it prints a compact summary (customer, order#, item count, grand total);
+ * the itemized detail is on the browser/receipt slip. Honest by design.
+ */
+export function encodeSlipTspl(d: OrderSlipData): Uint8Array {
+  const t = (s: string) => asciify(s).replace(/"/g, '').slice(0, 30);
+  const program = [
+    'SIZE 40 mm,30 mm',
+    'GAP 2 mm,0 mm',
+    'DIRECTION 1',
+    'CLS',
+    `TEXT 12,12,"2",0,1,1,"${t(d.customerName || '-')}"`,
+    `TEXT 12,48,"1",0,1,1,"${t(`Order ${d.orderNumber || '-'}`)}"`,
+    `TEXT 12,76,"1",0,1,1,"${t(`${d.items.length} item(s)`)}"`,
+    `TEXT 12,104,"1",0,1,1,"${t(`TOTAL ${formatStickerPeso(d.grandTotal)}`)}"`,
+    'PRINT 1,1',
+    '',
+  ].join('\r\n');
+  return new Uint8Array(bytesFromText(program));
+}
+
+export function encodeSlip(d: OrderSlipData, language: ReceiptLanguage): Uint8Array {
+  return language === 'tspl' ? encodeSlipTspl(d) : encodeSlipEscPos(d);
 }
 
 /** A short test print, used to find the working channel/language on a real device. */

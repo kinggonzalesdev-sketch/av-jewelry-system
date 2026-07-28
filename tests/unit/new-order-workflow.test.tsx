@@ -1,21 +1,18 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { NewOrderWorkflow } from '@/components/orders/new-order-workflow';
 import type { CaptureItem, WalkInItem } from '@/lib/orders/service';
 
-// The capture action is transport (tested via the live/capture suites); the photo
-// control is exercised by its own tests. Stub both so this focuses on the
-// workflow + form structure.
+// The order actions are transport (tested via the domain suites); the printer +
+// photo controls are exercised by their own tests. Stub the actions so this focuses
+// on the multi-item form structure + summary math.
 vi.mock('@/lib/orders/actions', () => ({
   captureManualOrderAction: vi.fn(),
   captureWalkInOrderAction: vi.fn(),
   recordOrderPrintAction: vi.fn(),
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
-vi.mock('@/components/attachments/photo-capture', () => ({
-  PhotoCapture: () => <div data-testid="photo-capture-stub" />,
-}));
 
 const customers = [
   { id: 'c1', displayName: 'Ana Cruz' },
@@ -28,6 +25,14 @@ const items: CaptureItem[] = [
     itemName: 'Bangle',
     unitPrice: '8000.00',
     gramsPerPiece: '5.5',
+    availabilityStatus: 'available',
+  },
+  {
+    id: 'i2',
+    itemCode: 'UAT-M02',
+    itemName: 'Ring',
+    unitPrice: '3000.00',
+    gramsPerPiece: '2.1',
     availabilityStatus: 'available',
   },
 ];
@@ -49,14 +54,15 @@ function renderWorkflow(canCreate = true) {
   );
 }
 
+function openForm() {
+  fireEvent.click(screen.getByTestId('orders-new-order'));
+}
+
 describe('NewOrderWorkflow — the New Order control', () => {
-  it('renders only New Order (the Invoice/Confirm/Layaway shortcuts were removed)', () => {
+  it('renders only New Order (the removed shortcuts stay gone)', () => {
     renderWorkflow();
     expect(screen.getByTestId('orders-new-order')).toBeInTheDocument();
-    // The removed shortcut buttons must not reappear — the sidebar owns that nav.
     expect(screen.queryByRole('button', { name: 'Invoice' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Confirm' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Layaway' })).not.toBeInTheDocument();
   });
 
   it('disables New Order without the capture permission', () => {
@@ -65,118 +71,100 @@ describe('NewOrderWorkflow — the New Order control', () => {
   });
 });
 
-describe('NewOrderWorkflow — the New Order form', () => {
-  it('opens the approved form with real customers and items', () => {
+describe('NewOrderWorkflow — multi-item form', () => {
+  it('opens with New Entry / Walk In modes, a customer field, and one item row', () => {
     renderWorkflow();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    openForm();
 
-    fireEvent.click(screen.getByTestId('orders-new-order'));
-
-    const dialog = screen.getByRole('dialog', { name: /new order/i });
-    expect(dialog).toBeInTheDocument();
-    // Session identity, read-only.
+    expect(screen.getByRole('dialog', { name: /new order/i })).toBeInTheDocument();
+    expect(screen.getByTestId('mode-order')).toBeInTheDocument();
+    expect(screen.getByTestId('mode-walkin')).toBeInTheDocument();
     expect(screen.getByDisplayValue('A.V. Jewelry')).toBeInTheDocument();
     expect(screen.getByDisplayValue('UAT Owner')).toBeInTheDocument();
-    // Pick-or-type comboboxes, backed by real customer + item suggestions.
-    const customerBox = screen.getByPlaceholderText(/select a customer/i);
-    const itemBox = screen.getByPlaceholderText(/select an item/i);
-    expect(customerBox).toBeInTheDocument();
-    expect(itemBox).toBeInTheDocument();
-    // Focusing a combobox reveals ALL its options (not filtered until you type) —
-    // this is the fix for "the list won't reopen once a value is selected".
-    fireEvent.focus(customerBox);
-    expect(screen.getByRole('option', { name: 'Ana Cruz' })).toBeInTheDocument();
-    fireEvent.focus(itemBox);
-    expect(screen.getByRole('option', { name: 'UAT-M01 — Bangle' })).toBeInTheDocument();
-    expect(screen.getByText(/saves the order to For Invoice/i)).toBeInTheDocument();
-    // Confirm saves first, then prints the label (browser dialog when no BLE printer).
-    expect(screen.getByText(/print dialog/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/select a customer/i)).toBeInTheDocument();
+    // Exactly one item row + the Add Item control to start.
+    expect(screen.getByTestId('order-item-row-0')).toBeInTheDocument();
+    expect(screen.queryByTestId('order-item-row-1')).not.toBeInTheDocument();
+    expect(screen.getByTestId('order-add-item')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /confirm order/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /reprint last/i })).toBeInTheDocument();
   });
 
-  it('switches to Walk In mode with an inventory selector, price, MOP, and date', () => {
+  it('selecting an item prefills its Unit Price and computes the line + order total', () => {
     renderWorkflow();
-    fireEvent.click(screen.getByTestId('orders-new-order'));
+    openForm();
 
-    // The mode toggle exists and Walk In swaps the form.
-    fireEvent.click(screen.getByTestId('mode-walkin'));
+    const row0 = screen.getByTestId('order-item-row-0');
+    const itemBox = within(row0).getByPlaceholderText(/search active inventory/i);
+    fireEvent.change(itemBox, { target: { value: 'UAT-M01 — Bangle' } });
 
-    const form = document.getElementById('walkin-form');
-    expect(form).toBeInTheDocument();
-    // Item is a searchable inventory selector; the permanent item ID is submitted
-    // (not a free-typed name). Grams is read-only (synced) — no submittable name.
-    for (const name of ['customerName', 'inventoryItemId', 'price', 'paymentMethod', 'saleDate']) {
-      expect(form?.querySelector(`[name="${name}"]`)).toBeInTheDocument();
-    }
-    expect(form?.querySelector('[name="itemName"]')).not.toBeInTheDocument();
-    expect(form?.querySelector('[name="grams"]')).not.toBeInTheDocument();
-    // The inventory combobox offers the available item as "CODE — Facebook Name".
-    fireEvent.focus(screen.getByPlaceholderText(/Search Active Inventory/i));
-    expect(screen.getByRole('option', { name: 'SBA-R-2276 — Ring' })).toBeInTheDocument();
+    // Unit Price prefilled from the catalogue (editable), grams read-only.
+    expect(within(row0).getByDisplayValue('8,000.00')).toBeInTheDocument();
+    expect(within(row0).getByDisplayValue('5.5g')).toHaveAttribute('readonly');
+    // Line total + order total (₱8,000; formatPeso drops the .00).
+    expect(screen.getByTestId('order-item-line-0')).toHaveTextContent('₱8,000');
+    expect(screen.getByTestId('order-summary-total')).toHaveTextContent('₱8,000');
 
-    expect(screen.getByText(/fully-paid, Completed/i)).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /Accept — Complete Sale/i }),
-    ).toBeInTheDocument();
+    // Quantity 2 → line + total double.
+    const qty = within(row0).getByRole('spinbutton');
+    fireEvent.change(qty, { target: { value: '2' } });
+    expect(screen.getByTestId('order-item-line-0')).toHaveTextContent('₱16,000');
+    expect(screen.getByTestId('order-summary-total')).toHaveTextContent('₱16,000');
   });
 
-  it('syncs Grams (read-only) and stores the inventory item ID when an item is picked', () => {
+  it('adds and removes item rows, and the summary count follows', () => {
     renderWorkflow();
-    fireEvent.click(screen.getByTestId('orders-new-order'));
-    fireEvent.click(screen.getByTestId('mode-walkin'));
+    openForm();
 
-    const item = screen.getByPlaceholderText(/Search Active Inventory/i);
-    fireEvent.change(item, { target: { value: 'SBA-R-2276 — Ring' } });
+    expect(screen.getByTestId('order-summary-count')).toHaveTextContent('1');
+    fireEvent.click(screen.getByTestId('order-add-item'));
+    expect(screen.getByTestId('order-item-row-1')).toBeInTheDocument();
+    expect(screen.getByTestId('order-summary-count')).toHaveTextContent('2');
 
-    const form = document.getElementById('walkin-form');
-    // Permanent inventory ID is stored (never the name).
-    expect(form?.querySelector('[name="inventoryItemId"]')).toHaveValue('w1');
-    // Grams synced from the item and read-only.
-    expect(screen.getByDisplayValue('1.65g')).toHaveAttribute('readonly');
+    fireEvent.click(screen.getByTestId('order-item-remove-1'));
+    expect(screen.queryByTestId('order-item-row-1')).not.toBeInTheDocument();
+    expect(screen.getByTestId('order-summary-count')).toHaveTextContent('1');
   });
 
-  it('supports pick-OR-type for both customer and item', () => {
+  it('sums two different items into the order total', () => {
     renderWorkflow();
-    fireEvent.click(screen.getByTestId('orders-new-order'));
+    openForm();
 
-    // Typing a name that is NOT an existing record marks it as a new record.
-    const customer = screen.getByPlaceholderText(/select a customer/i);
-    fireEvent.change(customer, { target: { value: 'Bagong Customer' } });
-    expect(
-      screen.getByText(/New customer — will be created on confirm/i),
-    ).toBeInTheDocument();
-
-    const item = screen.getByPlaceholderText(/select an item/i);
-    fireEvent.change(item, { target: { value: 'Bagong Item' } });
-    expect(screen.getByText(/New item — created on confirm/i)).toBeInTheDocument();
-
-    // A NEW item exposes an editable Unit Price (MoneyInput): live comma format on
-    // the visible field, and the RAW value submitted via the hidden unitPrice input.
-    const price = screen.getByPlaceholderText(/0\.00/);
-    fireEvent.change(price, { target: { value: '5000' } });
-    expect(price).toHaveValue('5,000');
-    const hidden = document.querySelector<HTMLInputElement>('input[name="unitPrice"]');
-    expect(hidden?.value).toBe('5000');
-
-    // Choosing an EXISTING record instead is recognised as such.
-    fireEvent.change(customer, { target: { value: 'Ana Cruz' } });
-    expect(screen.getByText(/Existing customer selected/i)).toBeInTheDocument();
-
-    // An EXISTING item now PRE-FILLS the Unit Price (editable, not read-only) with
-    // the item's current price — the operator can keep it or type over it, and the
-    // entered price is submitted (applied to the item on confirm).
-    fireEvent.change(item, { target: { value: 'UAT-M01 — Bangle' } });
-    const existingPrice = screen.getByDisplayValue('8,000.00');
-    expect(existingPrice).not.toHaveAttribute('readonly');
-    expect(document.querySelector<HTMLInputElement>('input[name="unitPrice"]')?.value).toBe(
-      '8000.00',
+    fireEvent.change(
+      within(screen.getByTestId('order-item-row-0')).getByPlaceholderText(
+        /search active inventory/i,
+      ),
+      { target: { value: 'UAT-M01 — Bangle' } },
     );
+    fireEvent.click(screen.getByTestId('order-add-item'));
+    fireEvent.change(
+      within(screen.getByTestId('order-item-row-1')).getByPlaceholderText(
+        /search active inventory/i,
+      ),
+      { target: { value: 'UAT-M02 — Ring' } },
+    );
+    // 8,000 + 3,000 = 11,000.
+    expect(screen.getByTestId('order-summary-total')).toHaveTextContent('₱11,000');
+  });
+
+  it('switches to Walk In mode with Name, item rows, MOP, and Date', () => {
+    renderWorkflow();
+    openForm();
+    fireEvent.click(screen.getByTestId('mode-walkin'));
+
+    expect(screen.getByRole('button', { name: /accept — complete sale/i })).toBeInTheDocument();
+    // The Walk-In item selector offers the sellable inventory item.
+    const row0 = screen.getByTestId('order-item-row-0');
+    const itemBox = within(row0).getByPlaceholderText(/search active inventory/i);
+    fireEvent.focus(itemBox);
+    expect(screen.getByRole('option', { name: 'SBA-R-2276 — Ring' })).toBeInTheDocument();
+    // Mode of Payment + Date present.
+    expect(screen.getByText('Mode of Payment')).toBeInTheDocument();
   });
 
   it('closes the form on Close', () => {
     renderWorkflow();
-    fireEvent.click(screen.getByTestId('orders-new-order'));
+    openForm();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /close/i }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

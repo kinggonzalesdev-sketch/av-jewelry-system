@@ -25,21 +25,23 @@ import {
   type OrderReminder,
 } from '@/lib/orders/for-invoice';
 import { recordAuditEvent } from '@/lib/audit/log';
-import { captureManualOrder } from '@/lib/orders/manual-order';
-import type { ManualOrderState } from '@/lib/orders/manual-order-state';
+import {
+  captureManualOrder,
+  type ManualOrderInput,
+  type ManualOrderResult,
+} from '@/lib/orders/manual-order';
 import { getOrderLineItems, type OrderLineItem } from '@/lib/orders/service';
-import { createWalkInOrder } from '@/lib/orders/walkin';
-import type { WalkInOrderState } from '@/lib/orders/walkin-state';
+import {
+  createWalkInOrder,
+  type WalkInItemInput,
+  type WalkInResult,
+} from '@/lib/orders/walkin';
 
 /**
- * New Order manual-entry action (transport only). Authority, validation, and the
- * Pending-Claim-only rule live in the domain modules and the database.
+ * New Order actions (transport only). Authority, validation, the multi-item
+ * atomic save, and the For-Invoice / Completed rules live in the domain modules
+ * and the database.
  */
-
-function text(formData: FormData, name: string): string | null {
-  const value = formData.get(name);
-  return typeof value === 'string' && value.length > 0 ? value : null;
-}
 
 /**
  * Load an Official Order's line items on demand (for the Order Details drawer).
@@ -194,35 +196,24 @@ export async function setCustomerFacebookUrlAction(
   return result;
 }
 
-export async function captureWalkInOrderAction(
-  _prev: WalkInOrderState,
-  formData: FormData,
-): Promise<WalkInOrderState> {
-  const result = await createWalkInOrder({
-    customerName: text(formData, 'customerName'),
-    inventoryItemId: text(formData, 'inventoryItemId'),
-    price: text(formData, 'price'),
-    paymentMethod: text(formData, 'paymentMethod'),
-    saleDate: text(formData, 'saleDate'),
-  });
-
-  if (!result.ok) {
-    return { error: result.error, success: null, order: null };
+/**
+ * Walk-In multi-item sale (transport only). Creates one fully-paid, Completed order
+ * with every selected item retired to Completed inventory, atomically in the DB. On
+ * success the Orders / Inventory / Payments lists revalidate.
+ */
+export async function captureWalkInOrderAction(input: {
+  customerName: string | null;
+  items: WalkInItemInput[];
+  paymentMethod: string | null;
+  saleDate: string | null;
+}): Promise<WalkInResult> {
+  const result = await createWalkInOrder(input);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/inventory');
+    revalidatePath('/orders/payments');
   }
-
-  revalidatePath('/orders');
-  revalidatePath('/orders/inventory');
-  revalidatePath('/orders/payments');
-
-  return {
-    error: null,
-    success: `Walk-in sale completed. Order ${result.orderNumber} — item retired to Completed inventory.`,
-    order: {
-      orderNumber: result.orderNumber,
-      invoiceNumber: result.invoiceNumber,
-      itemCode: result.itemCode,
-    },
-  };
+  return result;
 }
 
 /**
@@ -245,49 +236,20 @@ export async function recordOrderPrintAction(
   });
 }
 
+/**
+ * New Entry multi-item order (transport only). Saves one parent order with many
+ * order-item records directly into For Invoice, atomically in the DB. On success the
+ * Orders / Invoice / Inventory lists revalidate so the For Invoice card + count
+ * update without a full reload and the items show reserved.
+ */
 export async function captureManualOrderAction(
-  _prev: ManualOrderState,
-  formData: FormData,
-): Promise<ManualOrderState> {
-  const quantityRaw = text(formData, 'quantity');
-
-  const result = await captureManualOrder({
-    idempotencyKey: text(formData, 'idempotencyKey'),
-    quantity: quantityRaw ? Number(quantityRaw) : 1,
-    note: text(formData, 'note'),
-    customerId: text(formData, 'customerId'),
-    customerName: text(formData, 'customerName'),
-    inventoryItemId: text(formData, 'inventoryItemId'),
-    itemName: text(formData, 'itemName'),
-    unitPrice: text(formData, 'unitPrice'),
-    grams: text(formData, 'grams'),
-  });
-
-  if (!result.ok) {
-    return { error: result.error, success: null, receipt: null };
+  input: ManualOrderInput,
+): Promise<ManualOrderResult> {
+  const result = await captureManualOrder(input);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/invoice');
+    revalidatePath('/orders/inventory');
   }
-
-  // The order is now saved in For Invoice — refresh the Orders list (and the
-  // inventory/invoice views) so the For Invoice card + count update without a
-  // full reload; the item now shows as reserved.
-  revalidatePath('/orders');
-  revalidatePath('/orders/invoice');
-  revalidatePath('/orders/inventory');
-
-  const label = result.orderNumber || result.invoiceNumber || result.itemCode;
-  return {
-    error: null,
-    success: `Order ${label} saved to For Invoice.`,
-    receipt: {
-      officialOrderId: result.officialOrderId,
-      orderNumber: result.orderNumber,
-      invoiceNumber: result.invoiceNumber,
-      itemCode: result.itemCode,
-      customerName: result.customerName,
-      itemName: result.itemName,
-      quantity: quantityRaw ? Number(quantityRaw) : 1,
-      // Distinct per save so the client's print effect fires once per success.
-      printToken: `${result.officialOrderId}-${Date.now()}`,
-    },
-  };
+  return result;
 }

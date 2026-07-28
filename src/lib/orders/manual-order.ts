@@ -1,45 +1,34 @@
 import 'server-only';
 
 import { createCustomer } from '@/lib/customers/create';
-import { createManualItem } from '@/lib/inventory/create';
 import { createClient } from '@/lib/supabase/server';
 
 /**
- * New Order manual entry (Bible §12, §13) — the "pick OR type" capture.
+ * New Order manual entry (Bible §12, §13) — MULTI-ITEM.
  *
- * The New Order form lets the operator either CHOOSE an existing customer/item
- * or TYPE a new one. An order references real records, so a typed name is turned
- * into a real record first (a real customer, a real available inventory item),
- * then a single guarded DB function (`create_new_order`) saves an OFFICIAL ORDER
- * directly into `For Invoice` (invoiced) — not a Pending Claim. That function
- * locks the item, blocks selling it twice, reserves it (committed) linked to the
- * new order, and creates the order + its invoice number atomically. Nothing is
- * faked and nothing bypasses a rule: creating the customer/item each run their
- * own permission + RLS checks, and the order function is gated on claim_capture.
- *
- * Walk-In sales are a SEPARATE path (`create_walkin_order`) that goes straight to
- * Completed; this function is only the regular New Order → For Invoice flow.
- *
- * Returns the saved order's numbers + resolved display names so the client can
- * print an honest label of exactly what was recorded, then transfer it into the
- * For Invoice list.
+ * Confirm Order follows the Owner's required flow — validate → save one parent
+ * order with MANY order-item records → print → For Invoice. Every item must come
+ * from Active Inventory (selected by permanent id); the customer is still
+ * pick-OR-type (choose an existing record, or type a new one, created on confirm).
+ * A single guarded DB function (`create_new_order_multi`) saves the parent order
+ * in `invoiced` (For Invoice, online), links every item as a confirmed claim, and
+ * reserves each item (committed) — all atomically, so there are never partial
+ * saves. Walk-In sales are a SEPARATE path (`create_walkin_order_multi`) that goes
+ * straight to Completed.
  */
-export type ManualOrderInput = {
-  idempotencyKey: string | null;
+export type ManualOrderItemInput = {
+  /** Permanent inventory item id (Active Inventory only). */
+  inventoryItemId: string;
+  /** Unit price (string, never a float) — the entered selling price for the item. */
+  unitPrice: string;
   quantity: number;
-  note: string | null;
+};
+
+export type ManualOrderInput = {
   /** An existing customer id, OR a typed name to create one. */
   customerId: string | null;
   customerName: string | null;
-  /** An existing inventory item id, OR a typed name to create one. */
-  inventoryItemId: string | null;
-  itemName: string | null;
-  /** Unit price (string, never a float). For a NEW typed item it defines the
-   *  item's price; for an EXISTING item the entered selling price is applied to
-   *  the item (Owner request — any order creator may set it, no price override). */
-  unitPrice: string | null;
-  /** Weight per piece (string) for a NEW typed item; ignored for existing. */
-  grams: string | null;
+  items: ManualOrderItemInput[];
 };
 
 export type ManualOrderResult =
@@ -48,23 +37,42 @@ export type ManualOrderResult =
       officialOrderId: string;
       orderNumber: string;
       invoiceNumber: string;
-      itemCode: string;
+      itemCount: number;
       customerName: string;
-      itemName: string;
     }
   | { ok: false; error: string };
 
-type CreateNewOrderRow = {
+type CreateOrderRow = {
   official_order_id: string;
   order_number: string | null;
   invoice_number: string | null;
-  item_code: string | null;
-  item_name: string | null;
+  item_count: number | null;
 };
+
+const PRICE_RE = /^\d{1,12}(\.\d{1,2})?$/;
 
 export async function captureManualOrder(
   input: ManualOrderInput,
 ): Promise<ManualOrderResult> {
+  // ---- Validate the items (Active Inventory ids + positive prices) ----------
+  const items = input.items ?? [];
+  if (items.length === 0) {
+    return { ok: false, error: 'Add at least one item to the order.' };
+  }
+  const seen = new Set<string>();
+  for (const it of items) {
+    const id = (it.inventoryItemId ?? '').trim();
+    const price = (it.unitPrice ?? '').trim();
+    if (!id) return { ok: false, error: 'Select an item from Active Inventory for every row.' };
+    if (seen.has(id)) {
+      return { ok: false, error: 'The same item was added more than once. Remove the duplicate.' };
+    }
+    seen.add(id);
+    if (!PRICE_RE.test(price) || Number(price) <= 0) {
+      return { ok: false, error: 'Enter a unit price greater than zero for every item.' };
+    }
+  }
+
   // ---- Resolve the customer: chosen id, or create from the typed name -------
   let customerId = input.customerId?.trim() || null;
   let customerName = input.customerName?.trim() || '';
@@ -78,40 +86,19 @@ export async function captureManualOrder(
     customerName = created.displayName;
   }
 
-  // ---- Price is required and must be a positive amount (Owner request) ------
-  const price = input.unitPrice?.trim() || '';
-  if (!/^\d{1,12}(\.\d{1,2})?$/.test(price) || Number(price) <= 0) {
-    return { ok: false, error: 'Enter a unit price greater than zero.' };
-  }
+  // ---- Save the OFFICIAL ORDER + all its items in one atomic call -----------
+  const payload = items.map((it) => ({
+    id: it.inventoryItemId.trim(),
+    price: it.unitPrice.trim(),
+    qty: Math.max(1, it.quantity),
+  }));
 
-  // ---- Resolve the item: chosen id, or create from the typed name -----------
-  let inventoryItemId = input.inventoryItemId?.trim() || null;
-  let itemName = input.itemName?.trim() || '';
-  if (!inventoryItemId) {
-    if (!itemName) {
-      return { ok: false, error: 'Choose an item, or type a new item name.' };
-    }
-    // A typed item becomes a real, available inventory item — with the manually
-    // entered unit price. createManualItem enforces its own permission and
-    // validates the price; its refusal is surfaced verbatim. (create_new_order
-    // re-applies the price on the saved item, so both paths agree.)
-    const created = await createManualItem(itemName, price, input.grams);
-    if (!created.ok) return { ok: false, error: created.error };
-    inventoryItemId = created.inventoryItemId;
-  }
-
-  // ---- Save the OFFICIAL ORDER directly into For Invoice --------------------
-  // One guarded, item-locking DB call: applies the selling price, creates the
-  // confirmed claim + official order (invoiced / online), reserves the item
-  // (committed) linked to the order, and returns the order + invoice numbers.
   const supabase = await createClient();
-  const res = (await supabase.rpc('create_new_order', {
+  const res = (await supabase.rpc('create_new_order_multi', {
     p_customer_id: customerId,
     p_customer_name: customerName || null,
-    p_inventory_item_id: inventoryItemId,
-    p_unit_price: price,
-    p_quantity: Math.max(1, input.quantity),
-  })) as { data: CreateNewOrderRow | null; error: { message: string } | null };
+    p_items: payload,
+  })) as { data: CreateOrderRow | null; error: { message: string } | null };
 
   if (res.error) {
     return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
@@ -121,15 +108,12 @@ export async function captureManualOrder(
     return { ok: false, error: 'The order could not be saved. Please try again.' };
   }
 
-  if (!itemName) itemName = row.item_name?.trim() || 'Item';
-
   return {
     ok: true,
     officialOrderId: row.official_order_id,
     orderNumber: row.order_number ?? '',
     invoiceNumber: row.invoice_number ?? '',
-    itemCode: row.item_code ?? '',
+    itemCount: Number(row.item_count ?? payload.length),
     customerName: customerName || 'Customer',
-    itemName,
   };
 }

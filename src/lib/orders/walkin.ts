@@ -14,27 +14,49 @@ import { createClient } from '@/lib/supabase/server';
  * the database computes and verifies the amount.
  */
 
+export type WalkInItemInput = {
+  inventoryItemId: string;
+  price: string;
+  quantity: number;
+};
+
 export type WalkInResult =
-  | { ok: true; orderNumber: string; invoiceNumber: string; itemCode: string }
+  | {
+      ok: true;
+      officialOrderId: string;
+      orderNumber: string;
+      invoiceNumber: string;
+      itemCount: number;
+    }
   | { ok: false; error: string };
+
+const PRICE_RE = /^\d{1,12}(\.\d{1,2})?$/;
 
 export async function createWalkInOrder(input: {
   customerName: string | null;
-  inventoryItemId: string | null;
-  price: string | null;
+  items: WalkInItemInput[];
   paymentMethod: string | null;
   saleDate: string | null;
 }): Promise<WalkInResult> {
   const customerName = (input.customerName ?? '').trim();
-  const inventoryItemId = (input.inventoryItemId ?? '').trim();
-  const price = (input.price ?? '').trim();
+  const items = input.items ?? [];
 
   if (!customerName) return { ok: false, error: 'Enter the customer name.' };
-  if (!inventoryItemId) {
-    return { ok: false, error: 'Select an item from Active Inventory.' };
+  if (items.length === 0) {
+    return { ok: false, error: 'Add at least one item from Active Inventory.' };
   }
-  if (!/^\d{1,12}(\.\d{1,2})?$/.test(price) || Number(price) <= 0) {
-    return { ok: false, error: 'Enter a price like 1500 or 1500.50 (greater than zero).' };
+  const seen = new Set<string>();
+  for (const it of items) {
+    const id = (it.inventoryItemId ?? '').trim();
+    const price = (it.price ?? '').trim();
+    if (!id) return { ok: false, error: 'Select an item from Active Inventory for every row.' };
+    if (seen.has(id)) {
+      return { ok: false, error: 'The same item was added more than once. Remove the duplicate.' };
+    }
+    seen.add(id);
+    if (!PRICE_RE.test(price) || Number(price) <= 0) {
+      return { ok: false, error: 'Enter a price greater than zero for every item.' };
+    }
   }
 
   try {
@@ -53,12 +75,16 @@ export async function createWalkInOrder(input: {
   }
 
   const supabase = await createClient();
-  // Money crosses as a STRING; PostgREST casts it to the numeric parameter. The
-  // permanent inventory item ID (never the name) identifies the item sold.
-  const response = await supabase.rpc('create_walkin_order', {
+  // Money crosses as STRINGS; PostgREST casts them. Permanent inventory item ids
+  // (never names) identify the items sold.
+  const payload = items.map((it) => ({
+    id: it.inventoryItemId.trim(),
+    price: it.price.trim(),
+    qty: Math.max(1, it.quantity),
+  }));
+  const response = await supabase.rpc('create_walkin_order_multi', {
     p_customer_name: customerName,
-    p_inventory_item_id: inventoryItemId,
-    p_price: price,
+    p_items: payload,
     p_payment_method: input.paymentMethod ?? 'cash',
     p_sale_date: input.saleDate || null,
   });
@@ -77,7 +103,7 @@ export async function createWalkInOrder(input: {
     official_order_id?: string;
     order_number?: string;
     invoice_number?: string;
-    item_code?: string;
+    item_count?: number;
   };
 
   await recordAuditEvent({
@@ -89,8 +115,9 @@ export async function createWalkInOrder(input: {
 
   return {
     ok: true,
+    officialOrderId: data.official_order_id ?? '',
     orderNumber: data.order_number ?? '—',
     invoiceNumber: data.invoice_number ?? '—',
-    itemCode: data.item_code ?? '—',
+    itemCount: Number(data.item_count ?? payload.length),
   };
 }
