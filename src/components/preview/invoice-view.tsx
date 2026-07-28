@@ -353,22 +353,22 @@ export function InvoiceView({ autoPrepare = false }: { autoPrepare?: boolean }) 
                 <table className="w-full min-w-[420px] text-left text-xs">
                   <thead className="bg-slate-50 night:bg-slate-800 text-[10px] uppercase text-slate-500 night:text-slate-400">
                     <tr>
-                      <th className="px-2.5 py-2">Item</th>
-                      <th className="px-2.5 py-2 text-right">Qty</th>
-                      <th className="px-2.5 py-2 text-right">Price</th>
-                      <th className="px-2.5 py-2 text-right">Total</th>
+                      <th className="px-3 py-2">Item</th>
+                      <th className="px-3 py-2 text-right">Qty</th>
+                      <th className="px-3 py-2 text-right">Price</th>
+                      <th className="px-3 py-2 text-right">Total</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr className="border-t border-slate-100 night:border-slate-800">
-                      <td className="px-2.5 py-2 font-mono">{current.itemCode}</td>
-                      <td className="px-2.5 py-2 text-right tabular-nums">
+                      <td className="px-3 py-2 font-mono">{current.itemCode}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
                         {current.quantity}
                       </td>
-                      <td className="px-2.5 py-2 text-right tabular-nums">
+                      <td className="px-3 py-2 text-right tabular-nums">
                         {peso(current.amount / current.quantity)}
                       </td>
-                      <td className="px-2.5 py-2 text-right font-semibold tabular-nums">
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">
                         {peso(current.amount)}
                       </td>
                     </tr>

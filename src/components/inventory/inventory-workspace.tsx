@@ -47,12 +47,28 @@ function paymentText(status: string | null): { label: string; cls: string } {
   return status ? (PAYMENT_LABEL[status] ?? { label: status, cls: '' }) : { label: '—', cls: 'text-muted-foreground' };
 }
 
+/** Colour for the Current Stage badge: settled, stopped, or still in flight. */
+function stageClass(stage: string): string {
+  if (stage === 'Completed' || stage === 'Released') {
+    return 'border-green-600/40 bg-green-600/10 text-green-700';
+  }
+  if (stage === 'Cancelled') {
+    return 'border-destructive/40 bg-destructive/10 text-destructive';
+  }
+  if (stage === '—') return 'border-border text-muted-foreground';
+  return 'border-gold/40 bg-gold/10 text-gold-strong';
+}
+
 type Tab = (typeof TABS)[number];
 
-/** Inventory availability statuses that mean the item is SOLD / RELEASED — it is
- *  historical, not operationally active. Completed items must never appear as
- *  available (spec §4). One inventory source of truth, split by status (§6). */
-const COMPLETED_INVENTORY_STATUSES = new Set(['completed', 'released']);
+/**
+ * Statuses that still count as ACTIVE, sellable stock. An item consumed by ANY
+ * transaction — Walk-In sale, New Order, layaway, manual entry — leaves Active
+ * Inventory immediately and appears under Completed Items instead. An allowlist (not
+ * a blocklist) so a newly added status can never silently leak back into Active.
+ * One inventory record remains the source of truth; nothing is copied or deleted.
+ */
+const ACTIVE_INVENTORY_STATUSES = new Set(['available', 'returned_to_available']);
 
 /** "Date Encoded" for the table — a short local date, or a dash. */
 function fmtEncoded(iso: string | null): string {
@@ -128,7 +144,7 @@ export function InventoryWorkspace({
         ...new Set(
           invRows
             .map((r) => r.availabilityStatus)
-            .filter((s) => !COMPLETED_INVENTORY_STATUSES.has(s)),
+            .filter((s) => ACTIVE_INVENTORY_STATUSES.has(s)),
         ),
       ].sort(),
     [invRows],
@@ -136,8 +152,9 @@ export function InventoryWorkspace({
   const filteredInventory = useMemo(() => {
     const q = invSearch.trim().toLowerCase();
     return invRows.filter((row) => {
-      // Active Inventory NEVER shows completed/released items (§4).
-      if (COMPLETED_INVENTORY_STATUSES.has(row.availabilityStatus)) return false;
+      // Active Inventory shows ONLY sellable stock. Anything consumed by a
+      // transaction lives under Completed Items instead (§4).
+      if (!ACTIVE_INVENTORY_STATUSES.has(row.availabilityStatus)) return false;
       if (invStatus !== 'all' && row.availabilityStatus !== invStatus) return false;
       if (!q) return true;
       return `${row.itemCode} ${row.itemName ?? ''}`.toLowerCase().includes(q);
@@ -175,6 +192,7 @@ export function InventoryWorkspace({
         { header: 'Invoice Number', value: (c) => c.invoiceNumber ?? '' },
         { header: 'Sale Amount', value: (c) => c.finalSale ?? '' },
         { header: 'Payment', value: (c) => paymentText(c.paymentStatus).label },
+        { header: 'Current Stage', value: (c) => c.currentStage },
         { header: 'Completion Type', value: (c) => c.completionType },
         { header: 'Courier', value: (c) => c.courier ?? '' },
         { header: 'Tracking Number', value: (c) => c.trackingNumber ?? '' },
@@ -378,36 +396,36 @@ export function InventoryWorkspace({
             <table className="w-full min-w-[720px] text-left text-xs">
               <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                 <tr>
-                  <th className="px-2.5 py-2">Unique Code</th>
-                  <th className="px-2.5 py-2">Facebook Name</th>
-                  <th className="px-2.5 py-2">Status</th>
-                  <th className="px-2.5 py-2 text-right">Grams</th>
-                  <th className="px-2.5 py-2">Date Encoded</th>
-                  <th className="px-2.5 py-2">Notes</th>
-                  <th className="px-2.5 py-2 text-right">Actions</th>
+                  <th className="px-3 py-2">Unique Code</th>
+                  <th className="px-3 py-2">Facebook Name</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2 text-right">Grams</th>
+                  <th className="px-3 py-2">Date Encoded</th>
+                  <th className="px-3 py-2">Notes</th>
+                  <th className="px-3 py-2 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {filteredInventory.map((i) => (
                   <tr key={i.inventoryItemId}>
-                    <td className="px-2.5 py-2 font-mono">{i.itemCode}</td>
-                    <td className="px-2.5 py-2">
+                    <td className="px-3 py-2 font-mono">{i.itemCode}</td>
+                    <td className="px-3 py-2">
                       {i.facebookName ?? <span className="text-muted-foreground">—</span>}
                     </td>
-                    <td className="px-2.5 py-2">
+                    <td className="px-3 py-2">
                       {i.availabilityStatus.replace(/_/g, ' ')}
                     </td>
-                    <td className="px-2.5 py-2 text-right tabular-nums">
+                    <td className="px-3 py-2 text-right tabular-nums">
                       {i.gramsPerPiece ?? parseInventoryCode(i.itemCode).grams ?? '—'}
                     </td>
-                    <td className="px-2.5 py-2 whitespace-nowrap">
+                    <td className="px-3 py-2 whitespace-nowrap">
                       {fmtEncoded(i.createdAt)}
                     </td>
-                    <td className="px-2.5 py-2 text-muted-foreground">
+                    <td className="px-3 py-2 text-muted-foreground">
                       {i.inRtsReview ? 'In RTS review' : ''}
                       {i.isForfeited ? ' · forfeited (excluded from auto-return)' : ''}
                     </td>
-                    <td className="px-2.5 py-2">
+                    <td className="px-3 py-2">
                       <InventoryItemActions row={i} canMonitor={canMonitor} />
                     </td>
                   </tr>
@@ -467,17 +485,17 @@ export function InventoryWorkspace({
               >
                 <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                   <tr>
-                    <th className="px-2.5 py-2">Inventory Code</th>
-                    <th className="px-2.5 py-2">Type</th>
-                    <th className="px-2.5 py-2 text-right">Grams</th>
-                    <th className="px-2.5 py-2">Customer</th>
-                    <th className="px-2.5 py-2">Order</th>
-                    <th className="px-2.5 py-2">Invoice</th>
-                    <th className="px-2.5 py-2 text-right">Sale Amount</th>
-                    <th className="px-2.5 py-2">Payment</th>
-                    <th className="px-2.5 py-2">Completion</th>
-                    <th className="px-2.5 py-2">Completed</th>
-                    <th className="px-2.5 py-2 text-right">Actions</th>
+                    <th className="px-3 py-2 min-w-[9rem]">Inventory Code</th>
+                    <th className="px-3 py-2 min-w-[5rem]">Type</th>
+                    <th className="px-3 py-2 text-right min-w-[4.5rem]">Grams</th>
+                    <th className="px-3 py-2 min-w-[8rem]">Customer</th>
+                    <th className="px-3 py-2 min-w-[7rem]">Order</th>
+                    <th className="px-3 py-2 min-w-[7rem]">Invoice</th>
+                    <th className="px-3 py-2 text-right min-w-[6.5rem]">Sale Amount</th>
+                    <th className="px-3 py-2 min-w-[6rem]">Payment</th>
+                    <th className="px-3 py-2 min-w-[7rem]">Current Stage</th>
+                    <th className="px-3 py-2 min-w-[7rem]">Completion Date</th>
+                    <th className="px-3 py-2 text-right min-w-[5rem]">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -485,34 +503,40 @@ export function InventoryWorkspace({
                     const parsed = parseInventoryCode(c.itemCode);
                     return (
                       <tr key={c.inventoryItemId}>
-                        <td className="px-2.5 py-2 font-mono">{c.itemCode}</td>
-                        <td className="px-2.5 py-2 text-muted-foreground">
+                        <td className="px-3 py-2 font-mono">{c.itemCode}</td>
+                        <td className="px-3 py-2 text-muted-foreground">
                           {parsed.itemType ?? '—'}
                         </td>
-                        <td className="px-2.5 py-2 text-right tabular-nums">
+                        <td className="px-3 py-2 text-right tabular-nums">
                           {parsed.grams ?? '—'}
                         </td>
-                        <td className="px-2.5 py-2">{c.customerName ?? '—'}</td>
-                        <td className="px-2.5 py-2 font-mono">{c.orderNumber ?? '—'}</td>
-                        <td className="px-2.5 py-2 font-mono">{c.invoiceNumber ?? '—'}</td>
-                        <td className="px-2.5 py-2 text-right tabular-nums">
+                        <td className="px-3 py-2">{c.customerName ?? '—'}</td>
+                        <td className="px-3 py-2 font-mono">{c.orderNumber ?? '—'}</td>
+                        <td className="px-3 py-2 font-mono">{c.invoiceNumber ?? '—'}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">
                           {c.finalSale ? <Money amount={c.finalSale} /> : '—'}
                         </td>
-                        <td className="px-2.5 py-2">
+                        <td className="px-3 py-2">
                           {(() => {
                             const p = paymentText(c.paymentStatus);
                             return <span className={`font-medium ${p.cls}`}>{p.label}</span>;
                           })()}
                         </td>
-                        <td className="px-2.5 py-2">
-                          <span className="font-medium text-gold-strong">
-                            {c.completionType}
+                        {/* Current Stage — derived live from the linked order, so it
+                            follows the workflow without any stored copy to go stale. */}
+                        <td className="px-3 py-2">
+                          <span
+                            className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-medium ${stageClass(
+                              c.currentStage,
+                            )}`}
+                          >
+                            {c.currentStage}
                           </span>
                         </td>
-                        <td className="px-2.5 py-2">
+                        <td className="px-3 py-2 whitespace-nowrap">
                           {c.completedDate ? c.completedDate.slice(0, 10) : '—'}
                         </td>
-                        <td className="px-2.5 py-2 text-right">
+                        <td className="px-3 py-2 text-right">
                           <button
                             type="button"
                             onClick={() => setCompView(c)}
@@ -558,6 +582,7 @@ export function InventoryWorkspace({
                 ['Customer', compView.customerName ?? '—'],
                 ['Order Number', compView.orderNumber ?? '—'],
                 ['Invoice Number', compView.invoiceNumber ?? '—'],
+                ['Current Stage', compView.currentStage],
                 ['Completion Type', compView.completionType],
                 ['Courier', compView.courier ?? '—'],
                 ['Tracking Number', compView.trackingNumber ?? '—'],

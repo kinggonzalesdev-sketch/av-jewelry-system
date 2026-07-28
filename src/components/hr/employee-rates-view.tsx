@@ -135,32 +135,32 @@ export function EmployeeRatesView({
       <table className="w-full min-w-[720px] text-left text-sm" data-testid="employee-rates">
         <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
           <tr>
-            <th className="px-2.5 py-2 font-medium">Employee Name</th>
-            <th className="px-2.5 py-2 font-medium">Role</th>
-            <th className="px-2.5 py-2 text-right font-medium">Hourly Rate</th>
-            <th className="px-2.5 py-2 font-medium">Effective Date</th>
-            <th className="px-2.5 py-2 font-medium">Last Updated</th>
-            {canManage ? <th className="px-2.5 py-2 text-right font-medium">Actions</th> : null}
+            <th className="px-3 py-2 font-medium">Employee Name</th>
+            <th className="px-3 py-2 font-medium">Role</th>
+            <th className="px-3 py-2 text-right font-medium">Hourly Rate</th>
+            <th className="px-3 py-2 font-medium">Effective Date</th>
+            <th className="px-3 py-2 font-medium">Last Updated</th>
+            {canManage ? <th className="px-3 py-2 text-right font-medium">Actions</th> : null}
           </tr>
         </thead>
         <tbody>
           {rows.map((r) => (
             <tr key={r.staffProfileId} className="border-b last:border-0">
-              <td className="px-2.5 py-2 font-medium">{r.fullName}</td>
-              <td className="px-2.5 py-2 capitalize text-muted-foreground">
+              <td className="px-3 py-2 font-medium">{r.fullName}</td>
+              <td className="px-3 py-2 capitalize text-muted-foreground">
                 {r.roleKey.replace(/_/g, ' ')}
               </td>
-              <td className="px-2.5 py-2 text-right tabular-nums">
+              <td className="px-3 py-2 text-right tabular-nums">
                 {r.hourlyRate === null ? (
                   <span className="text-[11px] text-muted-foreground">No rate set</span>
                 ) : (
                   formatPeso(r.hourlyRate)
                 )}
               </td>
-              <td className="px-2.5 py-2 whitespace-nowrap">{r.effectiveDate ?? '—'}</td>
-              <td className="px-2.5 py-2 whitespace-nowrap">{fmtDate(r.lastUpdated)}</td>
+              <td className="px-3 py-2 whitespace-nowrap">{r.effectiveDate ?? '—'}</td>
+              <td className="px-3 py-2 whitespace-nowrap">{fmtDate(r.lastUpdated)}</td>
               {canManage ? (
-                <td className="px-2.5 py-2 text-right">
+                <td className="px-3 py-2 text-right">
                   <EditRate row={r} />
                 </td>
               ) : null}

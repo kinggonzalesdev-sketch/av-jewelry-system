@@ -102,14 +102,14 @@ export function PayrollSummaryButton({
             <table className="w-full min-w-[720px] text-left text-xs">
               <thead className="border-b border-neutral-300 text-[10px] uppercase text-neutral-500">
                 <tr>
-                  <th className="px-2 py-1.5">Employee</th>
-                  <th className="px-2 py-1.5 text-right">Reg. hrs</th>
-                  <th className="px-2 py-1.5 text-right">OT hrs</th>
-                  <th className="px-2 py-1.5 text-right">Rate</th>
-                  <th className="px-2 py-1.5 text-right">Gross</th>
-                  <th className="px-2 py-1.5 text-right">Deductions</th>
-                  <th className="px-2 py-1.5 text-right">Net</th>
-                  <th className="px-2 py-1.5">Status</th>
+                  <th className="px-3 py-1.5">Employee</th>
+                  <th className="px-3 py-1.5 text-right">Reg. hrs</th>
+                  <th className="px-3 py-1.5 text-right">OT hrs</th>
+                  <th className="px-3 py-1.5 text-right">Rate</th>
+                  <th className="px-3 py-1.5 text-right">Gross</th>
+                  <th className="px-3 py-1.5 text-right">Deductions</th>
+                  <th className="px-3 py-1.5 text-right">Net</th>
+                  <th className="px-3 py-1.5">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -117,30 +117,30 @@ export function PayrollSummaryButton({
                   const snap = payslips[r.staffProfileId];
                   return (
                     <tr key={r.staffProfileId} className="border-b border-neutral-200">
-                      <td className="px-2 py-1.5">{r.fullName}</td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">
+                      <td className="px-3 py-1.5">{r.fullName}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">
                         {r.totalHours.toFixed(2)}
                       </td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">
+                      <td className="px-3 py-1.5 text-right tabular-nums">
                         {r.overtimeHours.toFixed(2)}
                       </td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">
+                      <td className="px-3 py-1.5 text-right tabular-nums">
                         {r.hourlyRate ? formatPeso(r.hourlyRate) : '—'}
                       </td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">
+                      <td className="px-3 py-1.5 text-right tabular-nums">
                         {r.computedSalary ? formatPeso(r.computedSalary) : '—'}
                       </td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">
+                      <td className="px-3 py-1.5 text-right tabular-nums">
                         {snap ? formatPeso(snap.deductions) : '—'}
                       </td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">
+                      <td className="px-3 py-1.5 text-right tabular-nums">
                         {snap
                           ? formatPeso(snap.netSalary)
                           : r.computedSalary
                             ? formatPeso(r.computedSalary)
                             : '—'}
                       </td>
-                      <td className="px-2 py-1.5 capitalize">
+                      <td className="px-3 py-1.5 capitalize">
                         {snap ? snap.paymentStatus : 'not generated'}
                       </td>
                     </tr>
@@ -149,10 +149,10 @@ export function PayrollSummaryButton({
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-neutral-400 font-bold">
-                  <td className="px-2 py-2" colSpan={6}>
+                  <td className="px-3 py-2" colSpan={6}>
                     Total payroll
                   </td>
-                  <td className="px-2 py-2 text-right tabular-nums" colSpan={2}>
+                  <td className="px-3 py-2 text-right tabular-nums" colSpan={2}>
                     {formatPeso(fromCentavos(totalCentavos))}
                   </td>
                 </tr>

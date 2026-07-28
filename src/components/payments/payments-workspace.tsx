@@ -960,37 +960,37 @@ export function PaymentsWorkspace({
             <table className="w-full min-w-[720px] text-left text-xs">
               <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                 <tr>
-                  <th className="px-2.5 py-2">Order</th>
-                  <th className="px-2.5 py-2">Customer</th>
-                  <th className="px-2.5 py-2">Method</th>
-                  <th className="px-2.5 py-2">Reference</th>
-                  <th className="px-2.5 py-2 text-right">Claimed</th>
-                  <th className="px-2.5 py-2 text-right">Verified</th>
-                  <th className="px-2.5 py-2">Status</th>
+                  <th className="px-3 py-2">Order</th>
+                  <th className="px-3 py-2">Customer</th>
+                  <th className="px-3 py-2">Method</th>
+                  <th className="px-3 py-2">Reference</th>
+                  <th className="px-3 py-2 text-right">Claimed</th>
+                  <th className="px-3 py-2 text-right">Verified</th>
+                  <th className="px-3 py-2">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {history.map((h) => (
                   <tr key={h.paymentId}>
-                    <td className="px-2.5 py-2 font-mono">
+                    <td className="px-3 py-2 font-mono">
                       <OrderNumberButton
                         orderId={h.officialOrderId}
                         label={h.orderNumber}
                         onOpen={setDetailOrderId}
                       />
                     </td>
-                    <td className="px-2.5 py-2">{h.customerDisplayName}</td>
-                    <td className="px-2.5 py-2">
+                    <td className="px-3 py-2">{h.customerDisplayName}</td>
+                    <td className="px-3 py-2">
                       {h.paymentMethod?.replace('_', ' ') ?? '—'}
                     </td>
-                    <td className="px-2.5 py-2 font-mono">{h.referenceNumber ?? '—'}</td>
-                    <td className="px-2.5 py-2 text-right tabular-nums">
+                    <td className="px-3 py-2 font-mono">{h.referenceNumber ?? '—'}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">
                       {money(h.amount)}
                     </td>
-                    <td className="px-2.5 py-2 text-right tabular-nums">
+                    <td className="px-3 py-2 text-right tabular-nums">
                       {h.verifiedAmount ? money(h.verifiedAmount) : '—'}
                     </td>
-                    <td className="px-2.5 py-2">
+                    <td className="px-3 py-2">
                       {h.status}
                       {h.voided ? ' · voided' : ''}
                       {h.reversed ? ' · reversed' : ''}
@@ -1071,19 +1071,19 @@ function LayawayTable({
       <table className="w-full min-w-[1120px] text-left text-xs" data-testid="layaway-table">
         <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
           <tr>
-            <th className="px-2.5 py-2">Code</th>
-            <th className="px-2.5 py-2">Customer Name</th>
-            <th className="px-2.5 py-2">Status</th>
-            <th className="px-2.5 py-2">Remarks / Financer</th>
-            <th className="px-2.5 py-2">Date Purchased</th>
-            <th className="px-2.5 py-2">Overdue</th>
-            <th className="px-2.5 py-2 text-right">Item</th>
-            <th className="px-2.5 py-2 text-right">Interest</th>
-            <th className="px-2.5 py-2 text-right">Grand Total</th>
-            <th className="px-2.5 py-2 text-right">Payment</th>
-            <th className="px-2.5 py-2 text-right">Balance</th>
-            <th className="px-2.5 py-2">Order / Account No.</th>
-            <th className="px-2.5 py-2 text-right">Actions</th>
+            <th className="px-3 py-2">Code</th>
+            <th className="px-3 py-2">Customer Name</th>
+            <th className="px-3 py-2">Status</th>
+            <th className="px-3 py-2">Remarks / Financer</th>
+            <th className="px-3 py-2">Date Purchased</th>
+            <th className="px-3 py-2">Overdue</th>
+            <th className="px-3 py-2 text-right">Item</th>
+            <th className="px-3 py-2 text-right">Interest</th>
+            <th className="px-3 py-2 text-right">Grand Total</th>
+            <th className="px-3 py-2 text-right">Payment</th>
+            <th className="px-3 py-2 text-right">Balance</th>
+            <th className="px-3 py-2">Order / Account No.</th>
+            <th className="px-3 py-2 text-right">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y">
@@ -1096,9 +1096,9 @@ function LayawayTable({
           ) : (
             rows.map((r) => (
               <tr key={r.key} className="hover:bg-accent/40">
-                <td className="px-2.5 py-2 font-mono font-semibold">{r.code ?? '—'}</td>
-                <td className="px-2.5 py-2 font-medium">{r.customerName}</td>
-                <td className="px-2.5 py-2">
+                <td className="px-3 py-2 font-mono font-semibold">{r.code ?? '—'}</td>
+                <td className="px-3 py-2 font-medium">{r.customerName}</td>
+                <td className="px-3 py-2">
                   <span
                     className={`inline-block rounded-full border px-2 py-0.5 capitalize ${layawayStatusClass(
                       r.status,
@@ -1107,11 +1107,11 @@ function LayawayTable({
                     {r.status.replace(/_/g, ' ')}
                   </span>
                 </td>
-                <td className="px-2.5 py-2 text-muted-foreground">
+                <td className="px-3 py-2 text-muted-foreground">
                   {[r.financer, r.remarks].filter(Boolean).join(' · ') || '—'}
                 </td>
-                <td className="px-2.5 py-2 whitespace-nowrap">{r.datePurchased ?? '—'}</td>
-                <td className="px-2.5 py-2">
+                <td className="px-3 py-2 whitespace-nowrap">{r.datePurchased ?? '—'}</td>
+                <td className="px-3 py-2">
                   {(() => {
                     const o = overdueLabel(r);
                     return o === 'Yes' ? (
@@ -1121,11 +1121,11 @@ function LayawayTable({
                     );
                   })()}
                 </td>
-                <td className="px-2.5 py-2 text-right tabular-nums">{cash(r.item)}</td>
-                <td className="px-2.5 py-2 text-right tabular-nums">{cash(r.interest)}</td>
-                <td className="px-2.5 py-2 text-right tabular-nums">{cash(r.grandTotal)}</td>
-                <td className="px-2.5 py-2 text-right tabular-nums">{cash(r.payment)}</td>
-                <td className="px-2.5 py-2 text-right font-semibold tabular-nums">
+                <td className="px-3 py-2 text-right tabular-nums">{cash(r.item)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{cash(r.interest)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{cash(r.grandTotal)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{cash(r.payment)}</td>
+                <td className="px-3 py-2 text-right font-semibold tabular-nums">
                   {cash(r.balance)}
                   {r.balanceMismatch ? (
                     <span
@@ -1136,7 +1136,7 @@ function LayawayTable({
                     </span>
                   ) : null}
                 </td>
-                <td className="px-2.5 py-2 font-mono text-[11px]">
+                <td className="px-3 py-2 font-mono text-[11px]">
                   {r.officialOrderId ? (
                     <OrderNumberButton
                       orderId={r.officialOrderId}
@@ -1147,7 +1147,7 @@ function LayawayTable({
                     r.accountNo
                   )}
                 </td>
-                <td className="px-2.5 py-2 text-right">
+                <td className="px-3 py-2 text-right">
                   {r.officialOrderId && r.layawayRow ? (
                     <div className="flex justify-end gap-1">
                       <button
@@ -1225,17 +1225,17 @@ function CompletedLayawayTable({
       >
         <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
           <tr>
-            <th className="px-2.5 py-2">Code</th>
-            <th className="px-2.5 py-2">Customer Name</th>
-            <th className="px-2.5 py-2">Remarks / Financer</th>
-            <th className="px-2.5 py-2">Date Purchased</th>
-            <th className="px-2.5 py-2 text-right">Item</th>
-            <th className="px-2.5 py-2 text-right">Total Interest</th>
-            <th className="px-2.5 py-2 text-right">Grand Total</th>
-            <th className="px-2.5 py-2 text-right">Total Payment</th>
-            <th className="px-2.5 py-2">Completion Date</th>
-            <th className="px-2.5 py-2">Order / Account No.</th>
-            <th className="px-2.5 py-2 text-right">Actions</th>
+            <th className="px-3 py-2">Code</th>
+            <th className="px-3 py-2">Customer Name</th>
+            <th className="px-3 py-2">Remarks / Financer</th>
+            <th className="px-3 py-2">Date Purchased</th>
+            <th className="px-3 py-2 text-right">Item</th>
+            <th className="px-3 py-2 text-right">Total Interest</th>
+            <th className="px-3 py-2 text-right">Grand Total</th>
+            <th className="px-3 py-2 text-right">Total Payment</th>
+            <th className="px-3 py-2">Completion Date</th>
+            <th className="px-3 py-2">Order / Account No.</th>
+            <th className="px-3 py-2 text-right">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y">
@@ -1248,20 +1248,20 @@ function CompletedLayawayTable({
           ) : (
             rows.map((r) => (
               <tr key={r.key} className="hover:bg-accent/40">
-                <td className="px-2.5 py-2 font-mono font-semibold">{r.code ?? '—'}</td>
-                <td className="px-2.5 py-2 font-medium">{r.customerName}</td>
-                <td className="px-2.5 py-2 text-muted-foreground">
+                <td className="px-3 py-2 font-mono font-semibold">{r.code ?? '—'}</td>
+                <td className="px-3 py-2 font-medium">{r.customerName}</td>
+                <td className="px-3 py-2 text-muted-foreground">
                   {[r.financer, r.remarks].filter(Boolean).join(' · ') || '—'}
                 </td>
-                <td className="px-2.5 py-2 whitespace-nowrap">{r.datePurchased ?? '—'}</td>
-                <td className="px-2.5 py-2 text-right tabular-nums">{cash(r.item)}</td>
-                <td className="px-2.5 py-2 text-right tabular-nums">{cash(r.interest)}</td>
-                <td className="px-2.5 py-2 text-right tabular-nums">{cash(r.grandTotal)}</td>
-                <td className="px-2.5 py-2 text-right font-semibold tabular-nums">
+                <td className="px-3 py-2 whitespace-nowrap">{r.datePurchased ?? '—'}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{cash(r.item)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{cash(r.interest)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{cash(r.grandTotal)}</td>
+                <td className="px-3 py-2 text-right font-semibold tabular-nums">
                   {cash(r.payment)}
                 </td>
-                <td className="px-2.5 py-2 whitespace-nowrap">{r.completionDate ?? '—'}</td>
-                <td className="px-2.5 py-2 font-mono text-[11px]">
+                <td className="px-3 py-2 whitespace-nowrap">{r.completionDate ?? '—'}</td>
+                <td className="px-3 py-2 font-mono text-[11px]">
                   {r.officialOrderId ? (
                     <OrderNumberButton
                       orderId={r.officialOrderId}
@@ -1272,7 +1272,7 @@ function CompletedLayawayTable({
                     r.accountNo
                   )}
                 </td>
-                <td className="px-2.5 py-2 text-right">
+                <td className="px-3 py-2 text-right">
                   {r.officialOrderId ? (
                     <button
                       type="button"

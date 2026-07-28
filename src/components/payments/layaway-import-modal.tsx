@@ -396,17 +396,17 @@ export function LayawayImportButton({ existingKeys }: { existingKeys: string[] }
               <table className="w-full min-w-[900px] text-left text-[11px]">
                 <thead className="sticky top-0 bg-muted/80 text-[10px] uppercase text-muted-foreground">
                   <tr>
-                    <th className="px-2 py-1.5">Code</th>
-                    <th className="px-2 py-1.5">Customer</th>
-                    <th className="px-2 py-1.5">Status</th>
-                    <th className="px-2 py-1.5">Interest Type</th>
-                    <th className="px-2 py-1.5 text-right">Term</th>
-                    <th className="px-2 py-1.5 text-right">Grand Total</th>
-                    <th className="px-2 py-1.5 text-right">Payment</th>
-                    <th className="px-2 py-1.5 text-right">Balance</th>
-                    <th className="px-2 py-1.5 text-right">Inst.</th>
-                    <th className="px-2 py-1.5 text-right">Pmts</th>
-                    <th className="px-2 py-1.5">Review</th>
+                    <th className="px-3 py-1.5">Code</th>
+                    <th className="px-3 py-1.5">Customer</th>
+                    <th className="px-3 py-1.5">Status</th>
+                    <th className="px-3 py-1.5">Interest Type</th>
+                    <th className="px-3 py-1.5 text-right">Term</th>
+                    <th className="px-3 py-1.5 text-right">Grand Total</th>
+                    <th className="px-3 py-1.5 text-right">Payment</th>
+                    <th className="px-3 py-1.5 text-right">Balance</th>
+                    <th className="px-3 py-1.5 text-right">Inst.</th>
+                    <th className="px-3 py-1.5 text-right">Pmts</th>
+                    <th className="px-3 py-1.5">Review</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -415,10 +415,10 @@ export function LayawayImportButton({ existingKeys }: { existingKeys: string[] }
                       key={r.sourceRow}
                       className={r.dup ? 'bg-amber-500/5' : r.needsReview ? 'bg-amber-500/5' : ''}
                     >
-                      <td className="px-2 py-1 font-mono">{r.code ?? '—'}</td>
-                      <td className="px-2 py-1">{r.name}</td>
-                      <td className="px-2 py-1 capitalize">{r.status}</td>
-                      <td className="px-2 py-1">
+                      <td className="px-3 py-1 font-mono">{r.code ?? '—'}</td>
+                      <td className="px-3 py-1">{r.name}</td>
+                      <td className="px-3 py-1 capitalize">{r.status}</td>
+                      <td className="px-3 py-1">
                         {r.interestType === 'zero' ? (
                           <span className="rounded-full border border-green-600/40 bg-green-600/10 px-1.5 py-0.5 text-green-700">
                             0% Interest
@@ -427,13 +427,13 @@ export function LayawayImportButton({ existingKeys }: { existingKeys: string[] }
                           <span className="capitalize">{r.interestType}</span>
                         )}
                       </td>
-                      <td className="px-2 py-1 text-right">{r.layawayTerm ?? '—'}</td>
-                      <td className="px-2 py-1 text-right tabular-nums">{r.grandTotal ?? '—'}</td>
-                      <td className="px-2 py-1 text-right tabular-nums">{r.payment ?? '—'}</td>
-                      <td className="px-2 py-1 text-right tabular-nums">{r.balance ?? '—'}</td>
-                      <td className="px-2 py-1 text-right tabular-nums">{r.installments.length}</td>
-                      <td className="px-2 py-1 text-right tabular-nums">{r.payments.length}</td>
-                      <td className="px-2 py-1">
+                      <td className="px-3 py-1 text-right">{r.layawayTerm ?? '—'}</td>
+                      <td className="px-3 py-1 text-right tabular-nums">{r.grandTotal ?? '—'}</td>
+                      <td className="px-3 py-1 text-right tabular-nums">{r.payment ?? '—'}</td>
+                      <td className="px-3 py-1 text-right tabular-nums">{r.balance ?? '—'}</td>
+                      <td className="px-3 py-1 text-right tabular-nums">{r.installments.length}</td>
+                      <td className="px-3 py-1 text-right tabular-nums">{r.payments.length}</td>
+                      <td className="px-3 py-1">
                         {r.dup ? (
                           <span className="text-amber-600">Duplicate</span>
                         ) : r.needsReview ? (

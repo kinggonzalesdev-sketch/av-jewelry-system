@@ -189,6 +189,34 @@ describe('DashboardView — honesty', () => {
     renderView();
     expect(screen.queryByTestId('disassembly-unavailable')).not.toBeInTheDocument();
   });
+
+  // Regression: the Layaway figures used to read ONLY order-derived arrangements,
+  // so a shop whose layaways all live in the imported ledger saw "No data yet" and
+  // ₱0 while hundreds of real accounts existed. The two sets are disjoint and must
+  // be summed.
+  it('Layaway money includes the imported ledger, not just derived arrangements', () => {
+    renderView({
+      layaway: {
+        active: 554,
+        completed: 197,
+        overdue: 105,
+        forfeited: 0,
+        totalQty: 858,
+        createdToday: 0,
+        createdMonth: 0,
+        dueToday: 19,
+        due7d: 150,
+        totalItem: '21037533.00',
+        totalInterest: '1292142.00',
+        grandTotal: '22329599.00',
+        totalPayment: '5679949.00',
+        remainingBalance: '16649650.00',
+      },
+    });
+    // Derived arrangements are ₱0 here, so the ledger figures must show through.
+    expect(screen.getAllByText('₱22,329,599').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('₱5,679,949').length).toBeGreaterThan(0);
+  });
 });
 
 describe('DashboardView — Follow-up Queue tab', () => {

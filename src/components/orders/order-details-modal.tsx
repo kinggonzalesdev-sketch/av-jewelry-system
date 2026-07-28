@@ -1103,25 +1103,25 @@ function DetailBody({
                   >
                     <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                       <tr>
-                        <th className="px-2 py-1.5">Date</th>
-                        <th className="px-2 py-1.5 text-right">Amount</th>
-                        <th className="px-2 py-1.5">Method</th>
-                        <th className="px-2 py-1.5">Reference</th>
-                        <th className="px-2 py-1.5">Status</th>
+                        <th className="px-3 py-1.5">Date</th>
+                        <th className="px-3 py-1.5 text-right">Amount</th>
+                        <th className="px-3 py-1.5">Method</th>
+                        <th className="px-3 py-1.5">Reference</th>
+                        <th className="px-3 py-1.5">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
                       {detail.paymentHistory.map((p) => (
                         <tr key={p.paymentId} className={p.voided || p.reversed ? 'opacity-50' : ''}>
-                          <td className="px-2 py-1.5 whitespace-nowrap">
+                          <td className="px-3 py-1.5 whitespace-nowrap">
                             {fmtDateTime(p.recordedAt)}
                           </td>
-                          <td className="px-2 py-1.5 text-right tabular-nums">
+                          <td className="px-3 py-1.5 text-right tabular-nums">
                             <Money amount={p.verifiedAmount ?? p.amount} />
                           </td>
-                          <td className="px-2 py-1.5">{humanize(p.paymentMethod ?? '—')}</td>
-                          <td className="px-2 py-1.5 font-mono">{p.referenceNumber ?? '—'}</td>
-                          <td className="px-2 py-1.5">{humanize(p.status)}</td>
+                          <td className="px-3 py-1.5">{humanize(p.paymentMethod ?? '—')}</td>
+                          <td className="px-3 py-1.5 font-mono">{p.referenceNumber ?? '—'}</td>
+                          <td className="px-3 py-1.5">{humanize(p.status)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1153,12 +1153,12 @@ function DetailBody({
               >
                 <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                   <tr>
-                    <th className="px-2 py-1.5">Code</th>
-                    <th className="px-2 py-1.5">Item</th>
-                    <th className="px-2 py-1.5 text-right">Grams</th>
-                    <th className="px-2 py-1.5 text-right">Qty</th>
-                    <th className="px-2 py-1.5 text-right">Unit Price</th>
-                    <th className="px-2 py-1.5 text-right">Line Total</th>
+                    <th className="px-3 py-1.5">Code</th>
+                    <th className="px-3 py-1.5">Item</th>
+                    <th className="px-3 py-1.5 text-right">Grams</th>
+                    <th className="px-3 py-1.5 text-right">Qty</th>
+                    <th className="px-3 py-1.5 text-right">Unit Price</th>
+                    <th className="px-3 py-1.5 text-right">Line Total</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -1166,18 +1166,18 @@ function DetailBody({
                     const lt = lineTotal(it.unitPrice, it.quantity);
                     return (
                       <tr key={`${it.claimReference}-${i}`}>
-                        <td className="px-2 py-1.5 font-mono">{it.itemCode ?? '—'}</td>
-                        <td className="px-2 py-1.5">{it.itemName ?? '—'}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">
+                        <td className="px-3 py-1.5 font-mono">{it.itemCode ?? '—'}</td>
+                        <td className="px-3 py-1.5">{it.itemName ?? '—'}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">
                           {it.gramsPerPiece
                             ? totalGrams(it.gramsPerPiece, it.quantity)
                             : '—'}
                         </td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">{it.quantity}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">
+                        <td className="px-3 py-1.5 text-right tabular-nums">{it.quantity}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">
                           {it.unitPrice ? <Money amount={it.unitPrice} /> : '—'}
                         </td>
-                        <td className="px-2 py-1.5 text-right font-medium tabular-nums">
+                        <td className="px-3 py-1.5 text-right font-medium tabular-nums">
                           {lt ? <Money amount={lt} /> : '—'}
                         </td>
                       </tr>

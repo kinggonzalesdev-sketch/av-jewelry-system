@@ -108,6 +108,29 @@ function moneyWeight(amount: string): number {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+/**
+ * Add peso strings as EXACT integer centavos — never through a JS float.
+ *
+ * Layaway money lives in TWO places: order-derived arrangements (`metrics.*`) and
+ * the imported layaway ledger (`layaway.*`). They are disjoint sets, so the true
+ * figure is their sum. Reading only the arrangements made the Layaway chart show
+ * "No data yet" while hundreds of imported accounts sat in the ledger.
+ */
+function sumMoney(...values: Array<string | null | undefined>): string {
+  let cents = 0n;
+  for (const v of values) {
+    if (!v) continue;
+    const negative = v.trim().startsWith('-');
+    const clean = v.replace(/[^\d.]/g, '');
+    const [whole = '0', fraction = ''] = clean.split('.');
+    const c = BigInt(whole || '0') * 100n + BigInt(`${fraction}00`.slice(0, 2) || '0');
+    cents += negative ? -c : c;
+  }
+  const negative = cents < 0n;
+  const abs = negative ? -cents : cents;
+  return `${negative ? '-' : ''}${abs / 100n}.${String(abs % 100n).padStart(2, '0')}`;
+}
+
 export function DashboardView({
   counts,
   metrics,
@@ -422,8 +445,12 @@ export function DashboardView({
                       },
                       {
                         label: 'Layaway',
-                        value: moneyWeight(metrics.totalLayawaySales),
-                        display: money(metrics.totalLayawaySales),
+                        value: moneyWeight(
+                          sumMoney(metrics.totalLayawaySales, layaway.grandTotal),
+                        ),
+                        display: money(
+                          sumMoney(metrics.totalLayawaySales, layaway.grandTotal),
+                        ),
                       },
                       {
                         label: 'Scrap',
@@ -479,18 +506,28 @@ export function DashboardView({
                   <CardTitle className="text-base">Layaway</CardTitle>
                 </CardHeader>
                 <CardContent>
+                  {/* Layaway money = order-derived arrangements + the imported
+                      ledger. The two sets are disjoint, so the sum is the truth. */}
                   <ColumnChart
                     ariaLabel="Layaway figures"
                     data={[
                       {
                         label: 'Sales',
-                        value: moneyWeight(metrics.totalLayawaySales),
-                        display: money(metrics.totalLayawaySales),
+                        value: moneyWeight(
+                          sumMoney(metrics.totalLayawaySales, layaway.grandTotal),
+                        ),
+                        display: money(
+                          sumMoney(metrics.totalLayawaySales, layaway.grandTotal),
+                        ),
                       },
                       {
                         label: 'Collections',
-                        value: moneyWeight(metrics.layawayCollections),
-                        display: money(metrics.layawayCollections),
+                        value: moneyWeight(
+                          sumMoney(metrics.layawayCollections, layaway.totalPayment),
+                        ),
+                        display: money(
+                          sumMoney(metrics.layawayCollections, layaway.totalPayment),
+                        ),
                       },
                       {
                         label: 'Forfeited',
@@ -615,11 +652,13 @@ export function DashboardView({
                   />
                   <MetricCard
                     label="Layaway Sales"
-                    value={money(metrics.totalLayawaySales)}
+                    value={money(sumMoney(metrics.totalLayawaySales, layaway.grandTotal))}
                   />
                   <MetricCard
                     label="Layaway Collections"
-                    value={money(metrics.layawayCollections)}
+                    value={money(
+                      sumMoney(metrics.layawayCollections, layaway.totalPayment),
+                    )}
                   />
                   <MetricCard
                     label="Forfeited Amount"
@@ -964,25 +1003,25 @@ export function DashboardView({
             <table className="w-full min-w-[640px] text-left text-xs">
               <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                 <tr>
-                  <th className="px-2.5 py-2">When</th>
-                  <th className="px-2.5 py-2">Actor</th>
-                  <th className="px-2.5 py-2">Action</th>
-                  <th className="px-2.5 py-2">Entity</th>
-                  <th className="px-2.5 py-2">Outcome</th>
-                  <th className="px-2.5 py-2">Reason</th>
+                  <th className="px-3 py-2">When</th>
+                  <th className="px-3 py-2">Actor</th>
+                  <th className="px-3 py-2">Action</th>
+                  <th className="px-3 py-2">Entity</th>
+                  <th className="px-3 py-2">Outcome</th>
+                  <th className="px-3 py-2">Reason</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {audit.map((a) => (
                   <tr key={a.id}>
-                    <td className="px-2.5 py-2">
+                    <td className="px-3 py-2">
                       {new Date(a.occurredAt).toLocaleString()}
                     </td>
-                    <td className="px-2.5 py-2">{a.actorLabel ?? 'system'}</td>
-                    <td className="px-2.5 py-2 font-mono">{a.action}</td>
-                    <td className="px-2.5 py-2">{a.entityType}</td>
-                    <td className="px-2.5 py-2">{a.outcome}</td>
-                    <td className="px-2.5 py-2 text-muted-foreground">
+                    <td className="px-3 py-2">{a.actorLabel ?? 'system'}</td>
+                    <td className="px-3 py-2 font-mono">{a.action}</td>
+                    <td className="px-3 py-2">{a.entityType}</td>
+                    <td className="px-3 py-2">{a.outcome}</td>
+                    <td className="px-3 py-2 text-muted-foreground">
                       {a.reason ?? ''}
                     </td>
                   </tr>

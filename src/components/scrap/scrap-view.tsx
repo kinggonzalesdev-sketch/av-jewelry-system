@@ -208,13 +208,13 @@ export function ScrapView({
             <table className="w-full min-w-[640px] text-left text-sm">
               <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th className="px-2.5 py-2 font-medium">Material</th>
-                  <th className="px-2.5 py-2 text-right font-medium">Grams</th>
-                  <th className="px-2.5 py-2 text-right font-medium">Amount</th>
-                  <th className="px-2.5 py-2 font-medium">Buyer</th>
-                  <th className="px-2.5 py-2 font-medium">Sold On</th>
-                  <th className="px-2.5 py-2 font-medium">Note</th>
-                  <th className="px-2.5 py-2 text-right font-medium">Actions</th>
+                  <th className="px-3 py-2 font-medium">Material</th>
+                  <th className="px-3 py-2 text-right font-medium">Grams</th>
+                  <th className="px-3 py-2 text-right font-medium">Amount</th>
+                  <th className="px-3 py-2 font-medium">Buyer</th>
+                  <th className="px-3 py-2 font-medium">Sold On</th>
+                  <th className="px-3 py-2 font-medium">Note</th>
+                  <th className="px-3 py-2 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -230,15 +230,15 @@ export function ScrapView({
                 ) : (
                   sales.map((s) => (
                     <tr key={s.id} className="border-b last:border-0">
-                      <td className="px-2.5 py-2 capitalize">{s.material}</td>
-                      <td className="px-2.5 py-2 text-right tabular-nums">{s.grams}</td>
-                      <td className="px-2.5 py-2 text-right tabular-nums">
+                      <td className="px-3 py-2 capitalize">{s.material}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{s.grams}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
                         {formatPeso(s.amount)}
                       </td>
-                      <td className="px-2.5 py-2">{s.buyer ?? '—'}</td>
-                      <td className="px-2.5 py-2 whitespace-nowrap">{s.soldOn}</td>
-                      <td className="px-2.5 py-2 text-muted-foreground">{s.note ?? '—'}</td>
-                      <td className="px-2.5 py-2 text-right text-muted-foreground">—</td>
+                      <td className="px-3 py-2">{s.buyer ?? '—'}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">{s.soldOn}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{s.note ?? '—'}</td>
+                      <td className="px-3 py-2 text-right text-muted-foreground">—</td>
                     </tr>
                   ))
                 )}

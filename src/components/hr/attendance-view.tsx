@@ -125,8 +125,8 @@ export function AttendanceView({
                 >
                   <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
                     <tr>
-                      <th className="px-4 py-2 font-medium whitespace-nowrap">Employee</th>
-                      <th className="px-4 py-2 font-medium whitespace-nowrap">Role</th>
+                      <th className="px-3 py-2 font-medium whitespace-nowrap">Employee</th>
+                      <th className="px-3 py-2 font-medium whitespace-nowrap">Role</th>
                       <th className="min-w-[7rem] px-4 py-2 text-right font-medium whitespace-nowrap">
                         Regular Hours
                       </th>
@@ -142,7 +142,7 @@ export function AttendanceView({
                       <th className="min-w-[6rem] py-2 pl-10 pr-4 font-medium whitespace-nowrap">
                         Status
                       </th>
-                      <th className="px-4 py-2 text-right font-medium whitespace-nowrap">
+                      <th className="px-3 py-2 text-right font-medium whitespace-nowrap">
                         Actions
                       </th>
                     </tr>
@@ -153,17 +153,17 @@ export function AttendanceView({
                       const paid = snap?.paymentStatus === 'paid';
                       return (
                       <tr key={r.staffProfileId} className="border-b last:border-0">
-                        <td className="px-4 py-2 font-medium whitespace-nowrap">{r.fullName}</td>
-                        <td className="px-4 py-2 capitalize text-muted-foreground whitespace-nowrap">
+                        <td className="px-3 py-2 font-medium whitespace-nowrap">{r.fullName}</td>
+                        <td className="px-3 py-2 capitalize text-muted-foreground whitespace-nowrap">
                           {r.roleKey.replace(/_/g, ' ')}
                         </td>
-                        <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap">
+                        <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
                           {formatDuration(r.totalHours)}
                         </td>
-                        <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap">
+                        <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
                           {formatDuration(r.overtimeHours)}
                         </td>
-                        <td className="px-4 py-2 text-right whitespace-nowrap">
+                        <td className="px-3 py-2 text-right whitespace-nowrap">
                           {isOwner ? (
                             <RateCell row={r} />
                           ) : r.hourlyRate === null ? (
@@ -176,7 +176,7 @@ export function AttendanceView({
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap">
+                        <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
                           {r.computedSalary === null ? (
                             <span className="text-[11px] text-muted-foreground">
                               No rate set
@@ -196,7 +196,7 @@ export function AttendanceView({
                             {paid ? 'Paid' : 'Unpaid'}
                           </span>
                         </td>
-                        <td className="px-4 py-2 text-right whitespace-nowrap">
+                        <td className="px-3 py-2 text-right whitespace-nowrap">
                           <PayslipButton
                             employeeId={r.staffProfileId}
                             from={from}
@@ -241,36 +241,36 @@ export function AttendanceView({
                 <table className="w-full min-w-[620px] text-left text-sm">
                   <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
                     <tr>
-                      <th className="px-2.5 py-2 font-medium">Staff</th>
-                      <th className="px-2.5 py-2 font-medium">Date</th>
-                      <th className="px-2.5 py-2 font-medium">Time in</th>
-                      <th className="px-2.5 py-2 font-medium">Time out</th>
-                      <th className="px-2.5 py-2 text-right font-medium">Duration</th>
+                      <th className="px-3 py-2 font-medium">Staff</th>
+                      <th className="px-3 py-2 font-medium">Date</th>
+                      <th className="px-3 py-2 font-medium">Time in</th>
+                      <th className="px-3 py-2 font-medium">Time out</th>
+                      <th className="px-3 py-2 text-right font-medium">Duration</th>
                       {canManage ? (
-                        <th className="px-2.5 py-2 text-right font-medium">Actions</th>
+                        <th className="px-3 py-2 text-right font-medium">Actions</th>
                       ) : null}
                     </tr>
                   </thead>
                   <tbody>
                     {records.map((r) => (
                       <tr key={r.id} className="border-b last:border-0">
-                        <td className="px-2.5 py-2">{r.staffName ?? '—'}</td>
-                        <td className="px-2.5 py-2">{r.workDate}</td>
-                        <td className="px-2.5 py-2">
+                        <td className="px-3 py-2">{r.staffName ?? '—'}</td>
+                        <td className="px-3 py-2">{r.workDate}</td>
+                        <td className="px-3 py-2">
                           {new Date(r.timeIn).toLocaleTimeString()}
                         </td>
-                        <td className="px-2.5 py-2">
+                        <td className="px-3 py-2">
                           {r.timeOut ? (
                             new Date(r.timeOut).toLocaleTimeString()
                           ) : (
                             <span className="text-gold-strong">Open</span>
                           )}
                         </td>
-                        <td className="px-2.5 py-2 text-right tabular-nums">
+                        <td className="px-3 py-2 text-right tabular-nums">
                           {formatDuration(durationHours(r.timeIn, r.timeOut))}
                         </td>
                         {canManage ? (
-                          <td className="px-2.5 py-2 text-right">
+                          <td className="px-3 py-2 text-right">
                             <AttendanceRowDelete row={r} />
                           </td>
                         ) : null}

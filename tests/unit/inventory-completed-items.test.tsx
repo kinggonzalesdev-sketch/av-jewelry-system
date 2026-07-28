@@ -40,6 +40,8 @@ const rows: InventoryRow[] = [
   row({ itemCode: 'SBA-N-1111', availabilityStatus: 'available' }),
   row({ itemCode: 'SBA-R-2222', availabilityStatus: 'released' }),
   row({ itemCode: 'SBA-E-3333', availabilityStatus: 'completed' }),
+  // Consumed by a New Order — reserved to it, so no longer sellable stock.
+  row({ itemCode: 'SBA-C-4444', availabilityStatus: 'committed' }),
 ];
 
 function completedRow(over: Partial<CompletedInventoryRow>): CompletedInventoryRow {
@@ -59,6 +61,7 @@ function completedRow(over: Partial<CompletedInventoryRow>): CompletedInventoryR
     currentLocation: null,
     finalSale: '8000.00',
     paymentStatus: 'paid_in_full',
+    currentStage: 'Completed',
     ...over,
   };
 }
@@ -70,6 +73,14 @@ const completed: CompletedInventoryRow[] = [
     completionType: 'Store Pickup',
     finalSale: '12000.00',
     paymentStatus: 'partial',
+  }),
+  // Reserved to a live order — listed here with the stage it is actually in.
+  completedRow({
+    itemCode: 'SBA-C-4444',
+    availabilityStatus: 'committed',
+    finalSale: '5000.00',
+    paymentStatus: 'unpaid',
+    currentStage: 'For Invoice',
   }),
 ];
 
@@ -99,5 +110,19 @@ describe('Inventory — Active vs Completed', () => {
     expect(within(table).getByText('SBA-E-3333')).toBeInTheDocument();
     // The active item is NOT in the completed table.
     expect(within(table).queryByText('SBA-N-1111')).not.toBeInTheDocument();
+  });
+
+  it('an item consumed by an order leaves Active Inventory immediately', () => {
+    renderWorkspace();
+    // Committed to a New Order — it is no longer sellable stock.
+    expect(screen.queryByText('SBA-C-4444')).not.toBeInTheDocument();
+  });
+
+  it('Completed Items shows the live Current Stage for a reserved item', () => {
+    renderWorkspace();
+    fireEvent.click(screen.getByRole('tab', { name: 'Completed Items' }));
+    const table = screen.getByTestId('completed-items');
+    expect(within(table).getByText('SBA-C-4444')).toBeInTheDocument();
+    expect(within(table).getByText('For Invoice')).toBeInTheDocument();
   });
 });

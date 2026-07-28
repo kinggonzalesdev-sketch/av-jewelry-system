@@ -299,30 +299,30 @@ function AccountDetail({ account }: { account: LayawayAccount }) {
           <table className="w-full min-w-[560px] text-left text-xs">
             <thead className="border-b border-slate-200 night:border-slate-700 bg-slate-50 night:bg-slate-800 text-[10px] uppercase text-slate-500 night:text-slate-400">
               <tr>
-                <th className="px-2.5 py-2">#</th>
-                <th className="px-2.5 py-2">Due date</th>
-                <th className="px-2.5 py-2 text-right">Amount due</th>
-                <th className="px-2.5 py-2 text-right">Paid</th>
-                <th className="px-2.5 py-2">Payment Evidence</th>
-                <th className="px-2.5 py-2">Verification</th>
+                <th className="px-3 py-2">#</th>
+                <th className="px-3 py-2">Due date</th>
+                <th className="px-3 py-2 text-right">Amount due</th>
+                <th className="px-3 py-2 text-right">Paid</th>
+                <th className="px-3 py-2">Payment Evidence</th>
+                <th className="px-3 py-2">Verification</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 night:divide-slate-800">
               {account.installments.map((i) => (
                 <tr key={i.number}>
-                  <td className="px-2.5 py-2 font-semibold text-slate-900 night:text-slate-100">
+                  <td className="px-3 py-2 font-semibold text-slate-900 night:text-slate-100">
                     {i.number}
                   </td>
-                  <td className="px-2.5 py-2 text-slate-700 night:text-slate-300">
+                  <td className="px-3 py-2 text-slate-700 night:text-slate-300">
                     {i.dueDate}
                   </td>
-                  <td className="px-2.5 py-2 text-right tabular-nums text-slate-900 night:text-slate-100">
+                  <td className="px-3 py-2 text-right tabular-nums text-slate-900 night:text-slate-100">
                     {peso(i.amountDue)}
                   </td>
-                  <td className="px-2.5 py-2 text-right tabular-nums text-slate-700 night:text-slate-300">
+                  <td className="px-3 py-2 text-right tabular-nums text-slate-700 night:text-slate-300">
                     {i.paidAmount === null ? '—' : peso(i.paidAmount)}
                   </td>
-                  <td className="px-2.5 py-2">
+                  <td className="px-3 py-2">
                     {i.evidence ? (
                       <span className="font-mono text-[10px] text-slate-600 night:text-slate-300">
                         {i.evidence}
@@ -331,7 +331,7 @@ function AccountDetail({ account }: { account: LayawayAccount }) {
                       <span className="text-slate-400 night:text-slate-500">None</span>
                     )}
                   </td>
-                  <td className="px-2.5 py-2">
+                  <td className="px-3 py-2">
                     <StatusBadge
                       label={i.verification}
                       tone={VERIF_TONE[i.verification]!}
@@ -705,33 +705,33 @@ function CompletedDetail({ account }: { account: CompletedLayaway }) {
           <table className="w-full min-w-[560px] text-left text-xs">
             <thead className="border-b border-slate-200 night:border-slate-700 bg-slate-50 night:bg-slate-800 text-[10px] uppercase text-slate-500 night:text-slate-400">
               <tr>
-                <th className="px-2.5 py-2">#</th>
-                <th className="px-2.5 py-2">Due date</th>
-                <th className="px-2.5 py-2">Paid date</th>
-                <th className="px-2.5 py-2 text-right">Amount</th>
-                <th className="px-2.5 py-2">Evidence</th>
-                <th className="px-2.5 py-2">Verification</th>
+                <th className="px-3 py-2">#</th>
+                <th className="px-3 py-2">Due date</th>
+                <th className="px-3 py-2">Paid date</th>
+                <th className="px-3 py-2 text-right">Amount</th>
+                <th className="px-3 py-2">Evidence</th>
+                <th className="px-3 py-2">Verification</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 night:divide-slate-800">
               {account.installments.map((i) => (
                 <tr key={i.number}>
-                  <td className="px-2.5 py-2 font-semibold text-slate-900 night:text-slate-100">
+                  <td className="px-3 py-2 font-semibold text-slate-900 night:text-slate-100">
                     {i.number}
                   </td>
-                  <td className="px-2.5 py-2 text-slate-700 night:text-slate-300">
+                  <td className="px-3 py-2 text-slate-700 night:text-slate-300">
                     {i.dueDate}
                   </td>
-                  <td className="px-2.5 py-2 text-slate-700 night:text-slate-300">
+                  <td className="px-3 py-2 text-slate-700 night:text-slate-300">
                     {i.paidDate ?? '—'}
                   </td>
-                  <td className="px-2.5 py-2 text-right tabular-nums text-slate-900 night:text-slate-100">
+                  <td className="px-3 py-2 text-right tabular-nums text-slate-900 night:text-slate-100">
                     {i.paidAmount === null ? '—' : peso(i.paidAmount)}
                   </td>
-                  <td className="px-2.5 py-2 font-mono text-[10px] text-slate-600 night:text-slate-300">
+                  <td className="px-3 py-2 font-mono text-[10px] text-slate-600 night:text-slate-300">
                     {i.evidence ?? '—'}
                   </td>
-                  <td className="px-2.5 py-2">
+                  <td className="px-3 py-2">
                     <StatusBadge
                       label={i.verification}
                       tone={VERIF_TONE[i.verification]!}
@@ -877,57 +877,57 @@ function CompletedLayawaysTab({
           <table className="w-full min-w-[1100px] text-left text-xs">
             <thead className="border-b border-slate-200 night:border-slate-700 bg-slate-50 night:bg-slate-800 text-[10px] uppercase text-slate-500 night:text-slate-400">
               <tr>
-                <th className="px-2.5 py-2">Customer</th>
-                <th className="px-2.5 py-2">Order No.</th>
-                <th className="px-2.5 py-2">Invoice No.</th>
-                <th className="px-2.5 py-2">Item Summary</th>
-                <th className="px-2.5 py-2 text-right">Total Order</th>
-                <th className="px-2.5 py-2 text-right">Total Paid</th>
-                <th className="px-2.5 py-2 text-right">Layaway Fee</th>
-                <th className="px-2.5 py-2">Months</th>
-                <th className="px-2.5 py-2">Start</th>
-                <th className="px-2.5 py-2">Completed</th>
-                <th className="px-2.5 py-2">Financer</th>
-                <th className="px-2.5 py-2">Final Status</th>
-                <th className="px-2.5 py-2 text-right">Actions</th>
+                <th className="px-3 py-2">Customer</th>
+                <th className="px-3 py-2">Order No.</th>
+                <th className="px-3 py-2">Invoice No.</th>
+                <th className="px-3 py-2">Item Summary</th>
+                <th className="px-3 py-2 text-right">Total Order</th>
+                <th className="px-3 py-2 text-right">Total Paid</th>
+                <th className="px-3 py-2 text-right">Layaway Fee</th>
+                <th className="px-3 py-2">Months</th>
+                <th className="px-3 py-2">Start</th>
+                <th className="px-3 py-2">Completed</th>
+                <th className="px-3 py-2">Financer</th>
+                <th className="px-3 py-2">Final Status</th>
+                <th className="px-3 py-2 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 night:divide-slate-800">
               {rows.map((c) => (
                 <tr key={c.id} className="hover:bg-slate-50 night:hover:bg-slate-800">
-                  <td className="px-2.5 py-2 font-medium text-slate-900 night:text-slate-100">
+                  <td className="px-3 py-2 font-medium text-slate-900 night:text-slate-100">
                     {c.customer}
                   </td>
-                  <td className="px-2.5 py-2 font-mono text-[10px]">
+                  <td className="px-3 py-2 font-mono text-[10px]">
                     {c.officialOrderNumber}
                   </td>
-                  <td className="px-2.5 py-2 font-mono text-[10px]">{c.invoiceNumber}</td>
-                  <td className="px-2.5 py-2 text-slate-600 night:text-slate-300">
+                  <td className="px-3 py-2 font-mono text-[10px]">{c.invoiceNumber}</td>
+                  <td className="px-3 py-2 text-slate-600 night:text-slate-300">
                     {c.itemSummary}
                   </td>
-                  <td className="px-2.5 py-2 text-right tabular-nums">
+                  <td className="px-3 py-2 text-right tabular-nums">
                     {peso(c.totalOrderAmount)}
                   </td>
-                  <td className="px-2.5 py-2 text-right font-semibold tabular-nums text-emerald-700 night:text-emerald-300">
+                  <td className="px-3 py-2 text-right font-semibold tabular-nums text-emerald-700 night:text-emerald-300">
                     {peso(c.totalAmountPaid)}
                   </td>
-                  <td className="px-2.5 py-2 text-right tabular-nums">
+                  <td className="px-3 py-2 text-right tabular-nums">
                     {peso(c.layawayFee)}
                   </td>
-                  <td className="px-2.5 py-2">{c.months}</td>
-                  <td className="px-2.5 py-2 text-slate-600 night:text-slate-300">
+                  <td className="px-3 py-2">{c.months}</td>
+                  <td className="px-3 py-2 text-slate-600 night:text-slate-300">
                     {c.startDate}
                   </td>
-                  <td className="px-2.5 py-2 text-slate-600 night:text-slate-300">
+                  <td className="px-3 py-2 text-slate-600 night:text-slate-300">
                     {c.completionDate}
                   </td>
-                  <td className="px-2.5 py-2 text-slate-600 night:text-slate-300">
+                  <td className="px-3 py-2 text-slate-600 night:text-slate-300">
                     {c.financer}
                   </td>
-                  <td className="px-2.5 py-2">
+                  <td className="px-3 py-2">
                     <StatusBadge label="Completed" tone="green" />
                   </td>
-                  <td className="px-2.5 py-2 text-right">
+                  <td className="px-3 py-2 text-right">
                     <PreviewButton
                       size="sm"
                       variant="outline"
@@ -1170,35 +1170,35 @@ export function PaymentsView() {
             <table className="w-full min-w-[640px] text-left text-xs">
               <thead className="border-b border-slate-200 night:border-slate-700 bg-slate-50 night:bg-slate-800 text-[10px] uppercase text-slate-500 night:text-slate-400">
                 <tr>
-                  <th className="px-2.5 py-2">Customer</th>
-                  <th className="px-2.5 py-2">Order</th>
-                  <th className="px-2.5 py-2">#</th>
-                  <th className="px-2.5 py-2">Due</th>
-                  <th className="px-2.5 py-2 text-right">Amount</th>
-                  <th className="px-2.5 py-2 text-right">Paid</th>
-                  <th className="px-2.5 py-2">Verification</th>
+                  <th className="px-3 py-2">Customer</th>
+                  <th className="px-3 py-2">Order</th>
+                  <th className="px-3 py-2">#</th>
+                  <th className="px-3 py-2">Due</th>
+                  <th className="px-3 py-2 text-right">Amount</th>
+                  <th className="px-3 py-2 text-right">Paid</th>
+                  <th className="px-3 py-2">Verification</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 night:divide-slate-800">
                 {allInstallments.map(({ account, inst }) => (
                   <tr key={`${account.id}-${inst.number}`}>
-                    <td className="px-2.5 py-2 font-medium text-slate-900 night:text-slate-100">
+                    <td className="px-3 py-2 font-medium text-slate-900 night:text-slate-100">
                       {account.customer}
                     </td>
-                    <td className="px-2.5 py-2 font-mono text-[10px] text-slate-500 night:text-slate-400">
+                    <td className="px-3 py-2 font-mono text-[10px] text-slate-500 night:text-slate-400">
                       {account.officialOrderNumber}
                     </td>
-                    <td className="px-2.5 py-2">{inst.number}</td>
-                    <td className="px-2.5 py-2 text-slate-700 night:text-slate-300">
+                    <td className="px-3 py-2">{inst.number}</td>
+                    <td className="px-3 py-2 text-slate-700 night:text-slate-300">
                       {inst.dueDate}
                     </td>
-                    <td className="px-2.5 py-2 text-right tabular-nums">
+                    <td className="px-3 py-2 text-right tabular-nums">
                       {peso(inst.amountDue)}
                     </td>
-                    <td className="px-2.5 py-2 text-right tabular-nums">
+                    <td className="px-3 py-2 text-right tabular-nums">
                       {inst.paidAmount === null ? '—' : peso(inst.paidAmount)}
                     </td>
-                    <td className="px-2.5 py-2">
+                    <td className="px-3 py-2">
                       <StatusBadge
                         label={inst.verification}
                         tone={VERIF_TONE[inst.verification]!}

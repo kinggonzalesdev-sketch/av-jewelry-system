@@ -170,23 +170,23 @@ export function LayawayLedgerViewModal({ ledgerId }: { ledgerId: string }) {
                   <table className="w-full min-w-[640px] text-left text-xs">
                     <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                       <tr>
-                        <th className="px-2.5 py-1.5">#</th>
-                        <th className="px-2.5 py-1.5">Payment Date</th>
-                        <th className="px-2.5 py-1.5 text-right">Amount</th>
-                        <th className="px-2.5 py-1.5">Mode of Payment</th>
-                        <th className="px-2.5 py-1.5">Received By</th>
-                        <th className="px-2.5 py-1.5">Reference / Notes</th>
+                        <th className="px-3 py-1.5">#</th>
+                        <th className="px-3 py-1.5">Payment Date</th>
+                        <th className="px-3 py-1.5 text-right">Amount</th>
+                        <th className="px-3 py-1.5">Mode of Payment</th>
+                        <th className="px-3 py-1.5">Received By</th>
+                        <th className="px-3 py-1.5">Reference / Notes</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
                       {detail.payments.map((p) => (
                         <tr key={p.sequence}>
-                          <td className="px-2.5 py-1.5 tabular-nums">{p.sequence}</td>
-                          <td className="px-2.5 py-1.5">{fmtDate(p.paymentDate)}</td>
-                          <td className="px-2.5 py-1.5 text-right tabular-nums">{peso(p.amount)}</td>
-                          <td className="px-2.5 py-1.5">{p.mop ?? '—'}</td>
-                          <td className="px-2.5 py-1.5">{p.receivedBy ?? '—'}</td>
-                          <td className="px-2.5 py-1.5">{p.reference ?? '—'}</td>
+                          <td className="px-3 py-1.5 tabular-nums">{p.sequence}</td>
+                          <td className="px-3 py-1.5">{fmtDate(p.paymentDate)}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">{peso(p.amount)}</td>
+                          <td className="px-3 py-1.5">{p.mop ?? '—'}</td>
+                          <td className="px-3 py-1.5">{p.receivedBy ?? '—'}</td>
+                          <td className="px-3 py-1.5">{p.reference ?? '—'}</td>
                         </tr>
                       ))}
                     </tbody>

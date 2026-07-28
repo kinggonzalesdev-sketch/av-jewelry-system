@@ -262,16 +262,16 @@ export function InventoryImportButton({ existingCodes }: { existingCodes: string
               <table className="w-full min-w-[760px] text-left text-[11px]">
                 <thead className="sticky top-0 bg-muted/80 text-[10px] uppercase text-muted-foreground">
                   <tr>
-                    <th className="px-2 py-1.5">Row</th>
-                    <th className="px-2 py-1.5">Original</th>
-                    <th className="px-2 py-1.5">Code</th>
-                    <th className="px-2 py-1.5">Condition</th>
-                    <th className="px-2 py-1.5">Supplier Code</th>
-                    <th className="px-2 py-1.5">Type</th>
-                    <th className="px-2 py-1.5">Grams</th>
-                    <th className="px-2 py-1.5">Size</th>
-                    <th className="px-2 py-1.5">Duplicate</th>
-                    <th className="px-2 py-1.5">Validation</th>
+                    <th className="px-3 py-1.5">Row</th>
+                    <th className="px-3 py-1.5">Original</th>
+                    <th className="px-3 py-1.5">Code</th>
+                    <th className="px-3 py-1.5">Condition</th>
+                    <th className="px-3 py-1.5">Supplier Code</th>
+                    <th className="px-3 py-1.5">Type</th>
+                    <th className="px-3 py-1.5">Grams</th>
+                    <th className="px-3 py-1.5">Size</th>
+                    <th className="px-3 py-1.5">Duplicate</th>
+                    <th className="px-3 py-1.5">Validation</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -280,22 +280,22 @@ export function InventoryImportButton({ existingCodes }: { existingCodes: string
                       key={r.sourceRow}
                       className={r.dup ? 'bg-amber-500/5' : !r.valid ? 'bg-destructive/5' : ''}
                     >
-                      <td className="px-2 py-1 tabular-nums">{r.sourceRow}</td>
-                      <td className="px-2 py-1 font-mono">{r.itemStr}</td>
-                      <td className="px-2 py-1 font-mono">{r.p.inventoryCode ?? '—'}</td>
-                      <td className="px-2 py-1">{r.p.condition ?? '—'}</td>
-                      <td className="px-2 py-1">{r.p.supplierInitial ?? '—'}</td>
-                      <td className="px-2 py-1">{r.p.itemType ?? '—'}</td>
-                      <td className="px-2 py-1 tabular-nums">{r.p.grams ?? '—'}</td>
-                      <td className="px-2 py-1">{r.p.size ?? '—'}</td>
-                      <td className="px-2 py-1">
+                      <td className="px-3 py-1 tabular-nums">{r.sourceRow}</td>
+                      <td className="px-3 py-1 font-mono">{r.itemStr}</td>
+                      <td className="px-3 py-1 font-mono">{r.p.inventoryCode ?? '—'}</td>
+                      <td className="px-3 py-1">{r.p.condition ?? '—'}</td>
+                      <td className="px-3 py-1">{r.p.supplierInitial ?? '—'}</td>
+                      <td className="px-3 py-1">{r.p.itemType ?? '—'}</td>
+                      <td className="px-3 py-1 tabular-nums">{r.p.grams ?? '—'}</td>
+                      <td className="px-3 py-1">{r.p.size ?? '—'}</td>
+                      <td className="px-3 py-1">
                         {r.dup ? (
                           <span className="text-amber-600">Duplicate</span>
                         ) : (
                           <span className="text-green-600">New</span>
                         )}
                       </td>
-                      <td className="px-2 py-1">
+                      <td className="px-3 py-1">
                         {r.valid ? (
                           <span className="text-green-600">OK</span>
                         ) : (
