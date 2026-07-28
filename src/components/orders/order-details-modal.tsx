@@ -18,6 +18,7 @@ import { formatPeso } from '@/lib/payments/format';
 import type { OrderDetail, OrderDetailResult } from '@/lib/orders/detail-types';
 import type { PaymentStatus } from '@/lib/orders/service';
 import { OrderDestinationTransfer } from '@/components/orders/order-destination-transfer';
+import { OrderCancelAction } from '@/components/orders/order-cancel-action';
 import { OrderPaymentActions } from '@/components/orders/order-payment-actions';
 import { Money, SensitivePhone, Sensitive } from '@/components/shell/privacy';
 import { StatusBadge, type BadgeTone } from '@/components/ui/page-primitives';
@@ -497,6 +498,16 @@ function ForInvoiceView({
               ) : null}
             </div>
           ) : null}
+
+          {/* Cancel Order — destructive, separated from the invoice actions. */}
+          <OrderCancelAction
+            orderId={orderId}
+            orderNumber={detail.orderNumber}
+            customerName={detail.customer.displayName}
+            status={detail.status}
+            isOwner={detail.permissions.isOwner}
+            onDone={onDone}
+          />
         </div>
       </div>
     </>
@@ -802,6 +813,16 @@ function ForReminderView({
               ) : null}
             </div>
           ) : null}
+
+          {/* Cancel Order — destructive, separated from the reminder actions. */}
+          <OrderCancelAction
+            orderId={detail.officialOrderId}
+            orderNumber={detail.orderNumber}
+            customerName={detail.customer.displayName}
+            status={detail.status}
+            isOwner={detail.permissions.isOwner}
+            onDone={onDone}
+          />
       </div>
     </>
   );
@@ -1017,6 +1038,16 @@ function DetailBody({
                 onTransferred={onRefresh}
               />
             ) : null}
+
+            {/* Cancel Order — destructive, kept apart from the forward actions. */}
+            <OrderCancelAction
+              orderId={detail.officialOrderId}
+              orderNumber={detail.orderNumber}
+              customerName={detail.customer.displayName}
+              status={detail.status}
+              isOwner={detail.permissions.isOwner}
+              onDone={onRefresh}
+            />
 
             <Block title="Customer">
               <KV label="Name">{detail.customer.displayName}</KV>

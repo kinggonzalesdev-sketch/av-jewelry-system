@@ -4,9 +4,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { LedgerAddPayment } from '@/components/payments/layaway-ledger-actions';
 
 // Server actions are transport; stub them so the client control renders in jsdom.
-const addPayment = vi.fn();
+const addPayment = vi.fn(() =>
+  Promise.resolve({ ok: true as const, payment: '0', balance: '0', status: 'active' }),
+);
 vi.mock('@/lib/payments/actions', () => ({
-  addLayawayLedgerPaymentAction: (...args: unknown[]) => addPayment(...args),
+  addLayawayLedgerPaymentAction: () => addPayment(),
   loadLayawayLedgerDetailAction: vi.fn(),
   updateLayawayLedgerAccountAction: vi.fn(),
 }));

@@ -17,6 +17,7 @@ import {
 import { writeToChannel } from '@/lib/print/bluetooth-printer';
 import { encodeSlip } from '@/lib/print/receipt-encoders';
 import { usePrinter } from '@/components/print/printer-context';
+import { PhotoCapture } from '@/components/attachments/photo-capture';
 import { Button } from '@/components/ui/button';
 import { Combobox } from '@/components/ui/combobox';
 import { MoneyInput } from '@/components/ui/money-input';
@@ -262,6 +263,28 @@ function ItemRows({
                 />
               </div>
             ) : null}
+
+            {/* Reference photo for THIS item. The item's existing inventory photo
+                shows automatically; Take Photo / Choose File / Remove Photo come
+                from the shared PhotoCapture control, so the upload path, storage,
+                and permissions are the existing ones. A photo is optional — it
+                never blocks Confirm Order. It attaches to the permanent inventory
+                item, so it stays visible in the Order View modal afterwards. */}
+            {matched ? (
+              <div className="mt-2" data-testid={`order-item-photo-${idx}`}>
+                <PhotoCapture
+                  key={matched.id}
+                  relatedEntityType="inventory_item"
+                  relatedEntityId={matched.id}
+                  purpose="photo"
+                  label="Item photo (optional)"
+                />
+              </div>
+            ) : (
+              <p className="mt-2 rounded-lg border border-dashed border-border p-2 text-center text-[11px] text-muted-foreground">
+                Select an item to attach or view its photo.
+              </p>
+            )}
 
             <div className="mt-1.5 flex items-center justify-between text-xs">
               <span className="text-muted-foreground">

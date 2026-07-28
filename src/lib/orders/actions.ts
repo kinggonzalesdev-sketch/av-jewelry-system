@@ -26,6 +26,12 @@ import {
 } from '@/lib/orders/for-invoice';
 import { recordAuditEvent } from '@/lib/audit/log';
 import {
+  finalizeOrderCancellation,
+  requestOrderCancellation,
+  type CancellationResult,
+  type FinalizeCancellationResult,
+} from '@/lib/orders/cancellation';
+import {
   captureManualOrder,
   type ManualOrderInput,
   type ManualOrderResult,
@@ -116,6 +122,41 @@ export async function readyForPreparationAction(orderId: string): Promise<ForInv
   if (!orderId) return { ok: false, error: 'An order is required.' };
   const result = await advanceOrderReadyForPreparation(orderId);
   if (result.ok) revalidatePath('/orders');
+  return result;
+}
+
+/**
+ * Cancel an order → For Cancel. The order stops and the cancellation goes up for
+ * Owner review; the linked inventory stays RESERVED (nothing returns to stock yet).
+ * Idempotent, so a repeated click cannot raise a second cancellation.
+ */
+export async function requestOrderCancellationAction(
+  orderId: string,
+  reason: string,
+): Promise<CancellationResult> {
+  const result = await requestOrderCancellation(orderId, reason);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/inventory');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+/**
+ * Finalize a cancellation → Cancelled (Owner / Selected Admin). Returns only stock
+ * that was never dispatched, delivered, picked up, sold, released, or forfeited,
+ * through the Returned-to-Stock Review the system requires.
+ */
+export async function finalizeOrderCancellationAction(
+  orderId: string,
+): Promise<FinalizeCancellationResult> {
+  const result = await finalizeOrderCancellation(orderId);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/inventory');
+    revalidatePath('/dashboard');
+  }
   return result;
 }
 
