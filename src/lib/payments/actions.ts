@@ -20,14 +20,20 @@ import {
 import { recordPayment, verifyPayment } from '@/lib/payments/verification';
 import { completeOrderForPaymentIfPaidInFull } from '@/lib/orders/complete-on-payment';
 import {
+  addLayawayLedgerPayment,
   deleteAllLayawayLedger,
   deleteLayawayLedgerRow,
   getLayawayLedgerDetail,
   importLayawayLedger,
+  updateLayawayLedgerAccount,
+  type AddLedgerPaymentInput,
   type LayawayLedgerDetail,
   type LayawayLedgerInput,
   type LedgerDeleteResult,
   type LedgerImportResult,
+  type LedgerPaymentResult,
+  type LedgerUpdateResult,
+  type UpdateLedgerAccountInput,
 } from '@/lib/payments/layaway-ledger';
 
 /**
@@ -162,6 +168,31 @@ export async function loadLayawayLedgerDetailAction(
 ): Promise<LayawayLedgerDetail | null> {
   if (!id) return null;
   return getLayawayLedgerDetail(id);
+}
+
+/** Record a payment against an imported layaway account (Owner/Admin). Revalidates
+ *  the Layaway page + dashboard so Payment/Balance/status refresh without a reload. */
+export async function addLayawayLedgerPaymentAction(
+  input: AddLedgerPaymentInput,
+): Promise<LedgerPaymentResult> {
+  const result = await addLayawayLedgerPayment(input);
+  if (result.ok) {
+    revalidatePath('/orders/payments');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+/** Edit an imported layaway account's correctable fields (Owner/Admin). */
+export async function updateLayawayLedgerAccountAction(
+  input: UpdateLedgerAccountInput,
+): Promise<LedgerUpdateResult> {
+  const result = await updateLayawayLedgerAccount(input);
+  if (result.ok) {
+    revalidatePath('/orders/payments');
+    revalidatePath('/dashboard');
+  }
+  return result;
 }
 
 /** Delete ONE imported layaway ledger account (Owner/Admin). Revalidates on success. */

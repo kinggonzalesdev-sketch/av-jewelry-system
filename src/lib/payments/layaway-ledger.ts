@@ -72,6 +72,8 @@ export type LayawayLedgerDetail = {
     amount: string | null;
     mop: string | null;
     reference: string | null;
+    /** Staff who recorded the payment (Received By), when known. */
+    receivedBy: string | null;
   }>;
 };
 
@@ -126,6 +128,33 @@ export type LedgerImportResult =
   | { ok: false; error: string };
 
 export type LedgerDeleteResult = { ok: true; deleted: number } | { ok: false; error: string };
+
+export type LedgerPaymentResult =
+  | { ok: true; payment: string; balance: string; status: string }
+  | { ok: false; error: string };
+
+export type LedgerUpdateResult =
+  | { ok: true; grandTotal: string; balance: string; status: string }
+  | { ok: false; error: string };
+
+export type AddLedgerPaymentInput = {
+  ledgerId: string;
+  amount: string;
+  paymentDate: string | null;
+  mop: string | null;
+  reference: string | null;
+};
+
+export type UpdateLedgerAccountInput = {
+  id: string;
+  customerName: string;
+  remarks: string | null;
+  datePurchased: string | null;
+  itemAmount: string | null;
+  interest: string | null;
+  nextDueDate: string | null;
+  notes: string | null;
+};
 
 function toStr(value: unknown): string | null {
   if (typeof value === 'number' || typeof value === 'string') return String(value);
@@ -233,13 +262,30 @@ export async function getLayawayLedgerDetail(
       .order('sequence', { ascending: true }),
     supabase
       .from('layaway_ledger_payments')
-      .select('sequence, payment_date, amount, mode_of_payment, reference')
+      .select('sequence, payment_date, amount, mode_of_payment, reference, received_by')
       .eq('ledger_id', id)
       .order('sequence', { ascending: true }),
   ]);
 
   const r = acct.data as Record<string, unknown> | null;
   if (!r) return null;
+
+  // Resolve "Received By" names for the recorded payments (older imported rows
+  // have no recorder). One small lookup keyed by the distinct staff ids.
+  const payRows = (pay.data ?? []) as Array<Record<string, unknown>>;
+  const receiverIds = [
+    ...new Set(payRows.map((p) => p.received_by).filter((v): v is string => typeof v === 'string')),
+  ];
+  const receiverNames = new Map<string, string>();
+  if (receiverIds.length > 0) {
+    const { data: staff } = await supabase
+      .from('staff_profiles')
+      .select('id, full_name')
+      .in('id', receiverIds);
+    for (const s of (staff ?? []) as Array<Record<string, unknown>>) {
+      receiverNames.set(s.id as string, (s.full_name as string) ?? '');
+    }
+  }
 
   return {
     id: r.id as string,
@@ -275,12 +321,16 @@ export async function getLayawayLedgerDetail(
       expectedDp: toStr(i.expected_dp),
       status: (i.status as string | null) ?? null,
     })),
-    payments: ((pay.data ?? []) as Array<Record<string, unknown>>).map((p) => ({
+    payments: payRows.map((p) => ({
       sequence: Number(p.sequence),
       paymentDate: (p.payment_date as string | null) ?? null,
       amount: toStr(p.amount),
       mop: (p.mode_of_payment as string | null) ?? null,
       reference: (p.reference as string | null) ?? null,
+      receivedBy:
+        typeof p.received_by === 'string'
+          ? (receiverNames.get(p.received_by) ?? null)
+          : null,
     })),
   };
 }
@@ -412,6 +462,103 @@ export async function deleteLayawayLedgerRow(id: string): Promise<LedgerDeleteRe
     entityId: id,
   });
   return { ok: true, deleted: response.data === true ? 1 : 0 };
+}
+
+/**
+ * Record a payment against an imported layaway account (Owner/Admin). The database
+ * function inserts the payment (attributed to the recorder — Received By), recomputes
+ * the account's Payment + Balance authoritatively, auto-completes it when fully paid,
+ * and releases its reusable A1–Z200 code back to the pool on completion.
+ */
+export async function addLayawayLedgerPayment(
+  input: AddLedgerPaymentInput,
+): Promise<LedgerPaymentResult> {
+  if (!input.ledgerId) return { ok: false, error: 'A layaway account is required.' };
+  const amount = (input.amount ?? '').trim();
+  if (!/^\d{1,12}(\.\d{1,2})?$/.test(amount) || Number(amount) <= 0) {
+    return { ok: false, error: 'Enter a payment amount greater than zero.' };
+  }
+
+  try {
+    await requireOwnerOrAdmin();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
+    throw cause;
+  }
+
+  const supabase = await createClient();
+  const res = (await supabase.rpc('add_layaway_ledger_payment', {
+    p_ledger_id: input.ledgerId,
+    p_amount: amount,
+    p_payment_date: input.paymentDate,
+    p_mop: input.mop,
+    p_reference: input.reference,
+  })) as { data: Record<string, unknown> | null; error: { message: string } | null };
+
+  if (res.error) {
+    return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+  const d = res.data ?? {};
+  await recordAuditEvent({
+    action: 'layaway_ledger.add_payment',
+    entityType: 'layaway_ledger',
+    entityId: input.ledgerId,
+    context: { amount, status: toStr(d.status) },
+  });
+  return {
+    ok: true,
+    payment: toStr(d.payment) ?? '0',
+    balance: toStr(d.balance) ?? '0',
+    status: toStr(d.status) ?? 'active',
+  };
+}
+
+/**
+ * Edit an imported layaway account's correctable fields (Owner/Admin). The database
+ * function recomputes Grand Total (Item + Interest) and Balance, auto-completes a
+ * fully-paid account, and releases its code on completion. Payment history is never
+ * altered here — only Add Payment records money.
+ */
+export async function updateLayawayLedgerAccount(
+  input: UpdateLedgerAccountInput,
+): Promise<LedgerUpdateResult> {
+  if (!input.id) return { ok: false, error: 'A layaway account is required.' };
+  if (!input.customerName.trim()) return { ok: false, error: 'A customer name is required.' };
+
+  try {
+    await requireOwnerOrAdmin();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
+    throw cause;
+  }
+
+  const supabase = await createClient();
+  const res = (await supabase.rpc('update_layaway_ledger_account', {
+    p_id: input.id,
+    p_customer_name: input.customerName.trim(),
+    p_remarks: input.remarks,
+    p_date_purchased: input.datePurchased,
+    p_item_amount: input.itemAmount,
+    p_interest: input.interest,
+    p_next_due_date: input.nextDueDate,
+    p_notes: input.notes,
+  })) as { data: Record<string, unknown> | null; error: { message: string } | null };
+
+  if (res.error) {
+    return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+  const d = res.data ?? {};
+  await recordAuditEvent({
+    action: 'layaway_ledger.edit',
+    entityType: 'layaway_ledger',
+    entityId: input.id,
+  });
+  return {
+    ok: true,
+    grandTotal: toStr(d.grandTotal) ?? '0',
+    balance: toStr(d.balance) ?? '0',
+    status: toStr(d.status) ?? 'active',
+  };
 }
 
 /**

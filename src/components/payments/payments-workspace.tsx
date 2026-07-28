@@ -29,6 +29,10 @@ import type { LayawayLedgerRow } from '@/lib/payments/layaway-ledger';
 import { LayawayDetailsModal } from '@/components/payments/layaway-details-modal';
 import { LayawayImportButton } from '@/components/payments/layaway-import-modal';
 import { LayawayLedgerViewModal } from '@/components/payments/layaway-ledger-view-modal';
+import {
+  LedgerAddPayment,
+  LedgerEditAccount,
+} from '@/components/payments/layaway-ledger-actions';
 import { layawayDedupKey } from '@/lib/import/layaway-csv';
 import { NewLayawayForm } from '@/components/payments/new-layaway-form';
 import { RecordPaymentForm } from '@/components/payments/record-payment-form';
@@ -1075,14 +1079,25 @@ function LayawayTable({
                       ) : null}
                     </div>
                   ) : r.ledgerId ? (
-                    <div className="flex justify-end gap-1">
+                    <div className="flex flex-wrap justify-end gap-1">
                       <LayawayLedgerViewModal ledgerId={r.ledgerId} />
                       {canDeleteLedger ? (
-                        <LedgerRowDelete
-                          id={r.ledgerId}
-                          accountNo={r.accountNo}
-                          customerName={r.customerName}
-                        />
+                        <>
+                          {r.status === 'active' ? (
+                            <LedgerAddPayment
+                              id={r.ledgerId}
+                              accountNo={r.accountNo}
+                              customerName={r.customerName}
+                              balance={r.balance}
+                            />
+                          ) : null}
+                          <LedgerEditAccount id={r.ledgerId} accountNo={r.accountNo} />
+                          <LedgerRowDelete
+                            id={r.ledgerId}
+                            accountNo={r.accountNo}
+                            customerName={r.customerName}
+                          />
+                        </>
                       ) : null}
                     </div>
                   ) : (
