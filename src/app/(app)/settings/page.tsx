@@ -1,10 +1,12 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
+import { SupplierCodesPanel } from '@/components/settings/supplier-codes-panel';
 import { TeamMembersPanel } from '@/components/settings/team-members-panel';
 import { PageHeader } from '@/components/ui/page-primitives';
 import { requireActiveStaff } from '@/lib/authz/guard';
 import { listTeamMembers } from '@/lib/authz/team-accounts';
+import { listSupplierCodes } from '@/lib/inventory/suppliers';
 
 export const metadata: Metadata = {
 };
@@ -27,7 +29,11 @@ export const dynamic = 'force-dynamic';
 export default async function SettingsPage() {
   const staff = await requireActiveStaff();
   const isOwner = staff.roleKey === 'owner';
-  const members = isOwner ? await listTeamMembers() : [];
+  const canManageSuppliers = isOwner || staff.roleKey === 'selected_admin';
+  const [members, supplierCodes] = await Promise.all([
+    isOwner ? listTeamMembers() : Promise.resolve([]),
+    canManageSuppliers ? listSupplierCodes() : Promise.resolve([]),
+  ]);
 
   return (
     <div className="space-y-4">
@@ -46,6 +52,24 @@ export default async function SettingsPage() {
             Add team members and set a temporary password. Owner-only.
           </p>
           <TeamMembersPanel members={members} />
+        </section>
+      ) : null}
+
+      {/* Supplier Codes — configurable supplier-initial → name mapping (Owner/Admin). */}
+      {canManageSuppliers ? (
+        <section
+          className="rounded-xl border border-border bg-card p-4"
+          aria-labelledby="supplier-h"
+        >
+          <h2 id="supplier-h" className="text-sm font-semibold text-foreground">
+            Inventory — Supplier Codes
+          </h2>
+          <p className="mb-3 mt-0.5 text-xs text-muted-foreground">
+            Map the supplier initial in an inventory code (e.g. the{' '}
+            <span className="font-mono">A</span> in{' '}
+            <span className="font-mono">SBA-N-2683</span>) to a supplier name.
+          </p>
+          <SupplierCodesPanel codes={supplierCodes} />
         </section>
       ) : null}
 

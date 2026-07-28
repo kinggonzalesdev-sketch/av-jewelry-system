@@ -26,6 +26,9 @@ export type ParsedInventoryCode = {
   conditionCode: string | null; // "SB"
   condition: string | null; // "Subasta" — null when the prefix is unknown
   supplierInitial: string | null; // "A" (raw; not yet matched to a supplier)
+  /** Supplier name resolved from `supplierInitial` via the configured supplier-code
+   *  map, or null when there is no match / no config (§7). */
+  supplier: string | null;
   itemTypeCode: string | null; // "N"
   itemType: string | null; // "Necklace" — null when the code is unknown
   sequence: string | null; // "2683" (string — legacy/business number)
@@ -45,6 +48,8 @@ export type InventoryCodeConfig = {
   conditions: Record<string, string>;
   /** Item-type code → label. Configurable in Settings (§6). */
   itemTypes: Record<string, string>;
+  /** Supplier initial → supplier name. Configured in Settings (§7). */
+  suppliers: Record<string, string>;
 };
 
 /** Confirmed condition prefixes (§5). */
@@ -80,6 +85,7 @@ export function parseInventoryCode(
 ): ParsedInventoryCode {
   const conditions = config?.conditions ?? DEFAULT_CONDITIONS;
   const itemTypes = config?.itemTypes ?? DEFAULT_ITEM_TYPES;
+  const suppliers = config?.suppliers ?? {};
 
   const original = raw ?? '';
   // Collapse the whitespace variations of §8, but keep the original untouched.
@@ -138,6 +144,7 @@ export function parseInventoryCode(
     conditionCode,
     condition,
     supplierInitial,
+    supplier: supplierInitial ? (suppliers[supplierInitial] ?? null) : null,
     itemTypeCode,
     itemType,
     sequence,
