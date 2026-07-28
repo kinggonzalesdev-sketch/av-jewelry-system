@@ -30,6 +30,11 @@ import {
   type ManualOrderInput,
   type ManualOrderResult,
 } from '@/lib/orders/manual-order';
+import {
+  addOrderPayment,
+  type AddOrderPaymentInput,
+  type AddOrderPaymentResult,
+} from '@/lib/orders/order-payment';
 import { getOrderLineItems, type OrderLineItem } from '@/lib/orders/service';
 import {
   createWalkInOrder,
@@ -211,6 +216,23 @@ export async function captureWalkInOrderAction(input: {
   if (result.ok) {
     revalidatePath('/orders');
     revalidatePath('/orders/inventory');
+    revalidatePath('/orders/payments');
+  }
+  return result;
+}
+
+/**
+ * Add a payment or Down Payment / Deposit to an order (Order View modal). Validation
+ * (amount > 0, ≤ remaining balance) and attribution live in the domain + DB. On
+ * success the Orders list + Payments views revalidate so the row, summary cards, and
+ * modal refresh without a full reload. Never advances the workflow status.
+ */
+export async function addOrderPaymentAction(
+  input: AddOrderPaymentInput,
+): Promise<AddOrderPaymentResult> {
+  const result = await addOrderPayment(input);
+  if (result.ok) {
+    revalidatePath('/orders');
     revalidatePath('/orders/payments');
   }
   return result;
