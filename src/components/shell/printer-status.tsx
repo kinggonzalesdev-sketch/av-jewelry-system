@@ -2,197 +2,215 @@
 
 import { useState } from 'react';
 
-import {
-  derivePrinterState,
-  PRINTER_TONE,
-  type PrinterState,
-} from '@/components/shell/printer';
-import { useMounted } from '@/components/shell/use-mounted';
+import { usePrinter } from '@/components/print/printer-context';
 import { cn } from '@/lib/utils';
 
 /**
- * Bluetooth / printer status — now a CLICKABLE connect control (like the theme
- * toggle), while staying HONEST. See {@link file://./printer.ts}.
+ * Bluetooth / printer control — the ONE place to connect the XP-236B (Bible §27).
  *
- * Clicking it opens the browser's Bluetooth device chooser (the "search"). What
- * it can and cannot claim:
- *   - Selecting a device moves the state to "Bluetooth Validation Required", NOT
- *     "Printer Ready" / "Connected". A chosen device is not a validated printer:
- *     real-device print validation (recorded at /admin/capabilities) is still
- *     required before printing is enabled (Bible §27.18; the audit doc).
- *   - Where Web Bluetooth is unavailable (no secure context, no API — e.g. every
- *     iOS browser), it says so and does not pretend to search.
- * It therefore never shows a false connected/ready state.
+ * Connect once here and every print in the app reuses the SAME connection (via
+ * the shared PrinterProvider). It is honest: it only says "connected" when there
+ * is a REAL GATT connection to the printer (a device you can Test-print to), and
+ * says so plainly where Web Bluetooth is unavailable (e.g. iOS, or non-HTTPS).
+ * Owner decision (2026-07-21): now that real Bluetooth printing works, the
+ * control reflects the actual connection rather than a permanently-gated status.
  */
 
-const TONE_CLASS: Record<'gold' | 'muted' | 'destructive', string> = {
-  gold: 'bg-gold/15 text-gold-strong',
-  muted: 'bg-muted text-muted-foreground',
-  destructive: 'bg-destructive/10 text-destructive',
-};
+const BADGE = 'inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium';
 
-/** Minimal Web Bluetooth typing (not in the standard DOM lib). */
-type BluetoothLike = {
-  requestDevice(options: {
-    acceptAllDevices?: boolean;
-    optionalServices?: unknown[];
-  }): Promise<{ name?: string | null }>;
-};
+function ConnectedControls() {
+  const {
+    printer,
+    channelIdx,
+    setChannelIdx,
+    printLang,
+    setPrintLang,
+    testResult,
+    testPrint,
+  } = usePrinter();
+  const [showDetails, setShowDetails] = useState(false);
+  if (!printer) return null;
 
-function getBluetooth(): BluetoothLike | null {
-  if (typeof navigator === 'undefined') return null;
-  const b = (navigator as unknown as { bluetooth?: BluetoothLike }).bluetooth;
-  return b ?? null;
-}
-
-type Phase = 'idle' | 'searching' | 'selected' | 'error';
-
-type Connect = {
-  state: PrinterState;
-  phase: Phase;
-  deviceName: string | null;
-  hint: string;
-  clickable: boolean;
-  onClick: () => void | Promise<void>;
-};
-
-function usePrinterConnect(): Connect {
-  const mounted = useMounted();
-  const [phase, setPhase] = useState<Phase>('idle');
-  const [deviceName, setDeviceName] = useState<string | null>(null);
-  const [errorHint, setErrorHint] = useState<string | null>(null);
-
-  // Pre-mount: the honest neutral, avoiding hydration mismatch.
-  if (!mounted) {
-    return {
-      state: 'Browser Preview Available',
-      phase: 'idle',
-      deviceName: null,
-      hint: '',
-      clickable: false,
-      onClick: () => {},
-    };
-  }
-
-  const secureContext = window.isSecureContext;
-  const bluetooth = getBluetooth();
-  const hasBluetooth = bluetooth !== null;
-
-  const state = derivePrinterState({
-    secureContext,
-    hasBluetooth,
-    // A chosen device raises the ceiling to "Validation Required" — never higher.
-    deviceConnected: phase === 'selected',
-    validated: false,
-  });
-
-  const clickable = secureContext && hasBluetooth && phase !== 'searching';
-
-  async function onClick() {
-    if (!secureContext) {
-      setErrorHint('Open the app over HTTPS to use Bluetooth printing.');
-      return;
-    }
-    if (!bluetooth) {
-      // Web Bluetooth is unavailable — notably on every iOS browser.
-      setErrorHint('This browser has no Web Bluetooth (e.g. iOS). Use manual print.');
-      return;
-    }
-    setErrorHint(null);
-    setPhase('searching');
-    try {
-      const device = await bluetooth.requestDevice({
-        // We do not yet know the XP-236B's service UUIDs (see the hardware audit),
-        // so we accept all devices to let the operator pick the printer.
-        acceptAllDevices: true,
-      });
-      setDeviceName(device.name ?? 'Selected device');
-      setPhase('selected');
-    } catch (err) {
-      // The chooser being dismissed is a cancel, not an error.
-      const name = err instanceof DOMException ? err.name : '';
-      if (name === 'NotFoundError') {
-        setPhase('idle');
-      } else {
-        setErrorHint('Could not open the Bluetooth chooser.');
-        setPhase('error');
-      }
-    }
-  }
-
-  let hint: string;
-  if (phase === 'searching') hint = 'Searching for devices…';
-  else if (phase === 'selected')
-    hint = `${deviceName ?? 'Device'} selected · print not yet validated`;
-  else if (errorHint) hint = errorHint;
-  else if (clickable) hint = 'Tap to search for a printer';
-  else hint = '';
-
-  return { state, phase, deviceName, hint, clickable, onClick };
-}
-
-function StateBadge({ state, phase }: { state: PrinterState; phase: Phase }) {
-  const label = phase === 'searching' ? 'Searching…' : state;
-  const tone = phase === 'searching' ? 'gold' : PRINTER_TONE[state];
   return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium',
-        TONE_CLASS[tone],
-      )}
-    >
-      {label}
-    </span>
+    <div className="mt-1.5 space-y-1.5 text-[10px] text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span>Format:</span>
+        <label className="inline-flex items-center gap-1">
+          <input
+            type="radio"
+            name="side-printLang"
+            checked={printLang === 'tspl'}
+            onChange={() => setPrintLang('tspl')}
+          />
+          Label (TSPL)
+        </label>
+        <label className="inline-flex items-center gap-1">
+          <input
+            type="radio"
+            name="side-printLang"
+            checked={printLang === 'escpos'}
+            onChange={() => setPrintLang('escpos')}
+          />
+          Receipt (ESC/POS)
+        </label>
+      </div>
+
+      {printer.channels.length > 1 ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span>Channel:</span>
+          <select
+            value={channelIdx}
+            onChange={(e) => setChannelIdx(Number(e.target.value))}
+            className="h-6 max-w-[150px] rounded border border-input bg-background px-1 text-[10px]"
+          >
+            {printer.channels.map((c, i) => (
+              <option key={c.uuid} value={i}>
+                {i + 1}. {c.uuid.slice(0, 8)}…
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void testPrint()}
+          className="rounded border border-border bg-card px-1.5 py-0.5 font-medium text-foreground hover:bg-accent"
+        >
+          Test print
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowDetails((s) => !s)}
+          className="underline"
+        >
+          {showDetails ? 'Hide details' : 'Details'}
+        </button>
+      </div>
+
+      {testResult ? (
+        <p role="status" className="text-foreground">
+          {testResult}
+        </p>
+      ) : null}
+      {showDetails ? (
+        <pre className="max-h-28 overflow-auto rounded border border-border bg-muted/40 p-1 text-[9px] leading-tight">
+          {printer.details}
+        </pre>
+      ) : null}
+    </div>
   );
 }
 
-/** Compact clickable badge for the mobile header. */
+/** Full sidebar control. Sits directly above Logout in the approved footer. */
+export function PrinterStatusRow() {
+  const { supported, printer, connecting, error, connect, disconnect } = usePrinter();
+
+  return (
+    <div
+      data-testid="printer-status"
+      className="w-full rounded-lg border border-border bg-card px-2.5 py-2 text-left"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="min-w-0">
+          <span className="block text-[11px] font-medium text-muted-foreground">
+            Bluetooth / Printer
+          </span>
+          <span className="mt-0.5 block">
+            {printer ? (
+              <span className={cn(BADGE, 'bg-gold/15 text-gold-strong')}>
+                {printer.deviceName} connected
+              </span>
+            ) : supported ? (
+              <span className={cn(BADGE, 'bg-muted text-muted-foreground')}>
+                No printer linked
+              </span>
+            ) : (
+              <span className={cn(BADGE, 'bg-muted text-muted-foreground')}>
+                Bluetooth printing unavailable
+              </span>
+            )}
+          </span>
+        </span>
+
+        {/*
+          Toggle-style switch that reflects the REAL connection: ON (gold, knob
+          right) only when a printer is actually linked; OFF (gray, knob left) when
+          none is. Tapping OFF→ON links a printer; tapping ON→OFF unlinks it.
+          Disabled where Bluetooth printing is unavailable.
+        */}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={!!printer}
+          aria-label={
+            printer
+              ? `Bluetooth printer: ${printer.deviceName} linked, tap to unlink`
+              : supported
+                ? 'Bluetooth printer: not linked, tap to link a printer'
+                : 'Bluetooth printer: unavailable on this device'
+          }
+          disabled={!supported || connecting}
+          onClick={() => {
+            if (!supported) return;
+            if (printer) disconnect();
+            else void connect();
+          }}
+          className={cn(
+            'inline-flex h-5 w-9 shrink-0 items-center rounded-full px-0.5 transition-colors disabled:cursor-not-allowed',
+            printer ? 'justify-end bg-gold' : 'justify-start bg-muted',
+            connecting && 'opacity-70',
+          )}
+        >
+          <span className="inline-block h-4 w-4 rounded-full bg-white shadow" />
+        </button>
+      </div>
+
+      {!supported ? (
+        <p className="mt-1 text-[10px] text-muted-foreground">
+          Needs Chrome or Edge over HTTPS (not available on iOS).
+        </p>
+      ) : null}
+      {error ? (
+        <p role="alert" className="mt-1 text-[10px] text-destructive">
+          {error}
+        </p>
+      ) : null}
+
+      <ConnectedControls />
+    </div>
+  );
+}
+
+/** Compact control for the mobile header. */
 export function PrinterStatusBadge() {
-  const c = usePrinterConnect();
+  const { supported, printer, connecting, connect } = usePrinter();
+
+  const label = printer
+    ? `${printer.deviceName} connected`
+    : connecting
+      ? 'Connecting…'
+      : supported
+        ? 'Connect printer'
+        : 'Bluetooth off';
+
   return (
     <button
       type="button"
-      onClick={() => void c.onClick()}
+      onClick={() => (printer || !supported ? undefined : void connect())}
       data-testid="printer-status"
-      aria-label={`Bluetooth / Printer: ${c.state}. ${c.hint}`}
-      title={`Bluetooth / Printer: ${c.state}${c.hint ? ` — ${c.hint}` : ''}`}
+      aria-label={`Bluetooth / Printer: ${label}`}
+      title={`Bluetooth / Printer: ${label}`}
       className="rounded-md"
     >
-      <StateBadge state={c.state} phase={c.phase} />
-    </button>
-  );
-}
-
-/** Full clickable sidebar row. Sits directly above Logout in the approved footer. */
-export function PrinterStatusRow() {
-  const c = usePrinterConnect();
-  return (
-    <button
-      type="button"
-      onClick={() => void c.onClick()}
-      data-testid="printer-status"
-      aria-label={`Bluetooth / Printer: ${c.state}. ${c.hint}`}
-      title={`Bluetooth / Printer: ${c.state}`}
-      className={cn(
-        'flex w-full items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-2 text-left transition-colors',
-        c.clickable && 'hover:border-gold/40 hover:bg-accent',
-      )}
-    >
-      <span aria-hidden="true" className="text-sm text-muted-foreground">
-        ⎙
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-[11px] font-medium text-muted-foreground">
-          Bluetooth / Printer
-        </span>
-        <span className="mt-0.5 block">
-          <StateBadge state={c.state} phase={c.phase} />
-        </span>
-        {c.hint ? (
-          <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
-            {c.hint}
-          </span>
-        ) : null}
+      <span
+        className={cn(
+          BADGE,
+          printer ? 'bg-gold/15 text-gold-strong' : 'bg-muted text-muted-foreground',
+        )}
+      >
+        {label}
       </span>
     </button>
   );

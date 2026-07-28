@@ -1,0 +1,360 @@
+import 'server-only';
+
+import { recordAuditEvent } from '@/lib/audit/log';
+import { AuthorizationError, requireOwnerOrAdmin } from '@/lib/authz/guard';
+import { createClient } from '@/lib/supabase/server';
+
+/**
+ * For-Invoice flow (Owner request). Two small, guarded operations:
+ *   - "Verified" advances a For-Invoice order (status 'invoiced') to For Reminder
+ *     ('awaiting_required_payment'). Idempotent — only a still-invoiced order
+ *     moves, so a retry never double-transitions.
+ *   - Setting a customer's Facebook Messenger URL powers "Open FB Chat".
+ * Both re-check authority (defence in depth) and the database function is the real
+ * gate. Neither touches money.
+ */
+
+export type ForInvoiceResult = { ok: true } | { ok: false; error: string };
+
+export type OrderInvoiceMessage = {
+  body: string;
+  status: string;
+  /** When the message was attested as manually sent, or null (not yet sent). */
+  sentAt: string | null;
+  sentByName: string | null;
+  preparedByName: string | null;
+};
+
+function one<T>(value: unknown): T | undefined {
+  if (Array.isArray(value)) return value[0] as T | undefined;
+  return (value as T) ?? undefined;
+}
+
+/**
+ * The prepared invoice message for an order (for "View Message"). Read-only,
+ * RLS-scoped. Returns null when no message has been prepared yet. Nothing here
+ * claims delivery — only what was prepared and, if attested, who marked it sent.
+ */
+export async function getOrderInvoiceMessage(
+  officialOrderId: string,
+): Promise<
+  { ok: true; message: OrderInvoiceMessage | null } | { ok: false; error: string }
+> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('customer_messages')
+    .select(
+      `body, status, manually_sent_at,
+       sent_by:staff_profiles!manually_sent_by ( full_name ),
+       prepared_by:staff_profiles!created_by ( full_name )`,
+    )
+    .eq('official_order_id', officialOrderId)
+    .maybeSingle();
+
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: true, message: null };
+
+  const r = data as Record<string, unknown>;
+  return {
+    ok: true,
+    message: {
+      body: (r.body as string | null) ?? '',
+      status: (r.status as string | null) ?? 'unknown',
+      sentAt: (r.manually_sent_at as string | null) ?? null,
+      sentByName: one<{ full_name: string }>(r.sent_by)?.full_name ?? null,
+      preparedByName: one<{ full_name: string }>(r.prepared_by)?.full_name ?? null,
+    },
+  };
+}
+
+/**
+ * Save (edit) the invoice message body for an order. RLS gates the write to
+ * message_preparation / message_sending — the same authority that prepares and
+ * sends the invoice. Updates the order's existing prepared message; if none exists
+ * yet it creates one (ready to copy or send) for the order's customer. Touches no
+ * money and changes no status — only the copy the operator sends on Facebook.
+ */
+export async function saveOrderInvoiceMessage(
+  officialOrderId: string,
+  customerId: string,
+  body: string,
+): Promise<ForInvoiceResult> {
+  const trimmed = (body ?? '').trim();
+  if (!trimmed) return { ok: false, error: 'The message cannot be empty.' };
+  if (trimmed.length > 5000) return { ok: false, error: 'That message is too long.' };
+
+  const supabase = await createClient();
+  const existing = await supabase
+    .from('customer_messages')
+    .select('id')
+    .eq('official_order_id', officialOrderId)
+    .maybeSingle();
+  if (existing.error) return { ok: false, error: existing.error.message };
+
+  const write = existing.data
+    ? await supabase
+        .from('customer_messages')
+        .update({ body: trimmed })
+        .eq('id', existing.data.id)
+    : await supabase.from('customer_messages').insert({
+        official_order_id: officialOrderId,
+        customer_id: customerId,
+        body: trimmed,
+        status: 'ready_to_copy_or_send',
+      });
+
+  if (write.error) {
+    return { ok: false, error: write.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+
+  await recordAuditEvent({
+    action: 'order.invoice_message_edited',
+    entityType: 'official_order',
+    entityId: officialOrderId,
+    context: { length: trimmed.length, created: !existing.data },
+  });
+  return { ok: true };
+}
+
+export type BulkInvoiceOrder = {
+  orderId: string;
+  orderNumber: string;
+  customerName: string;
+  /** True when the customer has a saved Facebook chat link (send-eligible). */
+  hasChat: boolean;
+};
+
+/** For-Invoice orders + whether each has a Facebook chat connection. Powers the
+ *  "Send All Invoices" plan (eligible = has chat; skipped = no chat). */
+export async function getForInvoiceOrders(): Promise<BulkInvoiceOrder[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('official_orders')
+    .select('id, order_number, customers ( display_name, facebook_conversation_url )')
+    .eq('status', 'invoiced')
+    .order('created_at', { ascending: true });
+
+  return ((data ?? []) as Array<Record<string, unknown>>).map((r) => {
+    const c = one<{ display_name: string; facebook_conversation_url: string | null }>(r.customers);
+    return {
+      orderId: r.id as string,
+      orderNumber: (r.order_number as string | null) ?? '—',
+      customerName: c?.display_name ?? 'Unknown',
+      hasChat: Boolean(c?.facebook_conversation_url),
+    };
+  });
+}
+
+export type OrderReminder = {
+  number: number;
+  body: string;
+  sentAt: string;
+  sentByName: string | null;
+};
+
+/** Reminders already sent for an order, plus the recorded customer response. */
+export async function getOrderReminders(
+  officialOrderId: string,
+): Promise<{ reminders: OrderReminder[]; customerResponse: string | null }> {
+  const supabase = await createClient();
+  const [{ data: reminders }, { data: order }] = await Promise.all([
+    supabase
+      .from('order_reminders')
+      .select('reminder_number, body, sent_at, sender:staff_profiles!sent_by ( full_name )')
+      .eq('official_order_id', officialOrderId)
+      .order('reminder_number', { ascending: true }),
+    supabase
+      .from('official_orders')
+      .select('customer_response')
+      .eq('id', officialOrderId)
+      .maybeSingle(),
+  ]);
+
+  const rows = (reminders ?? []) as Array<Record<string, unknown>>;
+  const orderRow = (order ?? null) as Record<string, unknown> | null;
+  return {
+    reminders: rows.map((r) => ({
+      number: r.reminder_number as number,
+      body: (r.body as string | null) ?? '',
+      sentAt: r.sent_at as string,
+      sentByName: one<{ full_name: string }>(r.sender)?.full_name ?? null,
+    })),
+    customerResponse: (orderRow?.customer_response as string | null) ?? null,
+  };
+}
+
+/** Record a reminder (1..3) as sent. Sequence + duplicate rules live in the DB. */
+export async function sendOrderReminder(
+  officialOrderId: string,
+  reminderNumber: number,
+  body: string,
+): Promise<ForInvoiceResult> {
+  const trimmed = (body ?? '').trim();
+  if (!trimmed) return { ok: false, error: 'The reminder message is empty.' };
+
+  const supabase = await createClient();
+  const response = await supabase.rpc('record_order_reminder', {
+    p_order_id: officialOrderId,
+    p_number: reminderNumber,
+    p_body: trimmed,
+    p_channel: 'facebook_manual',
+  });
+  if (response.error) {
+    return { ok: false, error: response.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+
+  await recordAuditEvent({
+    action: 'order.reminder_sent',
+    entityType: 'official_order',
+    entityId: officialOrderId,
+    context: { reminder_number: reminderNumber, channel: 'facebook_manual' },
+  });
+  return { ok: true };
+}
+
+/** Confirm the customer response and route the order per the mapping. */
+export async function setOrderCustomerResponse(
+  officialOrderId: string,
+  responseValue: string,
+): Promise<ForInvoiceResult> {
+  const supabase = await createClient();
+  const response = await supabase.rpc('set_order_customer_response', {
+    p_order_id: officialOrderId,
+    p_response: responseValue,
+  });
+  if (response.error) {
+    return { ok: false, error: response.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+
+  await recordAuditEvent({
+    action: 'order.customer_response_confirmed',
+    entityType: 'official_order',
+    entityId: officialOrderId,
+    context: { response: responseValue, moved_to: response.data },
+  });
+  return { ok: true };
+}
+
+/** Advance a For-Invoice order to For Reminder (invoiced → awaiting_required_payment). */
+export async function advanceOrderToReminder(orderId: string): Promise<ForInvoiceResult> {
+  const supabase = await createClient();
+  const response = await supabase.rpc('advance_order_to_reminder', { p_order_id: orderId });
+
+  if (response.error) {
+    await recordAuditEvent({
+      action: 'order.for_invoice_verified',
+      entityType: 'official_order',
+      entityId: orderId,
+      outcome: 'failed',
+      reason: response.error.message,
+    });
+    return { ok: false, error: response.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+
+  // true = this call transitioned it; false = it was already advanced (no-op).
+  await recordAuditEvent({
+    action: 'order.for_invoice_verified',
+    entityType: 'official_order',
+    entityId: orderId,
+    context: { moved_to: 'for_reminder', transitioned: response.data === true },
+  });
+  return { ok: true };
+}
+
+/**
+ * For Reminder → For Confirm (Orders Workflow). The database enforces the money
+ * gate: the required down payment (20% of payable) must be verified. Idempotent —
+ * only a still-awaiting order moves. Touches no money.
+ */
+export async function advanceOrderConfirmPayment(orderId: string): Promise<ForInvoiceResult> {
+  const supabase = await createClient();
+  const response = await supabase.rpc('advance_order_confirm_payment', {
+    p_order_id: orderId,
+  });
+  if (response.error) {
+    await recordAuditEvent({
+      action: 'order.confirm_required_payment',
+      entityType: 'official_order',
+      entityId: orderId,
+      outcome: 'failed',
+      reason: response.error.message,
+    });
+    return { ok: false, error: response.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+  await recordAuditEvent({
+    action: 'order.confirm_required_payment',
+    entityType: 'official_order',
+    entityId: orderId,
+    context: { moved_to: 'for_confirm', transitioned: response.data === true },
+  });
+  return { ok: true };
+}
+
+/**
+ * For Confirm → For Prepare (Orders Workflow). Hands the order to preparation once
+ * the required payment is verified. Idempotent; touches no money.
+ */
+export async function advanceOrderReadyForPreparation(
+  orderId: string,
+): Promise<ForInvoiceResult> {
+  const supabase = await createClient();
+  const response = await supabase.rpc('advance_order_ready_for_preparation', {
+    p_order_id: orderId,
+  });
+  if (response.error) {
+    await recordAuditEvent({
+      action: 'order.ready_for_preparation',
+      entityType: 'official_order',
+      entityId: orderId,
+      outcome: 'failed',
+      reason: response.error.message,
+    });
+    return { ok: false, error: response.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+  await recordAuditEvent({
+    action: 'order.ready_for_preparation',
+    entityType: 'official_order',
+    entityId: orderId,
+    context: { moved_to: 'for_prepare', transitioned: response.data === true },
+  });
+  return { ok: true };
+}
+
+/** Set (or clear) a customer's Facebook Messenger URL — Owner/Admin only. */
+export async function setCustomerFacebookUrl(
+  customerId: string,
+  url: string | null,
+): Promise<ForInvoiceResult> {
+  const trimmed = (url ?? '').trim();
+  if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+    return { ok: false, error: 'Enter a full link starting with http:// or https://.' };
+  }
+  if (trimmed.length > 500) {
+    return { ok: false, error: 'That link is too long.' };
+  }
+
+  try {
+    await requireOwnerOrAdmin();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
+    throw cause;
+  }
+
+  const supabase = await createClient();
+  const response = await supabase.rpc('set_customer_facebook_url', {
+    p_customer_id: customerId,
+    p_url: trimmed,
+  });
+
+  if (response.error) {
+    return { ok: false, error: response.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+
+  await recordAuditEvent({
+    action: 'customer.set_facebook_url',
+    entityType: 'customer',
+    entityId: customerId,
+    context: { set: trimmed.length > 0 },
+  });
+  return { ok: true };
+}

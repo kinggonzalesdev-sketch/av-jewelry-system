@@ -5,10 +5,15 @@ import { THEME_INIT_SCRIPT } from '@/components/shell/theme';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'A.V. Jewelry Operations',
+  // FIXED browser-tab title for the ENTIRE app. Child routes no longer set their
+  // own metadata.title (Owner request 2026-07-24), so every page inherits this —
+  // the tab never changes on navigation, refresh, direct URL, or sign in/out.
+  title: 'A.V. Jewelry',
   description: 'Internal staff operations system. Not for public or customer use.',
   // Internal tool: never index it.
   robots: { index: false, follow: false },
+  // Favicon: app/icon.svg is auto-served by Next on every route (no per-page
+  // override), so the tab icon is fixed everywhere too.
 };
 
 export const viewport: Viewport = {

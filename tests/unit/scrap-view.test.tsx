@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ScrapView } from '@/components/scrap/scrap-view';
@@ -30,18 +30,21 @@ describe('ScrapView', () => {
   it('shows scrap income per material (summed in SQL)', () => {
     render(<ScrapView income={income} sales={sales} from="2026-07-01" to="2026-07-18" />);
     const summary = screen.getByTestId('scrap-income');
-    expect(within(summary).getByText('₱30,000.00')).toBeInTheDocument();
-    expect(within(summary).getByText('₱1,500.00')).toBeInTheDocument();
+    expect(within(summary).getByText('₱30,000')).toBeInTheDocument();
+    expect(within(summary).getByText('₱1,500')).toBeInTheDocument();
   });
 
-  it('offers a record form with material, grams, and amount', () => {
+  it('opens a modal with material, grams, and amount fields', () => {
     render(<ScrapView income={income} sales={sales} from="2026-07-01" to="2026-07-18" />);
+    // The record form is not inline — it lives in the standard centered dialog.
+    expect(screen.queryByLabelText('Material')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /record scrap sale/i }));
+
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
     expect(screen.getByLabelText('Material')).toBeInTheDocument();
     expect(screen.getByLabelText('Grams')).toBeInTheDocument();
-    expect(screen.getByLabelText('Amount (₱)')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /record scrap sale/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Amount')).toBeInTheDocument();
   });
 
   it('shows an explicit error, not ₱0, when income could not be read', () => {

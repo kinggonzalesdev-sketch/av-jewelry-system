@@ -2,7 +2,7 @@
 
 import { useActionState } from 'react';
 
-import { testPancakeAction } from '@/lib/integrations/actions';
+import { syncPancakeAction, testPancakeAction } from '@/lib/integrations/actions';
 import {
   EMPTY_INTEGRATION_STATE,
   type IntegrationActionState,
@@ -14,8 +14,7 @@ import { cn } from '@/lib/utils';
 
 /**
  * Integrations (Bible §14.28) — honest connection status. Never shows a false
- * "connected". Pancake sync is gated on real API access the business provides;
- * the printer is gated on a real-device validation (see Capabilities).
+ * "connected". Pancake sync is gated on real API access the business provides.
  */
 
 const PANCAKE_LABEL: Record<PancakeStatus['state'], { text: string; tone: string }> = {
@@ -38,6 +37,10 @@ export function IntegrationsView({
     IntegrationActionState,
     FormData
   >(testPancakeAction, EMPTY_INTEGRATION_STATE);
+  const [syncState, syncNow, syncing] = useActionState<IntegrationActionState, FormData>(
+    syncPancakeAction,
+    EMPTY_INTEGRATION_STATE,
+  );
 
   const badge = PANCAKE_LABEL[pancake.state];
 
@@ -60,57 +63,59 @@ export function IntegrationsView({
 
           <div className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
             <p className="font-medium text-foreground">To enable Pancake sync</p>
-            <ul className="mt-1 list-inside list-disc space-y-0.5">
-              <li>A Pancake plan with API access + a page access token.</li>
+            <ol className="mt-1 list-inside list-decimal space-y-0.5">
+              <li>In Pancake, connect your Facebook Page and generate a page Access Token.</li>
               <li>
-                Set <code>PANCAKE_API_URL</code> and <code>PANCAKE_API_KEY</code> as
-                server environment variables (secrets never reach the browser).
+                In Vercel → Settings → Environment Variables, set{' '}
+                <code>PANCAKE_API_URL</code> (e.g.{' '}
+                <code>https://pages.fm/api/public_api/v1</code>) and{' '}
+                <code>PANCAKE_API_KEY</code> (your access token). Secrets never reach the
+                browser.
               </li>
-              <li>
-                Then buyers, conversations, orders, and mining can sync — no manual
-                re-encoding.
-              </li>
-            </ul>
+              <li>Redeploy, then use “Test connection” below.</li>
+            </ol>
+            <p className="mt-1">
+              Uses the pages.fm <code>access_token</code> query auth. For Pancake POS or a
+              different base, set <code>PANCAKE_VERIFY_PATH</code> too.
+            </p>
           </div>
 
           {canTest ? (
-            <form action={testConnection} className="flex flex-wrap items-center gap-3">
-              <Button type="submit" variant="outline" disabled={testing}>
-                {testing ? 'Testing…' : 'Test connection'}
-              </Button>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <form action={testConnection}>
+                  <Button type="submit" variant="outline" disabled={testing}>
+                    {testing ? 'Testing…' : 'Test connection'}
+                  </Button>
+                </form>
+                <form action={syncNow}>
+                  <Button type="submit" variant="outline" disabled={syncing}>
+                    {syncing ? 'Syncing…' : 'Sync now'}
+                  </Button>
+                </form>
+              </div>
               {state.error ? (
-                <span role="alert" className="text-sm text-destructive">
+                <p role="alert" className="text-sm text-destructive">
                   {state.error}
-                </span>
+                </p>
               ) : null}
               {state.success ? (
-                <span className="text-sm text-muted-foreground">{state.success}</span>
+                <p className="text-sm text-muted-foreground">{state.success}</p>
               ) : null}
-            </form>
+              {syncState.error ? (
+                <p role="alert" className="text-sm text-destructive">
+                  {syncState.error}
+                </p>
+              ) : null}
+              {syncState.success ? (
+                <p className="text-sm text-muted-foreground">{syncState.success}</p>
+              ) : null}
+            </div>
           ) : (
             <p className="text-xs text-muted-foreground">
               Only the Owner can test the connection.
             </p>
           )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-            Bluetooth printer (XP-236B)
-            <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-              Gated
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Direct browser printing stays OFF until the real XP-236B passes a device
-            validation (recorded at Capabilities). The status control in the shell never
-            claims “Printer Ready” without it. See the hardware audit for the exact facts
-            still required.
-          </p>
         </CardContent>
       </Card>
     </div>

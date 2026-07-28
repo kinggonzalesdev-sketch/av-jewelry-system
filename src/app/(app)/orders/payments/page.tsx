@@ -2,22 +2,20 @@ import type { Metadata } from 'next';
 import { PageHeader } from '@/components/ui/page-primitives';
 
 import { PaymentsWorkspace } from '@/components/payments/payments-workspace';
-import { getGrantedPermissions } from '@/lib/authz/guard';
+import { getGrantedPermissions, requireActiveStaff } from '@/lib/authz/guard';
+import { listFinancers } from '@/lib/payments/financer';
+import { listLayawayLedger } from '@/lib/payments/layaway-ledger';
 import {
-  layawayCollectionTrend,
-  layawayStatusBreakdown,
   listLayaways,
   listPayableOrders,
   overviewCards,
   paymentHistory,
-  paymentStatusBreakdown,
   paymentVerificationQueue,
   resolveRange,
   type DateRangeKey,
 } from '@/lib/payments/workspace';
 
 export const metadata: Metadata = {
-  title: 'Payments & Layaway — A.V. Jewelry Operations',
 };
 
 const VALID_RANGES: DateRangeKey[] = ['today', '7d', '14d', '30d', 'month', 'custom'];
@@ -51,40 +49,55 @@ export default async function PaymentsPage({
 
   const [
     cards,
-    paymentBreakdown,
-    layawayBreakdown,
-    trend,
     queue,
     layaways,
     completed,
     history,
     payableOrders,
     permissions,
+    financers,
+    ledger,
+    staff,
   ] = await Promise.all([
     overviewCards(bounds),
-    paymentStatusBreakdown(bounds),
-    layawayStatusBreakdown(),
-    layawayCollectionTrend(bounds),
     paymentVerificationQueue(),
     listLayaways(['active', 'overdue', 'grace_period', 'forfeiture_eligible']),
     listLayaways(['completed']),
     paymentHistory(bounds),
     listPayableOrders(),
     getGrantedPermissions(),
+    listFinancers(),
+    listLayawayLedger(),
+    requireActiveStaff(),
   ]);
+
+  // Imported ledger accounts count toward the Active / Completed cards so an
+  // import updates the visible summary counts immediately (§ refresh cards).
+  const ledgerActive = ledger.filter((l) => l.status === 'active').length;
+  const ledgerCompleted = ledger.filter((l) => l.status === 'completed').length;
+  const mergedCards = {
+    ...cards,
+    activeLayaways: cards.activeLayaways + ledgerActive,
+    completedLayaways: cards.completedLayaways + ledgerCompleted,
+  };
+  const canImportLayaway = staff.roleKey === 'owner' || staff.roleKey === 'selected_admin';
+
+  // Deep-link from a dashboard layaway card (?layaway=active|completed|all|…) to
+  // preselect the matching section.
+  const validSections = ['active', 'completed', 'all', 'overdue', 'forfeited'] as const;
+  const initialSection =
+    typeof params.layaway === 'string' &&
+    (validSections as readonly string[]).includes(params.layaway)
+      ? (params.layaway as (typeof validSections)[number])
+      : undefined;
 
   return (
     <div>
-      <PageHeader
-        title="Payments & Layaway"
-        description="Payment verification and the full layaway lifecycle."
-      />
+      <PageHeader title="Layaway" />
 
       <PaymentsWorkspace
-        cards={cards}
-        paymentBreakdown={paymentBreakdown}
-        layawayBreakdown={layawayBreakdown}
-        trend={trend}
+        cards={mergedCards}
+        initialSection={initialSection}
         queue={queue.ok ? queue.rows : []}
         queueUnavailable={queue.ok ? null : queue.reason}
         layaways={layaways}
@@ -92,9 +105,12 @@ export default async function PaymentsPage({
         history={history}
         range={range}
         payableOrders={payableOrders}
+        financers={financers}
+        ledger={ledger}
         canVerify={permissions.has('payment_verification')}
         canMonitorLayaway={permissions.has('layaway_monitoring')}
         canRequestForfeiture={permissions.has('initiate_high_risk_action')}
+        canImportLayaway={canImportLayaway}
       />
     </div>
   );

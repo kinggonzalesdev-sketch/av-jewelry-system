@@ -2,7 +2,9 @@
 
 import { revalidatePath } from 'next/cache';
 
-import { clockIn, clockOut } from '@/lib/hr/attendance';
+import { deleteAttendanceRecord, kioskClockIn, kioskClockOut } from '@/lib/hr/attendance';
+import { registerThisDevice, revokeDevice } from '@/lib/hr/devices';
+import { setHourlyRate } from '@/lib/hr/rate';
 import type { HrActionState } from '@/lib/hr/action-state';
 
 /**
@@ -20,18 +22,96 @@ export async function clockInAction(
   _prev: HrActionState,
   formData: FormData,
 ): Promise<HrActionState> {
-  const result = await clockIn(text(formData, 'note'));
+  // Kiosk model: the selected team member is clocked in (not necessarily the caller).
+  const result = await kioskClockIn(text(formData, 'staffProfileId') ?? '', text(formData, 'note'));
   if (!result.ok) return { error: result.error, success: null };
   revalidatePath('/admin/attendance');
-  return { error: null, success: result.message };
+  // Return the new record id so the client can attach the clock-in selfie to it.
+  return { error: null, success: result.message, recordId: result.recordId ?? null };
 }
 
 export async function clockOutAction(
   _prev: HrActionState,
-  _formData: FormData,
+  formData: FormData,
 ): Promise<HrActionState> {
-  const result = await clockOut();
+  const result = await kioskClockOut(text(formData, 'staffProfileId') ?? '');
   if (!result.ok) return { error: result.error, success: null };
   revalidatePath('/admin/attendance');
+  // Return the closed session's id so the client can attach the clock-out selfie.
+  return { error: null, success: result.message, recordId: result.recordId ?? null };
+}
+
+/** Owner registers THIS device as the approved shop phone (sets an httpOnly cookie). */
+export async function registerDeviceAction(
+  _prev: HrActionState,
+  formData: FormData,
+): Promise<HrActionState> {
+  const result = await registerThisDevice(text(formData, 'label') ?? '');
+  if (!result.ok) return { error: result.error, success: null };
+  revalidatePath('/admin/attendance');
+  return {
+    error: null,
+    success: 'This device is now the approved shop phone for clock in/out.',
+  };
+}
+
+/** Owner revokes a device — it can no longer clock in/out. */
+export async function revokeDeviceAction(
+  _prev: HrActionState,
+  formData: FormData,
+): Promise<HrActionState> {
+  const id = text(formData, 'deviceId');
+  if (!id) return { error: 'Missing device.', success: null };
+  const result = await revokeDevice(id);
+  if (!result.ok) return { error: result.error, success: null };
+  revalidatePath('/admin/attendance');
+  return { error: null, success: 'Device revoked. It can no longer clock in/out.' };
+}
+
+/**
+ * Permanently delete one attendance record (Owner/Admin). Requires typing DELETE;
+ * the database blocks anyone below Selected Admin. Payroll is derived, so it
+ * recomputes automatically after the revalidate.
+ */
+export async function deleteAttendanceRecordAction(
+  _prev: HrActionState,
+  formData: FormData,
+): Promise<HrActionState> {
+  const recordId = text(formData, 'recordId');
+  const confirm = text(formData, 'confirm');
+  if (!recordId) return { error: 'Missing attendance record.', success: null };
+  if (confirm !== 'DELETE') {
+    return { error: 'Type DELETE to permanently delete this record.', success: null };
+  }
+
+  const result = await deleteAttendanceRecord(recordId);
+  if (!result.ok) return { error: result.error, success: null };
+
+  revalidatePath('/admin/attendance');
+  revalidatePath('/admin/attendance/review');
+  revalidatePath('/admin/payroll');
+  return { error: null, success: 'Attendance record permanently deleted.' };
+}
+
+/**
+ * Set (or clear) a staff member's hourly rate. Owner-only — the domain module
+ * re-checks and RLS is the real boundary. Transport only.
+ */
+export async function setHourlyRateAction(
+  _prev: HrActionState,
+  formData: FormData,
+): Promise<HrActionState> {
+  const staffProfileId = text(formData, 'staffProfileId');
+  if (!staffProfileId) {
+    return { error: 'Missing staff member.', success: null };
+  }
+  const result = await setHourlyRate(
+    staffProfileId,
+    text(formData, 'rate'),
+    text(formData, 'effectiveDate'),
+  );
+  if (!result.ok) return { error: result.error, success: null };
+  revalidatePath('/admin/attendance');
+  revalidatePath('/admin/payroll');
   return { error: null, success: result.message };
 }

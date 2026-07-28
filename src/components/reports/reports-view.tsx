@@ -1,5 +1,5 @@
 import type { SalesSummary } from '@/lib/dashboard/service';
-import { formatPeso } from '@/lib/payments/format';
+import { Money } from '@/components/shell/privacy';
 import { BarChart } from '@/components/ui/bar-chart';
 import { ReadError } from '@/components/ui/page-primitives';
 
@@ -89,7 +89,7 @@ export function ReportsView({
           <div>
             <p className="text-xs text-muted-foreground">Verified collected</p>
             <p className="text-3xl font-bold tabular-nums text-foreground">
-              {formatPeso(result.data.verifiedCollected)}
+              <Money amount={result.data.verifiedCollected} />
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground">
               {result.data.from.slice(0, 10)} to {result.data.to.slice(0, 10)}

@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { IntegrationsView } from '@/components/integrations/integrations-view';
 
-vi.mock('@/lib/integrations/actions', () => ({ testPancakeAction: vi.fn() }));
+vi.mock('@/lib/integrations/actions', () => ({
+  testPancakeAction: vi.fn(),
+  syncPancakeAction: vi.fn(),
+}));
 
 describe('IntegrationsView', () => {
   it('shows Pancake as Not Connected when not configured — never a fake connected', () => {
@@ -33,18 +36,5 @@ describe('IntegrationsView', () => {
       screen.queryByRole('button', { name: /test connection/i }),
     ).not.toBeInTheDocument();
     expect(screen.getByText(/Only the Owner can test/i)).toBeInTheDocument();
-  });
-
-  it('keeps the printer gated (never claims Printer Ready)', () => {
-    render(
-      <IntegrationsView
-        pancake={{ state: 'not_configured', detail: 'x' }}
-        canTest={false}
-      />,
-    );
-    expect(screen.getAllByText(/XP-236B/).length).toBeGreaterThan(0);
-    expect(
-      screen.getByText(/stays OFF until the real XP-236B passes/i),
-    ).toBeInTheDocument();
   });
 });

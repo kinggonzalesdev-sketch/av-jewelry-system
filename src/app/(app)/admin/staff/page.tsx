@@ -11,7 +11,6 @@ import {
 import { requireActiveStaff } from '@/lib/authz/guard';
 
 export const metadata: Metadata = {
-  title: 'Staff management — A.V. Jewelry Operations',
 };
 
 export const dynamic = 'force-dynamic';

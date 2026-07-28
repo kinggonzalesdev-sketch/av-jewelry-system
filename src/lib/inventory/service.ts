@@ -34,6 +34,16 @@ export type InventoryRow = {
   custodyHolder: 'av_jewelry' | 'financer';
   storageLocation: string | null;
   handlerName: string | null;
+  /** Descriptive fields for the View / Edit modals (spec §1). Money stays a
+   *  string; price is NOT editable here (an existing-price change is an Owner
+   *  price-override, not a correction). */
+  gramsPerPiece: string | null;
+  size: string | null;
+  supplierName: string | null;
+  /** Facebook Name — a live-selling label; may be blank, edited later. */
+  facebookName: string | null;
+  /** When the item was encoded (its created_at) — the "Date Encoded" column. */
+  createdAt: string | null;
 };
 
 export type CustodyHolder = 'av_jewelry' | 'financer';
@@ -62,19 +72,46 @@ export async function listInventory(): Promise<InventoryListResult> {
   const custodyResponse = await supabase
     .from('inventory_items')
     .select(
-      'id, custody_holder, storage_location, custody_handler:staff_profiles!custody_handler_id ( full_name )',
+      'id, custody_holder, storage_location, grams_per_piece, size, supplier_name, facebook_name, created_at, custody_handler:staff_profiles!custody_handler_id ( full_name )',
     );
 
   const custodyById = new Map<
     string,
-    { holder: CustodyHolder; location: string | null; handler: string | null }
+    {
+      holder: CustodyHolder;
+      location: string | null;
+      handler: string | null;
+      grams: string | null;
+      size: string | null;
+      supplier: string | null;
+      facebookName: string | null;
+      createdAt: string | null;
+    }
   >();
-  for (const row of (custodyResponse.data ?? []) as Array<Record<string, unknown>>) {
+  for (const row of (custodyResponse.data ?? []) as Array<{
+    id: string;
+    custody_holder: CustodyHolder | null;
+    storage_location: string | null;
+    grams_per_piece: string | number | null;
+    size: string | null;
+    supplier_name: string | null;
+    facebook_name: string | null;
+    created_at: string | null;
+    custody_handler: unknown;
+  }>) {
     const handler = one<{ full_name: string }>(row.custody_handler);
-    custodyById.set(row.id as string, {
-      holder: (row.custody_holder as CustodyHolder | null) ?? 'av_jewelry',
-      location: (row.storage_location as string | null) ?? null,
+    custodyById.set(row.id, {
+      holder: row.custody_holder ?? 'av_jewelry',
+      location: row.storage_location ?? null,
       handler: handler?.full_name ?? null,
+      grams:
+        row.grams_per_piece === null || row.grams_per_piece === undefined
+          ? null
+          : String(row.grams_per_piece),
+      size: row.size ?? null,
+      supplier: row.supplier_name ?? null,
+      facebookName: row.facebook_name ?? null,
+      createdAt: row.created_at ?? null,
     });
   }
 
@@ -105,6 +142,11 @@ export async function listInventory(): Promise<InventoryListResult> {
       custodyHolder: custody?.holder ?? 'av_jewelry',
       storageLocation: custody?.location ?? null,
       handlerName: custody?.handler ?? null,
+      gramsPerPiece: custody?.grams ?? null,
+      size: custody?.size ?? null,
+      supplierName: custody?.supplier ?? null,
+      facebookName: custody?.facebookName ?? null,
+      createdAt: custody?.createdAt ?? null,
     };
   });
 

@@ -38,6 +38,7 @@ const ENTITY_TYPES: readonly RelatedEntityType[] = [
   'fulfillment',
   'claim',
   'live_batch',
+  'attendance_record',
 ];
 const PURPOSES: readonly AttachmentPurpose[] = [
   'photo',

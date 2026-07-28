@@ -2,64 +2,48 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 /**
- * Public landing page (business requirement: "a simple landing page").
- *
- * This is the ONE public route (see PUBLIC_ROUTES in the proxy). It is marketing
- * only — it exposes no data and makes no authorization decision. The real app is
- * behind "Staff Sign In". Self-contained: no external image assets, so it renders
- * anywhere without a CDN, styled in the emerald brand via the design tokens.
+ * Public landing page for A.V. Jewelry (the ONE public route — see PUBLIC_ROUTES
+ * in the proxy). Marketing only: it exposes no data and makes no authorization
+ * decision; the real app is behind "Staff Sign In". Dark premium theme via the
+ * design tokens; a hero background video with a gradient fallback if it fails.
  */
 
 export const metadata: Metadata = {
-  title: 'A.V. Jewelry — Operations, from mine to delivery',
   description:
-    'A.V. Jewelry Operations System (MineFlow): one platform for Facebook Live selling, invoicing, payments, layaway, fulfillment, inventory, and reporting.',
-  // Public marketing page — override the app-wide noindex.
+    'A.V. Jewelry — trusted gold jewelry and assessment services in Guiguinto, Bulacan. Quality gold jewelry, customization, repair, live selling, layaway, and honest gold buying.',
   robots: { index: true, follow: true },
 };
 
-const FEATURES: Array<{ icon: string; title: string; body: string }> = [
-  {
-    icon: '◉',
-    title: 'Live Selling & Mining',
-    body: 'Capture every mined item with the buyer, price, and a photo — proof that beats the paper-and-plastic-bag method.',
-  },
-  {
-    icon: '▤',
-    title: 'Instant Invoicing',
-    body: 'Turn confirmed claims into Official Orders fast — before a scammer messages your buyer first.',
-  },
-  {
-    icon: '₱',
-    title: 'Payments, verified',
-    body: 'Record GCash/BPI/BDO/cash per invoice, verify once, and every verified peso reduces the balance. No double-postings.',
-  },
-  {
-    icon: '◔',
-    title: 'Layaway / Hulugan',
-    body: '20% deposit, PHP 150 per gram each month, up to three months — computed, tracked, and never re-invented after activation.',
-  },
-  {
-    icon: '➤',
-    title: 'Fulfillment & Delivery',
-    body: 'Own rider, LBC, FedEx, DHL, or pickup — with tracking, COD, and money-in-transit visibility.',
-  },
-  {
-    icon: '◈',
-    title: 'Inventory & Custody',
-    body: 'Unique item codes, availability derived (never a stale counter), and custody: on-hand vs financer.',
-  },
-  {
-    icon: '▥',
-    title: 'Dashboard & Reports',
-    body: 'Sales today / week / month / any range, order-status and collection charts, and scrap income — real numbers, honest zeros.',
-  },
-  {
-    icon: '⏱',
-    title: 'Attendance & Payroll',
-    body: 'A tamper-evident digital time clock with hours, overtime, and salary — replacing the unreliable biometric.',
-  },
+const PRODUCTS: string[] = [
+  '18K Saudi Gold — Subasta & Brand New',
+  'K18 Japan Gold — Subasta & Brand New',
+  'Electro Forms 18K',
+  'Wedding Rings',
+  'Nameplates',
+  'Custom Jewelry',
 ];
+
+const SERVICES: string[] = [
+  'Jewelry Customization',
+  'Jewelry Repair',
+  'Ring Resize',
+  'Live Selling',
+  'Layaway',
+  'Credit Card Payment',
+  'Walk-In & Online Transactions',
+  'Gold & Silver Scrap Buying',
+  'Store Pick-Up Available',
+];
+
+const TRUST: string[] = [
+  'DTI Registered',
+  'BIR Registered',
+  'AMLC Compliant',
+  'Best Price Gold Buyers',
+  'Store Pick-Up Available',
+];
+
+const CONTACTS: string[] = ['0917-203-5820', '0919-096-9617', '0919-097-5063'];
 
 function BrandMark() {
   return (
@@ -79,7 +63,7 @@ export default function LandingPage() {
           <span className="min-w-0">
             <span className="block text-sm font-bold tracking-tight">A.V. Jewelry</span>
             <span className="block text-[10px] text-muted-foreground">
-              MineFlow Operations
+              Fine Jewelry. Fair Value.
             </span>
           </span>
         </span>
@@ -92,107 +76,134 @@ export default function LandingPage() {
       </header>
 
       <main id="main-content">
-        {/* Hero */}
+        {/* Hero with background video + gradient fallback + dark overlay */}
         <section className="relative overflow-hidden">
+          {/* Premium gradient — always visible, and the fallback if the video is
+              missing or blocked. */}
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0 bg-gradient-to-b from-gold/10 to-transparent"
+            className="pointer-events-none absolute inset-0 bg-gradient-to-br from-gold/20 via-background to-background"
           />
-          <div className="relative mx-auto max-w-6xl px-4 py-16 text-center sm:px-6 sm:py-24">
-            <span className="inline-flex items-center rounded-full border border-gold/30 bg-gold/10 px-3 py-1 text-xs font-medium text-gold-strong">
-              Jewelry retail · Facebook Live selling · since 2021
+          {/* Background video: autoplay, muted, looped, inline. Optimized: metadata
+              preload only, and it degrades to the gradient above if it fails. */}
+          <video
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="metadata"
+            poster="/hero-jewelry.jpg"
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-40"
+          >
+            <source src="/hero-jewelry.mp4" type="video/mp4" />
+          </video>
+          {/* Dark overlay so text stays readable at all sizes. */}
+          <div aria-hidden="true" className="absolute inset-0 bg-black/60" />
+
+          <div className="relative mx-auto max-w-6xl px-4 py-20 text-center sm:px-6 sm:py-28">
+            <span className="inline-flex items-center rounded-full border border-gold/40 bg-gold/10 px-3 py-1 text-xs font-medium text-gold-strong">
+              Fine Jewelry. Fair Value.
             </span>
             <h1 className="mx-auto mt-5 max-w-3xl text-3xl font-bold tracking-tight sm:text-5xl">
-              One system, from <span className="text-gold-strong">mine to delivery</span>.
+              Trusted gold jewelry &amp; assessment in{' '}
+              <span className="text-gold-strong">Guiguinto, Bulacan</span>.
             </h1>
             <p className="mx-auto mt-4 max-w-2xl text-base text-muted-foreground sm:text-lg">
-              MineFlow replaces the paper index cards, notebooks, and scattered
-              spreadsheets with a single, honest workflow — every item tracked from a
-              live-sale mine through payment, layaway, and delivery.
+              A.V. Jewelry offers quality gold jewelry, customization, repair, live
+              selling, layaway, and trusted buying — through clear and honest
+              transactions.
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+              <a
+                href="#offerings"
+                className="rounded-md bg-gold px-6 py-3 text-sm font-semibold text-black transition-colors hover:bg-gold/90"
+              >
+                See our offerings
+              </a>
               <Link
                 href="/sign-in"
-                className="rounded-md bg-gold px-6 py-3 text-sm font-semibold text-black transition-colors hover:bg-gold/90"
+                className="rounded-md border border-border bg-background/40 px-6 py-3 text-sm font-medium backdrop-blur transition-colors hover:bg-accent"
               >
                 Staff Sign In
               </Link>
-              <a
-                href="#features"
-                className="rounded-md border border-border px-6 py-3 text-sm font-medium transition-colors hover:bg-accent"
-              >
-                See what it does
-              </a>
             </div>
-            <p className="mt-4 text-xs text-muted-foreground">
-              Internal staff platform. Accounts are issued by the Owner — there is no
-              public registration.
-            </p>
           </div>
         </section>
 
-        {/* Trust row */}
+        {/* Trust / credibility strip */}
         <section className="border-y border-border bg-card/40">
-          <div className="mx-auto grid max-w-6xl grid-cols-2 gap-4 px-4 py-8 text-center sm:grid-cols-4 sm:px-6">
-            {[
-              ['Since 2021', 'Jewelry retail'],
-              ['Facebook Live', 'Subasta · Brand New · Factory · HK'],
-              ['Nationwide', 'LBC · FedEx · DHL · own riders'],
-              ['COD & Layaway', 'Bulacan · Metro Manila'],
-            ].map(([big, small]) => (
-              <div key={big}>
-                <p className="text-lg font-bold text-foreground">{big}</p>
-                <p className="text-xs text-muted-foreground">{small}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Features */}
-        <section id="features" className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
-          <div className="mx-auto max-w-2xl text-center">
-            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
-              Everything the operation needs, in one place
-            </h2>
-            <p className="mt-3 text-muted-foreground">
-              Built around how A.V. Jewelry actually sells — with the money rules enforced
-              by the system, not by memory.
-            </p>
-          </div>
-          <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {FEATURES.map((f) => (
-              <div
-                key={f.title}
-                className="rounded-xl border border-border bg-card p-5 transition-colors hover:border-gold/40"
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-2 px-4 py-6 sm:px-6">
+            {TRUST.map((t) => (
+              <span
+                key={t}
+                className="rounded-full border border-gold/30 bg-gold/10 px-3 py-1 text-xs font-medium text-gold-strong"
               >
-                <span
-                  aria-hidden="true"
-                  className="flex h-10 w-10 items-center justify-center rounded-lg bg-gold/15 text-lg text-gold-strong"
-                >
-                  {f.icon}
-                </span>
-                <h3 className="mt-3 text-sm font-semibold">{f.title}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">{f.body}</p>
-              </div>
+                {t}
+              </span>
             ))}
           </div>
         </section>
 
-        {/* CTA band */}
+        {/* Products & Services */}
+        <section id="offerings" className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <div className="rounded-xl border border-border bg-card p-6">
+              <h2 className="text-lg font-bold tracking-tight">Products</h2>
+              <ul className="mt-4 space-y-2">
+                {PRODUCTS.map((p) => (
+                  <li key={p} className="flex items-start gap-2 text-sm">
+                    <span aria-hidden="true" className="mt-0.5 text-gold-strong">
+                      ◆
+                    </span>
+                    <span>{p}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-6">
+              <h2 className="text-lg font-bold tracking-tight">Services</h2>
+              <ul className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {SERVICES.map((s) => (
+                  <li key={s} className="flex items-start gap-2 text-sm">
+                    <span aria-hidden="true" className="mt-0.5 text-gold-strong">
+                      ✦
+                    </span>
+                    <span>{s}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        {/* Address & contact */}
         <section className="border-t border-border">
-          <div className="mx-auto max-w-6xl px-4 py-14 text-center sm:px-6">
-            <h2 className="text-xl font-bold tracking-tight sm:text-2xl">
-              Ready to run the shop from one screen?
-            </h2>
-            <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">
-              Sign in with your staff account to open the dashboard.
-            </p>
-            <Link
-              href="/sign-in"
-              className="mt-6 inline-flex rounded-md bg-gold px-6 py-3 text-sm font-semibold text-black transition-colors hover:bg-gold/90"
-            >
-              Staff Sign In
-            </Link>
+          <div className="mx-auto grid max-w-6xl grid-cols-1 gap-6 px-4 py-14 sm:grid-cols-2 sm:px-6">
+            <div>
+              <h2 className="text-lg font-bold tracking-tight">Visit us</h2>
+              <p className="mt-3 text-sm text-muted-foreground">
+                #84 Violeta Ave., Violeta Village, Sta. Cruz, Guiguinto, Bulacan
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Store pick-up available.
+              </p>
+            </div>
+            <div>
+              <h2 className="text-lg font-bold tracking-tight">Contact</h2>
+              <ul className="mt-3 space-y-1.5">
+                {CONTACTS.map((c) => (
+                  <li key={c}>
+                    <a
+                      href={`tel:${c.replace(/-/g, '')}`}
+                      className="text-sm font-medium text-gold-strong hover:underline"
+                    >
+                      {c}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         </section>
       </main>
@@ -202,7 +213,7 @@ export default function LandingPage() {
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-4 py-6 text-center text-xs text-muted-foreground sm:flex-row sm:px-6 sm:text-left">
           <span className="flex items-center gap-2">
             <BrandMark />
-            A.V. Jewelry Operations — MineFlow
+            A.V. Jewelry — Fine Jewelry. Fair Value.
           </span>
           <span>Powered by King GenZ Digital</span>
         </div>

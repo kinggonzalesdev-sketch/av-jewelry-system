@@ -125,6 +125,15 @@ export async function activateLayaway(input: unknown): Promise<LayawayResult> {
     return { ok: false, error: 'The Layaway could not be activated.' };
   }
 
+  // The status→active update above fires the code-sync trigger, which assigns the
+  // arrangement its reusable code. Now commit the order's items to the layaway
+  // ("For Layaway"), removing them from Active Inventory and preventing a
+  // double-sale. Best-effort: activation already succeeded, so a marking failure
+  // is logged, not surfaced as an activation error.
+  const marked = await supabase.rpc('mark_order_items_for_layaway', {
+    p_order_id: data.officialOrderId,
+  });
+
   await recordAuditEvent({
     action: 'layaway.activate',
     entityType: 'layaway_arrangement',
@@ -134,6 +143,8 @@ export async function activateLayaway(input: unknown): Promise<LayawayResult> {
       required_down_payment: b.required_down_payment,
       verified_net_payments: b.verified_net_payments,
       deposit_verified: true,
+      items_marked_for_layaway: marked.error ? null : (marked.data ?? 0),
+      items_mark_error: marked.error?.message ?? null,
     },
   });
 

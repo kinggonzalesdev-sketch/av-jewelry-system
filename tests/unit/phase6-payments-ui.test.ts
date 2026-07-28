@@ -49,11 +49,11 @@ describe('approved module shape is preserved', () => {
     expect(page).toMatch(/sub-route of the Orders group/i);
   });
 
-  it('names the module Payments & Layaway', () => {
+  it('names the module Layaway', () => {
     const page = read('src', 'app', '(app)', 'orders', 'payments', 'page.tsx');
-    // The title is now a PageHeader string prop, so the ampersand is raw — not
-    // the &amp; HTML entity it needed when it was JSX text.
-    expect(page).toContain('Payments & Layaway');
+    // Renamed to "Layaway" (Owner request 2026-07-24) — layaway is the primary
+    // workspace; payment verification lives within it.
+    expect(page).toContain('Layaway');
   });
 });
 
@@ -136,10 +136,15 @@ describe('the screen never contradicts the approved financial rules', () => {
     expect(trend).toContain("eq('correction_pending', false)");
   });
 
-  it('keeps evidence separate from verified in the breakdown', () => {
+  it('keeps evidence separate from verified', () => {
+    // The data (overviewCards reader) still names the two distinctly...
     expect(workspace).toContain("label: 'Evidence Submitted'");
     expect(workspace).toContain("label: 'Required Payment Verified'");
-    expect(view).toMatch(/never folded into Required\s*\n?\s*Payment Verified/);
+    // ...and the screen states that recording is not verifying. (The overview
+    // cards + tab bar were removed 2026-07-24 — Owner request — so the separation
+    // now lives in the note + the reader, not in cards.)
+    expect(view).toMatch(/Recording evidence is not verifying/i);
+    expect(view).toMatch(/Required Payment Verified is not Paid in Full/i);
   });
 
   it('states that recording evidence is not verifying', () => {

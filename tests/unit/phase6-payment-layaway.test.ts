@@ -67,10 +67,13 @@ describe('money is exact decimal, never float', () => {
     expect(balances).toContain('String(raw.total_amount_payable)');
   });
 
-  it('formats pesos without converting through a float', () => {
-    expect(formatPeso('10750.00')).toBe('₱10,750.00');
-    expect(formatPeso('2250')).toBe('₱2,250.00');
-    expect(formatPeso('0.00')).toBe('₱0.00');
+  it('formats pesos without converting through a float, decimals only when needed', () => {
+    // Whole amounts show NO decimals; fractional amounts show exactly two.
+    expect(formatPeso('10750.00')).toBe('₱10,750');
+    expect(formatPeso('2250')).toBe('₱2,250');
+    expect(formatPeso('0.00')).toBe('₱0');
+    expect(formatPeso('1250.50')).toBe('₱1,250.50');
+    expect(formatPeso('1000000')).toBe('₱1,000,000');
     // A value a float would mangle survives intact.
     expect(formatPeso('12345678.99')).toBe('₱12,345,678.99');
   });
@@ -128,9 +131,12 @@ describe('payment recording (approved decision §3)', () => {
     }
   });
 
-  it('requires proof for non-cash methods', () => {
+  it('no longer requires evidence for non-cash methods (Owner request 2026-07-22)', () => {
+    // The Evidence reference field was removed from Record Payment; a non-cash
+    // payment without evidence now validates. The transaction reference number and
+    // provider remain the required attribution.
     const result = recordPaymentSchema.safeParse({ ...validBankTransfer, evidence: [] });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   it('makes photo evidence optional for cash but demands location', () => {
@@ -250,9 +256,28 @@ describe('verification module invariants', () => {
     expect(verification).toContain('deduplicated: true');
   });
 
+  it('blocks overpayment strictly — record and verify refuse amounts over the balance', () => {
+    // Owner decision 2026-07-25: no overpayment. Recording and verifying both
+    // gate on the outstanding balance, and the DB trigger's 23514 is surfaced.
+    expect(verification).toContain('moneyExceeds');
+    expect(verification).toContain('outstandingBalance');
+    expect(verification).toContain("error.code === '23514'");
+  });
+
   it('audits denial and failure, not only success', () => {
     expect(verification).toContain("outcome: 'denied'");
     expect(verification).toContain("outcome: 'failed'");
+  });
+
+  it('auto-completes on paid-in-full only OUTSIDE the money-only verify path', () => {
+    // Owner decision 2026-07-25: a full payment auto-completes the order and
+    // retires inventory — but that is a SEPARATE step in the action layer, never
+    // inside verification.ts, which must stay money-only.
+    expect(verification).not.toContain('complete_order_on_full_payment');
+    const actions = read('src', 'lib', 'payments', 'actions.ts');
+    expect(actions).toContain('completeOrderForPaymentIfPaidInFull');
+    const completeOnPayment = read('src', 'lib', 'orders', 'complete-on-payment.ts');
+    expect(completeOnPayment).toContain('complete_order_on_full_payment');
   });
 });
 

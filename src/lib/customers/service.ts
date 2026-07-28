@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { recordAuditEvent } from '@/lib/audit/log';
+import { AuthorizationError, requireOwner, requireOwnerOrAdmin } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 
 /**
@@ -23,11 +25,17 @@ import { createClient } from '@/lib/supabase/server';
 export type CustomerListRow = {
   id: string;
   displayName: string;
+  address: string | null;
   contactNumber: string | null;
   isActive: boolean;
-  sourceKind: string;
+  /** The customer's latest Official Order status (humanized), or "No orders". */
+  stage: string;
   createdAt: string;
 };
+
+function humanizeStatus(value: string): string {
+  return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 export type CustomersResult =
   { ok: true; rows: CustomerListRow[] } | { ok: false; reason: string };
@@ -46,7 +54,11 @@ export async function listCustomers(query = '', limit = 100): Promise<CustomersR
 
   let builder = supabase
     .from('customers')
-    .select('id, display_name, contact_number, is_active, source_kind, created_at')
+    // official_orders embed drives the STAGE column (latest order status). RLS
+    // scopes the embedded orders to what the caller may already see.
+    .select(
+      'id, display_name, address, contact_number, is_active, created_at, official_orders ( status, created_at )',
+    )
     .order('display_name', { ascending: true })
     .limit(limit);
 
@@ -62,17 +74,167 @@ export async function listCustomers(query = '', limit = 100): Promise<CustomersR
 
   const rows: CustomerListRow[] = (data ?? []).map((r) => {
     const row = r as Record<string, unknown>;
+    const orders =
+      (row.official_orders as Array<{ status: string; created_at: string }> | null) ?? [];
+    const latest = orders
+      .slice()
+      .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0];
     return {
       id: row.id as string,
       displayName: (row.display_name as string | null) ?? 'Unknown',
+      address: (row.address as string | null) ?? null,
       contactNumber: (row.contact_number as string | null) ?? null,
       isActive: (row.is_active as boolean | null) ?? true,
-      sourceKind: (row.source_kind as string | null) ?? 'native',
+      stage: latest ? humanizeStatus(latest.status) : 'No orders',
       createdAt: row.created_at as string,
     };
   });
 
   return { ok: true, rows };
+}
+
+/**
+ * Deactivate (soft-delete) a customer — Owner-only. A customer with any order,
+ * claim, invoice, or message CANNOT be hard-deleted (every FK is ON DELETE
+ * RESTRICT); deactivating preserves all history and is reversible (set is_active
+ * back to true). RLS still governs the write underneath.
+ */
+export async function deactivateCustomer(
+  customerId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await requireOwner();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
+    throw cause;
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('customers')
+    .update({ is_active: false })
+    .eq('id', customerId)
+    .select('id');
+
+  if (error) return { ok: false, error: 'The customer could not be deactivated.' };
+  if (!data || data.length === 0) {
+    return { ok: false, error: 'That customer could not be found.' };
+  }
+
+  await recordAuditEvent({
+    action: 'customer.deactivate',
+    entityType: 'customer',
+    entityId: customerId,
+  });
+  return { ok: true };
+}
+
+/**
+ * Permanently delete a customer — Owner or Selected Admin only. The database
+ * function is the real gate: it re-checks the role and BLOCKS the delete when the
+ * customer is linked to any transaction record (orders, claims, invoice drafts,
+ * messages, waitlist, or a duplicate reference). Only a truly isolated customer
+ * (at most incidental aliases) is removed, and the audit row — which has no FK to
+ * the customer — survives the deletion. This is irreversible, unlike deactivation.
+ */
+export async function permanentlyDeleteCustomer(
+  customerId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await requireOwnerOrAdmin();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) {
+      await recordAuditEvent({
+        action: 'customer.permanent_delete',
+        entityType: 'customer',
+        entityId: customerId,
+        outcome: 'denied',
+        reason: cause.message,
+      });
+      return { ok: false, error: cause.message };
+    }
+    throw cause;
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('permanently_delete_customer', {
+    p_customer_id: customerId,
+  });
+
+  if (error) {
+    await recordAuditEvent({
+      action: 'customer.permanent_delete',
+      entityType: 'customer',
+      entityId: customerId,
+      outcome: 'failed',
+      reason: error.message,
+    });
+    return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+
+  // The customer row is gone; the audit row (no FK to it) preserves the history.
+  await recordAuditEvent({
+    action: 'customer.permanent_delete',
+    entityType: 'customer',
+    entityId: customerId,
+    context: { permanent: true },
+  });
+  return { ok: true };
+}
+
+export type UpdateCustomerInput = {
+  id: string;
+  displayName: string;
+  contactNumber: string | null;
+  address: string | null;
+};
+
+export type UpdateCustomerResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Edit a customer's core details (name, contact, address). Owner/Admin, or a staff
+ * member with existing_record_entry — enforced in the DEFINER function. Uses the
+ * permanent id; linked orders/claims/payments/layaway/history are untouched (the
+ * update only writes these three columns). Records who/when via the audit log.
+ */
+export async function updateCustomer(
+  input: UpdateCustomerInput,
+): Promise<UpdateCustomerResult> {
+  const name = input.displayName.trim();
+  if (!name) return { ok: false, error: 'A customer name is required.' };
+  if (name.length > 200) return { ok: false, error: 'That name is too long.' };
+
+  const contact = input.contactNumber?.trim() || '';
+  // Validate the format only WHEN provided (optional field).
+  if (contact && !/^[\d+][\d\s()-]{5,19}$/.test(contact)) {
+    return {
+      ok: false,
+      error: 'Enter a valid contact number (digits, spaces, +, -, and () only).',
+    };
+  }
+
+  const supabase = await createClient();
+  const res = (await supabase.rpc('update_customer_details', {
+    p_id: input.id,
+    p_display_name: name,
+    p_contact_number: contact || null,
+    p_address: input.address?.trim() || null,
+  })) as { data: boolean | null; error: { message: string } | null };
+
+  if (res.error) {
+    return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+  if (res.data !== true) {
+    return { ok: false, error: 'That customer could not be found.' };
+  }
+
+  await recordAuditEvent({
+    action: 'customer.update_details',
+    entityType: 'customer',
+    entityId: input.id,
+    context: { name, has_contact: Boolean(contact), has_address: Boolean(input.address?.trim()) },
+  });
+  return { ok: true };
 }
 
 export type CustomerDetail = {

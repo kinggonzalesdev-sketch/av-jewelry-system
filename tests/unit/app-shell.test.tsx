@@ -39,34 +39,32 @@ describe('approved navigation model (navigation.ts is the source of truth)', () 
     expect(PRIMARY_NAV.map((i) => i.label)).toEqual([
       'Dashboard Profile',
       'Orders',
-      'Invoice',
-      'Live',
       'Customers',
       'Items / Inventory',
-      'Payments & Layaway',
-      'Fulfillment',
-      'Reports',
-      'Settings',
+      'Layaway',
+      'Scrap',
+      // Team Management collapsible group (Owner request 2026-07-22). Settings moved
+      // to the fixed footer, so it is no longer a PRIMARY_NAV item.
+      'Attendance',
+      'Review Attendance',
+      'Payroll',
     ]);
   });
 
-  it('has the exact approved mobile bottom-nav primary four', () => {
-    expect(mobilePrimaryItems().map((i) => i.label)).toEqual([
-      'Orders',
-      'Invoice',
-      'Live',
-      'Customers',
-    ]);
+  it('has the exact approved mobile bottom-nav primary items', () => {
+    // Invoice was folded into Orders → For Invoice (Owner request 2026-07-22).
+    expect(mobilePrimaryItems().map((i) => i.label)).toEqual(['Orders', 'Customers']);
   });
 
   it('puts the rest under More, Dashboard Profile first', () => {
     expect(mobileMoreItems().map((i) => i.label)).toEqual([
       'Dashboard Profile',
       'Items / Inventory',
-      'Payments & Layaway',
-      'Fulfillment',
-      'Reports',
-      'Settings',
+      'Layaway',
+      'Scrap',
+      'Attendance',
+      'Review Attendance',
+      'Payroll',
     ]);
   });
 
@@ -75,13 +73,11 @@ describe('approved navigation model (navigation.ts is the source of truth)', () 
     expect(PRIMARY_NAV.some((i) => /new entry/i.test(i.label))).toBe(false);
   });
 
-  it('keeps Fulfillment in its recovered approved placement (standalone, /orders/fulfillment)', () => {
-    const fulfillment = PRIMARY_NAV[7];
-    expect(fulfillment).toMatchObject({
-      label: 'Fulfillment',
-      href: '/orders/fulfillment',
-      mobilePrimary: false, // desktop-standalone; lives under More on mobile.
-    });
+  it('no longer lists Fulfillment as a sidebar item (route kept as fallback)', () => {
+    // Owner request: Fulfillment was removed from the sidebar to keep the workflow
+    // Orders-centred. The /orders/fulfillment route still exists as a fallback.
+    expect(PRIMARY_NAV.some((i) => i.href === '/orders/fulfillment')).toBe(false);
+    expect(PRIMARY_NAV.some((i) => i.label === 'Fulfillment')).toBe(false);
   });
 
   it('does not promote Staff or Capabilities to standalone nav items', () => {
@@ -106,18 +102,51 @@ describe('AppSidebar renders the approved shell', () => {
       </AppSidebar>,
     );
 
-  it('renders the desktop sidebar links in the approved order', () => {
+  it('renders flat nav items in order; Team Management is a collapsible group', () => {
     renderShell();
     const sidebar = screen.getByTestId('app-sidebar');
-    const labels = within(sidebar)
+    // Team Management is a collapsible BUTTON (not a link), collapsed by default.
+    const teamBtn = within(sidebar).getByRole('button', { name: /team management/i });
+    expect(teamBtn).toHaveAttribute('aria-expanded', 'false');
+    // The flat (non-group) items render as links inside the primary nav, in order.
+    const flat = PRIMARY_NAV.filter((i) => !i.section);
+    const nav = within(sidebar).getByRole('navigation', { name: /primary/i });
+    const labels = within(nav)
       .getAllByRole('link')
       .map((a) => a.textContent?.replace(/Soon$/, '').trim());
-    // Each link renders its icon glyph then its label (unavailable items also get
-    // a "Soon" tag, stripped above). Asserting icon+label proves order and icons.
-    expect(labels).toEqual(PRIMARY_NAV.map((i) => `${i.icon}${i.label}`));
+    expect(labels).toEqual(flat.map((i) => `${i.icon}${i.label}`));
   });
 
-  it('renders the mobile bottom nav: four primary destinations + More', () => {
+  it('Team Management expands to reveal its submenu on click', () => {
+    renderShell();
+    const sidebar = screen.getByTestId('app-sidebar');
+    const teamBtn = within(sidebar).getByRole('button', { name: /team management/i });
+    fireEvent.click(teamBtn);
+    expect(teamBtn).toHaveAttribute('aria-expanded', 'true');
+    // Staff sees Attendance + Payroll; Review Attendance is Owner-only (hidden).
+    const nav = within(sidebar).getByRole('navigation', { name: /primary/i });
+    expect(within(nav).getByRole('link', { name: /attendance/i })).toHaveAttribute(
+      'href',
+      '/admin/attendance',
+    );
+    expect(within(nav).getByRole('link', { name: /payroll/i })).toHaveAttribute(
+      'href',
+      '/admin/payroll',
+    );
+    expect(within(nav).queryByRole('link', { name: /review attendance/i })).toBeNull();
+  });
+
+  it('keeps Settings and Logout fixed in the sidebar footer', () => {
+    renderShell();
+    const sidebar = screen.getByTestId('app-sidebar');
+    expect(within(sidebar).getByTestId('sidebar-settings')).toHaveAttribute(
+      'href',
+      '/settings',
+    );
+    expect(within(sidebar).getAllByTestId('logout').length).toBeGreaterThan(0);
+  });
+
+  it('renders the mobile bottom nav: primary destinations + More', () => {
     renderShell();
     const nav = screen.getByTestId('bottom-nav');
     for (const item of mobilePrimaryItems()) {
@@ -128,13 +157,37 @@ describe('AppSidebar renders the approved shell', () => {
     expect(within(nav).getByRole('button', { name: /more/i })).toBeInTheDocument();
   });
 
-  it('shows the real authenticated identity, never a hardcoded name', () => {
+  it('shows a role-based control identity (Owner request 2026-07-22)', () => {
     renderShell();
+    // Staff maps to the "Team" word: chip reads "Team Control" over "Team".
     expect(screen.getByTestId('authenticated-full-name')).toHaveTextContent(
-      'Maria Santos',
+      'Team Control',
     );
-    expect(screen.getByTestId('authenticated-role')).toHaveTextContent('Staff');
+    expect(screen.getByTestId('authenticated-role')).toHaveTextContent('Team');
     expect(screen.queryByText(/A\.V\. Owner/)).not.toBeInTheDocument();
+    // The real name is preserved for accountability as a hover title, not shown.
+    expect(screen.getAllByTitle('Maria Santos').length).toBeGreaterThan(0);
+  });
+
+  it('maps each role to its control word', () => {
+    const render1 = (roleKey: string) =>
+      render(
+        <AppSidebar fullName="X Y" roleKey={roleKey} userEmail="x@example.com">
+          <p>content</p>
+        </AppSidebar>,
+      );
+    const cases: Array<[string, string]> = [
+      ['owner', 'Owner'],
+      ['selected_admin', 'Admin'],
+      ['staff', 'Team'],
+    ];
+    for (const [roleKey, word] of cases) {
+      const { unmount } = render1(roleKey);
+      expect(screen.getAllByTestId('authenticated-full-name')[0]).toHaveTextContent(
+        `${word} Control`,
+      );
+      unmount();
+    }
   });
 
   it('restores the Bluetooth/printer control, the theme toggle, and Logout', () => {
@@ -144,9 +197,11 @@ describe('AppSidebar renders the approved shell', () => {
     expect(screen.getAllByTestId('logout').length).toBeGreaterThan(0);
   });
 
-  it('shows the exact approved footer wording', () => {
+  it('shows the brand tagline under the A.V. Jewelry name', () => {
     renderShell();
-    expect(screen.getAllByTestId('footer-branding')[0]).toHaveTextContent(
+    // Moved out of the footer (Owner request 2026-07-22) to sit under the brand
+    // name in the header; the footer above the theme toggle no longer repeats it.
+    expect(screen.getByTestId('brand-tagline')).toHaveTextContent(
       'Powered by King GenZ Digital',
     );
   });

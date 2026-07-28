@@ -76,12 +76,10 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     return NextResponse.redirect(redirectUrl);
   }
 
-  if (user && pathname === '/sign-in') {
-    const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = '/dashboard';
-    redirectUrl.search = '';
-    return NextResponse.redirect(redirectUrl);
-  }
+  // Staff ALWAYS pass through the sign-in section (Owner request 2026-07-25): an
+  // already-signed-in visitor to /sign-in is NOT bounced to the dashboard — the
+  // sign-in page is shown every time, so entering the app always goes through it.
+  // (Protected pages still redirect the UNauthenticated to sign-in, above.)
 
   return supabaseResponse;
 }

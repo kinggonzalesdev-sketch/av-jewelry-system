@@ -98,16 +98,11 @@ export const recordPaymentSchema = z
       });
     }
 
-    // Proof is required for every method EXCEPT cash, where §3 makes photo
-    // evidence optional because the receiving staff identity is the attribution.
-    const needsProof: PaymentMethod[] = ['bank_transfer', 'e_wallet', 'card', 'other'];
-    if (needsProof.includes(value.paymentMethod) && (value.evidence?.length ?? 0) === 0) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['evidence'],
-        message: 'A proof screenshot or receipt is required for this payment method.',
-      });
-    }
+    // Evidence reference is no longer required (Owner request 2026-07-22 — the
+    // field was removed from Record Payment). The `evidence` array stays optional
+    // and is still accepted if ever provided; nothing here forces it. The transaction
+    // reference number + provider remain the required attribution for non-cash
+    // methods (checked above).
 
     if (value.paymentMethod === 'cash' && !value.collectionLocation) {
       ctx.addIssue({

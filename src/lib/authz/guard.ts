@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { cache } from 'react';
+
 import type { User } from '@supabase/supabase-js';
 import { redirect } from 'next/navigation';
 
@@ -89,7 +91,7 @@ export type CurrentStaffProfile = {
   isActive: boolean;
 };
 
-export async function getCurrentStaffProfile(): Promise<CurrentStaffProfile> {
+export const getCurrentStaffProfile = cache(async (): Promise<CurrentStaffProfile> => {
   const staff = await requireActiveStaff();
   const supabase = await createClient();
 
@@ -107,9 +109,11 @@ export async function getCurrentStaffProfile(): Promise<CurrentStaffProfile> {
     isSelectedAdmin: staff.roleKey === 'selected_admin',
     isActive: staff.isActive,
   };
-}
+});
 
-export async function requireActiveStaff(): Promise<StaffContext> {
+// Cached per request: the staff_profiles lookup runs ONCE even though many
+// callers (permissions, staff profile, every page guard) ask for it per render.
+export const requireActiveStaff = cache(async (): Promise<StaffContext> => {
   const user = await requireAuthenticatedStaff();
   const supabase = await createClient();
 
@@ -136,7 +140,7 @@ export async function requireActiveStaff(): Promise<StaffContext> {
     isActive: data.is_active as boolean,
     mfaEnrolled: data.mfa_enrolled as boolean,
   };
-}
+});
 
 /**
  * Returns the permissions the caller effectively holds.
@@ -147,7 +151,7 @@ export async function requireActiveStaff(): Promise<StaffContext> {
  * Selected Admin or Staff. This must agree with the SQL, so the UI never shows a
  * control the database then refuses.
  */
-export async function getGrantedPermissions(): Promise<Set<PermissionKey>> {
+export const getGrantedPermissions = cache(async (): Promise<Set<PermissionKey>> => {
   const staff = await requireActiveStaff();
 
   // The Owner holds all permissions regardless of grants — no query needed.
@@ -171,7 +175,7 @@ export async function getGrantedPermissions(): Promise<Set<PermissionKey>> {
     staff.roleKey,
     data.map((row) => row.permission_key as PermissionKey),
   );
-}
+});
 
 export async function hasPermission(permission: PermissionKey): Promise<boolean> {
   return (await getGrantedPermissions()).has(permission);
@@ -242,6 +246,27 @@ export async function requireOwner(): Promise<StaffContext> {
   if (staff.roleKey !== 'owner') {
     throw new AuthorizationError(
       'Not authorized: this action is reserved to the Owner. No record was changed.',
+    );
+  }
+
+  return staff;
+}
+
+/**
+ * Requires the Owner OR a Selected Admin.
+ *
+ * The gate for destructive admin maintenance the Owner has chosen to delegate to
+ * their trusted Selected Admin — permanent deletion of an isolated customer, an
+ * attendance record, or a mis-encoded inventory item. Plain Staff never pass.
+ * Mirrors the SQL `current_staff_role() in ('owner','selected_admin')` in the
+ * matching SECURITY DEFINER delete functions.
+ */
+export async function requireOwnerOrAdmin(): Promise<StaffContext> {
+  const staff = await requireActiveStaff();
+
+  if (staff.roleKey !== 'owner' && staff.roleKey !== 'selected_admin') {
+    throw new AuthorizationError(
+      'Not authorized: this action is reserved to the Owner or Selected Admin. No record was changed.',
     );
   }
 

@@ -4,6 +4,22 @@ import type { InventoryActionState } from '@/lib/inventory/action-state';
 import { revalidatePath } from 'next/cache';
 
 import {
+  archiveInventoryItem,
+  deleteInventoryItemDirect,
+  editInventoryItemDetails,
+  getItemDependencies,
+  permanentlyDeleteInventoryItem,
+  restoreInventoryItem,
+  type ItemDependency,
+} from '@/lib/inventory/archive';
+import { returnCompletedItemToReview } from '@/lib/inventory/completed';
+import { createInventoryEntry } from '@/lib/inventory/create';
+import {
+  importInventoryItems,
+  type ImportItemInput,
+  type ImportResult,
+} from '@/lib/inventory/import';
+import {
   decideRtsReview,
   openMigrationBatch,
   returnItemToAvailable,
@@ -22,6 +38,50 @@ import {
 function text(formData: FormData, name: string): string | null {
   const value = formData.get(name);
   return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/** New Entry: create an inventory item from a required, unique item code, an
+ *  optional price, and an editable Date Encoded (Owner request 2026-07-24).
+ *  Gated by `post_live_item_entry` in the domain module + RLS. */
+export async function createInventoryItemAction(
+  _prev: InventoryActionState,
+  formData: FormData,
+): Promise<InventoryActionState> {
+  const result = await createInventoryEntry(
+    text(formData, 'itemCode') ?? '',
+    text(formData, 'unitPrice'),
+    text(formData, 'dateEncoded'),
+  );
+  if (!result.ok) return { error: result.error, success: null };
+
+  revalidatePath('/orders/inventory');
+  return { error: null, success: 'New item added to inventory.' };
+}
+
+/** Bulk import of validated inventory rows (spec §B). Preserves original codes,
+ *  skips existing, permission-gated + audited in the domain module. */
+export async function importInventoryItemsAction(
+  items: ImportItemInput[],
+): Promise<ImportResult> {
+  const result = await importInventoryItems(items);
+  if (result.ok) revalidatePath('/orders/inventory');
+  return result;
+}
+
+/** Return a completed/released item to Returned-to-Stock Review (§10). Never makes
+ *  it available directly — opens an in-review record for inspection + approval. */
+export async function returnCompletedItemAction(
+  _prev: InventoryActionState,
+  formData: FormData,
+): Promise<InventoryActionState> {
+  const itemId = text(formData, 'inventoryItemId');
+  if (!itemId) return { error: 'An item is required.', success: null };
+
+  const result = await returnCompletedItemToReview(itemId, text(formData, 'note'));
+  if (!result.ok) return { error: result.error, success: null };
+
+  revalidatePath('/orders/inventory');
+  return { error: null, success: result.message };
 }
 
 export async function updateItemCustodyAction(
@@ -121,6 +181,111 @@ export async function reviewDuplicateAction(
         ? 'Recorded as a duplicate. Nothing was merged — merge mechanics are deferred.'
         : 'Recorded as distinct customers.',
   };
+}
+
+/** Read the business records connected to an item (spec §3), for the delete
+ *  confirmation modal. Read-only; the RPC re-checks inventory_monitoring. */
+export async function checkItemDependenciesAction(
+  inventoryItemId: string,
+): Promise<
+  | { ok: true; dependencies: ItemDependency[] }
+  | { ok: false; error: string }
+> {
+  return getItemDependencies(inventoryItemId);
+}
+
+/** Archive (soft delete) an incorrect / duplicate / test item (spec §2/§4). */
+export async function archiveInventoryItemAction(
+  _prev: InventoryActionState,
+  formData: FormData,
+): Promise<InventoryActionState> {
+  const itemId = text(formData, 'inventoryItemId');
+  if (!itemId) return { error: 'An item is required.', success: null };
+
+  const result = await archiveInventoryItem(
+    itemId,
+    text(formData, 'reasonCode') ?? '',
+    text(formData, 'reasonDetail'),
+  );
+  if (!result.ok) return { error: result.error, success: null };
+
+  revalidatePath('/orders/inventory');
+  return { error: null, success: 'Item archived. It has left Active Inventory and can be restored.' };
+}
+
+/** Restore an archived item to its prior status (spec §6). */
+export async function restoreInventoryItemAction(
+  _prev: InventoryActionState,
+  formData: FormData,
+): Promise<InventoryActionState> {
+  const itemId = text(formData, 'inventoryItemId');
+  if (!itemId) return { error: 'An item is required.', success: null };
+
+  const result = await restoreInventoryItem(itemId, text(formData, 'reason'));
+  if (!result.ok) return { error: result.error, success: null };
+
+  revalidatePath('/orders/inventory');
+  return { error: null, success: 'Item restored to Active Inventory.' };
+}
+
+/** Owner-only permanent delete of an archived, dependency-free record (spec §4/§8). */
+export async function permanentlyDeleteInventoryItemAction(
+  _prev: InventoryActionState,
+  formData: FormData,
+): Promise<InventoryActionState> {
+  const itemId = text(formData, 'inventoryItemId');
+  if (!itemId) return { error: 'An item is required.', success: null };
+
+  const result = await permanentlyDeleteInventoryItem(itemId);
+  if (!result.ok) return { error: result.error, success: null };
+
+  revalidatePath('/orders/inventory');
+  return { error: null, success: 'Item permanently deleted. The audit trail is preserved.' };
+}
+
+/**
+ * One-step permanent delete of an inventory item (Owner/Admin). Requires typing
+ * DELETE; the database blocks the delete when the item is linked to any business
+ * record. Supersedes the archive delete flow (Owner request 2026-07-24).
+ */
+export async function deleteInventoryItemAction(
+  _prev: InventoryActionState,
+  formData: FormData,
+): Promise<InventoryActionState> {
+  const itemId = text(formData, 'inventoryItemId');
+  const confirm = text(formData, 'confirm');
+  if (!itemId) return { error: 'An item is required.', success: null };
+  if (confirm !== 'DELETE') {
+    return { error: 'Type DELETE to permanently delete this item.', success: null };
+  }
+
+  const result = await deleteInventoryItemDirect(itemId);
+  if (!result.ok) return { error: result.error, success: null };
+
+  revalidatePath('/orders/inventory');
+  return { error: null, success: 'Item permanently deleted. The audit trail is preserved.' };
+}
+
+/** Correct an item's descriptive details (spec §1/§3). Never changes price. */
+export async function editInventoryItemAction(
+  _prev: InventoryActionState,
+  formData: FormData,
+): Promise<InventoryActionState> {
+  const itemId = text(formData, 'inventoryItemId');
+  if (!itemId) return { error: 'An item is required.', success: null };
+
+  const result = await editInventoryItemDetails({
+    inventoryItemId: itemId,
+    itemName: text(formData, 'itemName'),
+    grams: text(formData, 'grams'),
+    size: text(formData, 'size'),
+    supplierName: text(formData, 'supplierName'),
+    facebookName: text(formData, 'facebookName'),
+  });
+  if (!result.ok) return { error: result.error, success: null };
+
+  revalidatePath('/orders/inventory');
+  return { error: null, success: 'Item details corrected.' };
 }
 
 export async function openMigrationBatchAction(

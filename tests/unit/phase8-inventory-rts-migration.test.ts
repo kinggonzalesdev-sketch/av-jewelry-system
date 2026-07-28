@@ -99,34 +99,24 @@ describe('the screen never contradicts the rules', () => {
     ' ',
   );
 
-  it('says a review decides but never allocates', () => {
-    expect(view).toMatch(/never promotes a 2nd miner or allocates from the waitlist/i);
-    expect(view).toMatch(/a review, not a gift/i);
-  });
-
-  it('says approving authorises and returning is separate', () => {
-    expect(view).toMatch(
-      /Approving authorises the return — performing it is a separate step/i,
-    );
-  });
-
-  it('says judging a duplicate merges nothing', () => {
-    expect(view).toMatch(/Recording a judgement merges nothing/i);
-    expect(view).toMatch(/Merge mechanics are deferred/i);
+  // The Returned-to-Stock Review and Duplicate Review TABS were removed from the
+  // Inventory UI (Owner request 2026-07-24). Their rules are still enforced at the
+  // database + domain layer (the DB triggers asserted in the migration block below,
+  // and the service.ts guarantees asserted above), so no honesty guarantee is lost
+  // — the screen simply no longer surfaces those review workflows.
+  it('no longer surfaces the removed RTS / Duplicate review tabs', () => {
+    expect(view).not.toMatch(/never promotes a 2nd miner or allocates from the waitlist/i);
+    expect(view).not.toMatch(/Recording a judgement merges nothing/i);
   });
 
   it('shows forfeited items as excluded from auto-return', () => {
     expect(view).toMatch(/forfeited \(excluded from auto-return\)/i);
   });
 
-  it('explains why availability is derived', () => {
-    expect(view).toMatch(/never a stored counter/i);
-  });
-
-  it('says migration creates no fake claim', () => {
-    expect(view).toMatch(/no fake claim is created/i);
-    expect(view).toMatch(/separate from live intake/i);
-  });
+  // The Migration TAB was removed from the Inventory UI (Owner request) — daily
+  // users import via Upload Excel / CSV instead. The migration provenance rule is
+  // still enforced at the database layer (asserted in the "Phase 8 migration"
+  // block below), so no honesty guarantee is lost.
 });
 
 describe('Phase 8 migration', () => {

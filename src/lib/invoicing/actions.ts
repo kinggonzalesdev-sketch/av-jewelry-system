@@ -35,7 +35,7 @@ export async function prepareAllEligibleAction(
   const result = await prepareAllEligibleInvoices();
   if (!result.ok) return { ...EMPTY_INVOICE_STATE, error: result.error };
 
-  revalidatePath('/invoice');
+  revalidatePath('/orders');
 
   const { created, skipped, excluded } = result.data;
 
@@ -65,7 +65,7 @@ export async function approveAndSendAction(
   const result = await approveAndSendInvoice(draftId);
   if (!result.ok) return { ...EMPTY_INVOICE_STATE, error: result.error };
 
-  revalidatePath('/invoice');
+  revalidatePath('/orders');
 
   const order = {
     officialOrderId: result.officialOrderId,
@@ -107,7 +107,7 @@ export async function approveAllReadyAction(
   const result = await approveAllReadyInvoices();
   if (!result.ok) return { ...EMPTY_INVOICE_STATE, error: result.error };
 
-  revalidatePath('/invoice');
+  revalidatePath('/orders');
 
   const { succeeded, failed } = result.data;
 
@@ -130,7 +130,7 @@ export async function markReviewedAction(
   const result = await markDraftReviewed(draftId);
   if (!result.ok) return { ...EMPTY_INVOICE_STATE, error: result.error };
 
-  revalidatePath('/invoice');
+  revalidatePath('/orders');
   return { ...EMPTY_INVOICE_STATE, success: 'Draft reviewed and ready to send.' };
 }
 
@@ -150,7 +150,7 @@ export async function removeClaimAction(
   const result = await removeClaimFromDraft(draftId, claimId, reason);
   if (!result.ok) return { ...EMPTY_INVOICE_STATE, error: result.error };
 
-  revalidatePath('/invoice');
+  revalidatePath('/orders');
   return {
     ...EMPTY_INVOICE_STATE,
     success: 'Claim removed from the draft. Its reservation is unchanged.',
@@ -185,7 +185,7 @@ export async function markSentAction(
   const result = await markMessageSent(messageId);
   if (!result.ok) return { ...EMPTY_INVOICE_STATE, error: result.error };
 
-  revalidatePath('/invoice');
+  revalidatePath('/orders');
   return {
     ...EMPTY_INVOICE_STATE,
     success:
@@ -208,7 +208,7 @@ export async function retryMessageAction(
   const message = await prepareInvoiceMessage(orderId);
   if (!message.ok) return { ...EMPTY_INVOICE_STATE, messageProblem: message.error };
 
-  revalidatePath('/invoice');
+  revalidatePath('/orders');
   return {
     ...EMPTY_INVOICE_STATE,
     messageBody: message.body,

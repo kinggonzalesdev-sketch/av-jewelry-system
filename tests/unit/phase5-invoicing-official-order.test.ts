@@ -17,14 +17,16 @@ const projectRoot = join(__dirname, '..', '..');
 const read = (...p: string[]) => readFileSync(join(projectRoot, ...p), 'utf8');
 
 describe('invoice message template', () => {
-  const body = renderInvoiceMessage({
+  const input = {
     customerDisplayName: 'Ana Reyes',
     orderNumber: 'ORD-2026-000101',
     invoiceNumber: 'INV-2026-000088',
     totalAmount: 12500,
     holdExpiresAt: '2026-07-18T00:00:00Z',
-    itemLines: ['Ring 21K ×1 — PHP 12500.00'],
-  });
+    itemLines: ['Ring 21K ×1 · 5.5g · PHP 12500.00'],
+    paymentDetails: 'GCash: 0917-000-0000 (A.V. Jewelry). Downpayment: 20%.',
+  };
+  const body = renderInvoiceMessage(input);
 
   it('names both references without conflating them', () => {
     expect(body).toContain('ORD-2026-000101');
@@ -36,17 +38,16 @@ describe('invoice message template', () => {
     expect(body).toMatch(/keep your items reserved/i);
   });
 
-  it('is pure — it contacts nothing', () => {
-    const again = renderInvoiceMessage({
-      customerDisplayName: 'Ana Reyes',
-      orderNumber: 'ORD-2026-000101',
-      invoiceNumber: 'INV-2026-000088',
-      totalAmount: 12500,
-      holdExpiresAt: '2026-07-18T00:00:00Z',
-      itemLines: ['Ring 21K ×1 — PHP 12500.00'],
-    });
+  it('uses the A.V. Jewelry mining wording and includes grams + downpayment', () => {
+    expect(body).toMatch(/A\.V\. Jewelry/);
+    expect(body).toMatch(/na-mine/i);
+    expect(body).toContain('5.5g');
+    expect(body).toContain('For your downpayment:');
+    expect(body).toContain('GCash: 0917-000-0000 (A.V. Jewelry). Downpayment: 20%.');
+  });
 
-    expect(again).toBe(body);
+  it('is pure — it contacts nothing', () => {
+    expect(renderInvoiceMessage(input)).toBe(body);
   });
 });
 
@@ -248,9 +249,20 @@ describe('Phase 5 migration', () => {
   });
 });
 
-describe('Phase 5 does not alter the approved navigation', () => {
-  it('places the Invoice workspace inside the Orders group, not a sixth nav item', () => {
+describe('Phase 5 keeps Invoice preparation available (its own page)', () => {
+  it('the /orders/invoice route renders the InvoiceWorkspace as a standalone page', () => {
+    // Owner request 2026-07-23: the panel folded into Orders → For Invoice was
+    // removed; invoice preparation lives on its own route again (logic reused,
+    // no invoice logic/data/DB functions changed).
     const page = read('src', 'app', '(app)', 'orders', 'invoice', 'page.tsx');
-    expect(page).toMatch(/sub-route of the Orders group/i);
+    expect(page).toMatch(/InvoiceWorkspace/);
+    expect(page).toMatch(/listInvoiceDrafts/);
+  });
+
+  it('the Orders list no longer folds in the InvoiceWorkspace panel', () => {
+    const page = read('src', 'app', '(app)', 'orders', 'page.tsx');
+    expect(page).not.toMatch(/InvoiceWorkspace/);
+    const view = read('src', 'components', 'orders', 'orders-view.tsx');
+    expect(view).not.toMatch(/invoicePanel/);
   });
 });

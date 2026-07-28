@@ -5,7 +5,6 @@ import type { ReactNode } from 'react';
 import { PreviewShell } from '@/components/preview/shell';
 
 export const metadata: Metadata = {
-  title: 'MineFlow UI Prototype — A.V. Jewelry',
   description: 'Owner UI review prototype. Sample data only.',
   robots: { index: false, follow: false },
 };

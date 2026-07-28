@@ -68,7 +68,11 @@ describe('privileged Supabase client isolation', () => {
     expect(clientFilesImportingAdmin).toEqual([]);
   });
 
-  it('has no callers at all in Phase 0', () => {
+  it('has exactly ONE sanctioned caller: the Owner-gated, server-only team-accounts', () => {
+    // Owner request 2026-07-22: account creation/reset from the UI was enabled
+    // (a deliberate override of ADR §11's "boundary only" default). The single
+    // permitted caller of the service-role client is lib/authz/team-accounts.ts —
+    // and it MUST be server-only and re-check Owner before touching the client.
     const sourceFiles = collectSourceFiles(srcDir).filter(
       (file) => file !== adminModulePath,
     );
@@ -77,7 +81,12 @@ describe('privileged Supabase client isolation', () => {
       /from\s+['"][^'"]*supabase\/admin['"]/.test(readFileSync(file, 'utf8')),
     );
 
-    expect(callers).toEqual([]);
+    expect(callers).toHaveLength(1);
+    expect(callers[0]).toMatch(/team-accounts\.ts$/);
+
+    const teamAccounts = readFileSync(callers[0] as string, 'utf8');
+    expect(teamAccounts).toMatch(/^import 'server-only';/m);
+    expect(teamAccounts).toMatch(/requireOwner\(\)/);
   });
 });
 

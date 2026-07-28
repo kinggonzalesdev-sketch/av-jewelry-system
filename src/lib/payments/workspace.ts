@@ -482,14 +482,26 @@ export async function paymentVerificationQueue(): Promise<VerificationQueueResul
 
 export type LayawayRow = {
   layawayId: string;
+  /** Reusable short code (A1–Z200) while active; null once released. */
+  code: string | null;
   officialOrderId: string;
   orderNumber: string;
   invoiceNumber: string;
   customerDisplayName: string;
   status: string;
+  /** Layaway financer (spec §14) — separate from supplier/custody. */
+  financer: string | null;
+  financerId: string | null;
+  currentHolder: string | null;
+  currentLocation: string | null;
+  remarks: string | null;
   months: number | null;
   totalGrams: string | null;
   layawayFee: string | null;
+  /** Item principal (authoritative). Grand Total = itemAmount + layawayFee. */
+  itemAmount: string;
+  /** Layaway/order creation date — the spreadsheet's "Date Purchased". */
+  datePurchased: string | null;
   finalDueDate: string | null;
   graceEndsOn: string | null;
   completedAt: string | null;
@@ -522,8 +534,10 @@ export async function listLayaways(statuses?: string[]): Promise<LayawayRow[]> {
   let query = supabase
     .from('layaway_arrangements')
     .select(
-      `id, official_order_id, status, months, total_grams, layaway_fee,
-       final_due_date, grace_period_days, completed_at,
+      `id, official_order_id, status, months, total_grams, layaway_fee, created_at,
+       final_due_date, grace_period_days, completed_at, layaway_code,
+       financer_id, current_holder, current_location, remarks,
+       financers ( name ),
        official_orders ( order_number, invoice_number, customers ( display_name ) ),
        layaway_installments ( installment_number, due_date, amount_due, payment_id )`,
     )
@@ -545,11 +559,18 @@ export async function listLayaways(statuses?: string[]): Promise<LayawayRow[]> {
         customers: unknown;
       }>(r.official_orders);
       const customer = one<{ display_name: string }>(order?.customers);
+      const financer = one<{ name: string }>(r.financers);
 
       const balanceResponse = await supabase.rpc('order_balance', {
         p_order_id: orderId,
       });
       const b = (balanceResponse.data ?? {}) as Record<string, unknown>;
+
+      // Item principal, authoritative from SQL (Grand Total = item + interest fee).
+      // Never derived by subtracting money strings in JS.
+      const itemTotalResponse = await supabase.rpc('order_item_total', {
+        p_order_id: orderId,
+      });
 
       const installmentRows = ((r.layaway_installments as unknown[]) ?? []) as Array<{
         installment_number: number;
@@ -586,14 +607,24 @@ export async function listLayaways(statuses?: string[]): Promise<LayawayRow[]> {
 
       return {
         layawayId: r.id as string,
+        code: (r.layaway_code as string | null) ?? null,
         officialOrderId: orderId,
         orderNumber: order?.order_number ?? '—',
         invoiceNumber: order?.invoice_number ?? '—',
         customerDisplayName: customer?.display_name ?? 'Unknown',
         status: r.status as string,
+        financer: financer?.name ?? null,
+        financerId: (r.financer_id as string | null) ?? null,
+        currentHolder: (r.current_holder as string | null) ?? null,
+        currentLocation: (r.current_location as string | null) ?? null,
+        remarks: (r.remarks as string | null) ?? null,
         months: (r.months as number | null) ?? null,
         totalGrams: r.total_grams !== null ? moneyString(r.total_grams, '0') : null,
         layawayFee: r.layaway_fee !== null ? moneyString(r.layaway_fee) : null,
+        // Item principal (authoritative) + the layaway/order creation date, for the
+        // Excel-first Layaway table (spec §4).
+        itemAmount: moneyString(itemTotalResponse.data ?? 0),
+        datePurchased: (r.created_at as string | null) ?? null,
         finalDueDate: finalDue,
         graceEndsOn: finalDue ? addDays(finalDue, graceDays) : null,
         completedAt: (r.completed_at as string | null) ?? null,
@@ -627,6 +658,7 @@ function addDays(isoDate: string, days: number): string {
 
 export type PaymentHistoryRow = {
   paymentId: string;
+  officialOrderId: string;
   orderNumber: string;
   customerDisplayName: string;
   amount: string;
@@ -654,7 +686,7 @@ export async function paymentHistory(range: {
   const { data, error } = await supabase
     .from('payments')
     .select(
-      `id, amount, status, payment_method, reference_number, recorded_at,
+      `id, official_order_id, amount, status, payment_method, reference_number, recorded_at,
        voided_at, reversed_at, correction_pending,
        payment_verifications ( verified_amount ),
        official_orders!payments_official_order_id_fkey (
@@ -681,6 +713,7 @@ export async function paymentHistory(range: {
 
     return {
       paymentId: r.id as string,
+      officialOrderId: r.official_order_id as string,
       orderNumber: order?.order_number ?? '—',
       customerDisplayName: customer?.display_name ?? 'Unknown',
       amount: moneyString(r.amount),

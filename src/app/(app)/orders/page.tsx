@@ -4,11 +4,10 @@ import { NewOrderWorkflow } from '@/components/orders/new-order-workflow';
 import { OrdersView } from '@/components/orders/orders-view';
 import { getCurrentStaffProfile, getGrantedPermissions } from '@/lib/authz/guard';
 import { listCaptureCustomers } from '@/lib/live/batches';
-import { listCaptureItems, listOrders } from '@/lib/orders/service';
+import { listCaptureItems, listOrders, listWalkInItems } from '@/lib/orders/service';
 import { PageHeader } from '@/components/ui/page-primitives';
 
 export const metadata: Metadata = {
-  title: 'Orders — A.V. Jewelry Operations',
 };
 
 export const dynamic = 'force-dynamic';
@@ -28,31 +27,38 @@ export const dynamic = 'force-dynamic';
  * link and the Invoice/Confirm/Layaway shortcut buttons were removed by Owner
  * request (2026-07-18) — they duplicated the sidebar navigation.
  */
-export default async function OrdersPage() {
-  const [result, permissions, customers, items, profile] = await Promise.all([
-    listOrders(),
-    getGrantedPermissions(),
-    listCaptureCustomers(),
-    listCaptureItems(),
-    getCurrentStaffProfile(),
-  ]);
+export default async function OrdersPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
+  const openForInvoice = params.view === 'invoice';
+
+  const [result, permissions, customers, items, walkInItems, profile] =
+    await Promise.all([
+      listOrders(),
+      getGrantedPermissions(),
+      listCaptureCustomers(),
+      listCaptureItems(),
+      listWalkInItems(),
+      getCurrentStaffProfile(),
+    ]);
 
   return (
     <div>
-      <PageHeader
-        title="Orders"
-        description="Official Orders — invoicing, payment, and fulfillment status."
-      />
+      <PageHeader title="Orders" />
 
       <div className="space-y-4">
         <NewOrderWorkflow
           customers={customers}
           items={items}
+          walkInItems={walkInItems}
           canCreate={permissions.has('claim_capture')}
           shopName="A.V. Jewelry"
           salesperson={profile.fullName}
         />
-        <OrdersView result={result} />
+        <OrdersView result={result} openForInvoice={openForInvoice} />
       </div>
     </div>
   );

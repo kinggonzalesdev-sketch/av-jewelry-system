@@ -3,7 +3,6 @@ import type { Metadata } from 'next';
 import { PlaceholderPage } from '@/components/states/placeholder-page';
 
 export const metadata: Metadata = {
-  title: 'More — A.V. Jewelry Operations',
 };
 
 /**

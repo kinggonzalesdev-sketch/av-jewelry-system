@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { listInventory } from '@/lib/inventory/service';
 import { getOrderBalance } from '@/lib/payments/balances';
 import { createClient } from '@/lib/supabase/server';
 
@@ -36,6 +37,11 @@ export type OrderListRow = {
   /** Dispatch/ship timestamp from the fulfillment record, or null. Backs the
    *  "Ship Date" filter. */
   shipDate: string | null;
+  /** For-Prepare routing destination (shipping/delivery/layaway/pickup/keep), or
+   *  null when not yet transferred. Routes the order to its status card. */
+  fulfillmentDestination: string | null;
+  /** 'walk_in' for a counter sale, else 'online'. Labelling only. */
+  orderSource: string;
 };
 
 function one<T>(value: unknown): T | undefined {
@@ -61,7 +67,7 @@ export async function listOrders(limit = 100): Promise<OrdersResult> {
       // fulfillment_records has a single FK back to official_orders, so this
       // embed is unambiguous. official_orders → customers is likewise single.
       // layaway_arrangements is UNIQUE(official_order_id) — one per order.
-      `id, order_number, invoice_number, status, created_at,
+      `id, order_number, invoice_number, status, created_at, fulfillment_destination, order_source,
        customers ( display_name ),
        fulfillment_records ( status, dispatched_at ),
        layaway_arrangements ( status )`,
@@ -120,6 +126,8 @@ export async function listOrders(limit = 100): Promise<OrdersResult> {
       fulfillmentStatus: fulfillment?.status ?? null,
       layawayStatus: layaway?.status ?? null,
       shipDate: fulfillment?.dispatched_at ?? null,
+      fulfillmentDestination: (r.fulfillment_destination as string | null) ?? null,
+      orderSource: (r.order_source as string | null) ?? 'online',
     };
   });
 
@@ -132,6 +140,8 @@ export type CaptureItem = {
   itemName: string | null;
   /** Catalogue unit price as an authoritative string (never a JS float), or null. */
   unitPrice: string | null;
+  /** Weight per piece as a string (e.g. "12.2"), or null. Used on the sticker. */
+  gramsPerPiece: string | null;
   availabilityStatus: string;
 };
 
@@ -145,7 +155,12 @@ export async function listCaptureItems(limit = 300): Promise<CaptureItem[]> {
 
   const { data, error } = await supabase
     .from('inventory_items')
-    .select('id, item_code, item_name, total_price_per_piece, availability_status')
+    .select(
+      'id, item_code, item_name, total_price_per_piece, grams_per_piece, availability_status',
+    )
+    // Archived (incorrect/duplicate/test) items are out of circulation — never
+    // offered for a new order (Inventory Safe-Delete spec §4).
+    .eq('is_archived', false)
     .order('item_code', { ascending: true })
     .limit(limit);
 
@@ -160,6 +175,112 @@ export async function listCaptureItems(limit = 300): Promise<CaptureItem[]> {
       r.total_price_per_piece === null || r.total_price_per_piece === undefined
         ? null
         : String(r.total_price_per_piece as string | number),
+    gramsPerPiece:
+      r.grams_per_piece === null || r.grams_per_piece === undefined
+        ? null
+        : String(r.grams_per_piece as string | number),
     availabilityStatus: (r.availability_status as string | null) ?? 'unknown',
   }));
+}
+
+/** A single Active-Inventory item the Walk-In selector may sell — its permanent
+ *  ID, code, Facebook name, and grams. Only truly-sellable items are returned. */
+export type WalkInItem = {
+  id: string;
+  itemCode: string;
+  facebookName: string | null;
+  grams: string | null;
+};
+
+/**
+ * Active-Inventory items available for a Walk-In sale. Reuses the tested
+ * `listInventory` (inventory_monitor) status logic: `availableQuantity > 0`
+ * already means NOT reserved, NOT completed/released, and NOT archived — so this
+ * returns exactly the items that are available, not reserved, not completed, not
+ * deleted. Read-only; sells nothing.
+ */
+export async function listWalkInItems(): Promise<WalkInItem[]> {
+  const result = await listInventory();
+  if (!result.ok) return [];
+  return result.rows
+    .filter(
+      (r) =>
+        r.availableQuantity > 0 &&
+        !r.inRtsReview &&
+        (r.availabilityStatus === 'available' ||
+          r.availabilityStatus === 'returned_to_available'),
+    )
+    .map((r) => ({
+      id: r.inventoryItemId,
+      itemCode: r.itemCode,
+      facebookName: r.facebookName,
+      grams: r.gramsPerPiece,
+    }));
+}
+
+/** One line of an Official Order — the claimed item, its weight, quantity, and
+ *  catalogue unit price. Money/weight stay authoritative strings (never floats). */
+export type OrderLineItem = {
+  claimReference: string;
+  itemName: string | null;
+  itemCode: string | null;
+  gramsPerPiece: string | null;
+  quantity: number;
+  unitPrice: string | null;
+};
+
+/**
+ * The line items of one Official Order (its claimed items). RLS-scoped: it returns
+ * rows only for an order the caller may already read — read-only, creates nothing.
+ * Used by the Order Details drawer to show what item(s) the order is for and how
+ * many grams.
+ */
+export async function getOrderLineItems(
+  officialOrderId: string,
+): Promise<OrderLineItem[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('official_order_claims')
+    .select(
+      `claim_id,
+       claims (
+         quantity, claim_reference,
+         inventory_items ( item_name, item_code, grams_per_piece, total_price_per_piece )
+       )`,
+    )
+    .eq('official_order_id', officialOrderId);
+
+  if (error || !data) return [];
+
+  type ItemShape = {
+    item_name: string | null;
+    item_code: string | null;
+    grams_per_piece: string | number | null;
+    total_price_per_piece: string | number | null;
+  };
+  type ClaimShape = {
+    quantity: string | number | null;
+    claim_reference: string | null;
+    inventory_items: ItemShape | ItemShape[] | null;
+  };
+
+  return (data as Array<{ claims: ClaimShape | ClaimShape[] | null }>).map((row) => {
+    const claim = one<ClaimShape>(row.claims);
+    const item = one<ItemShape>(claim?.inventory_items);
+    return {
+      claimReference: claim?.claim_reference ?? '—',
+      itemName: item?.item_name ?? null,
+      itemCode: item?.item_code ?? null,
+      gramsPerPiece:
+        item?.grams_per_piece === null || item?.grams_per_piece === undefined
+          ? null
+          : String(item.grams_per_piece),
+      quantity: Number(claim?.quantity ?? 0),
+      unitPrice:
+        item?.total_price_per_piece === null || item?.total_price_per_piece === undefined
+          ? null
+          : String(item.total_price_per_piece),
+    };
+  });
 }

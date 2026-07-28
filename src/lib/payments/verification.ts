@@ -2,8 +2,27 @@ import 'server-only';
 
 import { recordAuditEvent } from '@/lib/audit/log';
 import { AuthorizationError, requirePermission } from '@/lib/authz/guard';
+import { getOrderBalance } from '@/lib/payments/balances';
 import { createClient } from '@/lib/supabase/server';
 import { recordPaymentSchema, type PaymentMethod } from '@/lib/validation/payments';
+
+/**
+ * Money must never be a JS float. A peso string is compared as exact integer
+ * centavos so "block over-balance" (Owner decision 2026-07-25: strict, no
+ * overpayment) is precise to the last centavo.
+ */
+function toCentavos(value: string): bigint {
+  const negative = value.trim().startsWith('-');
+  const [whole = '0', fraction = ''] = value.trim().replace('-', '').split('.');
+  const cents = `${fraction}00`.slice(0, 2);
+  const magnitude = BigInt(whole || '0') * 100n + BigInt(cents || '0');
+  return negative ? -magnitude : magnitude;
+}
+
+/** True when money string `a` is strictly greater than `b` (exact, no float). */
+function moneyExceeds(a: string, b: string): boolean {
+  return toCentavos(a) > toCentavos(b);
+}
 
 /**
  * Payment recording, evidence, and verification (Bible §16, §22.11).
@@ -66,6 +85,29 @@ export async function recordPayment(input: unknown): Promise<PaymentResult> {
   }
 
   const supabase = await createClient();
+
+  // Strict (Owner decision 2026-07-25): a payment may not be recorded for more
+  // than the order's outstanding balance — no overpayment. Best-effort UX gate:
+  // only blocks when the balance reads cleanly; the verification trigger is the
+  // authoritative money guard beneath this.
+  const balance = await getOrderBalance(data.officialOrderId);
+  if (balance.ok && moneyExceeds(data.amount, balance.balance.outstandingBalance)) {
+    await recordAuditEvent({
+      action: 'payment.record',
+      entityType: 'payment',
+      outcome: 'denied',
+      reason: 'Amount exceeds the outstanding balance (overpayment blocked).',
+      context: {
+        official_order_id: data.officialOrderId,
+        amount: data.amount,
+        outstanding_balance: balance.balance.outstandingBalance,
+      },
+    });
+    return {
+      ok: false,
+      error: `This is more than the remaining balance of ₱${balance.balance.outstandingBalance}. Enter an amount up to the balance.`,
+    };
+  }
 
   // Flag, do not reject (§3).
   let duplicateReferenceFlagged = false;
@@ -236,6 +278,39 @@ export async function verifyPayment(
     return { ok: true, deduplicated: true };
   }
 
+  // Strict (Owner decision 2026-07-25): the verified amount may not push the
+  // order above fully paid. Pre-check for a clean message; the database trigger
+  // `payment_verifications_within_balance` is the authoritative gate that makes
+  // this impossible even under a race.
+  if (outcome === 'verified') {
+    const { data: pay } = await supabase
+      .from('payments')
+      .select('official_order_id, amount')
+      .eq('id', paymentId)
+      .maybeSingle();
+    if (pay?.official_order_id) {
+      const incoming = options?.verifiedAmount ?? String(pay.amount);
+      const balance = await getOrderBalance(pay.official_order_id as string);
+      if (balance.ok && moneyExceeds(incoming, balance.balance.outstandingBalance)) {
+        await recordAuditEvent({
+          action: 'payment.verify',
+          entityType: 'payment',
+          entityId: paymentId,
+          outcome: 'denied',
+          reason: 'Verified amount exceeds the outstanding balance (overpayment blocked).',
+          context: {
+            verified_amount: incoming,
+            outstanding_balance: balance.balance.outstandingBalance,
+          },
+        });
+        return {
+          ok: false,
+          error: `That is more than the remaining balance of ₱${balance.balance.outstandingBalance}. Verify only the amount that actually arrived, up to the balance.`,
+        };
+      }
+    }
+  }
+
   const { error } = await supabase.from('payment_verifications').insert({
     payment_id: paymentId,
     outcome,
@@ -247,6 +322,21 @@ export async function verifyPayment(
   if (error) {
     // 23505 = the unique index: a concurrent verify won the race.
     if (error.code === '23505') return { ok: true, deduplicated: true };
+    // 23514 = the within-balance trigger: the money guard refused an overpayment.
+    if (error.code === '23514') {
+      await recordAuditEvent({
+        action: 'payment.verify',
+        entityType: 'payment',
+        entityId: paymentId,
+        outcome: 'denied',
+        reason: error.message,
+      });
+      return {
+        ok: false,
+        error:
+          'The verified amount would exceed the order balance. Verify only the amount that actually arrived, up to the remaining balance.',
+      };
+    }
 
     await recordAuditEvent({
       action: 'payment.verify',

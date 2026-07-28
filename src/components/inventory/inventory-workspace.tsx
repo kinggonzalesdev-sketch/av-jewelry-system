@@ -1,28 +1,27 @@
 'use client';
 
-import { useActionState, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Fragment, useActionState, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
-  decideRtsAction,
-  openMigrationBatchAction,
-  returnToAvailableAction,
-  reviewDuplicateAction,
+  createInventoryItemAction,
+  returnCompletedItemAction,
 } from '@/lib/inventory/actions';
 import type { InventoryActionState } from '@/lib/inventory/action-state';
 import { EMPTY_INVENTORY_STATE } from '@/lib/inventory/action-state';
-import type {
-  DuplicateRow,
-  InventoryListResult,
-  MigrationBatchRow,
-  RtsRow,
-} from '@/lib/inventory/service';
-import { ItemCustodyEditor } from '@/components/inventory/item-custody-editor';
+import type { InventoryListResult } from '@/lib/inventory/service';
+import type { CompletedInventoryRow } from '@/lib/inventory/completed';
+import { parseInventoryCode } from '@/lib/inventory/code-parser';
+import { downloadCsv } from '@/lib/export/csv';
+import { InventoryImportButton } from '@/components/inventory/inventory-import-modal';
+import { InventoryItemActions } from '@/components/inventory/inventory-item-actions';
 import { EmptyState } from '@/components/states/empty-state';
 import { Button } from '@/components/ui/button';
 import { ReadError } from '@/components/ui/page-primitives';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { MoneyInput } from '@/components/ui/money-input';
 import { Label } from '@/components/ui/label';
+import { Modal, ModalFieldFull, ModalFormGrid } from '@/components/ui/modal';
 
 /**
  * Inventory Ops, Returned-to-Stock, Customers & Migration (Bible §19, §10).
@@ -34,392 +33,549 @@ import { Label } from '@/components/ui/label';
  *   - Judging two customers duplicates merges NOTHING.
  */
 
-const TABS = [
-  'Inventory',
-  'Returned-to-Stock Review',
-  'Duplicate Review',
-  'Migration',
-] as const;
+const TABS = ['Active Inventory', 'Completed Items'] as const;
 
 type Tab = (typeof TABS)[number];
 
-/** Provisional (§19.26): the outcome vocabulary is not client-final. */
-const OUTCOMES: Array<{ value: string; label: string }> = [
-  { value: 'returned_to_available', label: 'Return to available' },
-  { value: 'offered_to_second_miner_for_review', label: 'Offer to 2nd miner (review)' },
-  { value: 'sent_to_waitlist_for_review', label: 'Send to waitlist (review)' },
-  { value: 'held_unavailable', label: 'Hold unavailable' },
-];
+/** Inventory availability statuses that mean the item is SOLD / RELEASED — it is
+ *  historical, not operationally active. Completed items must never appear as
+ *  available (spec §4). One inventory source of truth, split by status (§6). */
+const COMPLETED_INVENTORY_STATUSES = new Set(['completed', 'released']);
+
+/** "Date Encoded" for the table — a short local date, or a dash. */
+function fmtEncoded(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso.slice(0, 10) : d.toLocaleDateString();
+}
+
+/** Today as YYYY-MM-DD, for the New Entry date default. */
+function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate(),
+  ).padStart(2, '0')}`;
+}
 
 export function InventoryWorkspace({
   inventory,
-  reviews,
-  duplicates,
-  batches,
+  completed = [],
   canMonitor,
-  canReview,
-  canMigrate,
 }: {
   inventory: InventoryListResult;
-  reviews: RtsRow[];
-  duplicates: DuplicateRow[];
-  batches: MigrationBatchRow[];
+  completed?: CompletedInventoryRow[];
   canMonitor: boolean;
-  canReview: boolean;
-  canMigrate: boolean;
 }) {
-  const [tab, setTab] = useState<Tab>('Inventory');
+  const router = useRouter();
+  const [tab, setTab] = useState<Tab>('Active Inventory');
+  const [showNewEntry, setShowNewEntry] = useState(false);
+  // Completed Items: search + completion-type filter (§12) + read-only detail (§5).
+  const [compSearch, setCompSearch] = useState('');
+  const [compType, setCompType] = useState('all');
+  const [compView, setCompView] = useState<CompletedInventoryRow | null>(null);
+  const [returnCompState, returnCompletedAction, returningItem] = useActionState<
+    InventoryActionState,
+    FormData
+  >(returnCompletedItemAction, EMPTY_INVENTORY_STATE);
+  // Close the detail + refresh once a return-to-review succeeds.
+  const lastReturn = useRef<string | null>(null);
+  useEffect(() => {
+    if (returnCompState.success && returnCompState.success !== lastReturn.current) {
+      lastReturn.current = returnCompState.success;
+      setCompView(null);
+      router.refresh();
+    }
+  }, [returnCompState.success, router]);
+  const [createState, createAction, creating] = useActionState<
+    InventoryActionState,
+    FormData
+  >(createInventoryItemAction, EMPTY_INVENTORY_STATE);
 
-  const [rtsState, rtsAction, deciding] = useActionState<InventoryActionState, FormData>(
-    decideRtsAction,
-    EMPTY_INVENTORY_STATE,
+  // Close the New Entry dialog once a create succeeds (once per new success).
+  const lastCreate = useRef<string | null>(null);
+  useEffect(() => {
+    if (createState.success && createState.success !== lastCreate.current) {
+      lastCreate.current = createState.success;
+      setShowNewEntry(false);
+    }
+  }, [createState.success]);
+
+  // --- Inventory search + status filter — client-side over the loaded rows.
+  const [invSearch, setInvSearch] = useState('');
+  const [invStatus, setInvStatus] = useState('all');
+
+  const invRows = useMemo(() => (inventory.ok ? inventory.rows : []), [inventory]);
+  // Active statuses only in the filter dropdown — completed/released live under
+  // the Completed Items tab, never offered as an "available" filter (§4).
+  const statusOptions = useMemo(
+    () =>
+      [
+        ...new Set(
+          invRows
+            .map((r) => r.availabilityStatus)
+            .filter((s) => !COMPLETED_INVENTORY_STATUSES.has(s)),
+        ),
+      ].sort(),
+    [invRows],
   );
-  const [returnState, returnAction, returning] = useActionState<
-    InventoryActionState,
-    FormData
-  >(returnToAvailableAction, EMPTY_INVENTORY_STATE);
-  const [dupeState, dupeAction, reviewing] = useActionState<
-    InventoryActionState,
-    FormData
-  >(reviewDuplicateAction, EMPTY_INVENTORY_STATE);
-  const [batchState, batchAction, opening] = useActionState<
-    InventoryActionState,
-    FormData
-  >(openMigrationBatchAction, EMPTY_INVENTORY_STATE);
+  const filteredInventory = useMemo(() => {
+    const q = invSearch.trim().toLowerCase();
+    return invRows.filter((row) => {
+      // Active Inventory NEVER shows completed/released items (§4).
+      if (COMPLETED_INVENTORY_STATUSES.has(row.availabilityStatus)) return false;
+      if (invStatus !== 'all' && row.availabilityStatus !== invStatus) return false;
+      if (!q) return true;
+      return `${row.itemCode} ${row.itemName ?? ''}`.toLowerCase().includes(q);
+    });
+  }, [invRows, invSearch, invStatus]);
 
-  const notices = [rtsState, returnState, dupeState, batchState];
+  // Completed Items — historical sold/released inventory with order/customer
+  // context (§5), searchable + filterable by completion type (§12).
+  const completionTypeOptions = useMemo(
+    () => [...new Set(completed.map((c) => c.completionType))].sort(),
+    [completed],
+  );
+  const filteredCompleted = useMemo(() => {
+    const q = compSearch.trim().toLowerCase();
+    return completed.filter((c) => {
+      if (compType !== 'all' && c.completionType !== compType) return false;
+      if (!q) return true;
+      return `${c.itemCode} ${c.itemName ?? ''} ${c.customerName ?? ''} ${c.orderNumber ?? ''} ${c.invoiceNumber ?? ''}`
+        .toLowerCase()
+        .includes(q);
+    });
+  }, [completed, compSearch, compType]);
+  const exportCompleted = () => {
+    downloadCsv(
+      `completed-items-${new Date().toISOString().slice(0, 10)}`,
+      [
+        { header: 'Inventory Code', value: (c) => c.itemCode },
+        { header: 'Item', value: (c) => c.itemName ?? '' },
+        { header: 'Condition', value: (c) => parseInventoryCode(c.itemCode).condition ?? '' },
+        { header: 'Item Type', value: (c) => parseInventoryCode(c.itemCode).itemType ?? '' },
+        { header: 'Grams', value: (c) => parseInventoryCode(c.itemCode).grams ?? '' },
+        { header: 'Size', value: (c) => parseInventoryCode(c.itemCode).size ?? '' },
+        { header: 'Customer', value: (c) => c.customerName ?? '' },
+        { header: 'Order Number', value: (c) => c.orderNumber ?? '' },
+        { header: 'Invoice Number', value: (c) => c.invoiceNumber ?? '' },
+        { header: 'Completion Type', value: (c) => c.completionType },
+        { header: 'Courier', value: (c) => c.courier ?? '' },
+        { header: 'Tracking Number', value: (c) => c.trackingNumber ?? '' },
+        { header: 'Completed Date', value: (c) => c.completedDate?.slice(0, 10) ?? '' },
+        { header: 'Final Holder', value: (c) => c.currentHolder ?? '' },
+      ],
+      filteredCompleted,
+    );
+  };
+
+  // Export the CURRENTLY FILTERED inventory (respects search + filters) with the
+  // parsed columns (§18/D). Never exports mock data — these are the real rows.
+  const exportInventory = () => {
+    downloadCsv(
+      `inventory-${new Date().toISOString().slice(0, 10)}`,
+      [
+        { header: 'Inventory Code', value: (i) => i.itemCode },
+        { header: 'Item', value: (i) => i.itemName ?? '' },
+        { header: 'Condition', value: (i) => parseInventoryCode(i.itemCode).condition ?? '' },
+        { header: 'Item Type', value: (i) => parseInventoryCode(i.itemCode).itemType ?? '' },
+        { header: 'Grams', value: (i) => parseInventoryCode(i.itemCode).grams ?? '' },
+        { header: 'Size', value: (i) => parseInventoryCode(i.itemCode).size ?? '' },
+        { header: 'Status', value: (i) => i.availabilityStatus.replace(/_/g, ' ') },
+        { header: 'Total', value: (i) => i.quantityTotal },
+        { header: 'Available', value: (i) => i.availableQuantity },
+        { header: 'Reserved', value: (i) => i.reservedQuantity },
+        { header: 'Custody Holder', value: (i) => i.custodyHolder ?? '' },
+        { header: 'Storage Location', value: (i) => i.storageLocation ?? '' },
+      ],
+      filteredInventory,
+    );
+  };
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-1.5" role="tablist">
         {TABS.map((t) => (
-          <Button
-            key={t}
-            type="button"
-            role="tab"
-            aria-selected={tab === t}
-            size="sm"
-            variant={tab === t ? 'default' : 'outline'}
-            onClick={() => setTab(t)}
-          >
-            {t}
-          </Button>
+          <Fragment key={t}>
+            <Button
+              type="button"
+              role="tab"
+              aria-selected={tab === t}
+              size="sm"
+              variant={tab === t ? 'default' : 'outline'}
+              onClick={() => setTab(t)}
+            >
+              {t}
+            </Button>
+            {/* New Entry · Upload · Export sit under Active Inventory — all open
+                the standard centered dialogs. */}
+            {t === 'Active Inventory' ? (
+              <>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowNewEntry(true)}
+                  data-testid="inventory-new-entry"
+                >
+                  ＋ New Entry
+                </Button>
+                <InventoryImportButton
+                  existingCodes={inventory.ok ? inventory.rows.map((r) => r.itemCode) : []}
+                />
+                {inventory.ok && inventory.rows.length > 0 ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={exportInventory}
+                    data-testid="inventory-export"
+                  >
+                    ⭳ Export CSV
+                  </Button>
+                ) : null}
+              </>
+            ) : null}
+          </Fragment>
         ))}
       </div>
 
-      {notices.map((n, i) =>
-        n.error ? (
-          <p key={`e${i}`} role="alert" className="text-sm text-destructive">
-            {n.error}
+      {/* New Entry — create an inventory item in the standard modal. Permission is
+          enforced server-side (post_live_item_entry) + RLS. */}
+      <Modal
+        open={showNewEntry}
+        onClose={() => setShowNewEntry(false)}
+        title="New inventory entry"
+        description="Add an item to available stock. Its price sets the catalogue price."
+        size="md"
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowNewEntry(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" form="inventory-new-entry-form" disabled={creating}>
+              {creating ? 'Adding…' : 'Add item'}
+            </Button>
+          </>
+        }
+      >
+        <form id="inventory-new-entry-form" action={createAction} className="space-y-3">
+          <ModalFormGrid>
+            <ModalFieldFull>
+              <Label htmlFor="ne-code" className="text-xs">
+                Item Code
+              </Label>
+              <Input
+                id="ne-code"
+                name="itemCode"
+                required
+                placeholder="e.g. SBA-N-3017"
+                className="mt-1 h-9"
+              />
+            </ModalFieldFull>
+            <div>
+              <Label htmlFor="ne-price" className="text-xs">
+                Price
+              </Label>
+              <MoneyInput
+                id="ne-price"
+                name="unitPrice"
+                placeholder="0.00"
+                className="mt-1 h-9"
+              />
+            </div>
+            <div>
+              <Label htmlFor="ne-date" className="text-xs">
+                Date Encoded
+              </Label>
+              <Input
+                id="ne-date"
+                name="dateEncoded"
+                type="date"
+                defaultValue={todayISO()}
+                className="mt-1 h-9"
+              />
+            </div>
+          </ModalFormGrid>
+          <p className="text-[11px] text-muted-foreground">
+            Item Code is required and must be unique. Date Encoded defaults to today
+            and can be changed.
           </p>
-        ) : null,
-      )}
-      {notices.map((n, i) =>
-        n.success ? (
-          <p key={`s${i}`} className="text-sm text-muted-foreground">
-            {n.success}
-          </p>
-        ) : null,
-      )}
+          {createState.error ? (
+            <p role="alert" className="text-sm text-destructive">
+              {createState.error}
+            </p>
+          ) : null}
+        </form>
+      </Modal>
 
-      {tab === 'Inventory' ? (
+      {tab === 'Active Inventory' ? (
         !inventory.ok ? (
           // A FAILED read, not an empty result — say so, never a false "no items".
           <ReadError title="Inventory could not be loaded" detail={inventory.reason} />
         ) : inventory.rows.length === 0 ? (
           <EmptyState title="No inventory items" />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[680px] text-left text-xs">
+          <div className="space-y-3">
+            {/* Spreadsheet-style search + filters over the loaded items. */}
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3">
+              <input
+                value={invSearch}
+                onChange={(e) => setInvSearch(e.target.value)}
+                placeholder="Search code or item…"
+                aria-label="Search inventory"
+                data-testid="inventory-search"
+                className="h-9 flex-1 min-w-[10rem] rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+              />
+              <select
+                value={invStatus}
+                onChange={(e) => setInvStatus(e.target.value)}
+                aria-label="Filter by status"
+                data-testid="inventory-filter-status"
+                className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+              >
+                <option value="all">All statuses</option>
+                {statusOptions.map((s) => (
+                  <option key={s} value={s}>
+                    {s.replace(/_/g, ' ')}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs text-muted-foreground">
+                {filteredInventory.length} of {inventory.rows.length}
+              </span>
+            </div>
+
+            {filteredInventory.length === 0 ? (
+              <div className="rounded-xl border border-border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
+                No items match these filters.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-left text-xs">
               <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                 <tr>
-                  <th className="px-2.5 py-2">Item</th>
+                  <th className="px-2.5 py-2">Unique Code</th>
+                  <th className="px-2.5 py-2">Facebook Name</th>
                   <th className="px-2.5 py-2">Status</th>
-                  <th className="px-2.5 py-2 text-right">Total</th>
-                  <th className="px-2.5 py-2 text-right">Available</th>
-                  <th className="px-2.5 py-2 text-right">Reserved</th>
-                  <th className="px-2.5 py-2">Custody</th>
+                  <th className="px-2.5 py-2 text-right">Grams</th>
+                  <th className="px-2.5 py-2">Date Encoded</th>
                   <th className="px-2.5 py-2">Notes</th>
+                  <th className="px-2.5 py-2 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {inventory.rows.map((i) => (
+                {filteredInventory.map((i) => (
                   <tr key={i.inventoryItemId}>
+                    <td className="px-2.5 py-2 font-mono">{i.itemCode}</td>
                     <td className="px-2.5 py-2">
-                      <span className="font-mono">{i.itemCode}</span>
-                      {i.itemName ? ` · ${i.itemName}` : ''}
+                      {i.facebookName ?? <span className="text-muted-foreground">—</span>}
                     </td>
                     <td className="px-2.5 py-2">
                       {i.availabilityStatus.replace(/_/g, ' ')}
                     </td>
                     <td className="px-2.5 py-2 text-right tabular-nums">
-                      {i.quantityTotal}
+                      {i.gramsPerPiece ?? parseInventoryCode(i.itemCode).grams ?? '—'}
                     </td>
-                    <td className="px-2.5 py-2 text-right tabular-nums">
-                      {i.availableQuantity}
-                    </td>
-                    <td className="px-2.5 py-2 text-right tabular-nums">
-                      {i.reservedQuantity}
-                    </td>
-                    <td className="px-2.5 py-2">
-                      <ItemCustodyEditor
-                        inventoryItemId={i.inventoryItemId}
-                        custodyHolder={i.custodyHolder}
-                        storageLocation={i.storageLocation}
-                        handlerName={i.handlerName}
-                        canEdit={canMonitor}
-                      />
+                    <td className="px-2.5 py-2 whitespace-nowrap">
+                      {fmtEncoded(i.createdAt)}
                     </td>
                     <td className="px-2.5 py-2 text-muted-foreground">
                       {i.inRtsReview ? 'In RTS review' : ''}
                       {i.isForfeited ? ' · forfeited (excluded from auto-return)' : ''}
                     </td>
+                    <td className="px-2.5 py-2">
+                      <InventoryItemActions row={i} canMonitor={canMonitor} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Available is derived from reservations, never a stored counter — a counter
-              drifts, and drift means double-selling.
-            </p>
+              </div>
+            )}
           </div>
         )
       ) : null}
 
-      {tab === 'Returned-to-Stock Review' ? (
-        reviews.length === 0 ? (
+      {tab === 'Completed Items' ? (
+        completed.length === 0 ? (
           <EmptyState
-            title="Nothing in Returned-to-Stock Review"
-            description="Withdrawals, cancellations, and rejections arrive here for a human decision."
+            title="No completed items yet"
+            description="Sold and released items appear here (historical). The record is never deleted — it moves here by status when an order completes."
           />
         ) : (
-          <ul className="space-y-2">
-            {reviews.map((r) => (
-              <li key={r.id}>
-                <Card>
-                  <CardContent className="space-y-2 pt-6">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate font-mono text-sm font-semibold">
-                          {r.itemCode}
-                        </p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {r.triggerKind.replace(/_/g, ' ')} · qty {r.quantity}
-                        </p>
-                      </div>
-                      <span className="rounded-full border px-2 py-0.5 text-xs">
-                        {r.status.replace(/_/g, ' ')}
-                        {r.freedUnitOutcome
-                          ? ` · ${r.freedUnitOutcome.replace(/_/g, ' ')}`
-                          : ''}
-                      </span>
-                    </div>
+          <div className="space-y-3">
+            {/* Search + completion-type filter + export (§12). */}
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3">
+              <input
+                value={compSearch}
+                onChange={(e) => setCompSearch(e.target.value)}
+                placeholder="Search code, item, customer, order…"
+                aria-label="Search completed items"
+                data-testid="completed-search"
+                className="h-9 flex-1 min-w-[12rem] rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+              />
+              <select
+                value={compType}
+                onChange={(e) => setCompType(e.target.value)}
+                aria-label="Filter by completion type"
+                data-testid="completed-filter-type"
+                className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+              >
+                <option value="all">All completion types</option>
+                {completionTypeOptions.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs text-muted-foreground">
+                {filteredCompleted.length} of {completed.length}
+              </span>
+              <Button type="button" size="sm" variant="outline" onClick={exportCompleted}>
+                ⭳ Export CSV
+              </Button>
+            </div>
 
-                    {canMonitor && r.status === 'in_review' ? (
-                      <form action={rtsAction} className="flex flex-wrap items-end gap-2">
-                        <input type="hidden" name="reviewId" value={r.id} />
-                        <div>
-                          <Label htmlFor={`out-${r.id}`} className="text-xs">
-                            Freed unit outcome
-                          </Label>
-                          <select
-                            id={`out-${r.id}`}
-                            name="freedUnitOutcome"
-                            required
-                            className="h-8 rounded-md border bg-background px-2 text-xs"
+            <div className="overflow-x-auto rounded-xl border border-border bg-card">
+              <table
+                className="w-full min-w-[960px] text-left text-xs"
+                data-testid="completed-items"
+              >
+                <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-2.5 py-2">Inventory Code</th>
+                    <th className="px-2.5 py-2">Type</th>
+                    <th className="px-2.5 py-2 text-right">Grams</th>
+                    <th className="px-2.5 py-2">Customer</th>
+                    <th className="px-2.5 py-2">Order</th>
+                    <th className="px-2.5 py-2">Invoice</th>
+                    <th className="px-2.5 py-2">Completion</th>
+                    <th className="px-2.5 py-2">Completed</th>
+                    <th className="px-2.5 py-2 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {filteredCompleted.map((c) => {
+                    const parsed = parseInventoryCode(c.itemCode);
+                    return (
+                      <tr key={c.inventoryItemId}>
+                        <td className="px-2.5 py-2 font-mono">{c.itemCode}</td>
+                        <td className="px-2.5 py-2 text-muted-foreground">
+                          {parsed.itemType ?? '—'}
+                        </td>
+                        <td className="px-2.5 py-2 text-right tabular-nums">
+                          {parsed.grams ?? '—'}
+                        </td>
+                        <td className="px-2.5 py-2">{c.customerName ?? '—'}</td>
+                        <td className="px-2.5 py-2 font-mono">{c.orderNumber ?? '—'}</td>
+                        <td className="px-2.5 py-2 font-mono">{c.invoiceNumber ?? '—'}</td>
+                        <td className="px-2.5 py-2">
+                          <span className="font-medium text-gold-strong">
+                            {c.completionType}
+                          </span>
+                        </td>
+                        <td className="px-2.5 py-2">
+                          {c.completedDate ? c.completedDate.slice(0, 10) : '—'}
+                        </td>
+                        <td className="px-2.5 py-2 text-right">
+                          <button
+                            type="button"
+                            onClick={() => setCompView(c)}
+                            data-testid={`completed-view-${c.inventoryItemId}`}
+                            className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
                           >
-                            {OUTCOMES.map((o) => (
-                              <option key={o.value} value={o.value}>
-                                {o.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <Button
-                          type="submit"
-                          name="decision"
-                          value="approved_return"
-                          size="sm"
-                          disabled={deciding}
-                        >
-                          Approve Return
-                        </Button>
-                        <Button
-                          type="submit"
-                          name="decision"
-                          value="rejected_held"
-                          size="sm"
-                          variant="destructive"
-                          disabled={deciding}
-                        >
-                          Reject &amp; Hold
-                        </Button>
-                      </form>
-                    ) : null}
-
-                    {canMonitor && r.status === 'approved_return' ? (
-                      <form action={returnAction}>
-                        <input
-                          type="hidden"
-                          name="inventoryItemId"
-                          value={r.inventoryItemId}
-                        />
-                        <Button
-                          type="submit"
-                          size="sm"
-                          variant="outline"
-                          disabled={returning}
-                        >
-                          Return to Available
-                        </Button>
-                      </form>
-                    ) : null}
-
-                    <p className="text-xs text-muted-foreground">
-                      A review decides and records; it never promotes a 2nd miner or
-                      allocates from the waitlist. Offering to the 2nd miner is a review,
-                      not a gift. Approving authorises the return — performing it is a
-                      separate step.
-                    </p>
-                  </CardContent>
-                </Card>
-              </li>
-            ))}
-          </ul>
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <p className="px-3 py-2 text-[11px] text-muted-foreground">
+                Historical sold/released inventory — one source of truth, split by status.
+                Records are never deleted or copied.
+              </p>
+            </div>
+          </div>
         )
       ) : null}
 
-      {tab === 'Duplicate Review' ? (
-        duplicates.length === 0 ? (
-          <EmptyState
-            title="No possible duplicates"
-            description="Possible duplicate customers are flagged for review. Nothing is ever merged automatically."
-          />
-        ) : (
-          <ul className="space-y-2">
-            {duplicates.map((d) => (
-              <li key={d.id}>
-                <Card>
-                  <CardContent className="space-y-2 pt-6">
-                    <p className="text-sm font-semibold">
-                      {d.customerName} <span className="font-normal">vs</span>{' '}
-                      {d.duplicateName}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {d.status.replace(/_/g, ' ')}
-                    </p>
-
-                    {canReview && d.status === 'open' ? (
-                      <form
-                        action={dupeAction}
-                        className="flex flex-wrap items-end gap-2"
-                      >
-                        <input type="hidden" name="referenceId" value={d.id} />
-                        <Button
-                          type="submit"
-                          name="judgement"
-                          value="reviewed_distinct"
-                          size="sm"
-                          variant="outline"
-                          disabled={reviewing}
-                        >
-                          Distinct customers
-                        </Button>
-                        <Button
-                          type="submit"
-                          name="judgement"
-                          value="reviewed_duplicate"
-                          size="sm"
-                          variant="outline"
-                          disabled={reviewing}
-                        >
-                          Same customer
-                        </Button>
-                      </form>
-                    ) : null}
-
-                    <p className="text-xs text-muted-foreground">
-                      Recording a judgement merges nothing — not even &quot;same
-                      customer&quot;. Merge mechanics are deferred, and a silent merge
-                      would rewrite whose order is whose.
-                    </p>
-                  </CardContent>
-                </Card>
-              </li>
+      {/* Read-only Completed Item detail (§5). */}
+      <Modal
+        open={compView !== null}
+        onClose={() => setCompView(null)}
+        title="Completed item"
+        description="Read-only historical record. Correcting a completion is a separate controlled action."
+        size="md"
+      >
+        {compView ? (
+          <>
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+            {(
+              [
+                ['Inventory Code', compView.itemCode],
+                ['Item', compView.itemName ?? '—'],
+                ['Condition', parseInventoryCode(compView.itemCode).condition ?? '—'],
+                ['Item Type', parseInventoryCode(compView.itemCode).itemType ?? '—'],
+                ['Grams', parseInventoryCode(compView.itemCode).grams ?? '—'],
+                ['Size', parseInventoryCode(compView.itemCode).size ?? '—'],
+                ['Customer', compView.customerName ?? '—'],
+                ['Order Number', compView.orderNumber ?? '—'],
+                ['Invoice Number', compView.invoiceNumber ?? '—'],
+                ['Completion Type', compView.completionType],
+                ['Courier', compView.courier ?? '—'],
+                ['Tracking Number', compView.trackingNumber ?? '—'],
+                ['Completed Date', compView.completedDate?.slice(0, 10) ?? '—'],
+                ['Final Holder', compView.currentHolder ?? '—'],
+                ['Final Location', compView.currentLocation ?? '—'],
+                ['Status', compView.availabilityStatus.replace(/_/g, ' ')],
+              ] as const
+            ).map(([label, value]) => (
+              <div key={label} className="flex justify-between gap-3 border-b border-border py-1.5">
+                <span className="text-muted-foreground">{label}</span>
+                <span className="text-right font-medium">{value}</span>
+              </div>
             ))}
-          </ul>
-        )
-      ) : null}
+          </dl>
 
-      {tab === 'Migration' ? (
-        <div className="space-y-3">
-          {canMigrate ? (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Open a migration batch</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <form action={batchAction} className="flex flex-wrap items-end gap-2">
-                  <div>
-                    <Label htmlFor="label" className="text-xs">
-                      Label
-                    </Label>
-                    <Input id="label" name="label" required className="h-8 w-40" />
-                  </div>
-                  <div>
-                    <Label htmlFor="source" className="text-xs">
-                      Source description
-                    </Label>
-                    <Input
-                      id="source"
-                      name="sourceDescription"
-                      required
-                      placeholder="Where did these records come from?"
-                      className="h-8 w-64"
-                    />
-                  </div>
-                  <Button type="submit" size="sm" disabled={opening}>
-                    Open Batch
-                  </Button>
-                </form>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Migration is separate from live intake. A migrated record carries its
-                  batch and preserves its historical values — no fake claim is created.
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              Migration requires the Existing Record Entry permission.
-            </p>
-          )}
+          {/* Return to Stock Review (§10) — never marks the item available; opens
+              an in-review record for inspection + approval. Gated on monitoring. */}
+          {canMonitor ? (
+            <form action={returnCompletedAction} className="mt-4 space-y-2 border-t border-border pt-3">
+              <input
+                type="hidden"
+                name="inventoryItemId"
+                value={compView.inventoryItemId}
+              />
+              <Label htmlFor="ret-note" className="text-xs">
+                Return reason / condition note (optional)
+              </Label>
+              <Input id="ret-note" name="note" className="h-9" />
+              <div className="flex items-center gap-2">
+                <Button type="submit" variant="destructive" size="sm" disabled={returningItem}>
+                  {returningItem ? 'Sending…' : 'Return to Stock Review'}
+                </Button>
+                {returnCompState.error ? (
+                  <span role="alert" className="text-xs text-destructive">
+                    {returnCompState.error}
+                  </span>
+                ) : null}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                This does NOT make the item available. It goes through Returned-to-Stock
+                Review (inspection + authorized approval) first.
+              </p>
+            </form>
+          ) : null}
+          </>
+        ) : null}
+      </Modal>
 
-          {batches.length === 0 ? (
-            <EmptyState title="No migration batches" />
-          ) : (
-            <ul className="space-y-2">
-              {batches.map((b) => (
-                <li key={b.id}>
-                  <Card>
-                    <CardContent className="flex flex-wrap items-center justify-between gap-2 pt-6">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold">{b.label}</p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {b.sourceDescription}
-                        </p>
-                      </div>
-                      <span className="rounded-full border px-2 py-0.5 text-xs">
-                        {b.status.replace(/_/g, ' ')}
-                        {b.recordCount !== null ? ` · ${b.recordCount} records` : ''}
-                      </span>
-                    </CardContent>
-                  </Card>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -6,7 +6,7 @@
 -- may call it; on empty data every bucket is a "0" string.
 -- ============================================================================
 begin;
-select plan(8);
+select plan(11);
 
 insert into auth.users (id, instance_id, email, aud, role) values
   ('ef000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-000000000000',
@@ -70,6 +70,22 @@ select is(
   (public.report_money_in_transit()) ->> 'in_transit_to_collect',
   '0',
   'in_transit_to_collect is 0 with no dispatched COD orders'
+);
+-- #3 deeper: the rider-vs-LBC split and collected-but-not-remitted buckets.
+select is(
+  (public.report_money_in_transit()) ->> 'rider_to_collect',
+  '0',
+  'rider_to_collect is 0 with no rider-carried COD orders'
+);
+select is(
+  (public.report_money_in_transit()) ->> 'lbc_to_collect',
+  '0',
+  'lbc_to_collect is 0 with no LBC-carried COD orders'
+);
+select is(
+  (public.report_money_in_transit()) ->> 'collected_unremitted',
+  '0',
+  'collected_unremitted is 0 with nothing collected'
 );
 reset role;
 

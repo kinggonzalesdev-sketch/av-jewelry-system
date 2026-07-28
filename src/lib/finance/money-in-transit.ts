@@ -16,9 +16,15 @@ export type MoneyInTransit = {
   awaitingVerification: string;
   /** Outstanding balance on orders still awaiting their required payment. */
   customerPending: string;
-  /** Outstanding on COD orders dispatched but not completed — money a rider or
-   *  courier is carrying to collect. */
+  /** Outstanding on COD orders dispatched, NOT yet collected, not completed —
+   *  the total still out there to collect. */
   inTransitToCollect: string;
+  /** The rider-carried part of inTransitToCollect. */
+  riderToCollect: string;
+  /** The LBC-carried part of inTransitToCollect. */
+  lbcToCollect: string;
+  /** Cash already collected on delivery but not yet remitted to the shop. */
+  collectedUnremitted: string;
 };
 
 export type MoneyInTransitResult = { ok: true; data: MoneyInTransit } | { ok: false };
@@ -44,6 +50,9 @@ export async function getMoneyInTransit(): Promise<MoneyInTransitResult> {
       awaitingVerification: asMoney(d.awaiting_verification),
       customerPending: asMoney(d.customer_pending),
       inTransitToCollect: asMoney(d.in_transit_to_collect),
+      riderToCollect: asMoney(d.rider_to_collect),
+      lbcToCollect: asMoney(d.lbc_to_collect),
+      collectedUnremitted: asMoney(d.collected_unremitted),
     },
   };
 }

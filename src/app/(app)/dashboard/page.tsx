@@ -5,16 +5,17 @@ import { DashboardView } from '@/components/dashboard/dashboard-view';
 import { getGrantedPermissions } from '@/lib/authz/guard';
 import {
   getDashboardCounts,
-  getDashboardMetrics,
+  getDashboardMetricsRanged,
   listAuditEvents,
   listNotifications,
   search,
 } from '@/lib/dashboard/service';
 import { getFollowUpQueue } from '@/lib/followups/service';
 import { getMoneyInTransit } from '@/lib/finance/money-in-transit';
+import { getLayawayDashboard } from '@/lib/payments/layaway-ledger';
+import { getScrapIncome, getScrapTotal, listScrapSales } from '@/lib/scrap/service';
 
 export const metadata: Metadata = {
-  title: 'Dashboard Profile — A.V. Jewelry Operations',
 };
 
 /**
@@ -36,6 +37,15 @@ export default async function DashboardPage({
   const params = await searchParams;
   const query = typeof params.q === 'string' ? params.q : '';
 
+  // The date range comes from the URL so every money figure is server-scoped to it.
+  // No params → all time: from a sentinel epoch to today. The raw params are passed
+  // to the view so it can show "all time" vs an explicit range.
+  const rangeFrom = typeof params.from === 'string' ? params.from : undefined;
+  const rangeTo = typeof params.to === 'string' ? params.to : undefined;
+  const today = new Date().toISOString().slice(0, 10);
+  const effFrom = rangeFrom ?? '2000-01-01';
+  const effTo = rangeTo ?? today;
+
   const [
     counts,
     metrics,
@@ -44,17 +54,27 @@ export default async function DashboardPage({
     results,
     followUps,
     moneyInTransit,
+    scrapTotal,
+    scrapSales,
+    scrapIncome,
     permissions,
+    layaway,
   ] = await Promise.all([
     getDashboardCounts(),
-    getDashboardMetrics(),
+    getDashboardMetricsRanged(effFrom, effTo),
     listNotifications(),
     listAuditEvents(),
     search(query),
     getFollowUpQueue(),
     getMoneyInTransit(),
+    getScrapTotal(effFrom, effTo),
+    listScrapSales(8, { from: effFrom, to: effTo }),
+    getScrapIncome(effFrom, effTo),
     getGrantedPermissions(),
+    getLayawayDashboard(),
   ]);
+
+  const scrapByMaterial = scrapIncome.ok ? scrapIncome.rows : [];
 
   return (
     <div>
@@ -72,6 +92,12 @@ export default async function DashboardPage({
         query={query}
         followUps={followUps}
         moneyInTransit={moneyInTransit}
+        scrapTotal={scrapTotal}
+        scrapSales={scrapSales}
+        scrapByMaterial={scrapByMaterial}
+        layaway={layaway}
+        rangeFrom={rangeFrom}
+        rangeTo={rangeTo}
         canExport={permissions.has('export_data_reports')}
         canVerifyPayments={permissions.has('payment_verification')}
         canMonitorInventory={permissions.has('inventory_monitoring')}

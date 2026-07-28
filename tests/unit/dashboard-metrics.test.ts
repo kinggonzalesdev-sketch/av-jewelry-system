@@ -68,7 +68,16 @@ describe('getDashboardMetrics reader', () => {
 
   it('reads the approved aggregate and fails honestly (null → explicit error UI)', () => {
     expect(service).toContain("rpc('dashboard_metrics')");
-    expect(service).toContain('if (response.error || !response.data) return null');
+    // Honest null on a read failure, funnelled through the shared mapper.
+    expect(service).toContain('response.error ? null : response.data');
+    expect(service).toContain('if (!data) return null');
+  });
+
+  it('has a range-aware reader that scopes the same figures to [from, to]', () => {
+    expect(service).toContain('getDashboardMetricsRanged');
+    expect(service).toContain("rpc('dashboard_metrics_ranged'");
+    expect(service).toContain('p_from: from');
+    expect(service).toContain('p_to: to');
   });
 
   it('keeps money as strings — never a float', () => {

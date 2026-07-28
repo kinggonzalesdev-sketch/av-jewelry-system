@@ -50,7 +50,7 @@ describe('ReportsView (only the approved sales summary)', () => {
       />,
     );
     expect(screen.getByTestId('reports-result')).toBeInTheDocument();
-    expect(screen.getByText('₱209,100.00')).toBeInTheDocument();
+    expect(screen.getByText('₱209,100')).toBeInTheDocument();
     expect(screen.getByTestId('bar-chart')).toHaveAccessibleName(
       /payments by verification/i,
     );

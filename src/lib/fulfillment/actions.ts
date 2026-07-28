@@ -9,8 +9,11 @@ import {
   executeOwnerApproval,
   markDispatchedOrPickedUp,
   prepareFulfillment,
+  recordCollection,
+  recordRemittance,
   releaseFulfillment,
   requestOwnerApproval,
+  setCollectionChannel,
   type OwnerApprovalKind,
 } from '@/lib/fulfillment/service';
 
@@ -87,6 +90,57 @@ export async function dispatchAction(
     error: null,
     success: kind === 'dispatched' ? 'Marked dispatched.' : 'Marked picked up.',
   };
+}
+
+export async function setCollectionChannelAction(
+  _prev: FulfillmentActionState,
+  formData: FormData,
+): Promise<FulfillmentActionState> {
+  const orderId = text(formData, 'officialOrderId');
+  const channel = text(formData, 'channel');
+  if (!orderId) return { error: 'An order is required.', success: null };
+  if (!channel) return { error: 'A collection channel is required.', success: null };
+
+  const result = await setCollectionChannel(orderId, channel);
+  if (!result.ok) return { error: result.error, success: null };
+
+  revalidatePath('/orders/fulfillment');
+  revalidatePath('/dashboard');
+  return { error: null, success: 'Collection channel set.' };
+}
+
+export async function recordCollectionAction(
+  _prev: FulfillmentActionState,
+  formData: FormData,
+): Promise<FulfillmentActionState> {
+  const orderId = text(formData, 'officialOrderId');
+  const channel = text(formData, 'channel');
+  const amount = text(formData, 'amount');
+  if (!orderId) return { error: 'An order is required.', success: null };
+  if (!channel) return { error: 'A collection channel is required.', success: null };
+  if (!amount) return { error: 'The amount collected is required.', success: null };
+
+  const result = await recordCollection(orderId, { channel, amount });
+  if (!result.ok) return { error: result.error, success: null };
+
+  revalidatePath('/orders/fulfillment');
+  revalidatePath('/dashboard');
+  return { error: null, success: 'Collection recorded.' };
+}
+
+export async function recordRemittanceAction(
+  _prev: FulfillmentActionState,
+  formData: FormData,
+): Promise<FulfillmentActionState> {
+  const orderId = text(formData, 'officialOrderId');
+  if (!orderId) return { error: 'An order is required.', success: null };
+
+  const result = await recordRemittance(orderId);
+  if (!result.ok) return { error: result.error, success: null };
+
+  revalidatePath('/orders/fulfillment');
+  revalidatePath('/dashboard');
+  return { error: null, success: 'Remittance recorded.' };
 }
 
 export async function completeFulfillmentAction(

@@ -5,7 +5,6 @@ import { requireActiveStaff } from '@/lib/authz/guard';
 import { listCapabilities } from '@/lib/capabilities/service';
 
 export const metadata: Metadata = {
-  title: 'Capabilities — A.V. Jewelry Operations',
 };
 
 /**

@@ -3,7 +3,6 @@ import type { Metadata } from 'next';
 import { NotAuthorized } from '@/components/states/not-authorized';
 
 export const metadata: Metadata = {
-  title: 'Not authorized — A.V. Jewelry Operations',
 };
 
 /**

@@ -2,40 +2,35 @@ import type { Metadata } from 'next';
 
 import { InvoiceWorkspace } from '@/components/invoicing/invoice-workspace';
 import { getGrantedPermissions } from '@/lib/authz/guard';
-import { computeEligibility, listInvoiceDrafts } from '@/lib/invoicing/drafts';
+import { listInvoiceDrafts } from '@/lib/invoicing/drafts';
 import { PageHeader } from '@/components/ui/page-primitives';
 
 export const metadata: Metadata = {
-  title: 'Invoice — A.V. Jewelry Operations',
 };
 
+export const dynamic = 'force-dynamic';
+
 /**
- * Invoice workspace (Bible §15, §22.8–22.9). Delivered by Roadmap Phase 5.
- *
- * Deliberately a SUB-ROUTE of the Orders group, not a sixth bottom-nav item:
- * the approved navigation is exactly five items (§8.2) and is frozen. Invoice
- * Draft and Official Orders belong to the Orders group per the screen map.
- *
- * Eligibility is recomputed from stored data on every render — the previous
- * page's opinion of what was eligible is never reused.
+ * Invoice preparation — a STANDALONE page again (Owner request 2026-07-23:
+ * remove the panel folded into Orders → For Invoice). Group Confirmed Claims into
+ * drafts, review, then Approve & Send to create the Official Order. No invoice
+ * logic, data, or DB functions changed — only the location: it is here, not on
+ * the Orders list.
  */
 export default async function InvoicePage() {
-  const [drafts, eligibility, permissions] = await Promise.all([
+  const [drafts, permissions] = await Promise.all([
     listInvoiceDrafts(),
-    computeEligibility(),
     getGrantedPermissions(),
   ]);
 
   return (
     <div>
       <PageHeader
-        title="Invoice"
-        description="Group Confirmed Claims into drafts, then approve to create one Official Order."
+        title="Invoice preparation"
+        description="Group Confirmed Claims into drafts, review, then Approve & Send to create the Official Order."
       />
-
       <InvoiceWorkspace
         drafts={drafts}
-        excluded={eligibility.excluded}
         canPrepare={permissions.has('invoice_preparation')}
       />
     </div>

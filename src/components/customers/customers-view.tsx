@@ -1,37 +1,45 @@
-import Link from 'next/link';
+'use client';
 
-import type { CustomerDetailResult, CustomersResult } from '@/lib/customers/service';
-import type { AttachmentRow } from '@/lib/attachments/types';
-import { AttachmentGallery } from '@/components/attachments/attachment-gallery';
-import { PhotoCapture } from '@/components/attachments/photo-capture';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
+
+import { updateCustomerAction } from '@/lib/customers/actions';
+import type { CustomerListRow, CustomersResult } from '@/lib/customers/service';
+import { CustomerRowActions } from '@/components/customers/customer-row-actions';
 import { EmptyState } from '@/components/states/empty-state';
-import { ReadError, StatusBadge, type BadgeTone } from '@/components/ui/page-primitives';
+import { Sensitive, SensitivePhone } from '@/components/shell/privacy';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { ReadError, StatusBadge } from '@/components/ui/page-primitives';
+import { Modal } from '@/components/ui/modal';
 
 /**
- * Customers directory — real, read-only. A failed read shows an explicit error,
- * never an empty table. Selecting a customer opens their detail with related
- * Official Orders and claims (all RLS-scoped). Nothing here writes.
+ * Customers directory — read-only. Selecting "View" opens a centered modal with
+ * the customer's core details (no right-side panel). The list stays mounted
+ * behind the modal, so search text and scroll position are preserved. Nothing
+ * here writes; related orders / claims / photos are intentionally not shown on
+ * this page (their backend data is untouched).
  */
 
-function humanize(value: string): string {
-  return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function detailHref(query: string, id: string): string {
-  const params = new URLSearchParams();
-  if (query) params.set('q', query);
-  params.set('id', id);
-  return `/customers?${params.toString()}`;
+/** A short local date for "Date Created", or a dash. */
+function fmtDate(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso.slice(0, 10) : d.toLocaleDateString();
 }
 
 function CustomerList({
   result,
   query,
-  selectedId,
+  canManage,
+  onView,
 }: {
   result: CustomersResult;
   query: string;
-  selectedId: string | null;
+  canManage: boolean;
+  onView: (row: CustomerListRow) => void;
 }) {
   if (!result.ok) {
     return <ReadError title="Customers could not be loaded" detail={result.reason} />;
@@ -51,35 +59,30 @@ function CustomerList({
   return (
     <div className="rounded-xl border border-border bg-card">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[520px] text-left text-sm">
+        <table className="w-full min-w-[640px] text-left text-sm">
           <thead>
             <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
-              <th className="px-3 py-2 font-medium">Customer</th>
+              <th className="px-3 py-2 font-medium">Customer Name</th>
+              <th className="px-3 py-2 font-medium">Address</th>
               <th className="px-3 py-2 font-medium">Contact</th>
-              <th className="px-3 py-2 font-medium">Source</th>
               <th className="px-3 py-2 font-medium">Status</th>
+              <th className="px-3 py-2 font-medium">Stage</th>
               <th className="px-3 py-2 text-right font-medium">Details</th>
             </tr>
           </thead>
           <tbody>
             {result.rows.map((row) => (
-              <tr
-                key={row.id}
-                className={
-                  row.id === selectedId
-                    ? 'border-b border-border bg-accent/50 last:border-0'
-                    : 'border-b border-border last:border-0'
-                }
-              >
+              <tr key={row.id} className="border-b border-border last:border-0">
                 <td className="px-3 py-2.5 font-medium">{row.displayName}</td>
                 <td className="px-3 py-2.5 text-muted-foreground">
-                  {row.contactNumber ?? '—'}
+                  {row.address ? <Sensitive>{row.address}</Sensitive> : '—'}
                 </td>
-                <td className="px-3 py-2.5">
-                  <StatusBadge
-                    label={row.sourceKind === 'migrated' ? 'Migrated' : 'Native'}
-                    tone="neutral"
-                  />
+                <td className="px-3 py-2.5 text-muted-foreground">
+                  {row.contactNumber ? (
+                    <SensitivePhone value={row.contactNumber} />
+                  ) : (
+                    '—'
+                  )}
                 </td>
                 <td className="px-3 py-2.5">
                   <StatusBadge
@@ -87,13 +90,25 @@ function CustomerList({
                     tone={row.isActive ? 'strong' : 'warning'}
                   />
                 </td>
+                <td className="px-3 py-2.5 text-muted-foreground">{row.stage}</td>
                 <td className="px-3 py-2.5 text-right">
-                  <Link
-                    href={detailHref(query, row.id)}
-                    className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
-                  >
-                    View
-                  </Link>
+                  <div className="flex items-center justify-end gap-1.5">
+                    {canManage ? (
+                      <CustomerRowActions
+                        customerId={row.id}
+                        customerName={row.displayName}
+                        canManage={canManage}
+                      />
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => onView(row)}
+                      data-testid={`customer-view-${row.id}`}
+                      className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+                    >
+                      View
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -104,133 +119,184 @@ function CustomerList({
   );
 }
 
-const ORDER_TONE: Record<string, BadgeTone> = {
-  invoiced: 'neutral',
-  active_layaway: 'gold',
-  for_fulfillment: 'gold',
-  closed: 'strong',
-  cancelled: 'danger',
-};
+function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex justify-between gap-3 border-b border-border py-2">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-right font-medium">{value}</span>
+    </div>
+  );
+}
 
-function CustomerDetailPanel({
-  detail,
-  attachments,
+/**
+ * Modal body — View by default; Edit turns Full Name / Contact / Address / Stage-
+ * area into a form. Stage + Date Created stay read-only (Stage is derived from the
+ * customer's latest order, not a stored customer field). Saves by permanent id via
+ * updateCustomerAction; the row + modal refresh without a full reload.
+ */
+function CustomerModalContent({
+  customer,
+  canEdit,
+  onChange,
 }: {
-  detail: CustomerDetailResult;
-  attachments: AttachmentRow[];
+  customer: CustomerListRow;
+  canEdit: boolean;
+  onChange: (next: CustomerListRow) => void;
 }) {
-  if (!detail.ok) {
-    return (
-      <ReadError title="Customer details could not be loaded" detail={detail.reason} />
-    );
-  }
-  if (detail.customer === null) {
-    return (
-      <EmptyState
-        title="Customer not found"
-        description="This customer does not exist or is not visible to you."
-      />
-    );
-  }
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(customer.displayName);
+  const [contact, setContact] = useState(customer.contactNumber ?? '');
+  const [address, setAddress] = useState(customer.address ?? '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const { customer, orders, claims } = detail;
+  const startEdit = () => {
+    setName(customer.displayName);
+    setContact(customer.contactNumber ?? '');
+    setAddress(customer.address ?? '');
+    setError(null);
+    setEditing(true);
+  };
+
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+    const res = await updateCustomerAction(
+      customer.id,
+      name,
+      contact.trim() || null,
+      address.trim() || null,
+    );
+    if (!res.ok) {
+      setSaving(false);
+      setError(res.error);
+      return;
+    }
+    // Reflect the change in the open modal + refresh the row (no full reload).
+    onChange({
+      ...customer,
+      displayName: name.trim(),
+      contactNumber: contact.trim() || null,
+      address: address.trim() || null,
+    });
+    router.refresh();
+    setSaving(false);
+    setEditing(false);
+  };
+
+  if (!editing) {
+    return (
+      <div data-testid="customer-detail-modal">
+        <dl className="text-sm">
+          <DetailRow label="Full Name" value={customer.displayName || '—'} />
+          <DetailRow
+            label="Contact Number"
+            value={
+              customer.contactNumber ? (
+                <SensitivePhone value={customer.contactNumber} />
+              ) : (
+                '—'
+              )
+            }
+          />
+          <DetailRow
+            label="Address"
+            value={customer.address ? <Sensitive>{customer.address}</Sensitive> : '—'}
+          />
+          <DetailRow label="Stage" value={customer.stage || '—'} />
+          <DetailRow label="Date Created" value={fmtDate(customer.createdAt)} />
+        </dl>
+        {canEdit ? (
+          <div className="mt-4 flex justify-end">
+            <Button
+              type="button"
+              size="sm"
+              onClick={startEdit}
+              data-testid="customer-edit"
+            >
+              Edit
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-4 rounded-xl border border-border bg-card p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h2 className="text-lg font-semibold text-foreground">
-            {customer.displayName}
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            {customer.contactNumber ?? 'No contact number'}
-          </p>
-        </div>
-        <div className="flex gap-1.5">
-          <StatusBadge
-            label={customer.sourceKind === 'migrated' ? 'Migrated' : 'Native'}
-            tone="neutral"
-          />
-          <StatusBadge
-            label={customer.isActive ? 'Active' : 'Inactive'}
-            tone={customer.isActive ? 'strong' : 'warning'}
-          />
-        </div>
+    <div className="space-y-3 text-sm" data-testid="customer-edit-form">
+      <div>
+        <Label htmlFor="cust-name" className="text-xs">
+          Full Name
+        </Label>
+        <Input
+          id="cust-name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+          className="mt-1 h-9"
+          data-testid="customer-edit-name"
+        />
       </div>
-
-      {customer.notes ? (
-        <p className="rounded-lg bg-muted p-2 text-sm text-muted-foreground">
-          {customer.notes}
+      <div>
+        <Label htmlFor="cust-contact" className="text-xs">
+          Contact Number
+        </Label>
+        <Input
+          id="cust-contact"
+          type="tel"
+          value={contact}
+          onChange={(e) => setContact(e.target.value)}
+          placeholder="e.g. 0999-000-0001"
+          className="mt-1 h-9"
+          data-testid="customer-edit-contact"
+        />
+      </div>
+      <div>
+        <Label htmlFor="cust-address" className="text-xs">
+          Address
+        </Label>
+        <Input
+          id="cust-address"
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          className="mt-1 h-9"
+          data-testid="customer-edit-address"
+        />
+      </div>
+      <div>
+        <Label className="text-xs">Stage</Label>
+        <p className="mt-1 rounded-md border border-dashed border-border px-2 py-1.5 text-xs text-muted-foreground">
+          {customer.stage || '—'} — reflects the latest order; not edited here.
+        </p>
+      </div>
+      <DetailRow label="Date Created" value={fmtDate(customer.createdAt)} />
+      {error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
         </p>
       ) : null}
-
-      <section>
-        <h3 className="mb-1.5 text-sm font-semibold text-foreground">
-          Official Orders ({orders.length})
-        </h3>
-        {orders.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No Official Orders.</p>
-        ) : (
-          <ul className="space-y-1 text-sm">
-            {orders.map((o) => (
-              <li
-                key={o.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-2.5 py-1.5"
-              >
-                <span className="font-mono text-xs">{o.orderNumber}</span>
-                <StatusBadge
-                  label={humanize(o.status)}
-                  tone={ORDER_TONE[o.status] ?? 'neutral'}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section>
-        <h3 className="mb-1.5 text-sm font-semibold text-foreground">
-          Claims ({claims.length})
-        </h3>
-        {claims.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No claims.</p>
-        ) : (
-          <ul className="space-y-1 text-sm">
-            {claims.map((c) => (
-              <li
-                key={c.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-2.5 py-1.5"
-              >
-                <span className="font-mono text-xs">
-                  {c.claimReference}
-                  <span className="ml-2 text-muted-foreground">×{c.quantity}</span>
-                </span>
-                <StatusBadge label={humanize(c.status)} tone="neutral" />
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section>
-        <h3 className="mb-1.5 text-sm font-semibold text-foreground">
-          Reference photos ({attachments.length})
-        </h3>
-        <div className="space-y-2">
-          <AttachmentGallery attachments={attachments} />
-          <PhotoCapture
-            relatedEntityType="customer"
-            relatedEntityId={customer.id}
-            purpose="photo"
-            label="Attach a reference photo"
-          />
-        </div>
-      </section>
-
-      <p className="text-xs text-muted-foreground">
-        Read-only. Related orders and claims are limited to records you may already see.
-        Customer records are created through claim capture or migration, not here.
-      </p>
+      <div className="flex justify-end gap-2 pt-1">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => setEditing(false)}
+          disabled={saving}
+        >
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => void save()}
+          disabled={saving}
+          data-testid="customer-save"
+        >
+          {saving ? 'Saving…' : 'Save Changes'}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -238,16 +304,16 @@ function CustomerDetailPanel({
 export function CustomersView({
   result,
   query,
-  detail,
-  selectedId,
-  attachments,
+  canManage,
+  canEdit = false,
 }: {
   result: CustomersResult;
   query: string;
-  detail: CustomerDetailResult | null;
-  selectedId: string | null;
-  attachments: AttachmentRow[];
+  canManage: boolean;
+  canEdit?: boolean;
 }) {
+  const [selected, setSelected] = useState<CustomerListRow | null>(null);
+
   return (
     <div className="space-y-4">
       <form method="GET" className="flex flex-wrap items-end gap-2">
@@ -283,12 +349,30 @@ export function CustomersView({
         <p className="text-xs text-muted-foreground">Enter at least two characters.</p>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-        <CustomerList result={result} query={query} selectedId={selectedId} />
-        {detail ? (
-          <CustomerDetailPanel detail={detail} attachments={attachments} />
+      <CustomerList
+        result={result}
+        query={query}
+        canManage={canManage}
+        onView={setSelected}
+      />
+
+      {/* Centered detail modal — dark overlay, ✕ / Escape / click-outside close,
+          background scroll locked, list preserved behind it. */}
+      <Modal
+        open={selected !== null}
+        onClose={() => setSelected(null)}
+        title="Customer"
+        size="sm"
+      >
+        {selected ? (
+          <CustomerModalContent
+            key={selected.id}
+            customer={selected}
+            canEdit={canEdit}
+            onChange={setSelected}
+          />
         ) : null}
-      </div>
+      </Modal>
     </div>
   );
 }

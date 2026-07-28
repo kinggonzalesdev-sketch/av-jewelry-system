@@ -1,17 +1,18 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useEffect, useRef, useState } from 'react';
 
 import { recordScrapAction } from '@/lib/scrap/actions';
 import { EMPTY_SCRAP_STATE, type ScrapActionState } from '@/lib/scrap/action-state';
 import type { ScrapIncomeResult, ScrapSaleRow } from '@/lib/scrap/service';
 import { formatPeso } from '@/lib/payments/format';
-import { EmptyState } from '@/components/states/empty-state';
 import { MetricCard, ReadError } from '@/components/ui/page-primitives';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { MoneyInput } from '@/components/ui/money-input';
 import { Label } from '@/components/ui/label';
+import { Modal, ModalFormGrid } from '@/components/ui/modal';
 
 /**
  * Scrap income (Bible §G). Record a scrap gold/silver sale, and see the income
@@ -34,8 +35,25 @@ export function ScrapView({
     EMPTY_SCRAP_STATE,
   );
 
+  const [showRecord, setShowRecord] = useState(false);
+  // Close the dialog once a sale records (once per new success).
+  const lastSuccess = useRef<string | null>(null);
+  useEffect(() => {
+    if (state.success && state.success !== lastSuccess.current) {
+      lastSuccess.current = state.success;
+      setShowRecord(false);
+    }
+  }, [state.success]);
+
   return (
     <div className="space-y-4">
+      {/* Primary action opens the standard dialog — never an inline page form. */}
+      <div className="flex justify-end">
+        <Button type="button" onClick={() => setShowRecord(true)}>
+          ＋ Record scrap sale
+        </Button>
+      </div>
+
       {/* Income summary per material */}
       <Card>
         <CardHeader>
@@ -89,13 +107,26 @@ export function ScrapView({
         </CardContent>
       </Card>
 
-      {/* Record a scrap sale */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Record a scrap sale</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form action={action} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {/* Record a scrap sale — standard centered dialog. */}
+      <Modal
+        open={showRecord}
+        onClose={() => setShowRecord(false)}
+        title="Record a scrap sale"
+        description="Separate gold/silver income. Amount is stored as entered; totals are summed in SQL."
+        size="md"
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setShowRecord(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="scrap-record-form" disabled={pending}>
+              {pending ? 'Recording…' : 'Record scrap sale'}
+            </Button>
+          </>
+        }
+      >
+        <form id="scrap-record-form" action={action} className="space-y-3">
+          <ModalFormGrid>
             <div>
               <Label htmlFor="material" className="text-xs">
                 Material
@@ -105,11 +136,23 @@ export function ScrapView({
                 name="material"
                 required
                 defaultValue="gold"
-                className="mt-0.5 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
+                className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
               >
                 <option value="gold">Gold</option>
                 <option value="silver">Silver</option>
               </select>
+            </div>
+            <div>
+              <Label htmlFor="soldOn" className="text-xs">
+                Sold on
+              </Label>
+              <Input
+                id="soldOn"
+                name="soldOn"
+                type="date"
+                defaultValue={to}
+                className="mt-1 h-9"
+              />
             </div>
             <div>
               <Label htmlFor="grams" className="text-xs">
@@ -122,63 +165,35 @@ export function ScrapView({
                 step="0.001"
                 min="0.001"
                 required
-                className="h-9"
+                className="mt-1 h-9"
               />
             </div>
             <div>
               <Label htmlFor="amount" className="text-xs">
-                Amount (₱)
+                Amount
               </Label>
-              <Input
-                id="amount"
-                name="amount"
-                type="number"
-                step="0.01"
-                min="0"
-                required
-                className="h-9"
-              />
+              <MoneyInput id="amount" name="amount" required className="mt-1 h-9" />
             </div>
             <div>
               <Label htmlFor="buyer" className="text-xs">
                 Buyer (optional)
               </Label>
-              <Input id="buyer" name="buyer" className="h-9" />
-            </div>
-            <div>
-              <Label htmlFor="soldOn" className="text-xs">
-                Sold on
-              </Label>
-              <Input
-                id="soldOn"
-                name="soldOn"
-                type="date"
-                defaultValue={to}
-                className="h-9"
-              />
+              <Input id="buyer" name="buyer" className="mt-1 h-9" />
             </div>
             <div>
               <Label htmlFor="note" className="text-xs">
                 Note (optional)
               </Label>
-              <Input id="note" name="note" className="h-9" />
+              <Input id="note" name="note" className="mt-1 h-9" />
             </div>
-            <div className="sm:col-span-2 lg:col-span-3">
-              <Button type="submit" disabled={pending}>
-                {pending ? 'Recording…' : 'Record scrap sale'}
-              </Button>
-              {state.error ? (
-                <span className="ml-3 text-sm text-destructive">{state.error}</span>
-              ) : null}
-              {state.success ? (
-                <span className="ml-3 text-sm text-muted-foreground">
-                  {state.success}
-                </span>
-              ) : null}
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+          </ModalFormGrid>
+          {state.error ? (
+            <p role="alert" className="text-sm text-destructive">
+              {state.error}
+            </p>
+          ) : null}
+        </form>
+      </Modal>
 
       {/* Recent scrap sales */}
       <Card>
@@ -186,36 +201,50 @@ export function ScrapView({
           <CardTitle className="text-base">Recent scrap sales</CardTitle>
         </CardHeader>
         <CardContent>
-          {sales.length === 0 ? (
-            <EmptyState title="No scrap sales recorded" />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[560px] text-left text-sm">
-                <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <tr>
-                    <th className="px-2.5 py-2 font-medium">Date</th>
-                    <th className="px-2.5 py-2 font-medium">Material</th>
-                    <th className="px-2.5 py-2 text-right font-medium">Grams</th>
-                    <th className="px-2.5 py-2 text-right font-medium">Amount</th>
-                    <th className="px-2.5 py-2 font-medium">Buyer</th>
+          {/* Fixed columns mirroring the Record-a-Scrap-Sale form. The headers stay
+              visible even with no data — an empty state is a single full-width row,
+              never a large empty box. */}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-2.5 py-2 font-medium">Material</th>
+                  <th className="px-2.5 py-2 text-right font-medium">Grams</th>
+                  <th className="px-2.5 py-2 text-right font-medium">Amount</th>
+                  <th className="px-2.5 py-2 font-medium">Buyer</th>
+                  <th className="px-2.5 py-2 font-medium">Sold On</th>
+                  <th className="px-2.5 py-2 font-medium">Note</th>
+                  <th className="px-2.5 py-2 text-right font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sales.length === 0 ? (
+                  <tr className="border-b last:border-0">
+                    <td
+                      colSpan={7}
+                      className="px-2.5 py-6 text-center text-muted-foreground"
+                    >
+                      No scrap sales recorded.
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {sales.map((s) => (
+                ) : (
+                  sales.map((s) => (
                     <tr key={s.id} className="border-b last:border-0">
-                      <td className="px-2.5 py-2">{s.soldOn}</td>
                       <td className="px-2.5 py-2 capitalize">{s.material}</td>
                       <td className="px-2.5 py-2 text-right tabular-nums">{s.grams}</td>
                       <td className="px-2.5 py-2 text-right tabular-nums">
                         {formatPeso(s.amount)}
                       </td>
                       <td className="px-2.5 py-2">{s.buyer ?? '—'}</td>
+                      <td className="px-2.5 py-2 whitespace-nowrap">{s.soldOn}</td>
+                      <td className="px-2.5 py-2 text-muted-foreground">{s.note ?? '—'}</td>
+                      <td className="px-2.5 py-2 text-right text-muted-foreground">—</td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </CardContent>
       </Card>
     </div>

@@ -14,7 +14,8 @@ export type RelatedEntityType =
   | 'customer'
   | 'fulfillment'
   | 'claim'
-  | 'live_batch';
+  | 'live_batch'
+  | 'attendance_record';
 
 export type AttachmentPurpose =
   'photo' | 'payment_proof' | 'evidence' | 'fulfillment_proof';

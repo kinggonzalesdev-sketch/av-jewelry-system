@@ -36,13 +36,21 @@ export function moneyString(value: unknown, fallback = '0.00'): string {
 }
 
 /**
- * Formats a peso string for display.
+ * Formats a peso string for display — the ONE centralized money formatter for the
+ * whole system (orders, payments, layaway, payroll, inventory, reports, invoices…).
  *
- * Groups thousands by string manipulation only — never through a float, because
- * a peso that round-trips through one can arrive a centavo short.
+ * Rules (Owner request 2026-07-25):
+ *   - Peso sign `₱` and comma thousands separators (₱1,000 · ₱1,000,000).
+ *   - Two decimals ONLY when needed: a whole amount shows none (₱1,000), a
+ *     fractional amount shows exactly two (₱1,250.50).
+ *
+ * Groups thousands by string manipulation only — never through a float, because a
+ * peso that round-trips through one can arrive a centavo short. Display-only: it
+ * changes no stored value and no calculation.
  */
 export function formatPeso(amount: string): string {
-  const [whole = '0', fraction = '00'] = amount.split('.');
+  const [whole = '0', fractionRaw = ''] = amount.split('.');
   const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  return `₱${grouped}.${fraction.padEnd(2, '0').slice(0, 2)}`;
+  const fraction = fractionRaw.padEnd(2, '0').slice(0, 2);
+  return fraction === '00' ? `₱${grouped}` : `₱${grouped}.${fraction}`;
 }

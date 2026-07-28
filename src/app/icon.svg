@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="A.V. Jewelry">
+  <rect width="64" height="64" rx="14" fill="#0b0b0c"/>
+  <text x="32" y="43" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="33" font-weight="700" fill="#ffffff" letter-spacing="0.5">AV</text>
+  <path d="M13.5 24.5l1 2.6 2.6 1-2.6 1-1 2.6-1-2.6-2.6-1 2.6-1z" fill="#caa14a"/>
+  <path d="M50 33l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9z" fill="#caa14a"/>
+</svg>

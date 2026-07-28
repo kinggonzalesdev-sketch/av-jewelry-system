@@ -69,7 +69,8 @@ describe('the shell shows REAL authenticated identity, never hardcoded', () => {
 
   it('the identity comes from the caller’s own profile via a self-read', () => {
     const guard = code('lib/authz/guard.ts');
-    expect(guard).toMatch(/export async function getCurrentStaffProfile/);
+    // Request-cached (perf) form of the same self-read guard.
+    expect(guard).toMatch(/export const getCurrentStaffProfile = cache\(async/);
     // Reads staff_profiles for the caller’s own auth_user_id — the self-read
     // policy, not a hardcoded value.
     expect(guard).toMatch(/from\('staff_profiles'\)/);
@@ -122,22 +123,35 @@ describe('the shell shows REAL authenticated identity, never hardcoded', () => {
     expect(existsSync(routeFileFor('/admin/capabilities'))).toBe(true);
   });
 
-  it('Settings is a real unified page of existing functionality, not a placeholder', () => {
+  it('Settings is a real page: Portal & Access (Owner) + Integrations', () => {
     const settings = read('app/(app)/settings/page.tsx');
-    // Real identity, not hardcoded.
-    expect(settings).toMatch(/getCurrentStaffProfile/);
-    expect(settings).toMatch(/requireUser/);
     expect(settings).not.toMatch(/A\.V\.\s*Owner/);
-    // Links to existing admin routes; Staff is Owner-gated.
-    expect(settings).toMatch(/href="\/admin\/staff"/);
+    // Owner request 2026-07-22: the read-only Profile card was removed and the
+    // Owner-only Team Members portal was added. The self-service Change-my-password
+    // card was later removed too — the Owner sets passwords from that panel.
+    expect(settings).toMatch(/TeamMembersPanel/);
+    expect(settings).not.toMatch(/ChangePasswordForm/);
+    // The team roster is gated on the Owner (the service-role admin path).
     expect(settings).toMatch(/isOwner/);
-    expect(settings).toMatch(/href="\/admin\/capabilities"/);
-    expect(settings).toMatch(/href="\/security"/);
-    // Reuses the real shell controls, invents no new config.
-    expect(settings).toMatch(/PrinterStatusRow/);
-    expect(settings).toMatch(/ThemeToggle/);
-    // No longer the honest placeholder.
+    // Administration keeps only the Integrations link; the removed links stay gone.
+    expect(settings).toMatch(/href="\/admin\/integrations"/);
+    expect(settings).not.toMatch(/href="\/admin\/staff"/);
+    expect(settings).not.toMatch(/href="\/admin\/capabilities"/);
+    expect(settings).not.toMatch(/href="\/security"/);
+    expect(settings).not.toMatch(/PrinterStatusRow/);
+    expect(settings).not.toMatch(/ThemeToggle/);
     expect(settings).not.toMatch(/UnavailablePage/);
+  });
+
+  it('never imports the service-role admin client into a Client Component', () => {
+    // The admin path (team-accounts) is server-only; the panel imports it TYPE-only.
+    const panel = read('components/settings/team-members-panel.tsx');
+    expect(panel).toMatch(/'use client'/);
+    expect(panel).not.toMatch(/@\/lib\/supabase\/admin/);
+    // The account operations re-check Owner before the service-role client.
+    const accounts = read('lib/authz/team-accounts.ts');
+    expect(accounts).toMatch(/requireOwner\(\)/);
+    expect(accounts).toMatch(/createAdminClient/);
   });
 
   it('surfaces the New Order capture form inside Orders — not a nav item', () => {
@@ -149,7 +163,7 @@ describe('the shell shows REAL authenticated identity, never hardcoded', () => {
     // removed by Owner request (2026-07-18) as duplicates of the sidebar nav.
     expect(orders).toMatch(/NewOrderWorkflow/);
     expect(orders).toMatch(/claim_capture/);
-    expect(workflow).toMatch(/captureClaimAction|post_live_manual/);
+    expect(workflow).toMatch(/captureManualOrderAction/);
     // And it is NOT a sidebar item.
     expect(PRIMARY_NAV.some((i) => /new (entry|order)/i.test(i.label))).toBe(false);
   });

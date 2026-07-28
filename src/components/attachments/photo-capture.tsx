@@ -87,6 +87,11 @@ export function PhotoCapture({
   const [mode, setMode] = useState<'idle' | 'camera' | 'preview'>('idle');
   const [prepared, setPrepared] = useState<Prepared | null>(null);
   const [localError, setLocalError] = useState<AttachmentErrorKind | null>(null);
+  // Rear ('environment') by default; a Switch camera button flips to the front.
+  const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+  // Bumped each time a new stream is opened so the attach effect re-runs (initial
+  // open AND camera switch), re-binding the live stream to the <video>.
+  const [streamTick, setStreamTick] = useState(0);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -112,6 +117,20 @@ export function PhotoCapture({
   // Stop the camera if the component unmounts mid-capture.
   useEffect(() => () => stopStream(), []);
 
+  // Bind the live stream to the <video> AFTER it is mounted in camera mode. Doing
+  // this in an effect (not a microtask) guarantees the element exists — the earlier
+  // microtask could run before React committed the <video>, which left the preview
+  // black. Re-runs on every new stream (initial open and camera switch).
+  useEffect(() => {
+    if (mode !== 'camera') return;
+    const video = videoRef.current;
+    const stream = streamRef.current;
+    if (video && stream) {
+      video.srcObject = stream;
+      void video.play().catch(() => undefined);
+    }
+  }, [mode, streamTick]);
+
   // When the server confirms the upload, bubble it up and return to idle.
   useEffect(() => {
     if (state.attachment) {
@@ -126,30 +145,33 @@ export function PhotoCapture({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.attachment]);
 
-  async function startCamera() {
+  async function startCamera(facing: 'environment' | 'user' = facingMode) {
     setLocalError(null);
     if (!cameraSupported) {
       setLocalError('unsupported_browser');
       return;
     }
+    // Release any current stream before opening a new one (e.g. on camera switch).
+    stopStream();
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } }, // rear camera where available
+        video: { facingMode: { ideal: facing } },
         audio: false,
       });
       streamRef.current = stream;
+      setStreamTick((n) => n + 1); // the attach effect binds it to the <video>
       setMode('camera');
-      // The video element mounts with this mode; attach on the next tick.
-      queueMicrotask(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          void videoRef.current.play().catch(() => undefined);
-        }
-      });
     } catch (err) {
       const name = err instanceof DOMException ? err.name : 'unknown';
       setLocalError(classifyMediaError(name));
     }
+  }
+
+  // Flip between the rear and front camera and reopen the stream.
+  async function switchCamera() {
+    const next = facingMode === 'environment' ? 'user' : 'environment';
+    setFacingMode(next);
+    await startCamera(next);
   }
 
   async function capturePhoto() {
@@ -269,24 +291,42 @@ export function PhotoCapture({
         </div>
       ) : null}
 
-      {/* CAMERA: live preview + capture/cancel. */}
+      {/* CAMERA: live preview (tap to capture) + capture / switch / cancel. */}
       {mode === 'camera' ? (
         <div className="space-y-2">
-          <video
-            ref={videoRef}
-            playsInline
-            muted
-            className="max-h-72 w-full rounded-lg bg-black object-contain"
-            data-testid="photo-video"
-          />
-          <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => void capturePhoto()}
+            title="Tap the preview to capture"
+            aria-label="Capture photo"
+            className="block w-full cursor-pointer overflow-hidden rounded-lg"
+          >
+            <video
+              ref={videoRef}
+              playsInline
+              muted
+              autoPlay
+              className="max-h-72 w-full rounded-lg bg-black object-contain"
+              data-testid="photo-video"
+            />
+          </button>
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => void capturePhoto()}
               data-testid="photo-capture-btn"
-              className="rounded-md bg-gold px-3 py-2 text-sm font-semibold text-black hover:bg-gold/90"
+              className="inline-flex items-center gap-1.5 rounded-md bg-gold px-3 py-2 text-sm font-semibold text-black hover:bg-gold/90"
             >
-              Capture
+              <span aria-hidden="true">◉</span> Capture
+            </button>
+            <button
+              type="button"
+              onClick={() => void switchCamera()}
+              data-testid="photo-switch"
+              title="Switch between the rear and front camera"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-2 text-sm hover:bg-accent"
+            >
+              <span aria-hidden="true">⟳</span> Switch camera
             </button>
             <button
               type="button"

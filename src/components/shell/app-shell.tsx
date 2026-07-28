@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 
+import { PrinterProvider } from '@/components/print/printer-context';
 import { AppSidebar } from '@/components/shell/app-sidebar';
+import { PrivacyProvider } from '@/components/shell/privacy';
 
 /**
  * Production application shell — the Owner-approved prototype LAYOUT dressed in
@@ -22,8 +24,12 @@ export function AppShell({
   children: ReactNode;
 }) {
   return (
-    <AppSidebar fullName={fullName} roleKey={roleKey} userEmail={userEmail}>
-      {children}
-    </AppSidebar>
+    <PrinterProvider>
+      <PrivacyProvider>
+        <AppSidebar fullName={fullName} roleKey={roleKey} userEmail={userEmail}>
+          {children}
+        </AppSidebar>
+      </PrivacyProvider>
+    </PrinterProvider>
   );
 }

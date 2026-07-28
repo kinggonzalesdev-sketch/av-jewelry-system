@@ -10,7 +10,6 @@ import {
 } from '@/components/ui/card';
 
 export const metadata: Metadata = {
-  title: 'Access disabled — A.V. Jewelry Operations',
   robots: { index: false, follow: false },
 };
 

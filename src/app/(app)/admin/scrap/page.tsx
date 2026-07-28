@@ -5,7 +5,6 @@ import { PageHeader } from '@/components/ui/page-primitives';
 import { getScrapIncome, listScrapSales } from '@/lib/scrap/service';
 
 export const metadata: Metadata = {
-  title: 'Scrap Income — A.V. Jewelry Operations',
 };
 
 export const dynamic = 'force-dynamic';
@@ -35,10 +34,7 @@ export default async function ScrapPage({
 
   return (
     <div>
-      <PageHeader
-        title="Scrap Income"
-        description="Scrap gold and silver — a separate income stream from item sales."
-      />
+      <PageHeader title="Scrap Income" />
       <ScrapView income={income} sales={sales} from={from} to={to} />
     </div>
   );

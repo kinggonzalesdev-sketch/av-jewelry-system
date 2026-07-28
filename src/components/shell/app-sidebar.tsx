@@ -5,13 +5,16 @@ import { usePathname } from 'next/navigation';
 import { useState, useTransition, type ReactNode } from 'react';
 
 import {
+  canSeeNavItem,
   mobileLabel,
   mobileMoreItems,
   mobilePrimaryItems,
-  PRIMARY_NAV,
+  navRows,
+  SETTINGS_ITEM,
   type NavItem,
 } from '@/components/shell/navigation';
 import { PrinterStatusBadge, PrinterStatusRow } from '@/components/shell/printer-status';
+import { PrivacyToggle } from '@/components/shell/privacy';
 import { ThemeToggle } from '@/components/shell/theme-toggle';
 import { signOut } from '@/lib/auth/actions';
 import { cn } from '@/lib/utils';
@@ -30,22 +33,37 @@ import { cn } from '@/lib/utils';
  * Bluetooth/Printer sits DIRECTLY above Logout; Logout is last.
  */
 
-const ROLE_LABEL: Record<string, string> = {
+// The user chip shows a role-based control identity, not the person's name
+// (Owner request 2026-07-22): Owner → "Owner", Selected Admin → "Admin",
+// Staff → "Team". The chip reads "{word} Control" over "{word}". The real name
+// is kept as a hover title + screen-reader text so accountability is not lost.
+const ROLE_WORD: Record<string, string> = {
   owner: 'Owner',
-  selected_admin: 'Selected Admin',
-  staff: 'Staff',
+  selected_admin: 'Admin',
+  staff: 'Team',
 };
 
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return 'AV';
-  const first = parts[0]?.[0] ?? '';
-  const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : '';
-  return (first + last).toUpperCase() || 'AV';
-}
-
-/** Gold monogram mark — the brand accent, black glyph on gold. */
+/**
+ * Brand mark — the A.V. Jewelry logo. Falls back to the "AV" monogram tile if the
+ * logo image is missing, so the shell never shows a broken image. Drop the logo at
+ * `public/av-jewelry-logo.png` and it appears automatically.
+ */
 function BrandMark({ size = 'md' }: { size?: 'sm' | 'md' }) {
+  const [imgOk, setImgOk] = useState(true);
+  const box = size === 'md' ? 'h-8 w-8' : 'h-7 w-7';
+
+  if (imgOk) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src="/av-jewelry-logo.png"
+        alt="A.V. Jewelry"
+        onError={() => setImgOk(false)}
+        className={cn('shrink-0 rounded-lg object-contain', box)}
+      />
+    );
+  }
+
   return (
     <div
       className={cn(
@@ -80,25 +98,28 @@ function LogoutButton({ variant = 'sidebar' }: { variant?: 'sidebar' | 'more' })
   );
 }
 
-function UserCard({ fullName, roleLabel }: { fullName: string; roleLabel: string }) {
+function UserCard({ fullName, roleWord }: { fullName: string; roleWord: string }) {
   return (
-    <div className="mx-3 rounded-xl border border-border bg-secondary p-3">
+    <div
+      className="mx-3 rounded-xl border border-border bg-secondary p-3"
+      title={fullName}
+    >
       <div className="flex items-center gap-2.5">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gold text-xs font-semibold text-black">
-          {initials(fullName)}
+          AV
         </div>
         <div className="min-w-0 flex-1">
           <p
             className="truncate text-sm font-semibold text-foreground"
             data-testid="authenticated-full-name"
           >
-            {fullName}
+            {roleWord} Control
           </p>
           <p
             className="truncate text-[11px] text-muted-foreground"
             data-testid="authenticated-role"
           >
-            {roleLabel}
+            {roleWord}
           </p>
         </div>
         <span
@@ -133,7 +154,10 @@ export function AppSidebar({
 }) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
-  const roleLabel = roleKey ? (ROLE_LABEL[roleKey] ?? roleKey) : 'Staff';
+  // Manual open/close per collapsible group. Undefined → follow whether a child is
+  // active (so navigating into Attendance/Payroll auto-expands Team Management).
+  const [openSection, setOpenSection] = useState<Record<string, boolean>>({});
+  const roleWord = roleKey ? (ROLE_WORD[roleKey] ?? 'Team') : 'Team';
 
   const isActive = (href: string) =>
     pathname === href ||
@@ -141,13 +165,14 @@ export function AppSidebar({
     // for /orders/invoice etc. — those are their own nav items.
     (href !== '/orders' && pathname.startsWith(`${href}/`));
 
-  const renderSidebarLink = (item: NavItem) => (
+  const renderSidebarLink = (item: NavItem, indent = false) => (
     <li key={item.href}>
       <Link
         href={item.href}
         aria-current={isActive(item.href) ? 'page' : undefined}
         className={cn(
-          'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors',
+          'flex items-center gap-2.5 rounded-lg py-2 text-sm font-medium transition-colors',
+          indent ? 'pl-9 pr-2.5' : 'px-2.5',
           isActive(item.href)
             ? 'bg-gold/15 text-gold-strong'
             : 'text-muted-foreground hover:bg-accent hover:text-foreground',
@@ -177,32 +202,97 @@ export function AppSidebar({
                 <p className="truncate text-sm font-bold tracking-tight text-foreground">
                   A.V. Jewelry
                 </p>
-                <p className="truncate text-[10px] text-muted-foreground">
-                  MineFlow Operations
+                <p
+                  className="truncate text-[10px] text-muted-foreground"
+                  data-testid="brand-tagline"
+                >
+                  Powered by King GenZ Digital
                 </p>
               </div>
             </div>
-            <UserCard fullName={fullName} roleLabel={roleLabel} />
+            <UserCard fullName={fullName} roleWord={roleWord} />
           </div>
 
           <nav aria-label="Primary" className="flex-1 overflow-y-auto p-2">
-            <ul className="space-y-0.5">{PRIMARY_NAV.map(renderSidebarLink)}</ul>
+            <ul className="space-y-0.5">
+              {navRows().map((row) => {
+                if (row.kind === 'item') return renderSidebarLink(row.item);
+
+                // A collapsible group (e.g. Team Management). Role-filter first; a
+                // group with nothing visible renders nothing.
+                const items = row.items.filter((it) => canSeeNavItem(it, roleKey));
+                if (items.length === 0) return null;
+                const childActive = items.some((it) => isActive(it.href));
+                const open = openSection[row.section] ?? childActive;
+                const panelId = `nav-sect-${row.section
+                  .replace(/\s+/g, '-')
+                  .toLowerCase()}`;
+                return (
+                  <li key={row.section}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOpenSection((s) => ({ ...s, [row.section]: !open }))
+                      }
+                      aria-expanded={open}
+                      aria-controls={panelId}
+                      className={cn(
+                        'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors',
+                        childActive
+                          ? 'text-foreground'
+                          : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                      )}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="w-4 shrink-0 text-center text-xs"
+                      >
+                        ☰
+                      </span>
+                      <span className="truncate">{row.section}</span>
+                      <span
+                        aria-hidden="true"
+                        className="ml-auto text-[10px] text-muted-foreground"
+                      >
+                        {open ? '▾' : '▸'}
+                      </span>
+                    </button>
+                    {open ? (
+                      <ul id={panelId} className="mt-0.5 space-y-0.5">
+                        {items.map((it) => renderSidebarLink(it, true))}
+                      </ul>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
           </nav>
 
           {/*
-            Approved fixed bottom. Order is part of the approved design:
-            branding → Light/Dark → Bluetooth/Printer → Logout (last).
+            Fixed footer (stays put while the nav above scrolls): Light/Dark →
+            Bluetooth/Printer → a subtle divider → Settings → Logout (last).
           */}
           <div className="space-y-1.5 border-t border-border p-2">
-            {/* Approved footer branding — exact wording (Bible §2, §36.2). */}
-            <p
-              className="px-2.5 py-1 text-center text-[10px] leading-tight text-muted-foreground"
-              data-testid="footer-branding"
-            >
-              Powered by King GenZ Digital
-            </p>
             <ThemeToggle />
+            <PrivacyToggle />
             <PrinterStatusRow />
+            <div className="my-1 border-t border-border" aria-hidden="true" />
+            <Link
+              href={SETTINGS_ITEM.href}
+              aria-current={isActive(SETTINGS_ITEM.href) ? 'page' : undefined}
+              data-testid="sidebar-settings"
+              className={cn(
+                'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors',
+                isActive(SETTINGS_ITEM.href)
+                  ? 'bg-gold/15 text-gold-strong'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+              )}
+            >
+              <span aria-hidden="true" className="w-4 shrink-0 text-center text-xs">
+                {SETTINGS_ITEM.icon}
+              </span>
+              <span className="truncate">{SETTINGS_ITEM.label}</span>
+            </Link>
             <LogoutButton />
           </div>
         </aside>
@@ -213,15 +303,16 @@ export function AppSidebar({
           <header className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-2.5 lg:hidden">
             <div className="flex min-w-0 items-center gap-2">
               <BrandMark size="sm" />
-              <div className="min-w-0">
+              <div className="min-w-0" title={fullName}>
                 <p className="truncate text-xs font-bold text-foreground">A.V. Jewelry</p>
                 <p className="truncate text-[10px] text-muted-foreground">
-                  {fullName} · {roleLabel}
+                  {roleWord} Control
                 </p>
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
               <PrinterStatusBadge />
+              <PrivacyToggle variant="compact" />
               <ThemeToggle variant="compact" />
             </div>
           </header>
@@ -282,7 +373,12 @@ export function AppSidebar({
         {moreOpen ? (
           <div className="absolute inset-x-0 bottom-full border-t border-border bg-card p-2 shadow-lg">
             <ul className="grid grid-cols-2 gap-1">
-              {mobileMoreItems().map((item) => (
+              {/* Role-filtered so a non-Owner is not offered an Owner-only page.
+                  Settings is appended (it lives in the desktop footer, not the nav). */}
+              {[
+                ...mobileMoreItems().filter((item) => canSeeNavItem(item, roleKey)),
+                SETTINGS_ITEM,
+              ].map((item) => (
                 <li key={item.href}>
                   <Link
                     href={item.href}

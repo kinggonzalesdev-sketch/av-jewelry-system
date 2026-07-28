@@ -6,7 +6,6 @@ import { getGrantedPermissions } from '@/lib/authz/guard';
 import { listClaimReviewQueue } from '@/lib/claims/review';
 
 export const metadata: Metadata = {
-  title: 'Claims — A.V. Jewelry Operations',
 };
 
 /**

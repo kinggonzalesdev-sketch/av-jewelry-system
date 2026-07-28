@@ -1,12 +1,12 @@
 import type { Metadata } from 'next';
 
 import { ReportsView, type ReportsResult } from '@/components/reports/reports-view';
+import { ExportAllButton } from '@/components/export/export-all-button';
 import { PageHeader } from '@/components/ui/page-primitives';
-import { getGrantedPermissions } from '@/lib/authz/guard';
+import { getGrantedPermissions, requireActiveStaff } from '@/lib/authz/guard';
 import { getSalesSummary } from '@/lib/dashboard/service';
 
 export const metadata: Metadata = {
-  title: 'Reports — A.V. Jewelry Operations',
 };
 
 export const dynamic = 'force-dynamic';
@@ -28,8 +28,13 @@ export default async function ReportsPage({
   const from = typeof params.from === 'string' ? params.from : '';
   const to = typeof params.to === 'string' ? params.to : '';
 
-  const permissions = await getGrantedPermissions();
+  const [permissions, staff] = await Promise.all([
+    getGrantedPermissions(),
+    requireActiveStaff(),
+  ]);
   const canExport = permissions.has('export_data_reports');
+  // Full-data export is Owner / Selected Admin only.
+  const canExportAll = staff.roleKey === 'owner' || staff.roleKey === 'selected_admin';
 
   // Viewing is broad: any active staff may run the on-screen summary. Only
   // export/download is gated by export_data_reports (canExport, passed through).
@@ -47,6 +52,11 @@ export default async function ReportsPage({
         title="Reports"
         description="Sales summary — verified money only. A report grants no authority over the records in it."
       />
+      {canExportAll ? (
+        <div className="mb-4 flex justify-end">
+          <ExportAllButton />
+        </div>
+      ) : null}
       <ReportsView canExport={canExport} from={from} to={to} result={result} />
     </div>
   );

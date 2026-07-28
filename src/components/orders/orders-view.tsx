@@ -1,10 +1,13 @@
 'use client';
 
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 
+import { OrderDetailsModal } from '@/components/orders/order-details-modal';
+import { SendAllInvoices } from '@/components/orders/send-all-invoices';
+
 import type { OrderListRow, OrdersResult, PaymentStatus } from '@/lib/orders/service';
-import { formatPeso } from '@/lib/payments/format';
+import { Money } from '@/components/shell/privacy';
 import { EmptyState } from '@/components/states/empty-state';
 import { StatusBadge, ReadError, type BadgeTone } from '@/components/ui/page-primitives';
 import { cn } from '@/lib/utils';
@@ -68,9 +71,9 @@ function fulfillmentTone(status: string): BadgeTone {
  * Keep · For Cancel · Cancelled · Unverified Payment · For Layaway.
  *
  * Each card both COUNTS and FILTERS the loaded orders. Cards map to REAL signals
- * (official_orders.status / paymentStatus / layaway). "Keep" and "For Cancel"
- * have no backing concept in the current model yet, so they show an honest 0 —
- * never a fabricated count.
+ * (official_orders.status / paymentStatus / layaway). For Layaway, Keep, and For
+ * Cancel are now real order statuses (set when a For-Prepare order is transferred
+ * to that destination), each with its own card.
  */
 type CardKey =
   | 'all'
@@ -79,11 +82,14 @@ type CardKey =
   | 'for_prepare'
   | 'for_confirm'
   | 'ship_confirm'
+  | 'delivery'
+  | 'pickup'
+  | 'for_layaway'
   | 'keep'
   | 'for_cancel'
   | 'cancelled'
   | 'unverified_pay'
-  | 'for_layaway';
+  | 'completed';
 
 const CARD_DEFS: Array<{ key: CardKey; label: string; icon: string; tone: BadgeTone }> = [
   { key: 'all', label: 'Total', icon: '▤', tone: 'gold' },
@@ -92,12 +98,28 @@ const CARD_DEFS: Array<{ key: CardKey; label: string; icon: string; tone: BadgeT
   { key: 'for_prepare', label: 'For Prepare', icon: '◈', tone: 'neutral' },
   { key: 'for_confirm', label: 'For Confirm', icon: '▣', tone: 'gold' },
   { key: 'ship_confirm', label: 'Ship Confirm', icon: '➤', tone: 'strong' },
+  // For-Prepare transfer destinations (Orders Workflow).
+  { key: 'delivery', label: 'Delivery', icon: '🛵', tone: 'gold' },
+  { key: 'pickup', label: 'Pickup', icon: '🏬', tone: 'gold' },
+  { key: 'for_layaway', label: 'For Layaway', icon: '❐', tone: 'neutral' },
   { key: 'keep', label: 'Keep', icon: '❏', tone: 'neutral' },
   { key: 'for_cancel', label: 'For Cancel', icon: '⚠', tone: 'warning' },
   { key: 'cancelled', label: 'Cancelled', icon: '✕', tone: 'danger' },
   { key: 'unverified_pay', label: 'Unverified Payment', icon: '⚠', tone: 'warning' },
-  { key: 'for_layaway', label: 'For Layaway', icon: '₱', tone: 'gold' },
+  { key: 'completed', label: 'Completed', icon: '✓', tone: 'strong' },
 ];
+
+/** Order statuses that count as GENUINELY completed — the final item handoff is
+ *  confirmed (delivered / picked up / released), or the order is closed. The
+ *  conflated `dispatched_or_picked_up` is deliberately EXCLUDED: shipped ≠
+ *  completed (spec §7). Layaway lives under Payments & Layaway, not here. */
+const COMPLETED_STATUSES = new Set([
+  'completed',
+  'closed',
+  'delivered',
+  'picked_up',
+  'released',
+]);
 
 /** Icon-badge tint per tone (matches the mockup's coloured card icons). */
 const CARD_ICON_TONE: Record<BadgeTone, string> = {
@@ -108,21 +130,51 @@ const CARD_ICON_TONE: Record<BadgeTone, string> = {
   danger: 'bg-destructive/10 text-destructive',
 };
 
-function OrderRow({ order }: { order: OrderListRow }) {
+function OrderRow({
+  order,
+  onOpen,
+}: {
+  order: OrderListRow;
+  onOpen: (order: OrderListRow) => void;
+}) {
+  // The whole row opens the in-page Order Details drawer (no navigation). Keyboard
+  // accessible: focusable with Enter/Space. The cells hold only text/badges (no
+  // nested interactive elements), so the row-level handler is unambiguous.
   return (
-    <tr className="border-b border-border last:border-0">
+    <tr
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(order)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen(order);
+        }
+      }}
+      data-testid="order-row"
+      className="cursor-pointer border-b border-border last:border-0 hover:bg-accent/60 focus:bg-accent/60 focus:outline-none"
+    >
       <td className="px-3 py-2.5">
         <StatusBadge label={humanize(order.status)} tone="neutral" />
       </td>
       <td className="px-3 py-2.5 font-mono text-xs">{order.orderNumber}</td>
-      <td className="px-3 py-2.5 font-mono text-xs text-muted-foreground">
-        {order.invoiceNumber}
+      <td className="px-3 py-2.5 font-mono text-xs">
+        {order.invoiceNumber || <span className="text-muted-foreground">—</span>}
       </td>
-      <td className="px-3 py-2.5 font-medium">{order.customerDisplayName}</td>
+      <td className="px-3 py-2.5 font-medium">
+        {order.customerDisplayName}
+        {order.orderSource === 'walk_in' ? (
+          <span className="ml-1.5 rounded-full border border-gold/40 bg-gold/10 px-1.5 py-0.5 text-[10px] font-medium text-gold-strong">
+            Walk-in
+          </span>
+        ) : null}
+      </td>
       <td className="px-3 py-2.5 text-right tabular-nums">
-        {order.paymentStatus === 'unavailable'
-          ? '—'
-          : formatPeso(order.totalAmountPayable)}
+        {order.paymentStatus === 'unavailable' ? (
+          '—'
+        ) : (
+          <Money amount={order.totalAmountPayable} />
+        )}
       </td>
       <td className="px-3 py-2.5">
         <StatusBadge
@@ -131,7 +183,7 @@ function OrderRow({ order }: { order: OrderListRow }) {
         />
         {order.paymentStatus === 'partial' ? (
           <span className="ml-1 text-xs text-muted-foreground">
-            {formatPeso(order.outstandingBalance)} due
+            <Money amount={order.outstandingBalance} /> due
           </span>
         ) : null}
       </td>
@@ -145,21 +197,8 @@ function OrderRow({ order }: { order: OrderListRow }) {
           <span className="text-xs text-muted-foreground">—</span>
         )}
       </td>
-      <td className="px-3 py-2.5 text-right">
-        <div className="flex justify-end gap-1.5">
-          <Link
-            href="/orders/payments"
-            className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
-          >
-            Payment
-          </Link>
-          <Link
-            href="/orders/fulfillment"
-            className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
-          >
-            Fulfillment
-          </Link>
-        </div>
+      <td className="px-3 py-2.5 text-right text-xs font-medium text-gold-strong">
+        View ›
       </td>
     </tr>
   );
@@ -174,31 +213,53 @@ function matchesCard(order: OrderListRow, key: CardKey): boolean {
     case 'for_reminder':
       return order.status === 'awaiting_required_payment';
     case 'for_prepare':
-      return order.status === 'for_preparation';
+      // A For-Prepare order LEAVES this card once it is transferred to a
+      // destination (Orders Workflow) — it then shows under that destination.
+      return order.status === 'for_preparation' && !order.fulfillmentDestination;
     case 'for_confirm':
       return order.status === 'required_payment_verified';
     case 'ship_confirm':
-      return SHIP_CONFIRMED.has(order.status);
+      return SHIP_CONFIRMED.has(order.status) || order.fulfillmentDestination === 'shipping';
+    case 'delivery':
+      return order.fulfillmentDestination === 'delivery';
+    case 'pickup':
+      return order.fulfillmentDestination === 'pickup';
+    case 'for_layaway':
+      // Real status now; also match legacy rows tagged only by destination.
+      return order.status === 'for_layaway' || order.fulfillmentDestination === 'layaway';
+    case 'keep':
+      return order.status === 'keep' || order.fulfillmentDestination === 'keep';
     case 'cancelled':
       return order.status === 'cancelled';
     case 'unverified_pay':
       // Closest real signal: an order with no verified payment yet.
       return order.paymentStatus === 'awaiting';
-    case 'for_layaway':
-      return order.layawayStatus !== null;
-    case 'keep':
+    case 'completed':
+      // Genuinely completed — final handoff confirmed (not merely shipped).
+      return COMPLETED_STATUSES.has(order.status);
     case 'for_cancel':
-      // No backing concept in the current model — honest 0, never fabricated.
-      return false;
+      // Real status now; also match legacy rows tagged only by destination.
+      return order.status === 'for_cancel' || order.fulfillmentDestination === 'cancelled';
   }
 }
 
-export function OrdersView({ result }: { result: OrdersResult }) {
+export function OrdersView({
+  result,
+  openForInvoice = false,
+}: {
+  result: OrdersResult;
+  /** Open on the For Invoice card (e.g. arriving from the old /orders/invoice). */
+  openForInvoice?: boolean;
+}) {
   // Hooks must run unconditionally; the error/empty branches come after. Memoized
   // so the derived useMemo hooks below keep a stable dependency identity.
   const rows = useMemo(() => (result.ok ? result.rows : []), [result]);
 
-  const [card, setCard] = useState<CardKey>('all');
+  const router = useRouter();
+  const [card, setCard] = useState<CardKey>(openForInvoice ? 'for_invoice' : 'all');
+  // The order whose details modal is open (null = closed). Opening it navigates
+  // nowhere, so search/filters/scroll are preserved automatically.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [fulfillmentFilter, setFulfillmentFilter] = useState('all');
   const [orderDate, setOrderDate] = useState('');
@@ -326,6 +387,9 @@ export function OrdersView({ result }: { result: OrdersResult }) {
             ))}
           </select>
 
+          {/* Bulk action — only on the For Invoice view. */}
+          {card === 'for_invoice' ? <SendAllInvoices /> : null}
+
           {/* Approved filters: Order Date · Ship Date · Hide Keep. Real:
               Order Date filters on the order's created day, Ship Date on the
               fulfillment dispatch day. Hide Keep excludes the Keep bucket (a
@@ -406,13 +470,26 @@ export function OrdersView({ result }: { result: OrdersResult }) {
               </thead>
               <tbody>
                 {filtered.map((order) => (
-                  <OrderRow key={order.officialOrderId} order={order} />
+                  <OrderRow
+                    key={order.officialOrderId}
+                    order={order}
+                    onOpen={(o) => setSelectedId(o.officialOrderId)}
+                  />
                 ))}
               </tbody>
             </table>
           </div>
         </div>
       )}
+
+      {/* In-page order details — the list stays mounted behind it, so search,
+          filters, selected status, and scroll are preserved on close. After an
+          in-modal action, only this order's data + the counts refresh. */}
+      <OrderDetailsModal
+        orderId={selectedId}
+        onClose={() => setSelectedId(null)}
+        onMutated={() => router.refresh()}
+      />
     </div>
   );
 }

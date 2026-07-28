@@ -354,6 +354,18 @@ export async function removeClaimFromDraft(
   return { ok: true };
 }
 
+/** One line of an invoice draft — a claim and its item/price. Totals are read
+ *  from stored claim/item data, never the client. */
+export type DraftLineItem = {
+  claimId: string;
+  claimReference: string;
+  itemName: string | null;
+  itemCode: string | null;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+};
+
 export type DraftSummary = {
   id: string;
   status: string;
@@ -362,6 +374,8 @@ export type DraftSummary = {
   fulfillmentArrangement: string | null;
   claimCount: number;
   totalAmount: number;
+  /** The draft's line items — for the printable invoice and the remove-claim edit. */
+  claims: DraftLineItem[];
   orderNumber: string | null;
   invoiceNumber: string | null;
   holdExpiresAt: string | null;
@@ -398,6 +412,8 @@ export async function listInvoiceDrafts(): Promise<DraftSummary[]> {
           | null,
       );
 
+      const lineItems = await draftLineItems(active.map((l) => l.claim_id));
+
       return {
         id: r.id as string,
         status: r.status as string,
@@ -406,8 +422,9 @@ export async function listInvoiceDrafts(): Promise<DraftSummary[]> {
             ?.display_name ?? 'Unknown',
         paymentArrangement: (r.payment_arrangement as string | null) ?? null,
         fulfillmentArrangement: (r.fulfillment_arrangement as string | null) ?? null,
-        claimCount: active.length,
-        totalAmount: await draftTotal(active.map((l) => l.claim_id)),
+        claimCount: lineItems.length,
+        totalAmount: lineItems.reduce((sum, li) => sum + li.lineTotal, 0),
+        claims: lineItems,
         orderNumber: order?.order_number ?? null,
         invoiceNumber: order?.invoice_number ?? null,
         holdExpiresAt: order?.hold_expires_at ?? null,
@@ -416,27 +433,53 @@ export async function listInvoiceDrafts(): Promise<DraftSummary[]> {
   );
 }
 
-/** Totals are computed from stored claim/item data, never from the client. */
-async function draftTotal(claimIds: string[]): Promise<number> {
-  if (claimIds.length === 0) return 0;
+/**
+ * Line items for a draft — claim reference, item, quantity, and price — read from
+ * stored claim/item data, never the client. The line total is quantity × the
+ * item's stored per-piece price (the same basis the eligibility total uses).
+ */
+async function draftLineItems(claimIds: string[]): Promise<DraftLineItem[]> {
+  if (claimIds.length === 0) return [];
 
   const supabase = await createClient();
   const { data } = await supabase
     .from('claims')
-    .select('quantity, inventory_items ( total_price_per_piece )')
+    .select(
+      'id, claim_reference, quantity, inventory_items ( item_name, item_code, total_price_per_piece )',
+    )
     .in('id', claimIds);
 
-  if (!data) return 0;
+  if (!data) return [];
 
-  return data.reduce((sum, row) => {
-    const r = row as unknown as {
+  return (
+    data as unknown as Array<{
+      id: string;
+      claim_reference: string;
       quantity: number;
       inventory_items:
-        | { total_price_per_piece: number | null }
-        | { total_price_per_piece: number | null }[]
+        | {
+            item_name: string | null;
+            item_code: string | null;
+            total_price_per_piece: number | null;
+          }
+        | {
+            item_name: string | null;
+            item_code: string | null;
+            total_price_per_piece: number | null;
+          }[]
         | null;
+    }>
+  ).map((r) => {
+    const item = one(r.inventory_items);
+    const unitPrice = item?.total_price_per_piece ?? 0;
+    return {
+      claimId: r.id,
+      claimReference: r.claim_reference,
+      itemName: item?.item_name ?? null,
+      itemCode: item?.item_code ?? null,
+      quantity: r.quantity,
+      unitPrice,
+      lineTotal: unitPrice * r.quantity,
     };
-    const price = one(r.inventory_items)?.total_price_per_piece ?? 0;
-    return sum + price * r.quantity;
-  }, 0);
+  });
 }

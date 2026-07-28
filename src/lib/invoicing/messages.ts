@@ -2,6 +2,7 @@ import 'server-only';
 
 import { recordAuditEvent } from '@/lib/audit/log';
 import { AuthorizationError, requirePermission } from '@/lib/authz/guard';
+import { shopPaymentDetails } from '@/lib/invoicing/shop';
 import { createClient } from '@/lib/supabase/server';
 
 /**
@@ -39,22 +40,28 @@ export function renderInvoiceMessage(input: {
   invoiceNumber: string;
   totalAmount: number;
   holdExpiresAt: string;
+  /** Each line already formatted with item, grams, and price. */
   itemLines: string[];
+  /** Downpayment / payment instructions (from shop settings). */
+  paymentDetails: string;
 }): string {
   const hold = new Date(input.holdExpiresAt).toLocaleDateString();
 
   return [
-    `Hi ${input.customerDisplayName}!`,
-    '',
-    `Order: ${input.orderNumber}`,
-    `Invoice: ${input.invoiceNumber}`,
+    'Thank you for choosing A.V. Jewelry! 💍',
+    `Hi ${input.customerDisplayName}, ito po ang item na na-mine nyo:`,
     '',
     ...input.itemLines.map((line) => `• ${line}`),
     '',
     `Total: PHP ${input.totalAmount.toFixed(2)}`,
+    `Order: ${input.orderNumber} · Invoice: ${input.invoiceNumber}`,
+    '',
+    'For your downpayment:',
+    input.paymentDetails,
+    '',
     `Please settle by ${hold} to keep your items reserved.`,
     '',
-    'Thank you!',
+    'Maraming salamat po! 🙏',
   ].join('\n');
 }
 
@@ -123,10 +130,13 @@ export async function prepareInvoiceMessage(
     (l) => l.claim_id,
   );
 
-  // Totals and item lines come from STORED data, never from a caller.
+  // Totals and item lines come from STORED data, never from a caller. Grams are
+  // included per the Owner's requested invoice format (name · grams · price).
   const { data: claims } = await supabase
     .from('claims')
-    .select('quantity, inventory_items ( item_name, item_code, total_price_per_piece )')
+    .select(
+      'quantity, inventory_items ( item_name, item_code, total_price_per_piece, grams_per_piece )',
+    )
     .in('id', claimIds.length > 0 ? claimIds : ['00000000-0000-0000-0000-000000000000']);
 
   let total = 0;
@@ -140,11 +150,13 @@ export async function prepareInvoiceMessage(
             item_name: string | null;
             item_code: string | null;
             total_price_per_piece: number | null;
+            grams_per_piece: number | null;
           }
         | Array<{
             item_name: string | null;
             item_code: string | null;
             total_price_per_piece: number | null;
+            grams_per_piece: number | null;
           }>
         | null;
     };
@@ -153,8 +165,10 @@ export async function prepareInvoiceMessage(
       : r.inventory_items;
     const price = item?.total_price_per_piece ?? 0;
     total += price * r.quantity;
+    const name = item?.item_name ?? item?.item_code ?? 'Item';
+    const grams = item?.grams_per_piece != null ? `${item.grams_per_piece}g · ` : '';
     itemLines.push(
-      `${item?.item_name ?? item?.item_code ?? 'Item'} ×${r.quantity} — PHP ${(price * r.quantity).toFixed(2)}`,
+      `${name} ×${r.quantity} · ${grams}PHP ${(price * r.quantity).toFixed(2)}`,
     );
   }
 
@@ -165,6 +179,7 @@ export async function prepareInvoiceMessage(
     totalAmount: total,
     holdExpiresAt: o.hold_expires_at as string,
     itemLines,
+    paymentDetails: shopPaymentDetails(),
   });
 
   const { data: created, error } = await supabase

@@ -246,10 +246,13 @@ export async function completeFulfillment(
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from('fulfillment_records')
-    .update({ status: 'completed', completed_at: new Date().toISOString() })
-    .eq('official_order_id', officialOrderId);
+  // Atomic: fulfillment → completed, ORDER → completed, and the claimed inventory
+  // items → completed (moved to Completed Items), in ONE transaction. The SQL
+  // function re-checks the permission and the completable state; a completed item
+  // can never be oversold (available_quantity is 0 for it).
+  const { error } = await supabase.rpc('complete_order_fulfillment', {
+    p_order_id: officialOrderId,
+  });
 
   if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
 
@@ -257,9 +260,186 @@ export async function completeFulfillment(
     action: 'fulfillment.completed',
     entityType: 'fulfillment_record',
     entityId: officialOrderId,
-    context: { automatic: false },
+    context: {
+      order_completed: true,
+      items_moved_to_completed: true,
+    },
   });
 
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// COD collection & remittance (#3 deeper — Bible §14, §18.25)
+// ---------------------------------------------------------------------------
+// The rider-vs-LBC split and collected-vs-remitted tracking. All money stays a
+// STRING here (numeric in SQL); the database check constraints are the real
+// authority (collection only on COD, remittance only after collection, etc.) and
+// their refusals are surfaced verbatim.
+
+/** A valid non-negative money amount as a STRING — never parsed into a float. */
+function isMoneyString(value: string): boolean {
+  return /^\d+(\.\d{1,2})?$/.test(value.trim());
+}
+
+const COLLECTION_CHANNELS = ['rider', 'lbc'] as const;
+export type CollectionChannel = (typeof COLLECTION_CHANNELS)[number];
+
+function isChannel(value: string): value is CollectionChannel {
+  return (COLLECTION_CHANNELS as readonly string[]).includes(value);
+}
+
+/**
+ * Record WHO carries a dispatched COD order's money (rider vs LBC) BEFORE it is
+ * collected, so Money-in-Transit can split "still to collect" by channel.
+ */
+export async function setCollectionChannel(
+  officialOrderId: string,
+  channel: string,
+): Promise<FulfillmentResult> {
+  try {
+    await requirePermission('fulfillment_release');
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
+    throw cause;
+  }
+  if (!isChannel(channel)) {
+    return { ok: false, error: 'Choose a collection channel: rider or LBC.' };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('fulfillment_records')
+    .update({ collection_channel: channel })
+    .eq('official_order_id', officialOrderId)
+    .select('id');
+
+  if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  if (!data || data.length === 0) {
+    return { ok: false, error: 'No fulfillment record matched that order.' };
+  }
+
+  await recordAuditEvent({
+    action: 'fulfillment.set_collection_channel',
+    entityType: 'fulfillment_record',
+    entityId: officialOrderId,
+    context: { collection_channel: channel },
+  });
+  return { ok: true };
+}
+
+/**
+ * Record that the COD money was actually collected from the customer — the real
+ * amount handed over (a string, never a float) and by whom carries it. The
+ * database enforces: COD only, a channel present, amount >= 0.
+ */
+export async function recordCollection(
+  officialOrderId: string,
+  input: { channel: string; amount: string },
+): Promise<FulfillmentResult> {
+  let staff;
+  try {
+    staff = await requirePermission('fulfillment_release');
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
+    throw cause;
+  }
+  if (!isChannel(input.channel)) {
+    return { ok: false, error: 'Choose a collection channel: rider or LBC.' };
+  }
+  if (!isMoneyString(input.amount)) {
+    return { ok: false, error: 'Enter the amount collected, e.g. 1500 or 1500.00.' };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('fulfillment_records')
+    .update({
+      collection_channel: input.channel,
+      collected_amount: input.amount.trim(), // string → numeric in SQL
+      collected_at: new Date().toISOString(),
+      collected_by: staff.staffProfileId,
+    })
+    .eq('official_order_id', officialOrderId)
+    .is('collected_at', null) // collect once; re-collection needs a correction
+    .select('id');
+
+  if (error) {
+    await recordAuditEvent({
+      action: 'fulfillment.collect',
+      entityType: 'fulfillment_record',
+      entityId: officialOrderId,
+      outcome: 'failed',
+      reason: error.message,
+    });
+    return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+  if (!data || data.length === 0) {
+    return {
+      ok: false,
+      error:
+        'Nothing to collect — the order is not COD-collectible, or was already collected.',
+    };
+  }
+
+  await recordAuditEvent({
+    action: 'fulfillment.collect',
+    entityType: 'fulfillment_record',
+    entityId: officialOrderId,
+    context: { collection_channel: input.channel, amount: input.amount.trim() },
+  });
+  return { ok: true };
+}
+
+/**
+ * Record that collected cash reached the shop/bank. The database refuses to
+ * remit what was never collected, and refuses a remittance before collection.
+ */
+export async function recordRemittance(
+  officialOrderId: string,
+): Promise<FulfillmentResult> {
+  let staff;
+  try {
+    staff = await requirePermission('fulfillment_release');
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
+    throw cause;
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('fulfillment_records')
+    .update({
+      remitted_at: new Date().toISOString(),
+      remitted_by: staff.staffProfileId,
+    })
+    .eq('official_order_id', officialOrderId)
+    .not('collected_at', 'is', null)
+    .is('remitted_at', null)
+    .select('id');
+
+  if (error) {
+    await recordAuditEvent({
+      action: 'fulfillment.remit',
+      entityType: 'fulfillment_record',
+      entityId: officialOrderId,
+      outcome: 'failed',
+      reason: error.message,
+    });
+    return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+  if (!data || data.length === 0) {
+    return {
+      ok: false,
+      error: 'Nothing to remit — collect the money first, or it is already remitted.',
+    };
+  }
+
+  await recordAuditEvent({
+    action: 'fulfillment.remit',
+    entityType: 'fulfillment_record',
+    entityId: officialOrderId,
+  });
   return { ok: true };
 }
 
@@ -534,6 +714,11 @@ export type FulfillmentRow = {
   trackingNumber: string | null;
   isCod: boolean;
   codApproved: boolean;
+  dispatched: boolean;
+  collectionChannel: string | null;
+  collected: boolean;
+  collectedAmount: string | null;
+  remitted: boolean;
   verifiedNetPayments: string;
   totalAmountPayable: string;
   meetsDepositFloor: boolean;
@@ -557,6 +742,7 @@ export async function listFulfillments(): Promise<FulfillmentListResult> {
     .from('fulfillment_records')
     .select(
       `official_order_id, status, method, courier, tracking_number, is_cod, cod_approved_at,
+       dispatched_at, collection_channel, collected_at, collected_amount, remitted_at,
        official_orders ( order_number, customers ( display_name ) )`,
     )
     .order('created_at', { ascending: false })
@@ -589,6 +775,11 @@ export async function listFulfillments(): Promise<FulfillmentListResult> {
         trackingNumber: (r.tracking_number as string | null) ?? null,
         isCod: r.is_cod === true,
         codApproved: r.cod_approved_at !== null,
+        dispatched: r.dispatched_at !== null,
+        collectionChannel: (r.collection_channel as string | null) ?? null,
+        collected: r.collected_at !== null,
+        collectedAmount: (r.collected_amount as string | null) ?? null,
+        remitted: r.remitted_at !== null,
       };
 
       if (!result.ok) {

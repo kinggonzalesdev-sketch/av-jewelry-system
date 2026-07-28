@@ -14,6 +14,8 @@ export type PayrollRow = {
   roleKey: string;
   totalHours: number;
   overtimeHours: number;
+  /** Numeric-in-SQL hourly rate as a string, or null when no rate is set. */
+  hourlyRate: string | null;
   /** Numeric-in-SQL salary as a string, or null when no rate is set. */
   computedSalary: string | null;
 };
@@ -37,6 +39,10 @@ export async function getPayroll(from: string, to: string): Promise<PayrollResul
     roleKey: (r.role_key as string | null) ?? 'staff',
     totalHours: num(r.total_hours),
     overtimeHours: num(r.overtime_hours),
+    hourlyRate:
+      r.hourly_rate === null || r.hourly_rate === undefined
+        ? null
+        : String(r.hourly_rate as string | number),
     computedSalary:
       r.computed_salary === null || r.computed_salary === undefined
         ? null

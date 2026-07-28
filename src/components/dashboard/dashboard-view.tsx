@@ -1,6 +1,8 @@
 'use client';
 
-import { useActionState, useMemo, useState } from 'react';
+import { useActionState, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 import {
   acknowledgeNotificationAction,
@@ -18,10 +20,15 @@ import type {
 } from '@/lib/dashboard/service';
 import type { FollowUpQueue } from '@/lib/followups/service';
 import type { MoneyInTransitResult } from '@/lib/finance/money-in-transit';
+import type { ScrapIncomeRow, ScrapSaleRow, ScrapTotal } from '@/lib/scrap/service';
+import type { LayawayDashboard } from '@/lib/payments/layaway-ledger';
 import { formatPeso } from '@/lib/payments/format';
+import { usePrivacy } from '@/components/shell/privacy';
 import { EmptyState } from '@/components/states/empty-state';
 import { FollowUpCards } from '@/components/dashboard/follow-up-cards';
 import { BarChart } from '@/components/ui/bar-chart';
+import { ColumnChart } from '@/components/ui/column-chart';
+import { DonutChart } from '@/components/ui/donut-chart';
 import { MetricCard, ReadError } from '@/components/ui/page-primitives';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -52,7 +59,6 @@ import { Label } from '@/components/ui/label';
 const TABS = [
   'Dashboard',
   'Disassembly Report',
-  'Gross Profit',
   'Follow-ups',
   'Reports',
   'Search',
@@ -61,40 +67,46 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number];
 
-const RANGES = [
+// Date-range presets. Each resolves to concrete {from, to} ISO days (or null for
+// "all time"). The selected range lives in the URL so the server re-scopes EVERY
+// money figure to it — not just the trend chart.
+const RANGE_PRESETS = [
+  { key: 'all', label: 'All time', days: null },
   { key: 'today', label: 'Today', days: 1 },
   { key: '7d', label: 'Last 7 days', days: 7 },
   { key: '14d', label: 'Last 14 days', days: 14 },
   { key: '30d', label: 'Last 30 days', days: 30 },
   { key: 'month', label: 'This Month', days: 0 },
-  { key: 'custom', label: 'Custom', days: 0 },
 ] as const;
-type RangeKey = (typeof RANGES)[number]['key'];
 
 function isoDay(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** Inclusive [start, end] ISO day bounds for a range. Client-side and honest:
- *  it only scopes which real trend days are shown, never invents data. */
-function rangeBounds(
-  range: RangeKey,
-  from: string,
-  to: string,
-): { start: string; end: string } {
+/** Resolve a preset to concrete inclusive {from, to}, or null for all time. */
+function presetRange(key: string): { from: string; to: string } | null {
+  if (key === 'all') return null;
   const today = new Date();
-  const end = isoDay(today);
-  if (range === 'custom') {
-    return { start: from || end, end: to || end };
-  }
-  if (range === 'month') {
+  const to = isoDay(today);
+  if (key === 'month') {
     const first = new Date(today.getFullYear(), today.getMonth(), 1);
-    return { start: isoDay(first), end };
+    return { from: isoDay(first), to };
   }
-  const def = RANGES.find((r) => r.key === range)?.days ?? 30;
+  const days = RANGE_PRESETS.find((r) => r.key === key)?.days ?? 30;
   const start = new Date(today);
-  start.setDate(start.getDate() - (def - 1));
-  return { start: isoDay(start), end };
+  start.setDate(start.getDate() - ((days ?? 30) - 1));
+  return { from: isoDay(start), to };
+}
+
+/**
+ * Convert a money STRING to a Number for bar-WIDTH scaling ONLY — never shown.
+ * The authoritative peso string is always what's displayed (BarChart `display`),
+ * so no money figure is ever a JS float. This is the same width-only role the
+ * server-computed collectionTrend `weight` plays for the Sales chart.
+ */
+function moneyWeight(amount: string): number {
+  const n = Number(amount);
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
 export function DashboardView({
@@ -106,6 +118,12 @@ export function DashboardView({
   query,
   followUps,
   moneyInTransit,
+  scrapTotal,
+  scrapSales,
+  scrapByMaterial,
+  layaway,
+  rangeFrom,
+  rangeTo,
   canExport,
   canVerifyPayments,
   canMonitorInventory,
@@ -118,14 +136,47 @@ export function DashboardView({
   query: string;
   followUps: FollowUpQueue;
   moneyInTransit: MoneyInTransitResult;
+  scrapTotal: ScrapTotal;
+  scrapSales: ScrapSaleRow[];
+  scrapByMaterial: ScrapIncomeRow[];
+  layaway: LayawayDashboard;
+  rangeFrom?: string | undefined;
+  rangeTo?: string | undefined;
   canExport: boolean;
   canVerifyPayments: boolean;
   canMonitorInventory: boolean;
 }) {
+  const router = useRouter();
+  // Privacy Mode (§7): every financial figure on the dashboard masks to dots when
+  // the user hides sensitive info. Display-only — the data is unchanged.
+  const { hidden } = usePrivacy();
+  const money = (amount: string): string => (hidden ? '₱••••••' : formatPeso(amount));
   const [tab, setTab] = useState<Tab>('Dashboard');
-  const [range, setRange] = useState<RangeKey>('30d');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  // The active range comes from the URL (props). Custom inputs are local until applied.
+  const isAllTime = !rangeFrom && !rangeTo;
+  const [customFrom, setCustomFrom] = useState(rangeFrom ?? '');
+  const [customTo, setCustomTo] = useState(rangeTo ?? '');
+
+  // Navigate to a range (or all time). The server re-scopes every money figure.
+  const goRange = (next: { from: string; to: string } | null) => {
+    const sp = new URLSearchParams();
+    if (query) sp.set('q', query);
+    if (next) {
+      sp.set('from', next.from);
+      sp.set('to', next.to);
+    }
+    const qs = sp.toString();
+    router.push(qs ? `/dashboard?${qs}` : '/dashboard');
+  };
+
+  // Which preset (if any) the current URL range matches — for highlighting.
+  const activePreset = (key: string): boolean => {
+    const p = presetRange(key);
+    if (!p) return isAllTime;
+    return rangeFrom === p.from && rangeTo === p.to;
+  };
+  const isCustom =
+    !isAllTime && !RANGE_PRESETS.some((r) => r.key !== 'all' && activePreset(r.key));
 
   const [refreshState, refresh, refreshing] = useActionState<
     DashboardActionState,
@@ -142,45 +193,40 @@ export function DashboardView({
 
   const notices = [refreshState, ackState, reportState];
 
-  const bounds = rangeBounds(range, from, to);
-
-  // Real 30-day collection trend, scoped to the selected range. Filtering only
-  // hides/shows real days — it never fabricates a point. `weight` scales the bar;
-  // `verified` is the authoritative money string shown as-is (no frontend math).
-  const trendInRange = useMemo(() => {
-    if (!metrics) return [];
-    return metrics.collectionTrend.filter(
-      (p) => p.day >= bounds.start && p.day <= bounds.end,
-    );
-  }, [metrics, bounds.start, bounds.end]);
-
-  const bucketSum = counts
-    ? counts.ordersActiveLayaway +
-      counts.ordersAwaitingPayment +
-      counts.ordersForFulfillment +
-      counts.ordersClosed +
-      counts.ordersCancelled
-    : 0;
-
   return (
     <div className="space-y-4">
       {/* ---- Header: date range + current range + Refresh + Export ---------- */}
       <Card>
         <CardContent className="space-y-2.5 pt-4">
           <div className="flex flex-wrap items-center gap-1.5">
-            {RANGES.map((r) => (
+            {RANGE_PRESETS.map((r) => (
               <Button
                 key={r.key}
                 type="button"
                 size="sm"
-                variant={range === r.key ? 'default' : 'outline'}
-                aria-pressed={range === r.key}
-                onClick={() => setRange(r.key)}
+                variant={activePreset(r.key) ? 'default' : 'outline'}
+                aria-pressed={activePreset(r.key)}
+                onClick={() => goRange(presetRange(r.key))}
                 data-testid={`dash-range-${r.key}`}
               >
                 {r.label}
               </Button>
             ))}
+            <Button
+              type="button"
+              size="sm"
+              variant={isCustom ? 'default' : 'outline'}
+              aria-pressed={isCustom}
+              onClick={() =>
+                goRange({
+                  from: customFrom || rangeFrom || isoDay(new Date()),
+                  to: customTo || rangeTo || isoDay(new Date()),
+                })
+              }
+              data-testid="dash-range-custom"
+            >
+              Custom
+            </Button>
             <div className="ml-auto flex items-center gap-1.5">
               <form action={refresh}>
                 <Button type="submit" size="sm" variant="outline" disabled={refreshing}>
@@ -199,40 +245,55 @@ export function DashboardView({
             </div>
           </div>
 
-          {range === 'custom' ? (
-            <div className="grid gap-2 sm:grid-cols-2 lg:max-w-md">
-              <div>
-                <Label htmlFor="range-from" className="text-xs">
-                  Start date
-                </Label>
-                <Input
-                  id="range-from"
-                  type="date"
-                  value={from}
-                  onChange={(e) => setFrom(e.target.value)}
-                  className="h-8"
-                />
-              </div>
-              <div>
-                <Label htmlFor="range-to" className="text-xs">
-                  End date
-                </Label>
-                <Input
-                  id="range-to"
-                  type="date"
-                  value={to}
-                  onChange={(e) => setTo(e.target.value)}
-                  className="h-8"
-                />
-              </div>
+          <div className="grid items-end gap-2 sm:grid-cols-[1fr_1fr_auto] lg:max-w-lg">
+            <div>
+              <Label htmlFor="range-from" className="text-xs">
+                Start date
+              </Label>
+              <Input
+                id="range-from"
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="h-8"
+              />
             </div>
-          ) : null}
+            <div>
+              <Label htmlFor="range-to" className="text-xs">
+                End date
+              </Label>
+              <Input
+                id="range-to"
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="h-8"
+              />
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              disabled={!customFrom || !customTo}
+              onClick={() => goRange({ from: customFrom, to: customTo })}
+              data-testid="dash-range-apply"
+            >
+              Apply
+            </Button>
+          </div>
 
           <p className="text-xs text-muted-foreground" data-testid="dash-range-active">
-            Showing <strong className="text-foreground">{bounds.start}</strong> to{' '}
-            <strong className="text-foreground">{bounds.end}</strong>. The range scopes
-            the Sales for the Period chart to real recorded days; export stays
-            permission-gated.
+            {isAllTime ? (
+              <>
+                Showing <strong className="text-foreground">all time</strong>.
+              </>
+            ) : (
+              <>
+                Showing <strong className="text-foreground">{rangeFrom}</strong> to{' '}
+                <strong className="text-foreground">{rangeTo}</strong>.
+              </>
+            )}{' '}
+            The range scopes the sales, layaway, and scrap figures and charts. Operational
+            counts below reflect current state; export stays permission-gated.
           </p>
         </CardContent>
       </Card>
@@ -283,74 +344,188 @@ export function DashboardView({
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
               <MetricCard
                 label="Total Sales"
-                value={formatPeso(metrics.totalSales)}
+                value={money(metrics.totalSales)}
                 accent
               />
               <MetricCard
                 label="Verified Collections"
-                value={formatPeso(metrics.verifiedCollections)}
+                value={money(metrics.verifiedCollections)}
               />
               <MetricCard
                 label="Outstanding Balance"
-                value={formatPeso(metrics.outstandingBalance)}
+                value={money(metrics.outstandingBalance)}
               />
-              <MetricCard label="Sales Today" value={formatPeso(metrics.salesToday)} />
-              <MetricCard label="Sales This Week" value={formatPeso(metrics.salesWeek)} />
+              <MetricCard label="Sales Today" value={money(metrics.salesToday)} />
+              <MetricCard label="Sales This Week" value={money(metrics.salesWeek)} />
               <MetricCard
                 label="Sales This Month"
-                value={formatPeso(metrics.salesMonth)}
+                value={money(metrics.salesMonth)}
               />
             </div>
 
-            {/* Charts row: Order Status + Sales for the Period. Both stay visible
-                at zero with "No data for this period" (never hidden). */}
+            {/* Layaway — live from the database (imported ledger + order-derived
+                arrangements). Each card opens the Layaway section with its filter;
+                Needs-Review / invalid rows never contribute. */}
+            <div>
+              <p className="mb-2 text-sm font-semibold text-foreground">Layaway</p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                {(
+                  [
+                    ['Active Layaways', String(layaway.active), 'active'],
+                    ['Completed Layaways', String(layaway.completed), 'completed'],
+                    ['Overdue Layaways', String(layaway.overdue), 'overdue'],
+                    ['Forfeited Layaways', String(layaway.forfeited), 'forfeited'],
+                    ['Created Today', String(layaway.createdToday), 'all'],
+                    ['Created This Month', String(layaway.createdMonth), 'all'],
+                    ['Due Today', String(layaway.dueToday), 'active'],
+                    ['Due Within 7 Days', String(layaway.due7d), 'active'],
+                    ['Total Item Amount', money(layaway.totalItem), 'all'],
+                    ['Total Interest', money(layaway.totalInterest), 'all'],
+                    ['Grand Total', money(layaway.grandTotal), 'all'],
+                    ['Total Payments', money(layaway.totalPayment), 'all'],
+                    ['Remaining Balance', money(layaway.remainingBalance), 'all'],
+                  ] as const
+                ).map(([label, value, section]) => (
+                  <Link
+                    key={label}
+                    href={`/orders/payments?layaway=${section}`}
+                    data-testid={`dash-layaway-${section}-${label}`}
+                    className="rounded-xl border border-border bg-card p-3 transition-colors hover:border-gold/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold"
+                  >
+                    <p className="text-[11px] leading-tight text-muted-foreground">{label}</p>
+                    <p className="mt-1 text-xl font-bold tabular-nums">{value}</p>
+                  </Link>
+                ))}
+              </div>
+            </div>
+
+            {/* ===== Colourful visual overview (Owner request 2026-07-22) =====
+                Income mix as a donut, then General / Layaway / Scrap as colourful
+                column charts. All real SQL totals; the donut's percentages and the
+                bar heights are proportions, while every peso figure shown is the
+                authoritative amount. Visible at zero, never hidden. */}
             <div className="grid gap-4 lg:grid-cols-2">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Order Status</CardTitle>
+                  <CardTitle className="text-base">
+                    Income mix — Sales · Layaway · Scrap
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {/* The disjoint Official-Order buckets, always the same five
-                      categories so the chart is present even at zero. */}
-                  <BarChart
-                    ariaLabel="Official Orders by status"
-                    noDataLabel="No data for this period"
+                  <DonutChart
+                    ariaLabel="Income mix: total sales, layaway, and scrap"
                     data={[
-                      { label: 'Active Layaway', value: counts.ordersActiveLayaway },
-                      { label: 'Awaiting Payment', value: counts.ordersAwaitingPayment },
-                      { label: 'For Fulfillment', value: counts.ordersForFulfillment },
-                      { label: 'Closed', value: counts.ordersClosed },
-                      { label: 'Cancelled', value: counts.ordersCancelled },
+                      {
+                        label: 'Total Sales',
+                        value: moneyWeight(metrics.totalSales),
+                        display: money(metrics.totalSales),
+                      },
+                      {
+                        label: 'Layaway',
+                        value: moneyWeight(metrics.totalLayawaySales),
+                        display: money(metrics.totalLayawaySales),
+                      },
+                      {
+                        label: 'Scrap',
+                        value: moneyWeight(scrapTotal.totalAmount),
+                        display: money(scrapTotal.totalAmount),
+                      },
                     ]}
                   />
                   <p className="mt-2 text-xs text-muted-foreground">
-                    {bucketSum} of {counts.totalOfficialOrders} Official Orders. These
-                    tiles are non-additive by construction: an Active Layaway{' '}
-                    <strong>is</strong> an Official Order and appears in exactly one tile,
-                    never two. Claims are not Official Orders. Never add these to the
-                    order tiles.
+                    Share of each income stream. Percentages are proportions of the total;
+                    each peso value shown is authoritative.
                   </p>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Sales for the Period</CardTitle>
+                  <CardTitle className="text-base">General</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <BarChart
-                    ariaLabel="Verified collections per day in the selected range"
-                    noDataLabel="No data for this period"
-                    emptyLabel="No data for this period"
-                    data={trendInRange.map((p) => ({
-                      label: p.day.slice(5),
-                      value: p.weight,
-                      display: formatPeso(p.verified),
-                    }))}
+                  <ColumnChart
+                    ariaLabel="General sales figures"
+                    data={[
+                      {
+                        label: 'Sales',
+                        value: moneyWeight(metrics.totalSales),
+                        display: money(metrics.totalSales),
+                      },
+                      {
+                        label: 'Verified',
+                        value: moneyWeight(metrics.verifiedCollections),
+                        display: money(metrics.verifiedCollections),
+                      },
+                      {
+                        label: 'Outstanding',
+                        value: moneyWeight(metrics.outstandingBalance),
+                        display: money(metrics.outstandingBalance),
+                      },
+                      {
+                        label: 'This Month',
+                        value: moneyWeight(metrics.salesMonth),
+                        display: money(metrics.salesMonth),
+                      },
+                    ]}
+                  />
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Layaway</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ColumnChart
+                    ariaLabel="Layaway figures"
+                    data={[
+                      {
+                        label: 'Sales',
+                        value: moneyWeight(metrics.totalLayawaySales),
+                        display: money(metrics.totalLayawaySales),
+                      },
+                      {
+                        label: 'Collections',
+                        value: moneyWeight(metrics.layawayCollections),
+                        display: money(metrics.layawayCollections),
+                      },
+                      {
+                        label: 'Forfeited',
+                        value: moneyWeight(metrics.forfeitedAmount),
+                        display: money(metrics.forfeitedAmount),
+                      },
+                    ]}
+                  />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Scrap — gold vs silver</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ColumnChart
+                    ariaLabel="Scrap income by material"
+                    noDataLabel="No scrap yet"
+                    data={
+                      scrapByMaterial.length > 0
+                        ? scrapByMaterial.map((r) => ({
+                            label: r.material === 'gold' ? 'Gold' : 'Silver',
+                            value: moneyWeight(r.totalAmount),
+                            display: money(r.totalAmount),
+                          }))
+                        : [
+                            { label: 'Gold', value: 0, display: money('0') },
+                            { label: 'Silver', value: 0, display: money('0') },
+                          ]
+                    }
                   />
                   <p className="mt-2 text-xs text-muted-foreground">
-                    Verified collections per day, {trendInRange.length} day(s) in range.
-                    Verified money only — unverified evidence is not counted.
+                    Scrap income by material. Full detail is in the Scrap details table
+                    below.
                   </p>
                 </CardContent>
               </Card>
@@ -440,15 +615,15 @@ export function DashboardView({
                   />
                   <MetricCard
                     label="Layaway Sales"
-                    value={formatPeso(metrics.totalLayawaySales)}
+                    value={money(metrics.totalLayawaySales)}
                   />
                   <MetricCard
                     label="Layaway Collections"
-                    value={formatPeso(metrics.layawayCollections)}
+                    value={money(metrics.layawayCollections)}
                   />
                   <MetricCard
                     label="Forfeited Amount"
-                    value={formatPeso(metrics.forfeitedAmount)}
+                    value={money(metrics.forfeitedAmount)}
                   />
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">
@@ -474,23 +649,41 @@ export function DashboardView({
                     >
                       <MetricCard
                         label="Awaiting Verification"
-                        value={formatPeso(moneyInTransit.data.awaitingVerification)}
+                        value={money(moneyInTransit.data.awaitingVerification)}
                       />
                       <MetricCard
                         label="Customer Pending"
-                        value={formatPeso(moneyInTransit.data.customerPending)}
+                        value={money(moneyInTransit.data.customerPending)}
                       />
                       <MetricCard
-                        label="In Transit to Collect"
-                        value={formatPeso(moneyInTransit.data.inTransitToCollect)}
+                        label="Still to Collect (COD)"
+                        value={money(moneyInTransit.data.inTransitToCollect)}
+                        accent
+                      />
+                    </div>
+                    {/* Rider-vs-LBC split of "still to collect", plus cash collected
+                        but not yet remitted (#3 deeper). */}
+                    <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      <MetricCard
+                        label="To Collect — Rider"
+                        value={money(moneyInTransit.data.riderToCollect)}
+                      />
+                      <MetricCard
+                        label="To Collect — LBC"
+                        value={money(moneyInTransit.data.lbcToCollect)}
+                      />
+                      <MetricCard
+                        label="Collected, Not Remitted"
+                        value={money(moneyInTransit.data.collectedUnremitted)}
                         accent
                       />
                     </div>
                     <p className="mt-2 text-xs text-muted-foreground">
-                      Money not yet in the bank. In Transit = outstanding on COD orders
-                      dispatched but not completed. The rider-vs-LBC split and
-                      collected-but-not-remitted tracking come with the courier/remittance
-                      fields (next slice).
+                      Money not yet in the bank. Still to Collect = outstanding on COD
+                      orders dispatched but not yet collected (split by who carries it —
+                      rider vs LBC; a dispatched order with no channel set yet shows in
+                      the total but neither split). Collected, Not Remitted = cash already
+                      taken on delivery but not yet handed to the shop.
                     </p>
                   </>
                 ) : (
@@ -499,6 +692,60 @@ export function DashboardView({
                     detail="The money-in-transit totals could not be read."
                   />
                 )}
+              </CardContent>
+            </Card>
+
+            {/* Scrap details — the most recent scrap gold/silver sales. Real rows,
+                RLS-scoped; amounts shown as authoritative peso strings. Sits at the
+                very bottom of the dashboard. */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Scrap details</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {scrapSales.length === 0 ? (
+                  <p className="text-xs text-muted-foreground" data-testid="scrap-empty">
+                    No scrap sales yet.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-border">
+                    <table
+                      className="w-full min-w-[520px] text-left text-sm"
+                      data-testid="scrap-details"
+                    >
+                      <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">Date</th>
+                          <th className="px-3 py-2 font-medium">Material</th>
+                          <th className="px-3 py-2 text-right font-medium">Grams</th>
+                          <th className="px-3 py-2 text-right font-medium">Amount</th>
+                          <th className="px-3 py-2 font-medium">Buyer</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {scrapSales.map((s) => (
+                          <tr key={s.id} className="border-b last:border-0">
+                            <td className="px-3 py-2 tabular-nums">{s.soldOn}</td>
+                            <td className="px-3 py-2 capitalize">{s.material}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">
+                              {s.grams}
+                            </td>
+                            <td className="px-3 py-2 text-right font-medium tabular-nums">
+                              {money(s.amount)}
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {s.buyer ?? '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Most recent scrap sales. Full history and recording are on the Scrap
+                  page in the sidebar.
+                </p>
               </CardContent>
             </Card>
           </div>
@@ -526,31 +773,6 @@ export function DashboardView({
                 structure is preserved; it stays honestly empty rather than showing
                 invented figures, and will be built once the disassembly workflow is
                 defined.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {/* ================= GROSS PROFIT TAB (honest-unavailable) ================= */}
-      {tab === 'Gross Profit' ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Gross Profit</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div
-              className="rounded-xl border border-dashed border-border bg-muted/30 p-6 text-center"
-              data-testid="gross-profit-unavailable"
-            >
-              <p className="text-sm font-medium text-foreground">
-                Gross Profit is not available yet
-              </p>
-              <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-                Gross Profit needs real cost / COGS rules (cost per item and the margin
-                formula), and those are not defined in the system yet. Rather than show
-                invented numbers, this stays honestly unavailable until the cost rules are
-                approved. The tab is retained so the approved structure is preserved.
               </p>
             </div>
           </CardContent>
@@ -597,7 +819,7 @@ export function DashboardView({
                 <div>
                   <dt className="text-muted-foreground">Verified collected</dt>
                   <dd className="text-lg font-bold tabular-nums">
-                    {formatPeso(reportState.report.verifiedCollected)}
+                    {money(reportState.report.verifiedCollected)}
                   </dd>
                 </div>
                 <div>

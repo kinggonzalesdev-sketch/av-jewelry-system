@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useState } from 'react';
+import { useActionState, useEffect, useRef, useState } from 'react';
 
 import { recordPaymentAction } from '@/lib/payments/actions';
 import type { RecordPaymentActionState } from '@/lib/payments/action-state';
@@ -10,6 +10,7 @@ import type { PayableOrderRow } from '@/lib/payments/workspace';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { MoneyInput } from '@/components/ui/money-input';
 import { Label } from '@/components/ui/label';
 
 /**
@@ -78,60 +79,97 @@ const METHODS = [
 
 type MethodValue = (typeof METHODS)[number]['value'];
 
-export function RecordPaymentForm({ orders }: { orders: PayableOrderRow[] }) {
+export function RecordPaymentForm({
+  orders,
+  lockedOrder,
+  onRecorded,
+  embedded = false,
+}: {
+  orders: PayableOrderRow[];
+  /** When set, the form records against THIS one order only: the selector is
+   *  hidden and the order is pre-selected. Used by the Order Details modal so
+   *  the exact same guarded action runs, scoped to the order in view. */
+  lockedOrder?: PayableOrderRow;
+  /** Fires once each time a payment records successfully — lets the modal refresh
+   *  just this order's data (partial refresh, no full page reload). */
+  onRecorded?: () => void;
+  /** Render WITHOUT the outer Card + header — for use inside the standard Modal
+   *  (or the Order Details modal), which already provides the frame and title. */
+  embedded?: boolean;
+}) {
   const [state, action, pending] = useActionState<RecordPaymentActionState, FormData>(
     recordPaymentAction,
     EMPTY_RECORD_PAYMENT_STATE,
   );
 
-  const [orderId, setOrderId] = useState('');
+  const effectiveOrders = lockedOrder ? [lockedOrder] : orders;
+  const [orderId, setOrderId] = useState(lockedOrder?.officialOrderId ?? '');
   const [method, setMethod] = useState<MethodValue>('bank_transfer');
 
-  const selected = orders.find((o) => o.officialOrderId === orderId) ?? null;
+  // Notify the parent exactly once per successful record (partial refresh).
+  const lastSuccess = useRef<string | null>(null);
+  useEffect(() => {
+    if (state.success && state.success !== lastSuccess.current) {
+      lastSuccess.current = state.success;
+      onRecorded?.();
+    }
+  }, [state.success, onRecorded]);
+
+  const selected = effectiveOrders.find((o) => o.officialOrderId === orderId) ?? null;
   const spec = METHODS.find((m) => m.value === method) ?? METHODS[0];
 
-  if (orders.length === 0) {
+  if (!lockedOrder && orders.length === 0) {
+    const emptyMessage = (
+      <p className="text-sm text-muted-foreground">
+        There are no Official Orders to record a payment against yet. An order is created
+        by Approve &amp; Send Invoice.
+      </p>
+    );
+    if (embedded) return emptyMessage;
     return (
       <Card>
         <CardHeader>
           <CardTitle>Record Payment</CardTitle>
         </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            There are no Official Orders to record a payment against yet. An order is
-            created by Approve &amp; Send Invoice.
-          </p>
-        </CardContent>
+        <CardContent>{emptyMessage}</CardContent>
       </Card>
     );
   }
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Record Payment</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form action={action} className="space-y-4">
-          {/* --- Order selection ------------------------------------------- */}
-          <div className="space-y-1.5">
-            <Label htmlFor="officialOrderId">Official Order</Label>
-            <select
-              id="officialOrderId"
-              name="officialOrderId"
-              required
-              value={orderId}
-              onChange={(e) => setOrderId(e.target.value)}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            >
-              <option value="">Select an Official Order…</option>
-              {orders.map((o) => (
-                <option key={o.officialOrderId} value={o.officialOrderId}>
-                  {o.orderNumber} — {o.customerDisplayName}
-                </option>
-              ))}
-            </select>
-          </div>
+  const formEl = (
+    <form action={action} className="space-y-3">
+          {/* --- Order selection -------------------------------------------
+              Locked to one order inside the Order Details modal (selector hidden,
+              order pre-filled); a free chooser everywhere else. */}
+          {lockedOrder ? (
+            <div className="space-y-1">
+              <Label>Official Order</Label>
+              <input type="hidden" name="officialOrderId" value={lockedOrder.officialOrderId} />
+              <p className="rounded-md border border-input bg-muted/40 px-3 py-2 text-sm">
+                <span className="font-mono">{lockedOrder.orderNumber}</span>
+                <span className="text-muted-foreground"> — {lockedOrder.customerDisplayName}</span>
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <Label htmlFor="officialOrderId">Official Order</Label>
+              <select
+                id="officialOrderId"
+                name="officialOrderId"
+                required
+                value={orderId}
+                onChange={(e) => setOrderId(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">Select an Official Order…</option>
+                {orders.map((o) => (
+                  <option key={o.officialOrderId} value={o.officialOrderId}>
+                    {o.orderNumber} — {o.customerDisplayName}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* --- Authoritative order facts, straight from the database -----
               If the balance could not be read, this says so. It NEVER renders
@@ -206,26 +244,26 @@ export function RecordPaymentForm({ orders }: { orders: PayableOrderRow[] }) {
           )}
 
           {/* --- Amount + method ------------------------------------------- */}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="amount">Payment amount (₱)</Label>
-              <Input
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label htmlFor="amount">Payment amount</Label>
+              <MoneyInput
                 id="amount"
                 name="amount"
-                inputMode="decimal"
-                placeholder="10000.00"
+                placeholder="0.00"
                 required
+                className="h-9 text-sm"
               />
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <Label htmlFor="paymentMethod">Payment method</Label>
               <select
                 id="paymentMethod"
                 name="paymentMethod"
                 value={method}
                 onChange={(e) => setMethod(e.target.value as MethodValue)}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               >
                 {METHODS.map((m) => (
                   <option key={m.value} value={m.value}>
@@ -236,42 +274,67 @@ export function RecordPaymentForm({ orders }: { orders: PayableOrderRow[] }) {
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
               <Label htmlFor="transactedAt">Transaction date &amp; time</Label>
               <Input
                 id="transactedAt"
                 name="transactedAt"
                 type="datetime-local"
                 required
+                className="h-9 text-sm"
               />
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <Label htmlFor="referenceNumber">Transaction / reference number</Label>
-              <Input id="referenceNumber" name="referenceNumber" required />
+              <Input
+                id="referenceNumber"
+                name="referenceNumber"
+                required
+                className="h-9 text-sm"
+              />
             </div>
           </div>
 
-          {/* --- Method-specific fields ------------------------------------ */}
-          {spec.needsProvider && spec.providerLabel && (
-            <div className="space-y-1.5">
-              <Label htmlFor="provider">{spec.providerLabel}</Label>
-              <Input id="provider" name="provider" required />
-            </div>
-          )}
+          {/* --- Method-specific fields + note, paired to save vertical space --- */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            {spec.needsProvider && spec.providerLabel && (
+              <div className="space-y-1">
+                <Label htmlFor="provider">{spec.providerLabel}</Label>
+                <Input id="provider" name="provider" required className="h-9 text-sm" />
+              </div>
+            )}
 
-          {method === 'other' && (
-            <div className="space-y-1.5">
-              <Label htmlFor="provider-other">Method name</Label>
-              <Input id="provider-other" name="provider" />
+            {method === 'other' && (
+              <div className="space-y-1">
+                <Label htmlFor="provider-other">Method name</Label>
+                <Input id="provider-other" name="provider" className="h-9 text-sm" />
+              </div>
+            )}
+
+            <div className="space-y-1">
+              <Label htmlFor="note">
+                Note {method === 'other' ? '(required)' : '(optional)'}
+              </Label>
+              <Input
+                id="note"
+                name="note"
+                required={method === 'other'}
+                className="h-9 text-sm"
+              />
             </div>
-          )}
+          </div>
 
           {spec.needsLocation && (
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <Label htmlFor="collectionLocation">Store / collection location</Label>
-              <Input id="collectionLocation" name="collectionLocation" required />
+              <Input
+                id="collectionLocation"
+                name="collectionLocation"
+                required
+                className="h-9 text-sm"
+              />
               <p className="text-xs text-muted-foreground">
                 Cash is attributed to the receiving staff member and the receipt number. A
                 photo is optional for cash (§3).
@@ -279,33 +342,8 @@ export function RecordPaymentForm({ orders }: { orders: PayableOrderRow[] }) {
             </div>
           )}
 
-          {/* --- Evidence --------------------------------------------------- */}
-          <div className="space-y-1.5">
-            <Label htmlFor="evidenceReference">
-              Evidence reference {spec.needsProof ? '(required)' : '(optional)'}
-            </Label>
-            <Input
-              id="evidenceReference"
-              name="evidenceReference"
-              placeholder="e.g. gcash-2026-07-20-ana.png"
-              required={spec.needsProof}
-            />
-            <p className="text-xs text-muted-foreground">
-              V1 records a <strong>reference</strong> to the proof, not the file itself —
-              file upload is not built. Keep the screenshot or receipt so it can be
-              produced on request.
-            </p>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="note">
-              Note {method === 'other' ? '(required)' : '(optional)'}
-            </Label>
-            <Input id="note" name="note" required={method === 'other'} />
-          </div>
-
           {/* --- The one thing that must never be misread ------------------ */}
-          <p className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+          <p className="rounded-md border border-dashed p-2.5 text-xs text-muted-foreground">
             Recording is <strong>not</strong> verifying. This payment is saved as
             <strong> unverified</strong> and reduces no balance until someone with Payment
             Verification verifies it. Never enter a card number, CVV, or PIN — the system
@@ -341,8 +379,17 @@ export function RecordPaymentForm({ orders }: { orders: PayableOrderRow[] }) {
               )}
             </div>
           )}
-        </form>
-      </CardContent>
+    </form>
+  );
+
+  if (embedded) return formEl;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Record Payment</CardTitle>
+      </CardHeader>
+      <CardContent>{formEl}</CardContent>
     </Card>
   );
 }

@@ -1,8 +1,15 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { OrdersView } from '@/components/orders/orders-view';
 import type { OrderListRow, OrdersResult } from '@/lib/orders/service';
+
+// OrdersView mounts the shared Order Details modal, which calls useRouter for its
+// post-action refresh. The modal itself renders nothing while closed (no order
+// selected), so a minimal router stub is all these list/card/filter tests need.
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
 
 /**
  * Orders screen — the approved status cards (11), search, and filters over REAL
@@ -24,6 +31,8 @@ function row(over: Partial<OrderListRow>): OrderListRow {
     fulfillmentStatus: null,
     layawayStatus: null,
     shipDate: null,
+    fulfillmentDestination: null,
+    orderSource: 'online',
     ...over,
   };
 }
@@ -79,11 +88,27 @@ describe('OrdersView — honest states', () => {
     expect(screen.getByTestId('orders-filter-fulfillment')).toBeInTheDocument();
     expect(screen.getByTestId('empty-state')).toBeInTheDocument();
   });
+
+  it('tags a walk-in order with a Walk-in badge (online orders show none)', () => {
+    render(
+      <OrdersView
+        result={ok([
+          row({ orderNumber: 'ORD-W', customerDisplayName: 'Walk Customer', orderSource: 'walk_in' }),
+          row({ orderNumber: 'ORD-O', customerDisplayName: 'Online Customer', orderSource: 'online' }),
+        ])}
+      />,
+    );
+    expect(screen.getByText('Walk-in')).toBeInTheDocument();
+    // Exactly one badge — the online order is not tagged.
+    expect(screen.getAllByText('Walk-in')).toHaveLength(1);
+  });
 });
 
 describe('OrdersView — the approved 11 status cards over real data', () => {
-  it('renders all 11 cards including For Layaway', () => {
+  it('renders all status cards, incl. the For-Prepare destinations', () => {
     render(<OrdersView result={ok(sample)} />);
+    // Delivery, Pickup, and For Layaway were added as For-Prepare transfer
+    // destinations (Orders Workflow — For Prepare).
     for (const key of [
       'all',
       'for_invoice',
@@ -91,11 +116,14 @@ describe('OrdersView — the approved 11 status cards over real data', () => {
       'for_prepare',
       'for_confirm',
       'ship_confirm',
+      'delivery',
+      'pickup',
+      'for_layaway',
       'keep',
       'for_cancel',
       'cancelled',
       'unverified_pay',
-      'for_layaway',
+      'completed',
     ]) {
       expect(screen.getByTestId(`orders-card-${key}`)).toBeInTheDocument();
     }
@@ -116,9 +144,9 @@ describe('OrdersView — the approved 11 status cards over real data', () => {
     expect(
       within(screen.getByTestId('orders-card-cancelled')).getByText('1'),
     ).toBeInTheDocument();
-    // ORD-5 has an active layaway.
+    // None of the sample orders are in a completed state → Completed shows 0.
     expect(
-      within(screen.getByTestId('orders-card-for_layaway')).getByText('1'),
+      within(screen.getByTestId('orders-card-completed')).getByText('0'),
     ).toBeInTheDocument();
   });
 

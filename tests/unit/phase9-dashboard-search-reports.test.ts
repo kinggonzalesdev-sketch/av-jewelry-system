@@ -89,14 +89,10 @@ describe('the screen never contradicts the counting rules', () => {
     ' ',
   );
 
-  it('says the order tiles are non-additive and why', () => {
-    expect(view).toMatch(/non-additive by construction/i);
-    expect(view).toMatch(/an Active Layaway .{0,40}is.{0,20}an Official Order/i);
-  });
-
-  it('shows the bucket sum against the total so a double-count is visible', () => {
-    expect(view).toMatch(/of \{counts\.totalOfficialOrders\} Official Orders/);
-  });
+  // The Order Status card (which stated the non-additive rule + the bucket sum)
+  // was removed from the dashboard by Owner request. The non-additive counting
+  // rule is still proven against a real database in the pgTAP suite, and the
+  // Work Queues note below still warns that claims are not orders.
 
   it('says claims are not orders', () => {
     expect(view).toMatch(/Claims are not Official Orders/i);

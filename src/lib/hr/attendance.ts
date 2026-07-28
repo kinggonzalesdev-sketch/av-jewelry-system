@@ -1,8 +1,42 @@
 import 'server-only';
 
+import { ATTACHMENTS_BUCKET } from '@/lib/attachments/service';
 import { recordAuditEvent } from '@/lib/audit/log';
-import { requireActiveStaff } from '@/lib/authz/guard';
+import {
+  AuthorizationError,
+  requireActiveStaff,
+  requireOwnerOrAdmin,
+} from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
+import { isAttendanceGatingActive, verifyDeviceCookie } from '@/lib/hr/devices';
+
+/**
+ * Device gate: once the Owner has registered a shop phone, only that device (its
+ * httpOnly cookie token) may clock in/out. Before any device is registered this is
+ * a no-op — clock-in behaves exactly as before, so nobody is locked out. A blocked
+ * attempt from an unregistered device is refused AND written to the audit log.
+ */
+async function requireApprovedDevice(
+  staffProfileId: string,
+  event: 'clock_in' | 'clock_out',
+): Promise<{ ok: true; deviceId: string | null } | { ok: false; error: string }> {
+  if (!(await isAttendanceGatingActive())) return { ok: true, deviceId: null };
+  const deviceId = await verifyDeviceCookie();
+  if (deviceId) return { ok: true, deviceId };
+
+  await recordAuditEvent({
+    action: 'attendance.blocked_device',
+    entityType: 'attendance_record',
+    entityId: staffProfileId,
+    outcome: 'denied',
+    reason: `Blocked ${event}: this device is not the approved shop phone.`,
+  });
+  return {
+    ok: false,
+    error:
+      'This device is not the approved shop phone. Clock in/out from the registered device.',
+  };
+}
 
 /**
  * HR: attendance (Bible §F). A staff member clocks in and out; RLS ensures a
@@ -19,13 +53,126 @@ export type AttendanceRow = {
   timeIn: string;
   timeOut: string | null;
   note: string | null;
+  /** True when the session started at/after 10 PM Asia/Manila (decided in SQL). */
+  isOvertime: boolean;
+  /** Flat overtime pay as an authoritative string (numeric in SQL), e.g. "300.00". */
+  overtimeAmount: string;
 };
 
-export type ClockResult = { ok: true; message: string } | { ok: false; error: string };
+export type ClockResult =
+  | {
+      ok: true;
+      message: string;
+      /** Present on clock-IN only — the new attendance record (for the selfie). */
+      recordId?: string;
+      isOvertime?: boolean;
+      overtimeAmount?: string;
+    }
+  | { ok: false; error: string };
 
 function one<T>(value: unknown): T | undefined {
   if (Array.isArray(value)) return value[0] as T | undefined;
   return (value as T) ?? undefined;
+}
+
+/** Staff id → the ISO time of their current OPEN session (clocked in, not out). */
+export async function listOpenSessions(): Promise<Record<string, string>> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('attendance_records')
+    .select('staff_profile_id, time_in')
+    .is('time_out', null);
+  const map: Record<string, string> = {};
+  for (const r of (data ?? []) as Array<{ staff_profile_id: string; time_in: string }>) {
+    map[r.staff_profile_id] = r.time_in;
+  }
+  return map;
+}
+
+/**
+ * Kiosk clock-IN for a SELECTED team member (shop-device model). The operator must
+ * be active staff; the device gate + the DEFINER function enforce the shop-phone
+ * rule, active-target rule, and one-open-session rule. The selfie is attached to
+ * the returned record by the caller.
+ */
+export async function kioskClockIn(
+  staffProfileId: string,
+  note: string | null,
+): Promise<ClockResult> {
+  await requireActiveStaff();
+  if (!staffProfileId) return { ok: false, error: 'Select a team member first.' };
+
+  const device = await requireApprovedDevice(staffProfileId, 'clock_in');
+  if (!device.ok) return { ok: false, error: device.error };
+
+  const supabase = await createClient();
+  const res = (await supabase.rpc('kiosk_clock_in', {
+    p_staff_id: staffProfileId,
+    p_device_id: device.deviceId,
+    p_note: note?.trim() || null,
+  })) as { data: string | null; error: { message: string } | null };
+  if (res.error || !res.data) {
+    return {
+      ok: false,
+      error: res.error?.message.replace(/^ERROR:\s*/i, '').trim() ?? 'Could not clock in.',
+    };
+  }
+
+  const recordId = res.data;
+  // Best-effort read of what SQL decided about overtime (visible to the Owner).
+  const { data: rec } = await supabase
+    .from('attendance_records')
+    .select('is_overtime, overtime_amount')
+    .eq('id', recordId)
+    .maybeSingle();
+  const isOvertime = rec?.is_overtime === true;
+  const overtimeAmount = String((rec?.overtime_amount as string | number | null) ?? '0');
+
+  await recordAuditEvent({
+    action: 'attendance.clock_in',
+    entityType: 'attendance_record',
+    entityId: recordId,
+    context: { for_staff: staffProfileId, ...(isOvertime ? { overtime_amount: overtimeAmount } : {}) },
+  });
+
+  return {
+    ok: true,
+    message: isOvertime
+      ? `Clocked in. Overtime — ₱${overtimeAmount} was added (clock-in at/after 10 PM).`
+      : 'Clocked in.',
+    recordId,
+    isOvertime,
+    overtimeAmount,
+  };
+}
+
+/** Kiosk clock-OUT for a SELECTED team member. */
+export async function kioskClockOut(staffProfileId: string): Promise<ClockResult> {
+  await requireActiveStaff();
+  if (!staffProfileId) return { ok: false, error: 'Select a team member first.' };
+
+  const device = await requireApprovedDevice(staffProfileId, 'clock_out');
+  if (!device.ok) return { ok: false, error: device.error };
+
+  const supabase = await createClient();
+  const res = (await supabase.rpc('kiosk_clock_out', {
+    p_staff_id: staffProfileId,
+  })) as { data: string | null; error: { message: string } | null };
+  if (res.error || !res.data) {
+    return {
+      ok: false,
+      error: res.error?.message.replace(/^ERROR:\s*/i, '').trim() ?? 'Could not clock out.',
+    };
+  }
+
+  const recordId = res.data;
+  await recordAuditEvent({
+    action: 'attendance.clock_out',
+    entityType: 'attendance_record',
+    entityId: recordId,
+    context: { for_staff: staffProfileId },
+  });
+  return { ok: true, message: 'Clocked out.', recordId };
 }
 
 /** True when the caller currently has an open session (clocked in, not out). */
@@ -43,31 +190,68 @@ export async function getOpenSession(): Promise<{ open: boolean; since: string |
 
 export async function clockIn(note: string | null): Promise<ClockResult> {
   const staff = await requireActiveStaff();
+
+  // Owner-only (Owner request): only the Owner may use the time clock. UI hiding
+  // is not the control — this is the real server boundary.
+  if (staff.roleKey !== 'owner') {
+    return { ok: false, error: 'Only the Owner can clock in.' };
+  }
+
+  const device = await requireApprovedDevice(staff.staffProfileId, 'clock_in');
+  if (!device.ok) return { ok: false, error: device.error };
+
   const supabase = await createClient();
 
-  const { error } = await supabase.from('attendance_records').insert({
-    staff_profile_id: staff.staffProfileId,
-    note: note?.trim() || null,
-  });
+  // Overtime is decided by the database trigger from the real clock-in time — the
+  // insert sends no overtime flag, and reads back what SQL decided.
+  const { data, error } = await supabase
+    .from('attendance_records')
+    .insert({
+      staff_profile_id: staff.staffProfileId,
+      note: note?.trim() || null,
+      device_id: device.deviceId,
+    })
+    .select('id, is_overtime, overtime_amount')
+    .single();
 
-  if (error) {
+  if (error || !data) {
     // 23505 = the "one open session" unique index: already clocked in.
-    if (error.code === '23505') {
+    if (error?.code === '23505') {
       return { ok: false, error: 'You are already clocked in. Clock out first.' };
     }
     return { ok: false, error: 'Could not clock in.' };
   }
 
+  const isOvertime = data.is_overtime === true;
+  const overtimeAmount = String(data.overtime_amount as string | number);
+
   await recordAuditEvent({
     action: 'attendance.clock_in',
     entityType: 'attendance_record',
-    entityId: staff.staffProfileId,
+    entityId: data.id as string,
+    ...(isOvertime ? { context: { overtime_amount: overtimeAmount } } : {}),
   });
-  return { ok: true, message: 'Clocked in.' };
+  return {
+    ok: true,
+    message: isOvertime
+      ? `Clocked in. Overtime — ₱${overtimeAmount} was added (clock-in at/after 10 PM).`
+      : 'Clocked in.',
+    recordId: data.id as string,
+    isOvertime,
+    overtimeAmount,
+  };
 }
 
 export async function clockOut(): Promise<ClockResult> {
   const staff = await requireActiveStaff();
+
+  if (staff.roleKey !== 'owner') {
+    return { ok: false, error: 'Only the Owner can clock out.' };
+  }
+
+  const device = await requireApprovedDevice(staff.staffProfileId, 'clock_out');
+  if (!device.ok) return { ok: false, error: device.error };
+
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -82,12 +266,120 @@ export async function clockOut(): Promise<ClockResult> {
     return { ok: false, error: 'You are not clocked in.' };
   }
 
+  const recordId = data[0]?.id as string;
+
   await recordAuditEvent({
     action: 'attendance.clock_out',
     entityType: 'attendance_record',
-    entityId: staff.staffProfileId,
+    entityId: recordId,
   });
-  return { ok: true, message: 'Clocked out.' };
+  // recordId lets the client attach the clock-out selfie to the same session.
+  return { ok: true, message: 'Clocked out.', recordId };
+}
+
+/**
+ * Permanently delete ONE attendance record — Owner or Selected Admin only. The
+ * database function re-checks the role and removes the row; payroll is DERIVED
+ * from attendance (report_payroll), so it recomputes on the next read. This is
+ * irreversible. Any loose clock-in/out selfie stays as orphaned storage — it has
+ * no FK and is harmless.
+ */
+export async function deleteAttendanceRecord(
+  recordId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await requireOwnerOrAdmin();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) {
+      await recordAuditEvent({
+        action: 'attendance.delete',
+        entityType: 'attendance_record',
+        entityId: recordId,
+        outcome: 'denied',
+        reason: cause.message,
+      });
+      return { ok: false, error: cause.message };
+    }
+    throw cause;
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('delete_attendance_record', {
+    p_record_id: recordId,
+  });
+
+  if (error) {
+    await recordAuditEvent({
+      action: 'attendance.delete',
+      entityType: 'attendance_record',
+      entityId: recordId,
+      outcome: 'failed',
+      reason: error.message,
+    });
+    return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+
+  await recordAuditEvent({
+    action: 'attendance.delete',
+    entityType: 'attendance_record',
+    entityId: recordId,
+    context: { permanent: true },
+  });
+  return { ok: true };
+}
+
+/** Clock-in / clock-out selfie URLs for one attendance record. Each is a
+ *  short-lived signed URL (5 min) minted with a download disposition, so it both
+ *  renders in an <img> and saves to the browser's Downloads folder when clicked. */
+export type AttendanceSelfies = Record<
+  string,
+  { inUrl: string | null; outUrl: string | null }
+>;
+
+/**
+ * Clock-in/out selfies for the attendance the caller may see (RLS-scoped exactly
+ * like the records: own, or all for the Owner). Read-only. Returns a map keyed by
+ * attendance record id; the in/out selfie is told apart by the stored file name.
+ *
+ * The bytes never leave the private bucket — only a short-lived signed URL does,
+ * and it is minted per read (never persisted). A failure to sign one selfie leaves
+ * the rest intact.
+ */
+export async function listAttendanceSelfies(): Promise<AttendanceSelfies> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('attachments')
+    .select('related_entity_id, file_name, storage_path')
+    .eq('related_entity_type', 'attendance_record')
+    .order('uploaded_at', { ascending: true });
+
+  if (error || !data) return {};
+
+  const rows = data as Array<{
+    related_entity_id: string;
+    file_name: string | null;
+    storage_path: string;
+  }>;
+
+  const out: AttendanceSelfies = {};
+  await Promise.all(
+    rows.map(async (r) => {
+      const signed = await supabase.storage
+        .from(ATTACHMENTS_BUCKET)
+        .createSignedUrl(r.storage_path, 300, {
+          download: r.file_name ?? 'attendance-selfie.jpg',
+        })
+        .then((res) => res.data?.signedUrl ?? null)
+        .catch(() => null);
+
+      const entry = out[r.related_entity_id] ?? { inUrl: null, outUrl: null };
+      if ((r.file_name ?? '').includes('clock-out')) entry.outUrl = signed;
+      else entry.inUrl = signed;
+      out[r.related_entity_id] = entry;
+    }),
+  );
+
+  return out;
 }
 
 /**
@@ -99,7 +391,7 @@ export async function listAttendance(limit = 100): Promise<AttendanceRow[]> {
   const { data, error } = await supabase
     .from('attendance_records')
     .select(
-      'id, staff_profile_id, work_date, time_in, time_out, note, staff:staff_profiles!staff_profile_id ( full_name )',
+      'id, staff_profile_id, work_date, time_in, time_out, note, is_overtime, overtime_amount, staff:staff_profiles!staff_profile_id ( full_name )',
     )
     .order('time_in', { ascending: false })
     .limit(limit);
@@ -116,6 +408,8 @@ export async function listAttendance(limit = 100): Promise<AttendanceRow[]> {
       timeIn: r.time_in as string,
       timeOut: (r.time_out as string | null) ?? null,
       note: (r.note as string | null) ?? null,
+      isOvertime: r.is_overtime === true,
+      overtimeAmount: String((r.overtime_amount as string | number | null) ?? '0'),
     };
   });
 }

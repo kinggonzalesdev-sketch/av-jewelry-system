@@ -6,7 +6,6 @@ import { getGrantedPermissions, requireActiveStaff } from '@/lib/authz/guard';
 import { listFulfillments, listOwnerApprovals } from '@/lib/fulfillment/service';
 
 export const metadata: Metadata = {
-  title: 'Fulfillment — A.V. Jewelry Operations',
 };
 
 /**

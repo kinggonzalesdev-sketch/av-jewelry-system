@@ -192,8 +192,12 @@ describe('server-side authorization boundary', () => {
       'requireOwnerApprovalAuthority',
       'requireAal2',
     ]) {
+      // Either a plain async function, or the request-cached form
+      // `export const fn = cache(async ...` (a perf dedupe; same guard).
       expect(guard, `${fn} must exist`).toMatch(
-        new RegExp(`export async function ${fn}\\b`),
+        new RegExp(
+          `export async function ${fn}\\b|export const ${fn} = cache\\(async\\b`,
+        ),
       );
     }
   });

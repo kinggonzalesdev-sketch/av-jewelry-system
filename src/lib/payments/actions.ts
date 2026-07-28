@@ -7,12 +7,28 @@ import type {
 import { revalidatePath } from 'next/cache';
 
 import {
+  findOrCreateFinancer,
+  setLayawayDetails,
+  type FindOrCreateFinancerResult,
+} from '@/lib/payments/financer';
+import {
   activateLayaway,
   decideForfeiture,
   recordInstallment,
   requestForfeiture,
 } from '@/lib/payments/layaway';
 import { recordPayment, verifyPayment } from '@/lib/payments/verification';
+import { completeOrderForPaymentIfPaidInFull } from '@/lib/orders/complete-on-payment';
+import {
+  deleteAllLayawayLedger,
+  deleteLayawayLedgerRow,
+  getLayawayLedgerDetail,
+  importLayawayLedger,
+  type LayawayLedgerDetail,
+  type LayawayLedgerInput,
+  type LedgerDeleteResult,
+  type LedgerImportResult,
+} from '@/lib/payments/layaway-ledger';
 
 /**
  * Phase 6 server actions (Bible §16, §17).
@@ -101,15 +117,71 @@ export async function verifyPaymentAction(
   const result = await verifyPayment(paymentId, 'verified', { verifiedAmount });
   if (!result.ok) return { error: result.error, success: null };
 
+  // Auto-complete when this verification makes the order paid in full (Owner
+  // decision 2026-07-25). Kept OUT of verifyPayment so verification stays
+  // money-only; this is a separate, idempotent step that also retires inventory.
+  const completed = await completeOrderForPaymentIfPaidInFull(paymentId);
+
   revalidatePath('/orders/payments');
+  if (completed) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/inventory');
+  }
 
   return {
     error: null,
     success: result.deduplicated
       ? 'This payment was already decided. No second verification was recorded.'
-      : // Says exactly what happened. Verified is not Paid in Full.
-        `Payment verified for ₱${verifiedAmount}. Only the verified amount reduces the balance.`,
+      : completed
+        ? `Payment verified for ₱${verifiedAmount}. The order is now paid in full — moved to Completed and its items retired from inventory.`
+        : // Says exactly what happened. Verified is not Paid in Full.
+          `Payment verified for ₱${verifiedAmount}. Only the verified amount reduces the balance.`,
   };
+}
+
+/**
+ * Import a batch of layaway ledger rows (Owner/Admin). Transport only — the
+ * dedup, account-number generation, and permission live in the domain module and
+ * the database. On success the Layaway page revalidates so the table + cards
+ * refresh without a full-page reload.
+ */
+export async function importLayawayLedgerAction(
+  rows: LayawayLedgerInput[],
+): Promise<LedgerImportResult> {
+  const result = await importLayawayLedger(rows);
+  if (result.ok) {
+    revalidatePath('/orders/payments');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+/** Load one imported ledger account + its installment schedule & payment history. */
+export async function loadLayawayLedgerDetailAction(
+  id: string,
+): Promise<LayawayLedgerDetail | null> {
+  if (!id) return null;
+  return getLayawayLedgerDetail(id);
+}
+
+/** Delete ONE imported layaway ledger account (Owner/Admin). Revalidates on success. */
+export async function deleteLayawayLedgerRowAction(id: string): Promise<LedgerDeleteResult> {
+  const result = await deleteLayawayLedgerRow(id);
+  if (result.ok) {
+    revalidatePath('/orders/payments');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+/** Delete ALL imported layaway ledger accounts (Owner/Admin). Revalidates on success. */
+export async function deleteAllLayawayLedgerAction(): Promise<LedgerDeleteResult> {
+  const result = await deleteAllLayawayLedger();
+  if (result.ok) {
+    revalidatePath('/orders/payments');
+    revalidatePath('/dashboard');
+  }
+  return result;
 }
 
 export async function rejectPaymentAction(
@@ -173,6 +245,37 @@ export async function recordInstallmentAction(
     // Recording is not verifying, and the message must not imply otherwise.
     success: 'Installment recorded. Its payment still needs separate verification.',
   };
+}
+
+/** Find or create a financer by normalized name (manual entry, dedupe). Returns
+ *  the resolved financer so the client can select it. */
+export async function findOrCreateFinancerAction(
+  name: string,
+): Promise<FindOrCreateFinancerResult> {
+  const result = await findOrCreateFinancer(name);
+  if (result.ok) {
+    revalidatePath('/orders/payments');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+export async function setLayawayDetailsAction(
+  _prev: PaymentActionState,
+  formData: FormData,
+): Promise<PaymentActionState> {
+  const result = await setLayawayDetails({
+    layawayArrangementId: text(formData, 'layawayArrangementId'),
+    financerId: text(formData, 'financerId'),
+    currentHolder: text(formData, 'currentHolder'),
+    currentLocation: text(formData, 'currentLocation'),
+    remarks: text(formData, 'remarks'),
+  });
+
+  if (!result.ok) return { error: result.error, success: null };
+
+  revalidatePath('/orders/payments');
+  return { error: null, success: result.message };
 }
 
 export async function requestForfeitureAction(

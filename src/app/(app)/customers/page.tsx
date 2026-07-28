@@ -2,11 +2,10 @@ import type { Metadata } from 'next';
 
 import { CustomersView } from '@/components/customers/customers-view';
 import { PageHeader } from '@/components/ui/page-primitives';
-import { listAttachments } from '@/lib/attachments/service';
-import { getCustomerDetail, listCustomers } from '@/lib/customers/service';
+import { hasPermission, requireActiveStaff } from '@/lib/authz/guard';
+import { listCustomers } from '@/lib/customers/service';
 
 export const metadata: Metadata = {
-  title: 'Customers — A.V. Jewelry Operations',
 };
 
 export const dynamic = 'force-dynamic';
@@ -14,9 +13,10 @@ export const dynamic = 'force-dynamic';
 /**
  * Customers directory (Bible §14). Roadmap Phase 8.
  *
- * Real, database-backed, READ-ONLY. Any active staff may read customers; the
- * rows and every related order/claim are RLS-scoped. Selecting a customer opens
- * their detail (?id=). Standalone create/edit is intentionally not offered —
+ * Real, database-backed, READ-ONLY. Any active staff may read customers; rows are
+ * RLS-scoped. Selecting "View" opens a centered detail modal (client-side) — the
+ * related orders/claims/photos panel was removed from this page (their backend
+ * data is untouched). Standalone create/edit is intentionally not offered —
  * customers are created through claim capture / migration (see service.ts).
  */
 export default async function CustomersPage({
@@ -26,27 +26,20 @@ export default async function CustomersPage({
 }) {
   const params = await searchParams;
   const query = typeof params.q === 'string' ? params.q : '';
-  const selectedId = typeof params.id === 'string' ? params.id : null;
 
-  const [result, detail, attachments] = await Promise.all([
+  const [result, staff] = await Promise.all([
     listCustomers(query),
-    selectedId ? getCustomerDetail(selectedId) : Promise.resolve(null),
-    selectedId ? listAttachments('customer', selectedId) : Promise.resolve([]),
+    requireActiveStaff(),
   ]);
+  // Owner or Selected Admin may permanently delete an isolated customer.
+  const canManage = staff.roleKey === 'owner' || staff.roleKey === 'selected_admin';
+  // Owner/Admin, or a staff member with existing_record_entry, may edit details.
+  const canEdit = canManage || (await hasPermission('existing_record_entry'));
 
   return (
     <div>
-      <PageHeader
-        title="Customers"
-        description="Customer directory — details, related Official Orders, and claims."
-      />
-      <CustomersView
-        result={result}
-        query={query}
-        detail={detail}
-        selectedId={selectedId}
-        attachments={attachments}
-      />
+      <PageHeader title="Customers" />
+      <CustomersView result={result} query={query} canManage={canManage} canEdit={canEdit} />
     </div>
   );
 }

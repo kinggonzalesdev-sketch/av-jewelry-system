@@ -6,7 +6,7 @@
 -- RLS-scoped. All asserted with real JWTs.
 -- ============================================================================
 begin;
-select plan(14);
+select plan(19);
 
 -- ---- Fixtures --------------------------------------------------------------
 insert into auth.users (id, instance_id, email, aud, role) values
@@ -111,6 +111,55 @@ select is(
    where staff_profile_id = 'af100000-0000-0000-0000-0000000000f2'),
   1,
   'the Owner sees every staff member''s attendance'
+);
+reset role;
+
+-- ============================================================================
+-- 15-19. Hourly rate (#4): Owner-only to set, >= 0, surfaced by report_payroll.
+-- ============================================================================
+-- The Owner sets a rate for Staff One.
+select pg_temp.act_as('af000000-0000-0000-0000-0000000000f1');
+select lives_ok(
+  $$update public.staff_profiles set hourly_rate = 100
+    where id = 'af100000-0000-0000-0000-0000000000f2'$$,
+  'the Owner can set a staff member''s hourly rate'
+);
+select is(
+  (select hourly_rate from public.staff_profiles
+   where id = 'af100000-0000-0000-0000-0000000000f2'),
+  100.00,
+  'the rate is stored on the staff profile'
+);
+-- A negative rate is refused by the check constraint.
+select throws_ok(
+  $$update public.staff_profiles set hourly_rate = -1
+    where id = 'af100000-0000-0000-0000-0000000000f2'$$,
+  '23514',
+  null,
+  'a negative hourly rate is refused'
+);
+-- report_payroll surfaces the rate as a string (numeric in SQL).
+select is(
+  (select hourly_rate from public.report_payroll(
+     current_date - 1, current_date + 1)
+   where staff_profile_id = 'af100000-0000-0000-0000-0000000000f2'),
+  '100.00',
+  'report_payroll returns the hourly rate as a string'
+);
+reset role;
+
+-- A non-Owner cannot change an hourly rate: RLS has no update policy for them,
+-- so the write affects zero rows and the stored rate is unchanged.
+select pg_temp.act_as('af000000-0000-0000-0000-0000000000f2');
+update public.staff_profiles set hourly_rate = 999
+  where id = 'af100000-0000-0000-0000-0000000000f2';
+reset role;
+select pg_temp.act_as('af000000-0000-0000-0000-0000000000f1');
+select is(
+  (select hourly_rate from public.staff_profiles
+   where id = 'af100000-0000-0000-0000-0000000000f2'),
+  100.00,
+  'a Staff member cannot change an hourly rate (RLS: Owner-only update)'
 );
 reset role;
 

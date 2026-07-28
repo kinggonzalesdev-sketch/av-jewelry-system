@@ -11,6 +11,9 @@ vi.mock('@/lib/dashboard/actions', () => ({
   runSalesReportAction: vi.fn(),
 }));
 
+// The range selector navigates via the App Router; stub it for jsdom.
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
+
 const zeroMetrics: DashboardMetrics = {
   orderCountValid: 0,
   totalSales: '0.00',
@@ -88,7 +91,28 @@ function renderView(over: Partial<Parameters<typeof DashboardView>[0]> = {}) {
           awaitingVerification: '5000.00',
           customerPending: '12000.00',
           inTransitToCollect: '8000.00',
+          riderToCollect: '5000.00',
+          lbcToCollect: '3000.00',
+          collectedUnremitted: '2000.00',
         },
+      }}
+      scrapTotal={{ totalAmount: '0', saleCount: 0 }}
+      scrapSales={[]}
+      scrapByMaterial={[]}
+      layaway={{
+        active: 0,
+        completed: 0,
+        overdue: 0,
+        forfeited: 0,
+        createdToday: 0,
+        createdMonth: 0,
+        dueToday: 0,
+        due7d: 0,
+        totalItem: '0',
+        totalInterest: '0',
+        grandTotal: '0',
+        totalPayment: '0',
+        remainingBalance: '0',
       }}
       canExport={false}
       canVerifyPayments={false}
@@ -108,12 +132,11 @@ describe('DashboardView — approved structure restored', () => {
     expect(screen.getByText('⟳ Refresh')).toBeInTheDocument();
   });
 
-  it('renders the primary tabs (Dashboard, Disassembly Report, Gross Profit) plus retained ones', () => {
+  it('renders the primary tabs (Dashboard, Disassembly Report) plus retained ones', () => {
     renderView();
     for (const t of [
       'dashboard',
       'disassembly-report',
-      'gross-profit',
       'reports',
       'search',
       'reminders',
@@ -122,35 +145,33 @@ describe('DashboardView — approved structure restored', () => {
       expect(screen.getByTestId(`dash-tab-${t}`)).toBeInTheDocument();
     }
   });
+
+  it('no longer renders the Gross Profit tab (removed by Owner request)', () => {
+    renderView();
+    expect(screen.queryByTestId('dash-tab-gross-profit')).not.toBeInTheDocument();
+  });
 });
 
 describe('DashboardView — charts stay VISIBLE at zero data', () => {
-  it('keeps the Order Status chart present with its categories and "No data for this period"', () => {
+  it('no longer shows the Order Status chart (removed by Owner request)', () => {
     renderView();
-    // The chart container renders (not hidden), with all five categories at zero.
-    const charts = screen.getAllByTestId('bar-chart');
-    expect(charts.length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('Order Status')).toBeInTheDocument();
-    // Categories appear in the chart (and some also in summary cards) — assert the
-    // chart's five categories are present at least once.
-    expect(screen.getAllByText('Active Layaway').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Cancelled').length).toBeGreaterThan(0);
-    expect(screen.getByText('Awaiting Payment')).toBeInTheDocument();
-    expect(screen.getAllByText(/No data for this period/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText('Order Status')).not.toBeInTheDocument();
   });
 
-  it('keeps the Sales for the Period chart title visible at zero', () => {
+  it('no longer shows the Sales for the Period / Sales Snapshot / Work Queues charts (removed by Owner request)', () => {
     renderView();
-    expect(screen.getByText('Sales for the Period')).toBeInTheDocument();
+    expect(screen.queryByText('Sales for the Period')).not.toBeInTheDocument();
+    expect(screen.queryByText('Sales Snapshot')).not.toBeInTheDocument();
+    expect(screen.queryByText('Work Queues')).not.toBeInTheDocument();
   });
 
   it('shows Money in Transit from real SQL sums', () => {
     renderView();
     const mit = screen.getByTestId('money-in-transit');
     expect(mit).toBeInTheDocument();
-    expect(within(mit).getByText('₱5,000.00')).toBeInTheDocument();
-    expect(within(mit).getByText('₱12,000.00')).toBeInTheDocument();
-    expect(within(mit).getByText('₱8,000.00')).toBeInTheDocument();
+    expect(within(mit).getByText('₱5,000')).toBeInTheDocument();
+    expect(within(mit).getByText('₱12,000')).toBeInTheDocument();
+    expect(within(mit).getByText('₱8,000')).toBeInTheDocument();
   });
 
   it('shows an explicit error, not ₱0, when money-in-transit could not be read', () => {
@@ -163,14 +184,6 @@ describe('DashboardView — honesty', () => {
   it('shows an explicit error, not a false zero, when the read failed', () => {
     renderView({ metrics: null, counts: null });
     expect(screen.getByTestId('read-error')).toBeInTheDocument();
-  });
-
-  it('Gross Profit is honestly unavailable (no invented numbers)', () => {
-    renderView();
-    fireEvent.click(screen.getByTestId('dash-tab-gross-profit'));
-    const panel = screen.getByTestId('gross-profit-unavailable');
-    expect(panel).toBeInTheDocument();
-    expect(within(panel).getByText(/not available yet/i)).toBeInTheDocument();
   });
 
   it('Disassembly Report is an honest placeholder (no invented data)', () => {

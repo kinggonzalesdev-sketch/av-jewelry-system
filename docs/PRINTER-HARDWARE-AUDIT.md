@@ -14,20 +14,20 @@ validation").
 
 ## 1. Findings
 
-| Item | Finding | Source / confidence |
-| --- | --- | --- |
-| Target brand | **Xprinter** | Documented (Bible §27.18, `src/lib/labels/transport.ts`). **Confirmed in docs.** |
-| Exact model | **XP-236B** | Documented. **Confirmed in docs.** |
-| Device class | Thermal **label** printer (not a 58/80 mm receipt printer) | Documented 40×30 mm label use. **Confirmed in docs.** |
-| Paper / media | **40 mm × 30 mm labels** (≈ 320 × 240 dots @ 203 dpi) | Bible §5, `renderLabel()`. **Confirmed in docs.** The "58 mm vs 80 mm receipt" question does not apply — this is label media, not receipt roll. |
-| Label field priority | claim/reference no. · complete buyer name · mine date & time · item code · grams · total item price · claim position/allocation | Bible R4.6.1. **Confirmed in docs.** |
-| Bluetooth type (Classic vs BLE) | **UNCONFIRMED** — decisive, see §2 | Requires the physical unit. |
-| Command language | **UNCONFIRMED** — Xprinter label units are typically **TSPL/TSPL2**, some also **ESC/POS**; the XP-236B specifically must be confirmed | Requires the physical unit / vendor SDK. |
-| Android + Chrome | Web Bluetooth exists **only if the printer is BLE/GATT** and the page is a secure context | Platform fact + UNCONFIRMED printer BT type. |
-| iPhone / Safari | **Not supported at all** — see §2 | **Hard platform fact.** |
-| Pairing requirements | **UNCONFIRMED** (Classic SPP typically pairs with a PIN; BLE pairs on connect) | Requires the physical unit. |
-| BLE service / characteristic UUIDs | **UNCONFIRMED** — must be read from the device | Requires the physical unit. |
-| Browser-based printing supported by the actual device? | **CANNOT be declared supported** — see §3 | Blocked by two facts below. |
+| Item                                                   | Finding                                                                                                                                | Source / confidence                                                                                                                             |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Target brand                                           | **Xprinter**                                                                                                                           | Documented (Bible §27.18, `src/lib/labels/transport.ts`). **Confirmed in docs.**                                                                |
+| Exact model                                            | **XP-236B**                                                                                                                            | Documented. **Confirmed in docs.**                                                                                                              |
+| Device class                                           | Thermal **label** printer (not a 58/80 mm receipt printer)                                                                             | Documented 40×30 mm label use. **Confirmed in docs.**                                                                                           |
+| Paper / media                                          | **40 mm × 30 mm labels** (≈ 320 × 240 dots @ 203 dpi)                                                                                  | Bible §5, `renderLabel()`. **Confirmed in docs.** The "58 mm vs 80 mm receipt" question does not apply — this is label media, not receipt roll. |
+| Label field priority                                   | claim/reference no. · complete buyer name · mine date & time · item code · grams · total item price · claim position/allocation        | Bible R4.6.1. **Confirmed in docs.**                                                                                                            |
+| Bluetooth type (Classic vs BLE)                        | **UNCONFIRMED** — decisive, see §2                                                                                                     | Requires the physical unit.                                                                                                                     |
+| Command language                                       | **UNCONFIRMED** — Xprinter label units are typically **TSPL/TSPL2**, some also **ESC/POS**; the XP-236B specifically must be confirmed | Requires the physical unit / vendor SDK.                                                                                                        |
+| Android + Chrome                                       | Web Bluetooth exists **only if the printer is BLE/GATT** and the page is a secure context                                              | Platform fact + UNCONFIRMED printer BT type.                                                                                                    |
+| iPhone / Safari                                        | **Not supported at all** — see §2                                                                                                      | **Hard platform fact.**                                                                                                                         |
+| Pairing requirements                                   | **UNCONFIRMED** (Classic SPP typically pairs with a PIN; BLE pairs on connect)                                                         | Requires the physical unit.                                                                                                                     |
+| BLE service / characteristic UUIDs                     | **UNCONFIRMED** — must be read from the device                                                                                         | Requires the physical unit.                                                                                                                     |
+| Browser-based printing supported by the actual device? | **CANNOT be declared supported** — see §3                                                                                              | Blocked by two facts below.                                                                                                                     |
 
 ## 2. The two decisive facts (independent of the unknowns)
 
@@ -64,8 +64,8 @@ already returns **`unsupported`** — honestly — rather than pretending to pri
 
 To lift the gate, a session with the physical XP-236B must record:
 
-1. **Bluetooth type** — Classic (SPP) or BLE (GATT). *(If Classic: direct browser
-   printing is impossible; stop here and stay on Path B / a native bridge.)*
+1. **Bluetooth type** — Classic (SPP) or BLE (GATT). _(If Classic: direct browser
+   printing is impossible; stop here and stay on Path B / a native bridge.)_
 2. If BLE: the **GATT service UUID** and the **writable characteristic UUID(s)**
    used for print data (read from the device).
 3. **Command language** actually accepted (TSPL2 vs ESC/POS) and the exact byte
@@ -90,6 +90,6 @@ supported**, and the status control must never show `Printer Ready`.
 - **The gate is real** — the capability stays OFF and the DB refuses to enable it
   without a passing real-device validation.
 
-The UI must clearly distinguish *print file generated* / *sent to system print
-dialog* / *successfully transmitted to the printer* / *result unknown*, and must
+The UI must clearly distinguish _print file generated_ / _sent to system print
+dialog_ / _successfully transmitted to the printer_ / _result unknown_, and must
 never claim direct transmission while on the fallback path.

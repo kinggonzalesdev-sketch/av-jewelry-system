@@ -1,9 +1,17 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+// FulfillmentWorkspace mounts the shared Order Details modal, which calls
+// useRouter. The modal renders nothing while closed, so a router stub suffices.
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
+
 // Server actions are mocked — these render tests only exercise the read-error
 // branch of each workspace, never a submission.
 vi.mock('@/lib/inventory/actions', () => ({
+  createInventoryItemAction: vi.fn(),
+  returnCompletedItemAction: vi.fn(),
   decideRtsAction: vi.fn(),
   openMigrationBatchAction: vi.fn(),
   returnToAvailableAction: vi.fn(),
@@ -31,12 +39,7 @@ describe('read-error states (no fake empty states)', () => {
     render(
       <InventoryWorkspace
         inventory={{ ok: false, reason: 'db down' }}
-        reviews={[]}
-        duplicates={[]}
-        batches={[]}
         canMonitor={true}
-        canReview={false}
-        canMigrate={false}
       />,
     );
     expect(screen.getByText(/Inventory could not be loaded/i)).toBeInTheDocument();

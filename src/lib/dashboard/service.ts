@@ -153,9 +153,34 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics | null> {
   const supabase = await createClient();
   const response = await supabase.rpc('dashboard_metrics');
 
-  if (response.error || !response.data) return null;
+  return mapMetrics(response.error ? null : response.data);
+}
 
-  const r = response.data as Record<string, unknown>;
+/**
+ * Range-aware business totals: the same figures as getDashboardMetrics, but the
+ * Official-Order sums and the collection trend are bounded to [from, to] (by
+ * created_at / recorded_at). sales_today/week/month stay as-of-now. Every peso is
+ * still summed in SQL. Returns null on a read failure (explicit error, never a
+ * false zero).
+ */
+export async function getDashboardMetricsRanged(
+  from: string,
+  to: string,
+): Promise<DashboardMetrics | null> {
+  const supabase = await createClient();
+  const response = await supabase.rpc('dashboard_metrics_ranged', {
+    p_from: from,
+    p_to: to,
+  });
+
+  return mapMetrics(response.error ? null : response.data);
+}
+
+/** Shared mapping from the RPC jsonb to DashboardMetrics. */
+function mapMetrics(data: unknown): DashboardMetrics | null {
+  if (!data) return null;
+
+  const r = data as Record<string, unknown>;
   const trend = Array.isArray(r.collection_trend) ? r.collection_trend : [];
 
   return {

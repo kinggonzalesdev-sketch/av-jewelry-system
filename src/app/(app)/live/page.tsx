@@ -11,7 +11,6 @@ import {
 } from '@/lib/live/batches';
 
 export const metadata: Metadata = {
-  title: 'Live — A.V. Jewelry Operations',
 };
 
 /**

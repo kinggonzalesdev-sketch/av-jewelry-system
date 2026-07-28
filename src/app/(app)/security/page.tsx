@@ -5,7 +5,6 @@ import { getMfaStatus, MFA_ENFORCEMENT_IMPLEMENTED } from '@/lib/auth/mfa';
 import { requireActiveStaff } from '@/lib/authz/guard';
 
 export const metadata: Metadata = {
-  title: 'Security — A.V. Jewelry Operations',
 };
 
 export const dynamic = 'force-dynamic';

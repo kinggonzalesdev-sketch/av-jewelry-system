@@ -30,6 +30,10 @@ export type ScrapIncomeRow = {
 export type ScrapIncomeResult = { ok: true; rows: ScrapIncomeRow[] } | { ok: false };
 export type RecordScrapResult = { ok: true } | { ok: false; error: string };
 
+/** All-time scrap total for the dashboard. Amount is an authoritative numeric
+ *  string from SQL (never a float); count is a plain integer. */
+export type ScrapTotal = { totalAmount: string; saleCount: number };
+
 export async function recordScrapSale(input: {
   material: string | null;
   grams: string | null;
@@ -83,13 +87,18 @@ export async function recordScrapSale(input: {
   return { ok: true };
 }
 
-export async function listScrapSales(limit = 100): Promise<ScrapSaleRow[]> {
+export async function listScrapSales(
+  limit = 100,
+  range?: { from: string; to: string },
+): Promise<ScrapSaleRow[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const base = supabase
     .from('scrap_sales')
     .select('id, material, grams, amount, buyer, sold_on, note')
     .order('sold_on', { ascending: false })
     .limit(limit);
+  const query = range ? base.gte('sold_on', range.from).lte('sold_on', range.to) : base;
+  const { data, error } = await query;
 
   if (error || !data) return [];
 
@@ -102,6 +111,28 @@ export async function listScrapSales(limit = 100): Promise<ScrapSaleRow[]> {
     soldOn: r.sold_on as string,
     note: (r.note as string | null) ?? null,
   }));
+}
+
+/**
+ * Scrap income total for a date range (amount summed in SQL) for the dashboard
+ * chart. Returns a zero total on a read failure so the chart shows an honest ₱0
+ * rather than crashing the page.
+ */
+export async function getScrapTotal(from: string, to: string): Promise<ScrapTotal> {
+  const supabase = await createClient();
+  const response = await supabase.rpc('dashboard_scrap_total', {
+    p_from: from,
+    p_to: to,
+  });
+
+  if (response.error || !response.data) return { totalAmount: '0', saleCount: 0 };
+
+  const rows = (response.data as Array<Record<string, unknown>>).map((row) => ({
+    totalAmount: String((row.total_amount as string | number | null) ?? '0'),
+    saleCount: Number(row.sale_count ?? 0),
+  }));
+
+  return rows[0] ?? { totalAmount: '0', saleCount: 0 };
 }
 
 export async function getScrapIncome(

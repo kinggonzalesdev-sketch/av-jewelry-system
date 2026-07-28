@@ -27,36 +27,34 @@ describe('LOCKED: desktop sidebar (exact order, labels, routes, icons)', () => {
     ).toEqual([
       { label: 'Dashboard Profile', href: '/dashboard', icon: '▥' },
       { label: 'Orders', href: '/orders', icon: '□' },
-      { label: 'Invoice', href: '/orders/invoice', icon: '▤' },
-      { label: 'Live', href: '/live', icon: '◉' },
       { label: 'Customers', href: '/customers', icon: '☺' },
       { label: 'Items / Inventory', href: '/orders/inventory', icon: '◈' },
-      { label: 'Payments & Layaway', href: '/orders/payments', icon: '₱' },
-      { label: 'Fulfillment', href: '/orders/fulfillment', icon: '➤' },
-      { label: 'Reports', href: '/reports', icon: '▦' },
-      { label: 'Settings', href: '/settings', icon: '⚙' },
+      { label: 'Layaway', href: '/orders/payments', icon: '₱' },
+      { label: 'Scrap', href: '/admin/scrap', icon: '♻' },
+      // Team Management collapsible group (Owner request 2026-07-22). Settings moved
+      // to the fixed footer (SETTINGS_ITEM), so it is no longer in PRIMARY_NAV.
+      { label: 'Attendance', href: '/admin/attendance', icon: '⏱' },
+      { label: 'Review Attendance', href: '/admin/attendance/review', icon: '☑' },
+      { label: 'Payroll', href: '/admin/payroll', icon: '▤' },
     ]);
   });
 });
 
 describe('LOCKED: mobile navigation', () => {
-  it('bottom bar is exactly Orders · Invoice · Live · Customers (+ More)', () => {
-    expect(mobilePrimaryItems().map((i) => i.label)).toEqual([
-      'Orders',
-      'Invoice',
-      'Live',
-      'Customers',
-    ]);
+  it('bottom bar is exactly Orders · Customers (+ More)', () => {
+    // Invoice folded into Orders → For Invoice (Owner request 2026-07-22).
+    expect(mobilePrimaryItems().map((i) => i.label)).toEqual(['Orders', 'Customers']);
   });
 
   it('More carries the rest, Dashboard Profile first', () => {
     expect(mobileMoreItems().map((i) => i.label)).toEqual([
       'Dashboard Profile',
       'Items / Inventory',
-      'Payments & Layaway',
-      'Fulfillment',
-      'Reports',
-      'Settings',
+      'Layaway',
+      'Scrap',
+      'Attendance',
+      'Review Attendance',
+      'Payroll',
     ]);
   });
 });
@@ -70,15 +68,15 @@ describe('LOCKED: placements', () => {
     expect(PRIMARY_NAV.some((i) => /new (entry|order)/i.test(i.label))).toBe(false);
     const workflow = read('components/orders/new-order-workflow.tsx');
     expect(workflow).toMatch(/New Order/);
-    expect(workflow).toMatch(/captureClaimAction|post_live_manual/);
+    // Wired to the real, permission-guarded capture flow (captureManualOrder →
+    // captureClaim). Pick-or-type resolves/creates the customer + item first.
+    expect(workflow).toMatch(/captureManualOrderAction/);
   });
 
-  it('Fulfillment stays standalone at position 8 (/orders/fulfillment)', () => {
-    expect(PRIMARY_NAV[7]).toMatchObject({
-      label: 'Fulfillment',
-      href: '/orders/fulfillment',
-      mobilePrimary: false,
-    });
+  it('Fulfillment is no longer a sidebar item (route kept as fallback)', () => {
+    // Owner request: removed from the sidebar to keep the workflow Orders-centred;
+    // /orders/fulfillment still exists as a fallback route.
+    expect(PRIMARY_NAV.some((i) => i.href === '/orders/fulfillment')).toBe(false);
   });
 
   it('Staff and Capabilities are not standalone nav items', () => {

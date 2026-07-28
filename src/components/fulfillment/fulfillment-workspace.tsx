@@ -1,7 +1,9 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useActionState, useState } from 'react';
 
+import { OrderDetailsModal } from '@/components/orders/order-details-modal';
 import {
   completeFulfillmentAction,
   decideApprovalAction,
@@ -14,6 +16,7 @@ import type { FulfillmentActionState } from '@/lib/fulfillment/action-state';
 import { EMPTY_FULFILLMENT_STATE } from '@/lib/fulfillment/action-state';
 import type { ApprovalRow, FulfillmentListResult } from '@/lib/fulfillment/service';
 import { formatPeso } from '@/lib/payments/format';
+import { CollectionRemittanceControls } from '@/components/fulfillment/collection-controls';
 import { PrepareFulfillmentForm } from '@/components/fulfillment/prepare-fulfillment-form';
 import { EmptyState } from '@/components/states/empty-state';
 import { ReadError } from '@/components/ui/page-primitives';
@@ -52,7 +55,11 @@ export function FulfillmentWorkspace({
   canRequest: boolean;
   isOwner: boolean;
 }) {
+  const router = useRouter();
   const [tab, setTab] = useState<Tab>('Fulfillment Queue');
+  // Order whose in-page details modal is open (null = closed). Opening navigates
+  // nowhere, so the queue's tab and scroll position are preserved.
+  const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
 
   const [releaseState, releaseAction, releasing] = useActionState<
     FulfillmentActionState,
@@ -145,7 +152,15 @@ export function FulfillmentWorkspace({
                           {f.customerDisplayName}
                         </p>
                         <p className="truncate font-mono text-xs text-muted-foreground">
-                          {f.orderNumber} · {f.method ?? 'unset'}
+                          <button
+                            type="button"
+                            onClick={() => setDetailOrderId(f.officialOrderId)}
+                            data-testid={`fulfillment-open-order-${f.officialOrderId}`}
+                            className="text-gold-strong hover:underline"
+                          >
+                            {f.orderNumber}
+                          </button>{' '}
+                          · {f.method ?? 'unset'}
                           {f.courier ? ` · ${f.courier}` : ''}
                           {f.trackingNumber ? ` · ${f.trackingNumber}` : ''}
                         </p>
@@ -319,6 +334,13 @@ export function FulfillmentWorkspace({
                       Owner-only. Requesting an exceptional release releases nothing.
                     </p>
 
+                    {/* COD collection & remittance + the printable waybill (#3
+                        deeper). Shown once a method is prepared; the writes are
+                        re-checked server-side and enforced by the database. */}
+                    {f.method ? (
+                      <CollectionRemittanceControls row={f} canRelease={canRelease} />
+                    ) : null}
+
                     {/* Gated on the permission the domain module re-checks
                         server-side. Hiding it here is convenience; the control is
                         requirePermission('fulfillment_preparation') underneath. */}
@@ -436,6 +458,14 @@ export function FulfillmentWorkspace({
           </CardContent>
         </Card>
       ) : null}
+
+      {/* Shared in-page order details — click an order number above to open it.
+          The queue stays mounted behind it; actions refresh only this order. */}
+      <OrderDetailsModal
+        orderId={detailOrderId}
+        onClose={() => setDetailOrderId(null)}
+        onMutated={() => router.refresh()}
+      />
     </div>
   );
 }

@@ -11,9 +11,9 @@ import {
 import type { PayableOrderRow } from '@/lib/payments/workspace';
 import { formatPeso } from '@/lib/payments/format';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Modal, ModalFormGrid } from '@/components/ui/modal';
 
 /**
  * New Layaway Entry (Bible §5, §17) — activates a Layaway on a real Official
@@ -64,34 +64,42 @@ export function NewLayawayForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.success]);
 
-  if (!open) {
-    return (
-      <div className="mb-4">
-        <Button
-          type="button"
-          onClick={() => setOpen(true)}
-          data-testid="new-layaway-entry"
-          className="font-semibold"
-        >
-          ＋ New Layaway Entry
-        </Button>
-        {state.success ? (
-          <p className="mt-2 text-sm text-muted-foreground">{state.success}</p>
-        ) : null}
-      </div>
-    );
-  }
-
   return (
-    <Card className="mb-4">
-      <CardHeader>
-        <CardTitle className="text-base">New Layaway Entry</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form action={action} className="space-y-3">
+    <div className="contents">
+      <Button
+        type="button"
+        size="sm"
+        onClick={() => setOpen(true)}
+        data-testid="new-layaway-entry"
+        className="font-semibold"
+      >
+        ＋ New Entry
+      </Button>
+      {state.success && !open ? (
+        <p className="mt-2 text-sm text-muted-foreground">{state.success}</p>
+      ) : null}
+
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="New Layaway Entry"
+        description="Activates a Layaway once a verified deposit meets the 20% threshold."
+        size="md"
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="new-layaway-form" disabled={pending}>
+              {pending ? 'Activating…' : 'Activate Layaway'}
+            </Button>
+          </>
+        }
+      >
+        <form id="new-layaway-form" action={action} className="space-y-3">
           <input type="hidden" name="officialOrderId" value={orderId} />
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <ModalFormGrid>
             <div>
               <Label htmlFor="lay-order" className="text-xs">
                 Official Order
@@ -101,7 +109,7 @@ export function NewLayawayForm({
                 required
                 value={orderId}
                 onChange={(e) => setOrderId(e.target.value)}
-                className="mt-0.5 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
+                className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
               >
                 <option value="" disabled>
                   Select an order…
@@ -124,7 +132,7 @@ export function NewLayawayForm({
                 name="depositPaymentId"
                 required
                 disabled={!selectedOrder}
-                className="mt-0.5 h-9 w-full rounded-md border border-border bg-background px-2 text-sm disabled:opacity-50"
+                className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm disabled:opacity-50"
               >
                 <option value="">
                   {selectedOrder
@@ -150,7 +158,7 @@ export function NewLayawayForm({
                 name="months"
                 required
                 defaultValue="3"
-                className="mt-0.5 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
+                className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
               >
                 <option value="1">1</option>
                 <option value="2">2</option>
@@ -167,10 +175,10 @@ export function NewLayawayForm({
                 name="finalDueDate"
                 type="date"
                 required
-                className="mt-0.5 h-9"
+                className="mt-1 h-9"
               />
             </div>
-          </div>
+          </ModalFormGrid>
 
           {state.error ? (
             <p role="alert" className="text-sm font-medium text-destructive">
@@ -183,17 +191,8 @@ export function NewLayawayForm({
             the Layaway Amount Payable (fee included). Evidence alone never activates, and
             the database re-checks the threshold — this form cannot lower it.
           </p>
-
-          <div className="flex gap-2">
-            <Button type="submit" disabled={pending}>
-              {pending ? 'Activating…' : 'Activate Layaway'}
-            </Button>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-          </div>
         </form>
-      </CardContent>
-    </Card>
+      </Modal>
+    </div>
   );
 }

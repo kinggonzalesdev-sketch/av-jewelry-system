@@ -6,7 +6,6 @@ import { requireActiveStaff } from '@/lib/authz/guard';
 import { getPancakeStatus } from '@/lib/integrations/pancake';
 
 export const metadata: Metadata = {
-  title: 'Integrations — A.V. Jewelry Operations',
 };
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +16,9 @@ export const dynamic = 'force-dynamic';
  * Settings → Administration.
  */
 export default async function IntegrationsPage() {
-  const [staff, pancake] = await Promise.all([requireActiveStaff(), getPancakeStatus()]);
+  // getPancakeStatus() is synchronous — only the staff guard is async.
+  const staff = await requireActiveStaff();
+  const pancake = getPancakeStatus();
 
   return (
     <div>
