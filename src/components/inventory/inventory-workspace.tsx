@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { ReadError } from '@/components/ui/page-primitives';
 import { Input } from '@/components/ui/input';
 import { MoneyInput } from '@/components/ui/money-input';
+import { Money } from '@/components/shell/privacy';
 import { Label } from '@/components/ui/label';
 import { Modal, ModalFieldFull, ModalFormGrid } from '@/components/ui/modal';
 
@@ -34,6 +35,16 @@ import { Modal, ModalFieldFull, ModalFormGrid } from '@/components/ui/modal';
  */
 
 const TABS = ['Active Inventory', 'Completed Items'] as const;
+
+/** Payment-status pill for the Completed Items table. Null → an honest "—". */
+const PAYMENT_LABEL: Record<string, { label: string; cls: string }> = {
+  paid_in_full: { label: 'Paid in Full', cls: 'text-green-700' },
+  partial: { label: 'Partial', cls: 'text-amber-600' },
+  unpaid: { label: 'Unpaid', cls: 'text-destructive' },
+};
+function paymentText(status: string | null): { label: string; cls: string } {
+  return status ? (PAYMENT_LABEL[status] ?? { label: status, cls: '' }) : { label: '—', cls: 'text-muted-foreground' };
+}
 
 type Tab = (typeof TABS)[number];
 
@@ -158,6 +169,8 @@ export function InventoryWorkspace({
         { header: 'Customer', value: (c) => c.customerName ?? '' },
         { header: 'Order Number', value: (c) => c.orderNumber ?? '' },
         { header: 'Invoice Number', value: (c) => c.invoiceNumber ?? '' },
+        { header: 'Sale Amount', value: (c) => c.finalSale ?? '' },
+        { header: 'Payment', value: (c) => paymentText(c.paymentStatus).label },
         { header: 'Completion Type', value: (c) => c.completionType },
         { header: 'Courier', value: (c) => c.courier ?? '' },
         { header: 'Tracking Number', value: (c) => c.trackingNumber ?? '' },
@@ -453,6 +466,8 @@ export function InventoryWorkspace({
                     <th className="px-2.5 py-2">Customer</th>
                     <th className="px-2.5 py-2">Order</th>
                     <th className="px-2.5 py-2">Invoice</th>
+                    <th className="px-2.5 py-2 text-right">Sale Amount</th>
+                    <th className="px-2.5 py-2">Payment</th>
                     <th className="px-2.5 py-2">Completion</th>
                     <th className="px-2.5 py-2">Completed</th>
                     <th className="px-2.5 py-2 text-right">Actions</th>
@@ -473,6 +488,15 @@ export function InventoryWorkspace({
                         <td className="px-2.5 py-2">{c.customerName ?? '—'}</td>
                         <td className="px-2.5 py-2 font-mono">{c.orderNumber ?? '—'}</td>
                         <td className="px-2.5 py-2 font-mono">{c.invoiceNumber ?? '—'}</td>
+                        <td className="px-2.5 py-2 text-right tabular-nums">
+                          {c.finalSale ? <Money amount={c.finalSale} /> : '—'}
+                        </td>
+                        <td className="px-2.5 py-2">
+                          {(() => {
+                            const p = paymentText(c.paymentStatus);
+                            return <span className={`font-medium ${p.cls}`}>{p.label}</span>;
+                          })()}
+                        </td>
                         <td className="px-2.5 py-2">
                           <span className="font-medium text-gold-strong">
                             {c.completionType}

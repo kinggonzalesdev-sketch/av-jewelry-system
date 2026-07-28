@@ -16,6 +16,7 @@ vi.mock('@/lib/fulfillment/actions', () => ({
   decideApprovalAction: vi.fn(),
   dispatchAction: vi.fn(),
   executeApprovalAction: vi.fn(),
+  markDeliveredAction: vi.fn(),
   releaseFulfillmentAction: vi.fn(),
   requestApprovalAction: vi.fn(),
 }));
@@ -95,5 +96,37 @@ describe('OrderFulfillmentActions', () => {
       />,
     );
     expect(screen.getByRole('button', { name: /mark picked up/i })).toBeInTheDocument();
+  });
+
+  it('offers Mark Delivered (optional) + Complete for a dispatched shipping order', () => {
+    render(
+      <OrderFulfillmentActions
+        row={row({ status: 'dispatched', method: 'shipping' })}
+        approvals={[]}
+        canPrepare={false}
+        canRelease
+        canRequest={false}
+        isOwner={false}
+        onMutated={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /mark delivered/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^complete$/i })).toBeInTheDocument();
+  });
+
+  it('offers Complete (no Mark Delivered) once a shipping order is delivered', () => {
+    render(
+      <OrderFulfillmentActions
+        row={row({ status: 'delivered', method: 'shipping' })}
+        approvals={[]}
+        canPrepare={false}
+        canRelease
+        canRequest={false}
+        isOwner={false}
+        onMutated={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /mark delivered/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^complete$/i })).toBeInTheDocument();
   });
 });

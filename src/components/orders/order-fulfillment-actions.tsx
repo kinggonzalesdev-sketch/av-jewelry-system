@@ -8,6 +8,7 @@ import {
   decideApprovalAction,
   dispatchAction,
   executeApprovalAction,
+  markDeliveredAction,
   releaseFulfillmentAction,
   requestApprovalAction,
 } from '@/lib/fulfillment/actions';
@@ -63,6 +64,10 @@ export function OrderFulfillmentActions({
     completeFulfillmentAction,
     EMPTY_FULFILLMENT_STATE,
   );
+  const [deliverState, deliver, delivering] = useActionState<FulfillmentActionState, FormData>(
+    markDeliveredAction,
+    EMPTY_FULFILLMENT_STATE,
+  );
   const [requestState, request, requesting] = useActionState<FulfillmentActionState, FormData>(
     requestApprovalAction,
     EMPTY_FULFILLMENT_STATE,
@@ -76,7 +81,7 @@ export function OrderFulfillmentActions({
     EMPTY_FULFILLMENT_STATE,
   );
 
-  const states = [releaseState, dispatchState, completeState, requestState, decideState, executeState];
+  const states = [releaseState, dispatchState, deliverState, completeState, requestState, decideState, executeState];
   const notice = states.map((s) => s.error ?? s.success).find(Boolean) ?? null;
   const isError = states.some((s) => s.error);
 
@@ -90,7 +95,7 @@ export function OrderFulfillmentActions({
       router.refresh();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [releaseState, dispatchState, completeState, requestState, decideState, executeState]);
+  }, [releaseState, dispatchState, deliverState, completeState, requestState, decideState, executeState]);
 
   if (!row) {
     return (
@@ -101,7 +106,7 @@ export function OrderFulfillmentActions({
     );
   }
 
-  const terminal = ['dispatched', 'picked_up', 'completed'].includes(row.status);
+  const terminal = ['dispatched', 'delivered', 'picked_up', 'completed'].includes(row.status);
 
   return (
     <div className="space-y-3">
@@ -170,7 +175,17 @@ export function OrderFulfillmentActions({
           </form>
         ) : null}
 
-        {canRelease && ['dispatched', 'picked_up'].includes(row.status) ? (
+        {/* Delivered (optional) — only a dispatched shipping order. */}
+        {canRelease && row.status === 'dispatched' && row.method === 'shipping' ? (
+          <form action={deliver}>
+            <input type="hidden" name="officialOrderId" value={row.officialOrderId} />
+            <Button type="submit" size="sm" variant="outline" disabled={delivering}>
+              {delivering ? 'Marking…' : 'Mark Delivered'}
+            </Button>
+          </form>
+        ) : null}
+
+        {canRelease && ['dispatched', 'delivered', 'picked_up'].includes(row.status) ? (
           <form action={complete}>
             <input type="hidden" name="officialOrderId" value={row.officialOrderId} />
             <Button type="submit" size="sm" variant="outline" disabled={completing}>

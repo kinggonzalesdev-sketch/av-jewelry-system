@@ -7,9 +7,9 @@ import { createClient } from '@/lib/supabase/server';
 /**
  * Completed Items reader (spec §5). The SAME inventory records that left Active
  * Inventory when their order completed — read here with their order / customer /
- * fulfillment context. One source of truth; nothing is copied or deleted. The
- * money figure (final sale) is intentionally omitted for now — it is derived by
- * the tested order-balance reader and would be a per-row RPC; add it deliberately.
+ * fulfillment context. One source of truth; nothing is copied or deleted. The final
+ * sale amount + payment status come from the tested balance functions via one
+ * guarded batch call (`completed_items_money`) — never a fabricated zero.
  */
 
 export type CompletedInventoryRow = {
@@ -27,6 +27,10 @@ export type CompletedInventoryRow = {
   completedDate: string | null;
   currentHolder: string | null;
   currentLocation: string | null;
+  /** Final sale amount (order total payable) as an authoritative string, or null. */
+  finalSale: string | null;
+  /** 'paid_in_full' | 'partial' | 'unpaid', or null when it could not be read. */
+  paymentStatus: string | null;
 };
 
 function one<T>(value: unknown): T | undefined {
@@ -173,6 +177,23 @@ export async function listCompletedInventory(): Promise<CompletedInventoryRow[]>
     if (order) byItem.set(itemId, order);
   }
 
+  // Final sale amount + payment status per item, from the tested balance functions
+  // (one guarded batch call — never a fabricated zero).
+  const moneyRes = (await supabase.rpc('completed_items_money', {
+    p_item_ids: itemIds,
+  })) as { data: Array<Record<string, unknown>> | null };
+  const moneyByItem = new Map<string, { finalSale: string | null; paymentStatus: string | null }>();
+  for (const m of moneyRes.data ?? []) {
+    const id = m.inventory_item_id as string;
+    moneyByItem.set(id, {
+      finalSale:
+        typeof m.final_sale === 'number' || typeof m.final_sale === 'string'
+          ? String(m.final_sale)
+          : null,
+      paymentStatus: (m.payment_status as string | null) ?? null,
+    });
+  }
+
   return items.map((i) => {
     const order = byItem.get(i.id);
     const customer = one<{ display_name: string }>(order?.customers);
@@ -199,6 +220,8 @@ export async function listCompletedInventory(): Promise<CompletedInventoryRow[]>
       completedDate: fulfillment?.completed_at ?? null,
       currentHolder: i.custody_holder === 'financer' ? 'Financer' : 'A.V. Jewelry',
       currentLocation: i.storage_location,
+      finalSale: moneyByItem.get(i.id)?.finalSale ?? null,
+      paymentStatus: moneyByItem.get(i.id)?.paymentStatus ?? null,
     };
   });
 }

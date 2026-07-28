@@ -57,13 +57,20 @@ function completedRow(over: Partial<CompletedInventoryRow>): CompletedInventoryR
     completedDate: '2026-07-20T00:00:00.000Z',
     currentHolder: 'A.V. Jewelry',
     currentLocation: null,
+    finalSale: '8000.00',
+    paymentStatus: 'paid_in_full',
     ...over,
   };
 }
 
 const completed: CompletedInventoryRow[] = [
-  completedRow({ itemCode: 'SBA-R-2222' }),
-  completedRow({ itemCode: 'SBA-E-3333', completionType: 'Store Pickup' }),
+  completedRow({ itemCode: 'SBA-R-2222', finalSale: '8000.00', paymentStatus: 'paid_in_full' }),
+  completedRow({
+    itemCode: 'SBA-E-3333',
+    completionType: 'Store Pickup',
+    finalSale: '12000.00',
+    paymentStatus: 'partial',
+  }),
 ];
 
 function renderWorkspace() {

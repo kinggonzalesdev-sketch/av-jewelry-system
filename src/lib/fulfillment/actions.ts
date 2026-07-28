@@ -7,6 +7,7 @@ import {
   completeFulfillment,
   decideOwnerApproval,
   executeOwnerApproval,
+  markDelivered,
   markDispatchedOrPickedUp,
   prepareFulfillment,
   recordCollection,
@@ -154,7 +155,23 @@ export async function completeFulfillmentAction(
   if (!result.ok) return { error: result.error, success: null };
 
   revalidatePath('/orders/fulfillment');
+  revalidatePath('/orders');
   return { error: null, success: 'Fulfillment completed.' };
+}
+
+export async function markDeliveredAction(
+  _prev: FulfillmentActionState,
+  formData: FormData,
+): Promise<FulfillmentActionState> {
+  const orderId = text(formData, 'officialOrderId');
+  if (!orderId) return { error: 'An order is required.', success: null };
+
+  const result = await markDelivered(orderId);
+  if (!result.ok) return { error: result.error, success: null };
+
+  revalidatePath('/orders/fulfillment');
+  revalidatePath('/orders');
+  return { error: null, success: 'Order marked Delivered.' };
 }
 
 export async function requestApprovalAction(

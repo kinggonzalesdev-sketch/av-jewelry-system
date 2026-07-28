@@ -269,6 +269,33 @@ export async function completeFulfillment(
   return { ok: true };
 }
 
+/**
+ * Mark a DISPATCHED shipping order as Delivered (Owner request) — the customer
+ * received it. An optional milestone between dispatch and completion, recorded with
+ * who + when. The SQL function re-checks the permission and the dispatched state.
+ */
+export async function markDelivered(officialOrderId: string): Promise<FulfillmentResult> {
+  try {
+    await requirePermission('fulfillment_release');
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
+    throw cause;
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('mark_order_delivered', {
+    p_order_id: officialOrderId,
+  });
+  if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+
+  await recordAuditEvent({
+    action: 'fulfillment.delivered',
+    entityType: 'fulfillment_record',
+    entityId: officialOrderId,
+  });
+  return { ok: true };
+}
+
 // ---------------------------------------------------------------------------
 // COD collection & remittance (#3 deeper — Bible §14, §18.25)
 // ---------------------------------------------------------------------------
