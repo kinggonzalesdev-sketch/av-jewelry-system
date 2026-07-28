@@ -192,6 +192,47 @@ export async function listLayawayLedger(): Promise<LayawayLedgerRow[]> {
   }));
 }
 
+/** A layaway ledger account marked KEEP (in remarks) — surfaced in Orders → Keep
+ *  so every KEEP item shows in one place (Owner request). */
+export type KeepLayawayRow = {
+  id: string;
+  accountNo: string;
+  code: string | null;
+  customerName: string;
+  remarks: string | null;
+  itemAmount: string | null;
+  grandTotal: string | null;
+  balance: string | null;
+};
+
+/** Imported layaway accounts flagged KEEP (remarks contain "KEEP"), excluding
+ *  needs-review rows. Read-only; RLS-scoped to active staff. */
+export async function listKeepLayawayAccounts(): Promise<KeepLayawayRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('layaway_ledger')
+    .select(
+      'id, account_no, layaway_code, customer_name, remarks, item_amount, grand_total, balance, status',
+    )
+    .ilike('remarks', '%KEEP%')
+    .order('customer_name', { ascending: true });
+
+  if (error || !data) return [];
+
+  return (data as Array<Record<string, unknown>>)
+    .filter((r) => (r.status as string) !== 'needs_review')
+    .map((r) => ({
+      id: r.id as string,
+      accountNo: (r.account_no as string) ?? '—',
+      code: (r.layaway_code as string | null) ?? null,
+      customerName: (r.customer_name as string) ?? 'Unknown',
+      remarks: (r.remarks as string | null) ?? null,
+      itemAmount: toStr(r.item_amount),
+      grandTotal: toStr(r.grand_total),
+      balance: toStr(r.balance),
+    }));
+}
+
 export type LayawayDashboard = {
   active: number;
   completed: number;

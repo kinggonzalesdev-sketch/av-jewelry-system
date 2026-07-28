@@ -5,6 +5,7 @@ import { OrdersView } from '@/components/orders/orders-view';
 import { getCurrentStaffProfile, getGrantedPermissions } from '@/lib/authz/guard';
 import { listCaptureCustomers } from '@/lib/live/batches';
 import { listCaptureItems, listOrders, listWalkInItems } from '@/lib/orders/service';
+import { listKeepLayawayAccounts } from '@/lib/payments/layaway-ledger';
 import { PageHeader } from '@/components/ui/page-primitives';
 
 export const metadata: Metadata = {
@@ -35,7 +36,7 @@ export default async function OrdersPage({
   const params = await searchParams;
   const openForInvoice = params.view === 'invoice';
 
-  const [result, permissions, customers, items, walkInItems, profile] =
+  const [result, permissions, customers, items, walkInItems, profile, keepLayaways] =
     await Promise.all([
       listOrders(),
       getGrantedPermissions(),
@@ -43,6 +44,7 @@ export default async function OrdersPage({
       listCaptureItems(),
       listWalkInItems(),
       getCurrentStaffProfile(),
+      listKeepLayawayAccounts(),
     ]);
 
   return (
@@ -58,7 +60,11 @@ export default async function OrdersPage({
           shopName="A.V. Jewelry"
           salesperson={profile.fullName}
         />
-        <OrdersView result={result} openForInvoice={openForInvoice} />
+        <OrdersView
+          result={result}
+          openForInvoice={openForInvoice}
+          keepLayaways={keepLayaways}
+        />
       </div>
     </div>
   );

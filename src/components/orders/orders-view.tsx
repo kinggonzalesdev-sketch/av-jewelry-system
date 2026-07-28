@@ -7,6 +7,7 @@ import { OrderDetailsModal } from '@/components/orders/order-details-modal';
 import { SendAllInvoices } from '@/components/orders/send-all-invoices';
 
 import type { OrderListRow, OrdersResult, PaymentStatus } from '@/lib/orders/service';
+import type { KeepLayawayRow } from '@/lib/payments/layaway-ledger';
 import { Money } from '@/components/shell/privacy';
 import { EmptyState } from '@/components/states/empty-state';
 import { StatusBadge, ReadError, type BadgeTone } from '@/components/ui/page-primitives';
@@ -246,10 +247,13 @@ function matchesCard(order: OrderListRow, key: CardKey): boolean {
 export function OrdersView({
   result,
   openForInvoice = false,
+  keepLayaways = [],
 }: {
   result: OrdersResult;
   /** Open on the For Invoice card (e.g. arriving from the old /orders/invoice). */
   openForInvoice?: boolean;
+  /** Layaway accounts marked KEEP — surfaced under the Keep card (Owner request). */
+  keepLayaways?: KeepLayawayRow[];
 }) {
   // Hooks must run unconditionally; the error/empty branches come after. Memoized
   // so the derived useMemo hooks below keep a stable dependency identity.
@@ -281,8 +285,10 @@ export function OrdersView({
     >;
     for (const o of rows)
       for (const d of CARD_DEFS) if (matchesCard(o, d.key)) c[d.key] += 1;
+    // KEEP layaway accounts also count under the Keep card (Owner request).
+    c.keep += keepLayaways.length;
     return c;
-  }, [rows]);
+  }, [rows, keepLayaways.length]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -321,7 +327,7 @@ export function OrdersView({
     <div className="space-y-4">
       {/* Approved status cards (11) — real counts of the loaded orders; each is a
           quick filter with a coloured icon badge. Active card is ringed in the
-          brand accent. "Keep" / "For Cancel" have no backing yet → honest 0. */}
+          brand accent. Keep also counts layaway accounts flagged KEEP. */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-11">
         {CARD_DEFS.map((def) => {
           const active = card === def.key;
@@ -449,9 +455,11 @@ export function OrdersView({
           description="Approve & Send an Invoice to create the first Official Order. New Entry (above) starts the capture flow on Live."
         />
       ) : filtered.length === 0 ? (
-        <div className="rounded-xl border border-border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
-          No orders match these filters.
-        </div>
+        card === 'keep' && keepLayaways.length > 0 ? null : (
+          <div className="rounded-xl border border-border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
+            No orders match these filters.
+          </div>
+        )
       ) : (
         <div className="rounded-xl border border-border bg-card">
           <div className="overflow-x-auto">
@@ -481,6 +489,58 @@ export function OrdersView({
           </div>
         </div>
       )}
+
+      {/* KEEP items from Layaway — surfaced under the Keep card so every KEEP item
+          shows here too (Owner request). These are imported layaway accounts flagged
+          KEEP; manage them under Payments & Layaway. */}
+      {card === 'keep' && keepLayaways.length > 0 ? (
+        <div className="rounded-xl border border-border bg-card" data-testid="keep-layaways">
+          <div className="flex items-center justify-between px-4 py-2.5">
+            <p className="text-sm font-semibold">
+              From Layaway — KEEP{' '}
+              <span className="text-muted-foreground">({keepLayaways.length})</span>
+            </p>
+            <a
+              href="/orders/payments?layaway=all"
+              className="text-xs font-medium text-gold-strong hover:underline"
+            >
+              Manage in Payments ›
+            </a>
+          </div>
+          <div className="overflow-x-auto border-t border-border">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
+                  <th className="px-3 py-2 font-medium">Code</th>
+                  <th className="px-3 py-2 font-medium">Customer</th>
+                  <th className="px-3 py-2 font-medium">Remarks</th>
+                  <th className="px-3 py-2 text-right font-medium">Grand Total</th>
+                  <th className="px-3 py-2 text-right font-medium">Balance</th>
+                  <th className="px-3 py-2 font-medium">Account No.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {keepLayaways.map((k) => (
+                  <tr key={k.id} className="border-b border-border/60 last:border-0">
+                    <td className="px-3 py-2 font-mono text-xs">{k.code ?? '—'}</td>
+                    <td className="px-3 py-2">{k.customerName}</td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">
+                      {k.remarks ?? '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {k.grandTotal ? <Money amount={k.grandTotal} /> : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {k.balance ? <Money amount={k.balance} /> : '—'}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-xs">{k.accountNo}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
 
       {/* In-page order details — the list stays mounted behind it, so search,
           filters, selected status, and scroll are preserved on close. After an
