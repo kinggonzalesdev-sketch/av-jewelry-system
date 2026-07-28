@@ -29,6 +29,8 @@ export type LayawayLedgerRow = {
   balance: string | null;
   balanceMismatch: boolean;
   nextDueDate: string | null;
+  /** Date of the newest recorded payment — the completion date once fully paid. */
+  lastPaymentDate: string | null;
   createdAt: string;
 };
 
@@ -167,7 +169,7 @@ export async function listLayawayLedger(): Promise<LayawayLedgerRow[]> {
   const { data, error } = await supabase
     .from('layaway_ledger')
     .select(
-      'id, layaway_code, account_no, customer_name, status, remarks, date_purchased, item_amount, interest, grand_total, payment, balance, balance_mismatch, next_due_date, created_at',
+      'id, layaway_code, account_no, customer_name, status, remarks, date_purchased, item_amount, interest, grand_total, payment, balance, balance_mismatch, next_due_date, last_payment_date, created_at',
     )
     .order('created_at', { ascending: false });
 
@@ -177,6 +179,7 @@ export async function listLayawayLedger(): Promise<LayawayLedgerRow[]> {
     id: r.id as string,
     code: (r.layaway_code as string | null) ?? null,
     nextDueDate: (r.next_due_date as string | null) ?? null,
+    lastPaymentDate: (r.last_payment_date as string | null) ?? null,
     accountNo: (r.account_no as string) ?? '—',
     customerName: (r.customer_name as string) ?? 'Unknown',
     status: (r.status as string) ?? 'active',
@@ -238,6 +241,8 @@ export type LayawayDashboard = {
   completed: number;
   overdue: number;
   forfeited: number;
+  /** Total valid layaway accounts (ledger + arrangements). */
+  totalQty: number;
   createdToday: number;
   createdMonth: number;
   dueToday: number;
@@ -270,6 +275,7 @@ export async function getLayawayDashboard(): Promise<LayawayDashboard> {
     completed: n('completed'),
     overdue: n('overdue'),
     forfeited: n('forfeited'),
+    totalQty: n('total_qty'),
     createdToday: n('created_today'),
     createdMonth: n('created_month'),
     dueToday: n('due_today'),

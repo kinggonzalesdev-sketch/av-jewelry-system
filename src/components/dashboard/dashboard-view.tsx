@@ -374,6 +374,7 @@ export function DashboardView({
                     ['Completed Layaways', String(layaway.completed), 'completed'],
                     ['Overdue Layaways', String(layaway.overdue), 'overdue'],
                     ['Forfeited Layaways', String(layaway.forfeited), 'forfeited'],
+                    ['Total Qty / Items', String(layaway.totalQty), 'all'],
                     ['Created Today', String(layaway.createdToday), 'all'],
                     ['Created This Month', String(layaway.createdMonth), 'all'],
                     ['Due Today', String(layaway.dueToday), 'active'],

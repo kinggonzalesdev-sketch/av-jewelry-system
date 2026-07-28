@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useActionState, useState } from 'react';
+import { useActionState, useMemo, useState } from 'react';
 
 import { OrderDetailsModal } from '@/components/orders/order-details-modal';
 import { Modal } from '@/components/ui/modal';
@@ -129,8 +129,11 @@ type LayawayAccountRow = {
   remarks: string | null;
   /** Layaway financer (order-derived rows); null for imported ledger rows. */
   financer: string | null;
-  /** First upcoming installment due date (imported ledger), or null. */
+  /** First upcoming installment due date. Kept for the OVERDUE calculation, the
+   *  View modal, reminders, and the Dashboard — it is no longer a table column. */
   nextDueDate: string | null;
+  /** When the account actually closed out (derived: completedAt; ledger: last payment). */
+  completionDate: string | null;
   datePurchased: string | null;
   item: string | null;
   interest: string | null;
@@ -154,6 +157,7 @@ function fromDerived(l: LayawayRow): LayawayAccountRow {
     remarks: l.remarks,
     financer: l.financer,
     nextDueDate: l.finalDueDate,
+    completionDate: l.completedAt ? l.completedAt.slice(0, 10) : null,
     datePurchased: l.datePurchased ? l.datePurchased.slice(0, 10) : null,
     item: l.itemAmount,
     interest: l.layawayFee,
@@ -177,6 +181,7 @@ function fromLedger(l: LayawayLedgerRow): LayawayAccountRow {
     remarks: l.remarks,
     financer: null,
     nextDueDate: l.nextDueDate,
+    completionDate: l.lastPaymentDate,
     datePurchased: l.datePurchased,
     item: l.itemAmount,
     interest: l.interest,
@@ -213,6 +218,61 @@ function centavosToPesoString(cents: bigint): string {
   const abs = negative ? -cents : cents;
   return `${negative ? '-' : ''}${abs / 100n}.${String(abs % 100n).padStart(2, '0')}`;
 }
+
+/**
+ * Today in the USER'S LOCAL date. `toISOString()` yields the UTC date, which in the
+ * Philippines (UTC+8) flips a day early and would mark accounts overdue too soon.
+ */
+function todayLocalISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate(),
+  ).padStart(2, '0')}`;
+}
+
+/** Statuses where an account is closed — never active and never overdue. */
+const TERMINAL_STATUSES = new Set(['completed', 'forfeited', 'cancelled']);
+/** Order-derived statuses the database already computed as past due. */
+const DERIVED_OVERDUE_STATUSES = new Set(['overdue', 'grace_period', 'forfeiture_eligible']);
+/** Imported rows flagged ERROR — never counted, listed, or summed anywhere. */
+const EXCLUDED_STATUSES = new Set(['needs_review']);
+
+/**
+ * Overdue = a live account whose Next Due Date has passed and that still owes money.
+ * Completed / forfeited / cancelled are never overdue, so paying an account off,
+ * moving its due date, completing, forfeiting, or cancelling it removes it from
+ * Overdue automatically on the next render — no stored flag to go stale.
+ */
+function isOverdueRow(r: LayawayAccountRow, today: string): boolean {
+  if (TERMINAL_STATUSES.has(r.status)) return false;
+  if (sumPesoCentavos([r.balance]) <= 0n) return false;
+  if (DERIVED_OVERDUE_STATUSES.has(r.status)) return true;
+  return r.nextDueDate !== null && r.nextDueDate < today;
+}
+
+/**
+ * A COMPLETED layaway must have genuinely closed out: zero remaining balance AND
+ * total payment equal to the grand total. An account marked completed while
+ * principal or interest is unpaid is invalid and is never shown as Completed.
+ */
+function isValidCompletedRow(r: LayawayAccountRow): boolean {
+  const grand = sumPesoCentavos([r.grandTotal]);
+  const paid = sumPesoCentavos([r.payment]);
+  const balance = sumPesoCentavos([r.balance]);
+  return grand > 0n && balance === 0n && paid === grand;
+}
+
+/** The account's financer — the order's financer, else its Remarks / Financer text. */
+function financerOf(r: LayawayAccountRow): string {
+  return (r.financer ?? r.remarks ?? '').trim();
+}
+/** Case- and spacing-insensitive key so "nez", "NEZ", and "Nez  " are one financer. */
+function financerKey(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+/** Sentinel dropdown values (a real financer name can never collide with these). */
+const FINANCER_ALL = '__all__';
+const FINANCER_NONE = '__none__';
 
 export function PaymentsWorkspace({
   queue,
@@ -265,7 +325,7 @@ export function PaymentsWorkspace({
   const [showRecord, setShowRecord] = useState(false);
   // Layaway Accounts search + financer filter (§15) — client-side, spreadsheet-style.
   const [laySearch, setLaySearch] = useState('');
-  const [layFinancer, setLayFinancer] = useState('all');
+  const [layFinancer, setLayFinancer] = useState(FINANCER_ALL);
 
   const [verifyState, verifyAction, verifying] = useActionState<
     PaymentActionState,
@@ -282,59 +342,74 @@ export function PaymentsWorkspace({
 
   const notices = [verifyState, rejectState, forfeitState];
 
-  // Base rows for the Layaway table, driven by the selected SECTION. Order-derived
-  // layaways carry the full lifecycle; the imported ledger only has active/completed
-  // (so Overdue/Forfeited show none of them).
-  const baseLayaways: LayawayRow[] =
-    section === 'all'
-      ? [...layaways, ...completed]
-      : section === 'completed'
-        ? completed
-        : section === 'overdue'
-          ? layaways.filter((l) =>
-              ['overdue', 'grace_period', 'forfeiture_eligible'].includes(l.status),
-            )
-          : section === 'forfeited'
-            ? layaways.filter((l) => l.status === 'forfeited')
-            : layaways.filter((l) => l.status === 'active');
+  // EVERY layaway account in one shape — order-derived and imported ledger alike —
+  // so sections, the financer filter, and the summary all classify them identically.
+  // Rows flagged Needs Review (imported ERROR rows) are dropped up front: they are
+  // never listed, filtered, or summed anywhere.
+  const today = todayLocalISO();
+  const allAccounts: LayawayAccountRow[] = useMemo(
+    () =>
+      [
+        ...layaways.map(fromDerived),
+        ...completed.map(fromDerived),
+        ...ledger.map(fromLedger),
+      ].filter((r) => !EXCLUDED_STATUSES.has(r.status)),
+    [layaways, completed, ledger],
+  );
 
-  const filteredLayaways = baseLayaways.filter((l) => {
-    if (layFinancer !== 'all' && (l.financer ?? '') !== layFinancer) return false;
-    const q = laySearch.trim().toLowerCase();
-    if (!q) return true;
-    return `${l.code ?? ''} ${l.orderNumber} ${l.customerDisplayName} ${l.financer ?? ''} ${l.remarks ?? ''}`
-      .toLowerCase()
-      .includes(q);
-  });
-
-  // Imported ledger accounts, filtered by the SAME section + search. They have no
-  // financer, so a specific-financer filter hides them, and they only appear under
-  // Active or Completed (they have no overdue/forfeited state).
-  const ledgerFiltered = ledger.filter((l) => {
-    if (layFinancer !== 'all') return false;
-    // Never count ERROR / needs-review or any non-active/completed status.
-    const valid = l.status === 'active' || l.status === 'completed';
-    if (section === 'all') {
-      if (!valid) return false;
-    } else if (section === 'completed') {
-      if (l.status !== 'completed') return false;
-    } else if (section === 'active') {
-      if (l.status !== 'active') return false;
-    } else {
-      return false; // overdue / forfeited: no imported-ledger rows
+  // The financer dropdown builds itself from the Remarks / Financer values already
+  // stored on the accounts (plus any configured financer), so a newly typed name
+  // appears automatically — no separate financer setup step. Duplicates differing
+  // only by case or spacing collapse into one entry that keeps its original display.
+  const financerOptions = useMemo(() => {
+    const byKey = new Map<string, string>();
+    for (const name of [
+      ...allAccounts.map(financerOf),
+      ...financers.map((f) => f.name),
+    ]) {
+      const display = name.trim();
+      if (!display) continue;
+      const key = financerKey(display);
+      if (!byKey.has(key)) byKey.set(key, display);
     }
-    const q = laySearch.trim().toLowerCase();
-    if (!q) return true;
-    return `${l.code ?? ''} ${l.accountNo} ${l.customerName} ${l.remarks ?? ''}`
-      .toLowerCase()
-      .includes(q);
-  });
+    return [...byKey.entries()]
+      .map(([key, label]) => ({ key, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [allAccounts, financers]);
 
-  // The merged Layaway Accounts rows — derived + imported ledger, one shape.
-  const accountRows: LayawayAccountRow[] = [
-    ...filteredLayaways.map(fromDerived),
-    ...ledgerFiltered.map(fromLedger),
-  ];
+  // Section + financer + search, applied to the merged set. Active EXCLUDES overdue
+  // so no account is ever listed (or counted) in both views.
+  const accountRows: LayawayAccountRow[] = useMemo(() => {
+    const q = laySearch.trim().toLowerCase();
+    return allAccounts.filter((r) => {
+      const overdue = isOverdueRow(r, today);
+      const inSection =
+        section === 'all'
+          ? true
+          : section === 'completed'
+            ? isValidCompletedRow(r)
+            : section === 'overdue'
+              ? overdue
+              : section === 'forfeited'
+                ? r.status === 'forfeited'
+                : !TERMINAL_STATUSES.has(r.status) && !overdue;
+      if (!inSection) return false;
+
+      if (layFinancer !== FINANCER_ALL) {
+        const name = financerOf(r);
+        if (layFinancer === FINANCER_NONE) {
+          if (name) return false;
+        } else if (financerKey(name) !== layFinancer) {
+          return false;
+        }
+      }
+
+      if (!q) return true;
+      return `${r.code ?? ''} ${r.accountNo} ${r.customerName} ${r.financer ?? ''} ${r.remarks ?? ''}`
+        .toLowerCase()
+        .includes(q);
+    });
+  }, [allAccounts, section, layFinancer, laySearch, today]);
 
   // Financial summary for the CURRENTLY SHOWN section (+ search/financer filter +
   // date range). Money is summed as exact centavos; Qty is the account count.
@@ -713,25 +788,35 @@ export function PaymentsWorkspace({
                 data-testid="layaway-filter-financer"
                 className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
               >
-                <option value="all">All financers</option>
-                {financers.map((f) => (
-                  <option key={f.id} value={f.name}>
-                    {f.name}
+                <option value={FINANCER_ALL}>All Financers</option>
+                {financerOptions.map((f) => (
+                  <option key={f.key} value={f.key}>
+                    {f.label}
                   </option>
                 ))}
+                <option value={FINANCER_NONE}>(No financer)</option>
               </select>
               <span className="text-xs text-muted-foreground">
                 {accountRows.length} shown
               </span>
             </div>
           ) : null}
-          <LayawayTable
-            rows={accountRows}
-            onOpenOrder={setDetailOrderId}
-            financers={financers}
-            canManage={canMonitorLayaway}
-            canDeleteLedger={canImportLayaway}
-          />
+          {section === 'completed' ? (
+            <CompletedLayawayTable
+              rows={accountRows}
+              onOpenOrder={setDetailOrderId}
+              canDeleteLedger={canImportLayaway}
+            />
+          ) : (
+            <LayawayTable
+              rows={accountRows}
+              onOpenOrder={setDetailOrderId}
+              financers={financers}
+              canManage={canMonitorLayaway}
+              canDeleteLedger={canImportLayaway}
+              today={today}
+            />
+          )}
         </>
       ) : null}
 
@@ -960,6 +1045,7 @@ function LayawayTable({
   financers,
   canManage,
   canDeleteLedger,
+  today,
 }: {
   rows: LayawayAccountRow[];
   onOpenOrder: (orderId: string) => void;
@@ -967,17 +1053,17 @@ function LayawayTable({
   canManage: boolean;
   /** Owner/Admin: imported ledger rows get a Delete action. */
   canDeleteLedger: boolean;
+  /** The user's LOCAL date — overdue is judged against it, never a UTC date. */
+  today: string;
 }) {
   const money = usePrivacyMoney();
   const cash = (v: string | null) => (v ? money(v) : '—');
-  const today = new Date().toISOString().slice(0, 10);
-  // Overdue = an ACTIVE account past its Next Due Date that still owes a balance.
-  // Completed / forfeited / cancelled are never overdue; no due date → '—'.
+  // Overdue uses the one shared rule, so the badge and the Overdue section can
+  // never disagree. Closed accounts and accounts with no due date show '—'.
   const overdueLabel = (r: LayawayAccountRow): string => {
-    if (r.status !== 'active') return '—';
-    if (!r.nextDueDate) return '—';
-    const owes = sumPesoCentavos([r.balance]) > 0n;
-    return r.nextDueDate < today && owes ? 'Yes' : 'No';
+    if (TERMINAL_STATUSES.has(r.status)) return '—';
+    if (!r.nextDueDate && !DERIVED_OVERDUE_STATUSES.has(r.status)) return '—';
+    return isOverdueRow(r, today) ? 'Yes' : 'No';
   };
 
   return (
@@ -996,7 +1082,6 @@ function LayawayTable({
             <th className="px-2.5 py-2 text-right">Grand Total</th>
             <th className="px-2.5 py-2 text-right">Payment</th>
             <th className="px-2.5 py-2 text-right">Balance</th>
-            <th className="px-2.5 py-2">Next Due Date</th>
             <th className="px-2.5 py-2">Order / Account No.</th>
             <th className="px-2.5 py-2 text-right">Actions</th>
           </tr>
@@ -1004,7 +1089,7 @@ function LayawayTable({
         <tbody className="divide-y">
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={14} className="px-2.5 py-6 text-center text-muted-foreground">
+              <td colSpan={13} className="px-2.5 py-6 text-center text-muted-foreground">
                 No layaway accounts found.
               </td>
             </tr>
@@ -1051,7 +1136,6 @@ function LayawayTable({
                     </span>
                   ) : null}
                 </td>
-                <td className="px-2.5 py-2 whitespace-nowrap">{r.nextDueDate ?? '—'}</td>
                 <td className="px-2.5 py-2 font-mono text-[11px]">
                   {r.officialOrderId ? (
                     <OrderNumberButton
@@ -1083,12 +1167,13 @@ function LayawayTable({
                       <LayawayLedgerViewModal ledgerId={r.ledgerId} />
                       {canDeleteLedger ? (
                         <>
-                          {r.status === 'active' ? (
+                          {!TERMINAL_STATUSES.has(r.status) ? (
                             <LedgerAddPayment
                               id={r.ledgerId}
                               accountNo={r.accountNo}
                               customerName={r.customerName}
-                              balance={r.balance}
+                              grandTotal={r.grandTotal}
+                              paidToDate={r.payment}
                             />
                           ) : null}
                           <LedgerEditAccount id={r.ledgerId} accountNo={r.accountNo} />
@@ -1098,6 +1183,113 @@ function LayawayTable({
                             customerName={r.customerName}
                           />
                         </>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * Completed Layaways — the FINAL record of an account that genuinely closed out.
+ * Only rows that passed `isValidCompletedRow` reach here (balance ₱0 AND total
+ * payment equal to the grand total), so an account with unpaid principal or
+ * interest can never be presented as completed. There is no Balance or Overdue
+ * column because both are settled by definition; Completion Date replaces them.
+ */
+function CompletedLayawayTable({
+  rows,
+  onOpenOrder,
+  canDeleteLedger,
+}: {
+  rows: LayawayAccountRow[];
+  onOpenOrder: (orderId: string) => void;
+  canDeleteLedger: boolean;
+}) {
+  const money = usePrivacyMoney();
+  const cash = (v: string | null) => (v ? money(v) : '—');
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-border bg-card">
+      <table
+        className="w-full min-w-[1000px] text-left text-xs"
+        data-testid="layaway-completed-table"
+      >
+        <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
+          <tr>
+            <th className="px-2.5 py-2">Code</th>
+            <th className="px-2.5 py-2">Customer Name</th>
+            <th className="px-2.5 py-2">Remarks / Financer</th>
+            <th className="px-2.5 py-2">Date Purchased</th>
+            <th className="px-2.5 py-2 text-right">Item</th>
+            <th className="px-2.5 py-2 text-right">Total Interest</th>
+            <th className="px-2.5 py-2 text-right">Grand Total</th>
+            <th className="px-2.5 py-2 text-right">Total Payment</th>
+            <th className="px-2.5 py-2">Completion Date</th>
+            <th className="px-2.5 py-2">Order / Account No.</th>
+            <th className="px-2.5 py-2 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={11} className="px-2.5 py-6 text-center text-muted-foreground">
+                No completed layaway accounts found.
+              </td>
+            </tr>
+          ) : (
+            rows.map((r) => (
+              <tr key={r.key} className="hover:bg-accent/40">
+                <td className="px-2.5 py-2 font-mono font-semibold">{r.code ?? '—'}</td>
+                <td className="px-2.5 py-2 font-medium">{r.customerName}</td>
+                <td className="px-2.5 py-2 text-muted-foreground">
+                  {[r.financer, r.remarks].filter(Boolean).join(' · ') || '—'}
+                </td>
+                <td className="px-2.5 py-2 whitespace-nowrap">{r.datePurchased ?? '—'}</td>
+                <td className="px-2.5 py-2 text-right tabular-nums">{cash(r.item)}</td>
+                <td className="px-2.5 py-2 text-right tabular-nums">{cash(r.interest)}</td>
+                <td className="px-2.5 py-2 text-right tabular-nums">{cash(r.grandTotal)}</td>
+                <td className="px-2.5 py-2 text-right font-semibold tabular-nums">
+                  {cash(r.payment)}
+                </td>
+                <td className="px-2.5 py-2 whitespace-nowrap">{r.completionDate ?? '—'}</td>
+                <td className="px-2.5 py-2 font-mono text-[11px]">
+                  {r.officialOrderId ? (
+                    <OrderNumberButton
+                      orderId={r.officialOrderId}
+                      label={r.accountNo}
+                      onOpen={onOpenOrder}
+                    />
+                  ) : (
+                    r.accountNo
+                  )}
+                </td>
+                <td className="px-2.5 py-2 text-right">
+                  {r.officialOrderId ? (
+                    <button
+                      type="button"
+                      onClick={() => onOpenOrder(r.officialOrderId as string)}
+                      className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+                    >
+                      View
+                    </button>
+                  ) : r.ledgerId ? (
+                    <div className="flex flex-wrap justify-end gap-1">
+                      <LayawayLedgerViewModal ledgerId={r.ledgerId} />
+                      {canDeleteLedger ? (
+                        <LedgerRowDelete
+                          id={r.ledgerId}
+                          accountNo={r.accountNo}
+                          customerName={r.customerName}
+                        />
                       ) : null}
                     </div>
                   ) : (

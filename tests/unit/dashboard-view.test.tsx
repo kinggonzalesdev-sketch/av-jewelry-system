@@ -104,6 +104,7 @@ function renderView(over: Partial<Parameters<typeof DashboardView>[0]> = {}) {
         completed: 0,
         overdue: 0,
         forfeited: 0,
+        totalQty: 0,
         createdToday: 0,
         createdMonth: 0,
         dueToday: 0,

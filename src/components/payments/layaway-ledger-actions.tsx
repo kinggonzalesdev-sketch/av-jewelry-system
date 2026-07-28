@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import {
   addLayawayLedgerPaymentAction,
@@ -15,23 +15,52 @@ import { Label } from '@/components/ui/label';
 import { MoneyInput } from '@/components/ui/money-input';
 import { Modal } from '@/components/ui/modal';
 
-const today = () => new Date().toISOString().slice(0, 10);
+/** Today in the USER'S LOCAL date (never the UTC date, which rolls a day early in PH). */
+const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate(),
+  ).padStart(2, '0')}`;
+};
+
+/** A peso string as EXACT integer centavos — never through a JS float. */
+function centavos(value: string | null): bigint {
+  if (!value) return 0n;
+  const negative = value.trim().startsWith('-');
+  const clean = value.replace(/[^\d.]/g, '');
+  const [whole = '0', fraction = ''] = clean.split('.');
+  const c = BigInt(whole || '0') * 100n + BigInt(`${fraction}00`.slice(0, 2) || '0');
+  return negative ? -c : c;
+}
+
+function pesoString(cents: bigint): string {
+  const negative = cents < 0n;
+  const abs = negative ? -cents : cents;
+  return `${negative ? '-' : ''}${abs / 100n}.${String(abs % 100n).padStart(2, '0')}`;
+}
 
 /**
- * Owner/Admin "Add Payment" for an imported layaway account. Records a real payment
- * (attributed to the recorder — Received By), which recomputes Payment + Balance and
- * auto-completes the account when fully paid. The DB function is the real gate.
+ * Owner/Admin "Add Payment" for an imported layaway account.
+ *
+ * Remaining Balance = Grand Total − Total Payments, computed here in EXACT integer
+ * centavos (never a float). A payment must be greater than zero and must never
+ * exceed the remaining balance; a fully-paid account cannot take another payment at
+ * all. Those rules are checked HERE for immediate feedback and again in the database
+ * function, which is the real gate — so nothing is saved when validation fails, even
+ * if this form is bypassed. The recorder is captured as Received By.
  */
 export function LedgerAddPayment({
   id,
   accountNo,
   customerName,
-  balance,
+  grandTotal,
+  paidToDate,
 }: {
   id: string;
   accountNo: string;
   customerName: string;
-  balance: string | null;
+  grandTotal: string | null;
+  paidToDate: string | null;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -42,6 +71,23 @@ export function LedgerAddPayment({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ balance: string; status: string } | null>(null);
+  // Guards a double-tap / double-submit even before React re-renders the disabled
+  // button — a repeat click must never record the payment twice.
+  const submittingRef = useRef(false);
+
+  const remainingCents = centavos(grandTotal) - centavos(paidToDate);
+  const fullyPaid = remainingCents <= 0n;
+  const amountCents = centavos(amount);
+  const exceeds = amountCents > remainingCents;
+  // Live, client-side validation mirroring the database's rules verbatim.
+  const validationError = !amount.trim()
+    ? null
+    : amountCents <= 0n
+      ? 'Enter a payment amount greater than zero.'
+      : exceeds
+        ? `Payment exceeds the remaining balance of ${formatPeso(pesoString(remainingCents))}.`
+        : null;
+  const canSubmit = !pending && !fullyPaid && amountCents > 0n && !exceeds;
 
   const reset = () => {
     setAmount('');
@@ -54,24 +100,29 @@ export function LedgerAddPayment({
   };
 
   const run = async () => {
-    if (pending || !amount.trim()) return;
+    // Never submit an invalid payment, and never submit the same one twice.
+    if (!canSubmit || submittingRef.current) return;
+    submittingRef.current = true;
     setPending(true);
     setError(null);
-    const res = await addLayawayLedgerPaymentAction({
-      ledgerId: id,
-      amount: amount.trim(),
-      paymentDate: date || null,
-      mop: mop || null,
-      reference: reference.trim() || null,
-    });
-    if (!res.ok) {
+    try {
+      const res = await addLayawayLedgerPaymentAction({
+        ledgerId: id,
+        amount: amount.trim(),
+        paymentDate: date || null,
+        mop: mop || null,
+        reference: reference.trim() || null,
+      });
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setDone({ balance: res.balance, status: res.status });
+      router.refresh();
+    } finally {
       setPending(false);
-      setError(res.error);
-      return;
+      submittingRef.current = false;
     }
-    setPending(false);
-    setDone({ balance: res.balance, status: res.status });
-    router.refresh();
   };
 
   return (
@@ -82,8 +133,10 @@ export function LedgerAddPayment({
           reset();
           setOpen(true);
         }}
+        disabled={fullyPaid}
+        title={fullyPaid ? 'This layaway account is already fully paid.' : undefined}
         data-testid={`ledger-add-payment-${id}`}
-        className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+        className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
       >
         Add Payment
       </button>
@@ -104,11 +157,7 @@ export function LedgerAddPayment({
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                 Cancel
               </Button>
-              <Button
-                type="button"
-                onClick={() => void run()}
-                disabled={pending || !amount.trim()}
-              >
+              <Button type="button" onClick={() => void run()} disabled={!canSubmit}>
                 {pending ? 'Recording…' : 'Record payment'}
               </Button>
             </>
@@ -128,13 +177,23 @@ export function LedgerAddPayment({
               </p>
             ) : null}
           </div>
+        ) : fullyPaid ? (
+          <p
+            role="alert"
+            className="rounded-md border border-green-600/40 bg-green-600/10 px-3 py-2 text-sm text-green-700"
+            data-testid="ledger-payment-fully-paid"
+          >
+            This layaway account is already fully paid.
+          </p>
         ) : (
           <div className="space-y-3">
-            {balance ? (
-              <p className="text-xs text-muted-foreground">
-                Current balance: <strong>{formatPeso(balance)}</strong>
-              </p>
-            ) : null}
+            <p className="text-xs text-muted-foreground">
+              Remaining balance:{' '}
+              <strong data-testid="ledger-payment-remaining">
+                {formatPeso(pesoString(remainingCents))}
+              </strong>{' '}
+              <span className="text-[10px]">(Grand Total − Total Payments)</span>
+            </p>
             <div>
               <Label className="text-xs">Amount</Label>
               <MoneyInput
@@ -188,9 +247,9 @@ export function LedgerAddPayment({
                 className="mt-1 h-9"
               />
             </div>
-            {error ? (
+            {validationError ?? error ? (
               <p role="alert" className="text-sm text-destructive">
-                {error}
+                {validationError ?? error}
               </p>
             ) : null}
           </div>
