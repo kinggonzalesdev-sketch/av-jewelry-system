@@ -264,28 +264,6 @@ function ItemRows({
               </div>
             ) : null}
 
-            {/* Reference photo for THIS item. The item's existing inventory photo
-                shows automatically; Take Photo / Choose File / Remove Photo come
-                from the shared PhotoCapture control, so the upload path, storage,
-                and permissions are the existing ones. A photo is optional — it
-                never blocks Confirm Order. It attaches to the permanent inventory
-                item, so it stays visible in the Order View modal afterwards. */}
-            {matched ? (
-              <div className="mt-2" data-testid={`order-item-photo-${idx}`}>
-                <PhotoCapture
-                  key={matched.id}
-                  relatedEntityType="inventory_item"
-                  relatedEntityId={matched.id}
-                  purpose="photo"
-                  label="Item photo (optional)"
-                />
-              </div>
-            ) : (
-              <p className="mt-2 rounded-lg border border-dashed border-border p-2 text-center text-[11px] text-muted-foreground">
-                Select an item to attach or view its photo.
-              </p>
-            )}
-
             <div className="mt-1.5 flex items-center justify-between text-xs">
               <span className="text-muted-foreground">
                 {matched ? (
@@ -314,6 +292,39 @@ function ItemRows({
       >
         ＋ Add Item
       </button>
+    </div>
+  );
+}
+
+/**
+ * Item photos — ONE optional reference photo per selected item, shown BELOW the
+ * order total (Owner request) rather than inside each item card, so the pricing
+ * fields stay compact and the photos sit together at the end of the form.
+ *
+ * Each control is the shared PhotoCapture, so the upload path, storage, and
+ * permissions are the existing ones, and it attaches to the PERMANENT inventory id
+ * — which is why an item's current photo appears automatically and stays visible in
+ * the Order View modal afterwards. A photo never blocks Confirm Order.
+ */
+function ItemPhotos({ items }: { items: PickItem[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-border p-3" data-testid="order-item-photos">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        Item Photos (optional)
+      </p>
+      <div className="space-y-3">
+        {items.map((item, idx) => (
+          <div key={item.id} data-testid={`order-item-photo-${idx}`}>
+            <PhotoCapture
+              relatedEntityType="inventory_item"
+              relatedEntityId={item.id}
+              purpose="photo"
+              label={item.code}
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -778,6 +789,13 @@ function NewOrderModal({
         />
 
         <OrderSummary total={totalCentavos} count={rows.length} />
+
+        {/* Photos sit AFTER the total (Owner request), one per selected item. */}
+        <ItemPhotos
+          items={resolvedRows()
+            .map(({ item }) => item)
+            .filter((i): i is PickItem => i !== null)}
+        />
 
         {mode === 'walkin' ? (
           <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
