@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 import { getClientEnv } from '@/lib/env';
+import { toSessionCookie } from '@/lib/supabase/cookies';
 
 /**
  * Session refresh + unauthenticated redirect (ADR §6).
@@ -54,7 +55,7 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
           }
           supabaseResponse = NextResponse.next({ request });
           for (const { name, value, options } of cookiesToSet) {
-            supabaseResponse.cookies.set(name, value, options);
+            supabaseResponse.cookies.set(name, value, toSessionCookie(options));
           }
         },
       },

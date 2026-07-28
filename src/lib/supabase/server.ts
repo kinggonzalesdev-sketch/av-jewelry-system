@@ -4,6 +4,7 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
 import { getClientEnv } from '@/lib/env';
+import { toSessionCookie } from '@/lib/supabase/cookies';
 
 /**
  * Server-side Supabase client, scoped to the caller's session (ADR §7).
@@ -28,7 +29,7 @@ export async function createClient() {
         setAll(cookiesToSet) {
           try {
             for (const { name, value, options } of cookiesToSet) {
-              cookieStore.set(name, value, options);
+              cookieStore.set(name, value, toSessionCookie(options));
             }
           } catch {
             // `setAll` throws when called from a Server Component, where cookies are

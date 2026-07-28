@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 
 import { PrinterProvider } from '@/components/print/printer-context';
 import { AppSidebar } from '@/components/shell/app-sidebar';
+import { IdleLogout } from '@/components/shell/idle-logout';
 import { PrivacyProvider } from '@/components/shell/privacy';
 
 /**
@@ -26,6 +27,8 @@ export function AppShell({
   return (
     <PrinterProvider>
       <PrivacyProvider>
+        {/* Auto sign-out after 30 min idle; session-only cookies handle browser close. */}
+        <IdleLogout minutes={30} />
         <AppSidebar fullName={fullName} roleKey={roleKey} userEmail={userEmail}>
           {children}
         </AppSidebar>
