@@ -353,6 +353,51 @@ export async function deleteInventoryItemDirect(
   return { ok: true };
 }
 
+export type DeleteAllInventoryResult =
+  | { ok: true; deleted: number; skipped: number }
+  | { ok: false; error: string };
+
+/**
+ * Bulk permanent delete of Active Inventory — Owner / Selected Admin only. The
+ * database function is the real gate: it skips every item linked to a business
+ * record (same dependency rule as the single delete), so in-use inventory is never
+ * removed; it returns how many were deleted vs skipped. Irreversible.
+ */
+export async function deleteAllInventoryItems(): Promise<DeleteAllInventoryResult> {
+  try {
+    await requireOwnerOrAdmin();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) {
+      await recordAuditEvent({
+        action: 'inventory_item.delete_all',
+        entityType: 'inventory_item',
+        outcome: 'denied',
+        reason: cause.message,
+      });
+      return { ok: false, error: cause.message };
+    }
+    throw cause;
+  }
+
+  const supabase = await createClient();
+  const res = (await supabase.rpc('delete_all_inventory_items')) as {
+    data: Record<string, unknown> | null;
+    error: { message: string } | null;
+  };
+  if (res.error) {
+    return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+  const d = res.data ?? {};
+  const deleted = Number(d.deleted ?? 0);
+  const skipped = Number(d.skipped ?? 0);
+  await recordAuditEvent({
+    action: 'inventory_item.delete_all',
+    entityType: 'inventory_item',
+    context: { deleted, skipped },
+  });
+  return { ok: true, deleted, skipped };
+}
+
 /**
  * Correct an item's DESCRIPTIVE details (spec §1/§3 "Correct Item Details").
  * Deliberately excludes the price — changing an existing item's price is an

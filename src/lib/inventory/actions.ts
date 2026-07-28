@@ -5,11 +5,13 @@ import { revalidatePath } from 'next/cache';
 
 import {
   archiveInventoryItem,
+  deleteAllInventoryItems,
   deleteInventoryItemDirect,
   editInventoryItemDetails,
   getItemDependencies,
   permanentlyDeleteInventoryItem,
   restoreInventoryItem,
+  type DeleteAllInventoryResult,
   type ItemDependency,
 } from '@/lib/inventory/archive';
 import { returnCompletedItemToReview } from '@/lib/inventory/completed';
@@ -264,6 +266,19 @@ export async function deleteInventoryItemAction(
 
   revalidatePath('/orders/inventory');
   return { error: null, success: 'Item permanently deleted. The audit trail is preserved.' };
+}
+
+/** Bulk permanent delete of Active Inventory (Owner/Admin, type-DELETE gated in the
+ *  UI). Items linked to a business record are skipped in the DB. Revalidates. */
+export async function deleteAllInventoryItemsAction(
+  confirm: string,
+): Promise<DeleteAllInventoryResult> {
+  if (confirm !== 'DELETE') {
+    return { ok: false, error: 'Type DELETE to permanently delete all items.' };
+  }
+  const result = await deleteAllInventoryItems();
+  if (result.ok) revalidatePath('/orders/inventory');
+  return result;
 }
 
 /** Correct an item's descriptive details (spec §1/§3). Never changes price. */

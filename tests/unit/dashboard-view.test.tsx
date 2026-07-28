@@ -132,18 +132,16 @@ describe('DashboardView — approved structure restored', () => {
     expect(screen.getByText('⟳ Refresh')).toBeInTheDocument();
   });
 
-  it('renders the primary tabs (Dashboard, Disassembly Report) plus retained ones', () => {
+  it('renders the primary tabs', () => {
     renderView();
-    for (const t of [
-      'dashboard',
-      'disassembly-report',
-      'reports',
-      'search',
-      'reminders',
-      'audit',
-    ]) {
+    for (const t of ['dashboard', 'reports', 'search', 'reminders', 'audit']) {
       expect(screen.getByTestId(`dash-tab-${t}`)).toBeInTheDocument();
     }
+  });
+
+  it('no longer renders the Disassembly Report tab (removed by Owner request)', () => {
+    renderView();
+    expect(screen.queryByTestId('dash-tab-disassembly-report')).not.toBeInTheDocument();
   });
 
   it('no longer renders the Gross Profit tab (removed by Owner request)', () => {
@@ -186,12 +184,9 @@ describe('DashboardView — honesty', () => {
     expect(screen.getByTestId('read-error')).toBeInTheDocument();
   });
 
-  it('Disassembly Report is an honest placeholder (no invented data)', () => {
+  it('no longer renders the Disassembly Report placeholder (removed by Owner request)', () => {
     renderView();
-    fireEvent.click(screen.getByTestId('dash-tab-disassembly-report'));
-    const panel = screen.getByTestId('disassembly-unavailable');
-    expect(panel).toBeInTheDocument();
-    expect(within(panel).getByText(/not built yet/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('disassembly-unavailable')).not.toBeInTheDocument();
   });
 });
 

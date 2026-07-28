@@ -5,6 +5,7 @@ import { Fragment, useActionState, useEffect, useMemo, useRef, useState } from '
 
 import {
   createInventoryItemAction,
+  deleteAllInventoryItemsAction,
   returnCompletedItemAction,
 } from '@/lib/inventory/actions';
 import type { InventoryActionState } from '@/lib/inventory/action-state';
@@ -72,10 +73,13 @@ export function InventoryWorkspace({
   inventory,
   completed = [],
   canMonitor,
+  canDeleteAll = false,
 }: {
   inventory: InventoryListResult;
   completed?: CompletedInventoryRow[];
   canMonitor: boolean;
+  /** Owner / Selected Admin — shows the bulk "Delete All" control. */
+  canDeleteAll?: boolean;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('Active Inventory');
@@ -245,6 +249,9 @@ export function InventoryWorkspace({
                   >
                     ⭳ Export CSV
                   </Button>
+                ) : null}
+                {canDeleteAll && inventory.ok && inventory.rows.length > 0 ? (
+                  <DeleteAllInventoryButton count={inventory.rows.length} />
                 ) : null}
               </>
             ) : null}
@@ -601,5 +608,124 @@ export function InventoryWorkspace({
       </Modal>
 
     </div>
+  );
+}
+
+/**
+ * Owner/Admin bulk permanent delete of Active Inventory. Irreversible "type DELETE"
+ * confirmation; the DB skips any item linked to a business record (order/claim) and
+ * reports how many were deleted vs skipped. The server action + DB function gate it.
+ */
+function DeleteAllInventoryButton({ count }: { count: number }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [confirm, setConfirm] = useState('');
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<{ deleted: number; skipped: number } | null>(null);
+
+  const run = async () => {
+    if (pending || confirm !== 'DELETE') return;
+    setPending(true);
+    setError(null);
+    const res = await deleteAllInventoryItemsAction(confirm);
+    if (!res.ok) {
+      setPending(false);
+      setError(res.error);
+      return;
+    }
+    setPending(false);
+    setDone({ deleted: res.deleted, skipped: res.skipped });
+    router.refresh();
+  };
+
+  return (
+    <>
+      <Button
+        type="button"
+        size="sm"
+        variant="destructive"
+        onClick={() => {
+          setConfirm('');
+          setError(null);
+          setDone(null);
+          setOpen(true);
+        }}
+        data-testid="inventory-delete-all"
+      >
+        🗑 Delete All
+      </Button>
+
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Permanently delete all Active Inventory"
+        description="This cannot be undone."
+        size="sm"
+        critical
+        footer={
+          done ? (
+            <Button type="button" onClick={() => setOpen(false)}>
+              Done
+            </Button>
+          ) : (
+            <>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => void run()}
+                disabled={pending || confirm !== 'DELETE'}
+              >
+                {pending ? 'Deleting…' : 'Delete all permanently'}
+              </Button>
+            </>
+          )
+        }
+      >
+        {done ? (
+          <div className="space-y-2" data-testid="inventory-delete-all-done">
+            <p className="text-sm">
+              Deleted <strong>{done.deleted}</strong> item(s).
+            </p>
+            {done.skipped > 0 ? (
+              <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-700">
+                Skipped <strong>{done.skipped}</strong> item(s) linked to an order or other
+                record — those are kept safe and cannot be bulk-deleted.
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm">
+              Permanently delete the <strong>{count}</strong> Active Inventory item(s)?
+              Items linked to an order or other business record are automatically{' '}
+              <strong>skipped</strong>. This removes only unlinked stock and cannot be
+              undone.
+            </p>
+            <div>
+              <Label htmlFor="inv-delete-all-confirm" className="text-xs">
+                Type <span className="font-mono font-semibold">DELETE</span> to confirm
+              </Label>
+              <Input
+                id="inv-delete-all-confirm"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                autoComplete="off"
+                placeholder="DELETE"
+                className="mt-1 h-9"
+              />
+            </div>
+            {error ? (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            ) : null}
+          </div>
+        )}
+      </Modal>
+    </>
   );
 }

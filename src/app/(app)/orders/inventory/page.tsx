@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 import { InventoryWorkspace } from '@/components/inventory/inventory-workspace';
-import { getGrantedPermissions } from '@/lib/authz/guard';
+import { getCurrentStaffProfile, getGrantedPermissions } from '@/lib/authz/guard';
 import { listCompletedInventory } from '@/lib/inventory/completed';
 import { listInventory } from '@/lib/inventory/service';
 
@@ -19,11 +19,13 @@ export const metadata: Metadata = {
  * this page could show stale.
  */
 export default async function InventoryPage() {
-  const [inventory, completed, permissions] = await Promise.all([
+  const [inventory, completed, permissions, profile] = await Promise.all([
     listInventory(),
     listCompletedInventory(),
     getGrantedPermissions(),
+    getCurrentStaffProfile(),
   ]);
+  const canDeleteAll = profile.roleKey === 'owner' || profile.roleKey === 'selected_admin';
 
   return (
     <div className="space-y-4">
@@ -35,6 +37,7 @@ export default async function InventoryPage() {
         inventory={inventory}
         completed={completed}
         canMonitor={permissions.has('inventory_monitoring')}
+        canDeleteAll={canDeleteAll}
       />
     </div>
   );
