@@ -50,8 +50,17 @@ type PickItem = {
   label: string;
 };
 
-/** One editable item row in the order. */
-type Row = { key: string; itemInput: string; qty: string; price: string };
+/** One editable item row in the order. Each row is ONE unique jewelry piece (no
+ *  quantity). Pricing is either a Fixed Price or Price Per Gram (grams × rate). */
+type Row = {
+  key: string;
+  itemInput: string;
+  priceMode: 'fixed' | 'per_gram';
+  /** Fixed-price amount (raw). */
+  price: string;
+  /** Price-per-gram rate (raw); the total is grams × rate. */
+  perGram: string;
+};
 
 const L = ({ children }: { children: React.ReactNode }) => (
   <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -67,7 +76,7 @@ const PRICE_RE = /^\d{1,12}(\.\d{1,2})?$/;
 let rowSeq = 0;
 function newRow(): Row {
   rowSeq += 1;
-  return { key: `row-${rowSeq}-${Date.now()}`, itemInput: '', qty: '1', price: '' };
+  return { key: `row-${rowSeq}-${Date.now()}`, itemInput: '', priceMode: 'fixed', price: '', perGram: '' };
 }
 
 /** Raw price string → exact centavos (never a float). '' / invalid → 0. */
@@ -80,9 +89,24 @@ function priceCentavos(raw: string): bigint {
 function centavosToStr(c: bigint): string {
   return `${c / 100n}.${String(c % 100n).padStart(2, '0')}`;
 }
-function lineTotalCentavos(r: Row): bigint {
-  const qty = Math.max(1, Number(r.qty) || 1);
-  return priceCentavos(r.price) * BigInt(qty);
+/** Total from Price Per Gram × grams, in EXACT integer units: grams → milligrams
+ *  (×1000), rate → centavos (×100), total centavos = rateCentavos × gramsMilli /
+ *  1000, rounded to the nearest centavo. */
+function perGramTotalCentavos(grams: string, perGram: string): bigint {
+  const g = (grams ?? '').trim();
+  const pg = (perGram ?? '').trim();
+  if (!/^\d*\.?\d*$/.test(g) || !PRICE_RE.test(pg)) return 0n;
+  const [gw = '0', gf = ''] = g.split('.');
+  const gramsMilli = BigInt(gw || '0') * 1000n + BigInt(`${gf}000`.slice(0, 3) || '0');
+  const rateCentavos = priceCentavos(pg);
+  if (gramsMilli === 0n || rateCentavos === 0n) return 0n;
+  return (rateCentavos * gramsMilli + 500n) / 1000n;
+}
+/** A row's total price (one unique item — no quantity). */
+function rowTotalCentavos(r: Row, item: PickItem | null): bigint {
+  return r.priceMode === 'per_gram'
+    ? perGramTotalCentavos(item?.grams ?? '', r.perGram)
+    : priceCentavos(r.price);
 }
 
 /** The shared item-rows editor + order summary. Used by both modes. */
@@ -120,10 +144,25 @@ function ItemRows({
   const onItem = (r: Row, value: string) => {
     const picked = byLabel.get(value.trim()) ?? null;
     const next: Partial<Row> = { itemInput: value };
-    // Prefill the row's price from the item's catalogue price (New Entry), editable.
-    if (picked && catalogPrefill && !r.price) next.price = picked.unitPrice ?? '';
+    // Prefill the FIXED price from the item's catalogue price (New Entry), editable.
+    if (picked && catalogPrefill && r.priceMode === 'fixed' && !r.price) {
+      next.price = picked.unitPrice ?? '';
+    }
     patch(r.key, next);
   };
+
+  const modeBtn = (r: Row, m: 'fixed' | 'per_gram', label: string) => (
+    <button
+      type="button"
+      onClick={() => patch(r.key, { priceMode: m })}
+      className={cn(
+        'rounded-md px-2 py-1 text-[11px] font-semibold',
+        r.priceMode === m ? 'bg-gold text-black' : 'text-muted-foreground hover:bg-accent',
+      )}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <div className="space-y-2">
@@ -133,7 +172,9 @@ function ItemRows({
         const options = items
           .filter((i) => !taken.has(i.label))
           .map((i) => i.label);
-        const lineTotal = centavosToStr(lineTotalCentavos(r));
+        const perGram = r.priceMode === 'per_gram';
+        const gramsText = matched ? (matched.grams ? `${matched.grams}g` : '—') : '';
+        const lineTotal = centavosToStr(rowTotalCentavos(r, matched));
         return (
           <div
             key={r.key}
@@ -162,36 +203,66 @@ function ItemRows({
               onChange={(v) => onItem(r, v)}
               options={options}
             />
-            <div className="mt-2 grid grid-cols-[1fr_64px] gap-2 min-[420px]:grid-cols-[1fr_1fr_64px]">
-              <label className="block">
-                <L>Unit Price</L>
-                <MoneyInput
-                  className={cn(fieldClass, 'h-9 text-right tabular-nums')}
-                  placeholder={matched?.unitPrice ? formatPeso(matched.unitPrice) : '0.00'}
-                  value={r.price}
-                  onValueChange={(v) => patch(r.key, { price: v })}
-                />
-              </label>
+
+            {/* Pricing type: Fixed Price (one price) or Price Per Gram (grams × rate). */}
+            <div className="mt-2 flex items-center gap-1">
+              <span className="mr-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Pricing
+              </span>
+              <div
+                className="inline-flex gap-1 rounded-md border border-border p-0.5"
+                data-testid={`order-item-pricing-${idx}`}
+              >
+                {modeBtn(r, 'fixed', 'Fixed Price')}
+                {modeBtn(r, 'per_gram', 'Price Per Gram')}
+              </div>
+            </div>
+
+            <div className="mt-2 grid grid-cols-2 gap-2">
               <label className="block">
                 <L>Grams</L>
                 <input
                   className={cn(fieldClass, 'h-9 bg-muted/40 text-right tabular-nums')}
                   readOnly
-                  value={matched ? (matched.grams ? `${matched.grams}g` : '—') : ''}
+                  value={gramsText}
                   placeholder="—"
                 />
               </label>
-              <label className="block">
-                <L>Qty</L>
-                <input
-                  type="number"
-                  min={1}
-                  value={r.qty}
-                  onChange={(e) => patch(r.key, { qty: e.target.value })}
-                  className={cn(fieldClass, 'h-9')}
-                />
-              </label>
+              {perGram ? (
+                <label className="block">
+                  <L>Price / Gram</L>
+                  <MoneyInput
+                    className={cn(fieldClass, 'h-9 text-right tabular-nums')}
+                    placeholder="0.00"
+                    value={r.perGram}
+                    onValueChange={(v) => patch(r.key, { perGram: v })}
+                  />
+                </label>
+              ) : (
+                <label className="block">
+                  <L>Price</L>
+                  <MoneyInput
+                    className={cn(fieldClass, 'h-9 text-right tabular-nums')}
+                    placeholder={matched?.unitPrice ? formatPeso(matched.unitPrice) : '0.00'}
+                    value={r.price}
+                    onValueChange={(v) => patch(r.key, { price: v })}
+                  />
+                </label>
+              )}
             </div>
+
+            {perGram ? (
+              <div className="mt-2">
+                <L>Total Price</L>
+                <input
+                  className={cn(fieldClass, 'h-9 bg-muted/40 text-right tabular-nums')}
+                  readOnly
+                  value={formatPeso(lineTotal)}
+                  data-testid={`order-item-pergram-total-${idx}`}
+                />
+              </div>
+            ) : null}
+
             <div className="mt-1.5 flex items-center justify-between text-xs">
               <span className="text-muted-foreground">
                 {matched ? (
@@ -225,15 +296,14 @@ function ItemRows({
 }
 
 /** Order summary (items count, subtotal, total) computed from the rows. */
-function OrderSummary({ rows }: { rows: Row[] }) {
-  const total = rows.reduce((c, r) => c + lineTotalCentavos(r), 0n);
-  const totalStr = centavosToStr(total);
+function OrderSummary({ total: totalCentavos, count }: { total: bigint; count: number }) {
+  const totalStr = centavosToStr(totalCentavos);
   return (
     <div className="rounded-lg border border-border bg-secondary/30 p-3 text-sm">
       <div className="flex items-center justify-between">
         <span className="text-muted-foreground">Number of Items</span>
         <span className="font-semibold tabular-nums" data-testid="order-summary-count">
-          {rows.length}
+          {count}
         </span>
       </div>
       <div className="mt-1 flex items-center justify-between">
@@ -344,7 +414,11 @@ function NewOrderModal({
   const resolvedRows = () =>
     rows.map((r) => ({ row: r, item: byLabel.get(r.itemInput.trim()) ?? null }));
 
-  const totalCentavos = rows.reduce((c, r) => c + lineTotalCentavos(r), 0n);
+  // Each row is ONE unique piece; its total is the Fixed Price or grams × per-gram.
+  const totalCentavos = resolvedRows().reduce(
+    (c, { row, item }) => c + rowTotalCentavos(row, item),
+    0n,
+  );
 
   const validate = (): string | null => {
     const resolved = resolvedRows();
@@ -354,8 +428,18 @@ function NewOrderModal({
       if (!item) return 'Pick an item from Active Inventory for every row.';
       if (ids.has(item.id)) return 'The same item was added more than once. Remove the duplicate.';
       ids.add(item.id);
-      if (!PRICE_RE.test(row.price.trim()) || Number(row.price) <= 0) {
-        return `Enter a unit price greater than zero for ${item.code}.`;
+      if (row.priceMode === 'per_gram') {
+        if (!item.grams || Number(item.grams) <= 0) {
+          return `${item.code} has no grams — use Fixed Price for it.`;
+        }
+        if (!PRICE_RE.test(row.perGram.trim()) || Number(row.perGram) <= 0) {
+          return `Enter a price per gram greater than zero for ${item.code}.`;
+        }
+      } else if (!PRICE_RE.test(row.price.trim()) || Number(row.price) <= 0) {
+        return `Enter a price greater than zero for ${item.code}.`;
+      }
+      if (rowTotalCentavos(row, item) <= 0n) {
+        return `${item.code} needs a total price greater than zero.`;
       }
     }
     if (mode === 'walkin') {
@@ -371,14 +455,17 @@ function NewOrderModal({
     customerName: matchedCustomer?.displayName ?? customerInput.trim(),
     salesperson,
     dateTime: slipDateTime(),
-    items: resolvedRows().map(({ row, item }) => ({
-      code: item?.code ?? '—',
-      name: item?.name ?? '',
-      grams: item?.grams ?? null,
-      unitPrice: row.price.trim(),
-      quantity: Math.max(1, Number(row.qty) || 1),
-      lineTotal: centavosToStr(lineTotalCentavos(row)),
-    })),
+    items: resolvedRows().map(({ row, item }) => {
+      const total = centavosToStr(rowTotalCentavos(row, item));
+      return {
+        code: item?.code ?? '—',
+        name: item?.name ?? '',
+        grams: item?.grams ?? null,
+        unitPrice: total,
+        quantity: 1,
+        lineTotal: total,
+      };
+    }),
     grandTotal: centavosToStr(totalCentavos),
   });
 
@@ -426,10 +513,12 @@ function NewOrderModal({
     setPending(true);
     setError(null);
 
+    // One unique piece per row (quantity 1); the unit price IS the row's total,
+    // whether entered as a Fixed Price or computed as grams × price-per-gram.
     const payloadItems = resolvedRows().map(({ row, item }) => ({
       inventoryItemId: item!.id,
-      unitPrice: row.price.trim(),
-      quantity: Math.max(1, Number(row.qty) || 1),
+      unitPrice: centavosToStr(rowTotalCentavos(row, item)),
+      quantity: 1,
     }));
 
     try {
@@ -665,7 +754,7 @@ function NewOrderModal({
           catalogPrefill={mode === 'order'}
         />
 
-        <OrderSummary rows={rows} />
+        <OrderSummary total={totalCentavos} count={rows.length} />
 
         {mode === 'walkin' ? (
           <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">

@@ -90,7 +90,7 @@ describe('NewOrderWorkflow — multi-item form', () => {
     expect(screen.getByRole('button', { name: /confirm order/i })).toBeInTheDocument();
   });
 
-  it('selecting an item prefills its Unit Price and computes the line + order total', () => {
+  it('Fixed Price: selecting an item prefills its Price and computes the total (no qty)', () => {
     renderWorkflow();
     openForm();
 
@@ -98,18 +98,36 @@ describe('NewOrderWorkflow — multi-item form', () => {
     const itemBox = within(row0).getByPlaceholderText(/search active inventory/i);
     fireEvent.change(itemBox, { target: { value: 'UAT-M01 — Bangle' } });
 
-    // Unit Price prefilled from the catalogue (editable), grams read-only.
+    // Fixed Price prefilled from the catalogue (editable), grams read-only.
     expect(within(row0).getByDisplayValue('8,000.00')).toBeInTheDocument();
     expect(within(row0).getByDisplayValue('5.5g')).toHaveAttribute('readonly');
+    // No quantity field anymore.
+    expect(within(row0).queryByRole('spinbutton')).not.toBeInTheDocument();
     // Line total + order total (₱8,000; formatPeso drops the .00).
     expect(screen.getByTestId('order-item-line-0')).toHaveTextContent('₱8,000');
     expect(screen.getByTestId('order-summary-total')).toHaveTextContent('₱8,000');
+  });
 
-    // Quantity 2 → line + total double.
-    const qty = within(row0).getByRole('spinbutton');
-    fireEvent.change(qty, { target: { value: '2' } });
-    expect(screen.getByTestId('order-item-line-0')).toHaveTextContent('₱16,000');
-    expect(screen.getByTestId('order-summary-total')).toHaveTextContent('₱16,000');
+  it('Price Per Gram: total = grams × rate, read-only', () => {
+    renderWorkflow();
+    openForm();
+
+    const row0 = screen.getByTestId('order-item-row-0');
+    fireEvent.change(within(row0).getByPlaceholderText(/search active inventory/i), {
+      target: { value: 'UAT-M01 — Bangle' },
+    });
+    // Switch this row to Price Per Gram.
+    fireEvent.click(within(row0).getByRole('button', { name: 'Price Per Gram' }));
+
+    // Grams (5.5) auto-loaded; enter ₱4,000/g → 5.5 × 4000 = ₱22,000.
+    const perGram = within(row0).getByPlaceholderText('0.00');
+    fireEvent.change(perGram, { target: { value: '4000' } });
+
+    expect(within(row0).getByTestId('order-item-pergram-total-0')).toHaveDisplayValue(
+      '₱22,000',
+    );
+    expect(screen.getByTestId('order-item-line-0')).toHaveTextContent('₱22,000');
+    expect(screen.getByTestId('order-summary-total')).toHaveTextContent('₱22,000');
   });
 
   it('adds and removes item rows, and the summary count follows', () => {
