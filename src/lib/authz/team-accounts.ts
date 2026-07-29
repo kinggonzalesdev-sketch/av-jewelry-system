@@ -325,12 +325,12 @@ export async function createTeamMember(input: {
   // Page access is deny-by-default, so without this they would see a blank app
   // and reasonably think it was broken. Everything beyond the Dashboard is still
   // granted deliberately through Manage Access.
-  const { data: newProfile } = await supabase
+  const profileLookup = (await supabase
     .from('staff_profiles')
     .select('id')
     .eq('auth_user_id', created.user.id)
-    .maybeSingle();
-  const newProfileId = newProfile?.id ?? null;
+    .maybeSingle()) as { data: { id: string } | null };
+  const newProfileId = profileLookup.data?.id ?? null;
   if (newProfileId) {
     await supabase
       .from('staff_permission_grants')
