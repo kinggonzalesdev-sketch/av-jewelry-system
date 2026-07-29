@@ -125,7 +125,7 @@ export function PayrollSummaryButton({
                         {r.overtimeHours.toFixed(2)}
                       </td>
                       <td className="px-3 py-1.5 text-right tabular-nums">
-                        {r.hourlyRate ? formatPeso(r.hourlyRate) : '—'}
+                        {r.dailyRate ? formatPeso(r.dailyRate) : '—'}
                       </td>
                       <td className="px-3 py-1.5 text-right tabular-nums">
                         {r.computedSalary ? formatPeso(r.computedSalary) : '—'}

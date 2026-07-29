@@ -107,7 +107,10 @@ export type EmployeeRateRow = {
   staffProfileId: string;
   fullName: string;
   roleKey: string;
+  /** The current DAILY salary rate, or null when none is set. */
   hourlyRate: string | null;
+  /** 'weekly' | 'bi_weekly' | 'monthly'. */
+  payFrequency: string;
   effectiveDate: string | null;
   lastUpdated: string | null;
 };
@@ -128,19 +131,29 @@ export async function listEmployeeRates(): Promise<EmployeeRateRow[]> {
       .eq('is_demo', false)
       .order('full_name', { ascending: true }),
     supabase
-      .from('staff_hourly_rates')
-      .select('staff_profile_id, hourly_rate, effective_date, created_at')
+      .from('staff_salary_rates')
+      .select('staff_profile_id, daily_rate, pay_frequency, effective_date, created_at')
       .order('effective_date', { ascending: false })
       .order('created_at', { ascending: false }),
   ]);
 
-  const latest = new Map<string, { effective_date: string; created_at: string }>();
+  // The newest effective row per person IS the current salary rate — the profile's
+  // legacy hourly_rate column is no longer the pay basis.
+  const latest = new Map<
+    string,
+    { effective_date: string; created_at: string; daily_rate: string | null; pay_frequency: string }
+  >();
   for (const r of (rates ?? []) as Array<Record<string, unknown>>) {
     const sid = r.staff_profile_id as string;
     if (!latest.has(sid)) {
       latest.set(sid, {
         effective_date: r.effective_date as string,
         created_at: r.created_at as string,
+        daily_rate:
+          typeof r.daily_rate === 'number' || typeof r.daily_rate === 'string'
+            ? String(r.daily_rate)
+            : null,
+        pay_frequency: (r.pay_frequency as string | null) ?? 'weekly',
       });
     }
   }
@@ -158,11 +171,63 @@ export async function listEmployeeRates(): Promise<EmployeeRateRow[]> {
       staffProfileId: s.id,
       fullName: s.full_name ?? 'Team member',
       roleKey: s.role_key ?? 'staff',
-      hourlyRate: s.hourly_rate === null || s.hourly_rate === undefined
-        ? null
-        : String(s.hourly_rate),
+      hourlyRate: lr?.daily_rate ?? null,
+      payFrequency: lr?.pay_frequency ?? 'weekly',
       effectiveDate: lr?.effective_date ?? null,
       lastUpdated: lr?.created_at ?? null,
     };
   });
+}
+
+/**
+ * Set a team member's SALARY rate (Owner decision: a DAILY rate on a weekly cycle).
+ *
+ * Effective-dated: each save writes a NEW row for that date rather than editing the
+ * old one, so a payroll period already computed keeps the rate that applied then and
+ * historical pay is never rewritten. Super Admin only — enforced again in the
+ * database function beneath this.
+ */
+export async function setSalaryRate(
+  staffProfileId: string,
+  rawRate: string | null,
+  frequency: string | null,
+  effectiveDate: string | null,
+): Promise<SetRateResult> {
+  if (!staffProfileId) return { ok: false, error: 'Missing staff member.' };
+
+  const rate = (rawRate ?? '').trim();
+  if (!/^\d{1,10}(\.\d{1,2})?$/.test(rate)) {
+    return { ok: false, error: 'Enter a salary amount of zero or more.' };
+  }
+  const freq = (frequency ?? 'weekly').trim();
+  if (!['weekly', 'bi_weekly', 'monthly'].includes(freq)) {
+    return { ok: false, error: 'Pay frequency must be Weekly, Bi-Weekly, or Monthly.' };
+  }
+  const effective = (effectiveDate ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(effective)) {
+    return { ok: false, error: 'An effective date is required.' };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('set_staff_salary_rate', {
+    p_staff: staffProfileId,
+    p_daily_rate: rate,
+    p_frequency: freq,
+    p_effective: effective,
+  });
+  if (error) {
+    return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+
+  await recordAuditEvent({
+    action: 'payroll.set_salary_rate',
+    entityType: 'staff_profile',
+    entityId: staffProfileId,
+    context: { daily_rate: rate, pay_frequency: freq, effective_date: effective },
+  });
+
+  return {
+    ok: true,
+    message: `Salary rate saved: ₱${rate} per day, ${freq.replace('_', '-')}, effective ${effective}.`,
+  };
 }

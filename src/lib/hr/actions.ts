@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 
 import { deleteAttendanceRecord, kioskClockIn, kioskClockOut } from '@/lib/hr/attendance';
 import { registerThisDevice, revokeDevice } from '@/lib/hr/devices';
-import { setHourlyRate } from '@/lib/hr/rate';
+import { setSalaryRate } from '@/lib/hr/rate';
 import type { HrActionState } from '@/lib/hr/action-state';
 
 /**
@@ -105,9 +105,10 @@ export async function setHourlyRateAction(
   if (!staffProfileId) {
     return { error: 'Missing staff member.', success: null };
   }
-  const result = await setHourlyRate(
+  const result = await setSalaryRate(
     staffProfileId,
     text(formData, 'rate'),
+    text(formData, 'frequency'),
     text(formData, 'effectiveDate'),
   );
   if (!result.ok) return { error: result.error, success: null };

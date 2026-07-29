@@ -14,8 +14,16 @@ export type PayrollRow = {
   roleKey: string;
   totalHours: number;
   overtimeHours: number;
-  /** Numeric-in-SQL hourly rate as a string, or null when no rate is set. */
-  hourlyRate: string | null;
+  /** The DAILY salary rate as a string, or null when no rate is set. */
+  dailyRate: string | null;
+  /** 'weekly' | 'bi_weekly' | 'monthly'. */
+  payFrequency: string;
+  /** Days actually worked in the period, counted from attendance. */
+  daysWorked: number;
+  /** Shifts clocked out at or after 22:00 Manila — each earns the flat bonus. */
+  nightShifts: number;
+  /** Flat night-shift bonus total for the period. */
+  overtimePay: string;
   /** Numeric-in-SQL salary as a string, or null when no rate is set. */
   computedSalary: string | null;
 };
@@ -39,10 +47,17 @@ export async function getPayroll(from: string, to: string): Promise<PayrollResul
     roleKey: (r.role_key as string | null) ?? 'staff',
     totalHours: num(r.total_hours),
     overtimeHours: num(r.overtime_hours),
-    hourlyRate:
-      r.hourly_rate === null || r.hourly_rate === undefined
-        ? null
-        : String(r.hourly_rate as string | number),
+    dailyRate:
+      typeof r.daily_rate === 'number' || typeof r.daily_rate === 'string'
+        ? String(r.daily_rate)
+        : null,
+    payFrequency: (r.pay_frequency as string | null) ?? 'weekly',
+    daysWorked: num(r.days_worked),
+    nightShifts: num(r.night_shifts),
+    overtimePay:
+      typeof r.overtime_pay === 'number' || typeof r.overtime_pay === 'string'
+        ? String(r.overtime_pay)
+        : '0',
     computedSalary:
       r.computed_salary === null || r.computed_salary === undefined
         ? null

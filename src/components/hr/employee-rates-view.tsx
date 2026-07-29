@@ -16,7 +16,7 @@ import { Modal, ModalFormGrid } from '@/components/ui/modal';
 import { EmptyState } from '@/components/states/empty-state';
 
 /**
- * Employee Rates (Payroll tab). Manages each active team member's hourly rate.
+ * Employee Rates (Payroll tab). Manages each active team member's DAILY salary rate.
  * Setting a rate appends an effective-dated history row (previous rates kept), and
  * payroll uses the rate effective for the period. Owner / authorized Admin only —
  * the server + the DEFINER function are the real gates.
@@ -26,6 +26,12 @@ function fmtDate(iso: string | null): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString();
 }
+
+const FREQ_LABEL: Record<string, string> = {
+  weekly: 'Weekly',
+  bi_weekly: 'Bi-Weekly',
+  monthly: 'Monthly',
+};
 
 function EditRate({ row }: { row: EmployeeRateRow }) {
   const router = useRouter();
@@ -66,7 +72,7 @@ function EditRate({ row }: { row: EmployeeRateRow }) {
       <Modal
         open={open}
         onClose={() => setOpen(false)}
-        title={`Hourly rate — ${row.fullName}`}
+        title={`Salary rate — ${row.fullName}`}
         description="Sets the rate from the effective date forward. Previous rates are kept in history; payroll uses the rate effective for each period."
         size="sm"
         footer={
@@ -85,7 +91,7 @@ function EditRate({ row }: { row: EmployeeRateRow }) {
           <ModalFormGrid>
             <div>
               <Label htmlFor={`rate-${row.staffProfileId}`} className="text-xs">
-                Hourly rate
+                Salary amount (per day)
               </Label>
               <MoneyInput
                 id={`rate-${row.staffProfileId}`}
@@ -94,6 +100,21 @@ function EditRate({ row }: { row: EmployeeRateRow }) {
                 onValueChange={setRate}
                 className="mt-1 h-9 text-right tabular-nums"
               />
+            </div>
+            <div>
+              <Label htmlFor={`freq-${row.staffProfileId}`} className="text-xs">
+                Pay frequency
+              </Label>
+              <select
+                id={`freq-${row.staffProfileId}`}
+                name="frequency"
+                defaultValue={row.payFrequency}
+                className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
+              >
+                <option value="weekly">Weekly</option>
+                <option value="bi_weekly">Bi-Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
             </div>
             <div>
               <Label htmlFor={`eff-${row.staffProfileId}`} className="text-xs">
@@ -109,6 +130,10 @@ function EditRate({ row }: { row: EmployeeRateRow }) {
               />
             </div>
           </ModalFormGrid>
+          <p className="text-[11px] text-muted-foreground">
+            A DAILY rate. Payroll = rate × days worked, plus ₱300 for each shift clocked
+            out at or after 10:00 PM. Effective-dated, so past pay is never rewritten.
+          </p>
           {state.error ? (
             <p role="alert" className="text-sm text-destructive">
               {state.error}
@@ -137,7 +162,8 @@ export function EmployeeRatesView({
           <tr>
             <th className="px-3 py-2 font-medium">Employee Name</th>
             <th className="px-3 py-2 font-medium">Role</th>
-            <th className="px-3 py-2 text-right font-medium">Hourly Rate</th>
+            <th className="px-3 py-2 text-right font-medium">Salary Rate</th>
+            <th className="px-3 py-2 font-medium">Pay Frequency</th>
             <th className="px-3 py-2 font-medium">Effective Date</th>
             <th className="px-3 py-2 font-medium">Last Updated</th>
             {canManage ? <th className="px-3 py-2 text-right font-medium">Actions</th> : null}
@@ -154,8 +180,14 @@ export function EmployeeRatesView({
                 {r.hourlyRate === null ? (
                   <span className="text-[11px] text-muted-foreground">No rate set</span>
                 ) : (
-                  formatPeso(r.hourlyRate)
+                  <>
+                    {formatPeso(r.hourlyRate)}
+                    <span className="text-[10px] text-muted-foreground"> /day</span>
+                  </>
                 )}
+              </td>
+              <td className="px-3 py-2 whitespace-nowrap">
+                {FREQ_LABEL[r.payFrequency] ?? r.payFrequency}
               </td>
               <td className="px-3 py-2 whitespace-nowrap">{r.effectiveDate ?? '—'}</td>
               <td className="px-3 py-2 whitespace-nowrap">{fmtDate(r.lastUpdated)}</td>

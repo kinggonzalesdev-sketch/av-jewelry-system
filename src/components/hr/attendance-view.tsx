@@ -27,7 +27,26 @@ import { Modal } from '@/components/ui/modal';
  * Attendance & Payroll (Bible §F). Clock in/out is self-service; the list and
  * payroll are RLS-scoped (a staff member sees only their own; the Owner sees
  * all). Salary is shown only when a rate is set — otherwise it says so honestly.
+ *
+ * Pay model (Owner decision): a DAILY salary rate on a weekly cycle. A period pays
+ * the daily rate for each day actually worked, plus a flat ₱300 for every shift
+ * clocked out at or after 10:00 PM. Days come from real attendance, so no
+ * workdays-per-week setting is guessed at.
  */
+
+const FREQUENCY_LABEL: Record<string, string> = {
+  weekly: 'Weekly',
+  bi_weekly: 'Bi-Weekly',
+  monthly: 'Monthly',
+};
+
+/** Today in the user's LOCAL date — the default effective date. */
+function todayLocalISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate(),
+  ).padStart(2, '0')}`;
+}
 export function AttendanceView({
   records = [],
   payroll,
@@ -134,7 +153,10 @@ export function AttendanceView({
                         Overtime Hours
                       </th>
                       <th className="min-w-[6rem] px-4 py-2 text-right font-medium whitespace-nowrap">
-                        Hourly Rate
+                        Salary Rate
+                      </th>
+                      <th className="min-w-[6rem] px-4 py-2 font-medium whitespace-nowrap">
+                        Pay Frequency
                       </th>
                       <th className="min-w-[6rem] px-4 py-2 text-right font-medium whitespace-nowrap">
                         Salary
@@ -166,15 +188,19 @@ export function AttendanceView({
                         <td className="px-3 py-2 text-right whitespace-nowrap">
                           {isOwner ? (
                             <RateCell row={r} />
-                          ) : r.hourlyRate === null ? (
+                          ) : r.dailyRate === null ? (
                             <span className="text-[11px] text-muted-foreground">
                               No rate set
                             </span>
                           ) : (
                             <span className="tabular-nums">
-                              {formatPeso(r.hourlyRate)}
+                              {formatPeso(r.dailyRate)}
+                              <span className="text-[10px] text-muted-foreground"> /day</span>
                             </span>
                           )}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap capitalize">
+                          {FREQUENCY_LABEL[r.payFrequency] ?? r.payFrequency}
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
                           {r.computedSalary === null ? (
@@ -407,17 +433,17 @@ function RateCell({ row }: { row: PayrollRow }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label={`Edit hourly rate for ${row.fullName}`}
+        aria-label={`Edit salary rate for ${row.fullName}`}
         className="rounded-md border border-border px-2 py-1 text-xs tabular-nums hover:bg-accent"
       >
-        {row.hourlyRate ? formatPeso(row.hourlyRate) : 'Set rate'}
+        {row.dailyRate ? formatPeso(row.dailyRate) : 'Set rate'}
       </button>
 
       <Modal
         open={open}
         onClose={() => setOpen(false)}
-        title={`Hourly rate — ${row.fullName}`}
-        description="Stored as entered (money is never a float); the database enforces ≥ 0. Clear it to blank the salary."
+        title={`Salary rate — ${row.fullName}`}
+        description="A DAILY rate. Payroll pays it for each day actually worked, plus the night-shift bonus. Effective-dated, so past periods keep the rate that applied then."
         size="sm"
         footer={
           <>
@@ -434,16 +460,48 @@ function RateCell({ row }: { row: PayrollRow }) {
           <input type="hidden" name="staffProfileId" value={row.staffProfileId} />
           <div className="max-w-[12rem]">
             <Label htmlFor={`rate-${row.staffProfileId}`} className="text-xs">
-              Hourly rate
+              Salary amount (per day)
             </Label>
             <MoneyInput
               id={`rate-${row.staffProfileId}`}
               name="rate"
-              defaultValue={row.hourlyRate ?? ''}
+              defaultValue={row.dailyRate ?? ''}
               placeholder="—"
               className="mt-1 h-9 text-right tabular-nums"
             />
           </div>
+          <div className="max-w-[12rem]">
+            <Label htmlFor={`freq-${row.staffProfileId}`} className="text-xs">
+              Pay frequency
+            </Label>
+            <select
+              id={`freq-${row.staffProfileId}`}
+              name="frequency"
+              defaultValue={row.payFrequency}
+              className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
+            >
+              <option value="weekly">Weekly</option>
+              <option value="bi_weekly">Bi-Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+          <div className="max-w-[12rem]">
+            <Label htmlFor={`eff-${row.staffProfileId}`} className="text-xs">
+              Effective date
+            </Label>
+            <Input
+              id={`eff-${row.staffProfileId}`}
+              name="effectiveDate"
+              type="date"
+              required
+              defaultValue={todayLocalISO()}
+              className="mt-1 h-9"
+            />
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Payroll = daily rate × days worked, plus ₱300 for each shift clocked out at
+            or after 10:00 PM.
+          </p>
           {state.error ? (
             <p role="alert" className="text-sm text-destructive">
               {state.error}
