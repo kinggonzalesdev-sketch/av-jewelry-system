@@ -583,7 +583,9 @@ export function DashboardView({
                     label="Pending Payment Verification"
                     value={counts.paymentsAwaitingVerification}
                   />
-                  <MetricCard label="Active Layaway" value={counts.ordersActiveLayaway} />
+                  {/* From the Layaway module itself (ledger + arrangements), not the
+                      order-derived count — see the Layaway card below. */}
+                  <MetricCard label="Active Layaway" value={layaway.active} />
                   <MetricCard
                     label="For Fulfillment"
                     value={counts.ordersForFulfillment}
@@ -645,11 +647,11 @@ export function DashboardView({
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <MetricCard
-                    label="Active Layaway"
-                    value={counts.ordersActiveLayaway}
-                    accent
-                  />
+                  {/* Active Layaway comes from the Layaway module (imported ledger +
+                      order-derived arrangements, already summed by
+                      layaway_dashboard_metrics). The old order-only count read 0 for
+                      a shop whose layaways all live in the ledger. */}
+                  <MetricCard label="Active Layaway" value={layaway.active} accent />
                   <MetricCard
                     label="Layaway Sales"
                     value={money(sumMoney(metrics.totalLayawaySales, layaway.grandTotal))}

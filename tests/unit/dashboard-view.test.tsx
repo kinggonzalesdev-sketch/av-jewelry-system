@@ -216,6 +216,9 @@ describe('DashboardView — honesty', () => {
     // Derived arrangements are ₱0 here, so the ledger figures must show through.
     expect(screen.getAllByText('₱22,329,599').length).toBeGreaterThan(0);
     expect(screen.getAllByText('₱5,679,949').length).toBeGreaterThan(0);
+    // Active Layaway must follow the Layaway module too — counts.ordersActiveLayaway
+    // is 0 here, so a "0" card would mean it is still reading the wrong source.
+    expect(screen.getAllByText('554').length).toBeGreaterThan(0);
   });
 });
 
