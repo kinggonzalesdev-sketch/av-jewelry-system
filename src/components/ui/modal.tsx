@@ -32,6 +32,7 @@ export function Modal({
   onClose,
   title,
   description,
+  ariaLabel,
   size = 'md',
   critical = false,
   footer,
@@ -41,6 +42,10 @@ export function Modal({
   onClose: () => void;
   title?: React.ReactNode;
   description?: React.ReactNode;
+  /** Accessible name for a modal shown WITHOUT a visible title. Keeps the dialog
+   *  named for screen readers and keeps the header (and its ✕) rendered, without
+   *  printing any heading text. */
+  ariaLabel?: string;
   /** 'sm' 720 · 'md' 820 · 'lg' 900 — pick by form complexity. */
   size?: 'sm' | 'md' | 'lg';
   /** Critical forms ignore Escape and click-outside (only ✕ / Cancel close). */
@@ -73,7 +78,11 @@ export function Modal({
       className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4"
       role="dialog"
       aria-modal="true"
-      {...(title ? { 'aria-labelledby': titleId } : {})}
+      {...(title
+        ? { 'aria-labelledby': titleId }
+        : ariaLabel
+          ? { 'aria-label': ariaLabel }
+          : {})}
     >
       {/* Overlay — closes a normal dialog, inert for a critical one. */}
       {critical ? (
@@ -92,7 +101,7 @@ export function Modal({
         className={`relative z-10 flex max-h-[90vh] w-[95vw] flex-col overflow-hidden border border-border bg-card shadow-xl sm:w-full sm:rounded-xl ${WIDTH[size]}`}
         data-testid="modal"
       >
-        {title || description ? (
+        {title || description || ariaLabel ? (
           <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-3.5">
             <div className="min-w-0">
               {title ? (

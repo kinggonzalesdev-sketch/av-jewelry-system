@@ -6,6 +6,7 @@ import { listFulfillments, listOwnerApprovals } from '@/lib/fulfillment/service'
 import { getOrderBalance } from '@/lib/payments/balances';
 import { moneyString } from '@/lib/payments/format';
 import { getOrderLineItems, type PaymentStatus } from '@/lib/orders/service';
+import { orderCompletionBlock } from '@/lib/orders/completion';
 import { createClient } from '@/lib/supabase/server';
 import type {
   OrderActivityEntry,
@@ -45,6 +46,9 @@ type OrderRow = {
   fulfillment_destination: string | null;
   fulfillment_destination_set_at: string | null;
   destination_by: unknown;
+  completed_at: string | null;
+  completed_by_staff: unknown;
+  admin_staff: unknown;
   customers: unknown;
 };
 
@@ -58,8 +62,10 @@ export async function getOrderDetail(officialOrderId: string): Promise<OrderDeta
     .from('official_orders')
     .select(
       `id, order_number, invoice_number, status, created_at,
-       fulfillment_destination, fulfillment_destination_set_at,
+       fulfillment_destination, fulfillment_destination_set_at, completed_at,
        destination_by:staff_profiles!fulfillment_destination_set_by ( full_name ),
+       completed_by_staff:staff_profiles!completed_by ( full_name ),
+       admin_staff:staff_profiles!admin_staff_profile_id ( full_name ),
        customers ( id, display_name, contact_number, address, facebook_conversation_url )`,
     )
     .eq('id', officialOrderId)
@@ -103,7 +109,7 @@ export async function getOrderDetail(officialOrderId: string): Promise<OrderDeta
     supabase
       .from('payments')
       .select(
-        `id, amount, status, payment_method, reference_number, recorded_at,
+        `id, amount, status, payment_method, reference_number, recorded_at, transacted_at,
          voided_at, reversed_at, correction_pending,
          payment_verifications ( verified_amount )`,
       )
@@ -188,6 +194,7 @@ export async function getOrderDetail(officialOrderId: string): Promise<OrderDeta
       paymentMethod: (r.payment_method as string | null) ?? null,
       referenceNumber: (r.reference_number as string | null) ?? null,
       recordedAt: r.recorded_at as string,
+      transactedAt: (r.transacted_at as string | null) ?? null,
       voided: r.voided_at !== null,
       reversed: r.reversed_at !== null,
       correctionPending: r.correction_pending === true,
@@ -248,6 +255,11 @@ export async function getOrderDetail(officialOrderId: string): Promise<OrderDeta
 
   const isOwner = staff.roleKey === 'owner';
 
+  // Completion eligibility (§5) comes from the database, not from re-deriving the
+  // rules here — the modal must never offer Done / Transfer to Completed on an
+  // order SQL would refuse. A read failure leaves the order INELIGIBLE.
+  const completionBlock = await orderCompletionBlock(officialOrderId);
+
   const detail: OrderDetail = {
     officialOrderId: order.id,
     orderNumber: order.order_number ?? '—',
@@ -258,6 +270,11 @@ export async function getOrderDetail(officialOrderId: string): Promise<OrderDeta
     destinationSetAt: order.fulfillment_destination_set_at ?? null,
     destinationSetByName:
       one<{ full_name: string }>(order.destination_by)?.full_name ?? null,
+    completionBlock,
+    adminName: one<{ full_name: string }>(order.admin_staff)?.full_name ?? null,
+    completedAt: order.completed_at ?? null,
+    completedByName:
+      one<{ full_name: string }>(order.completed_by_staff)?.full_name ?? null,
     customer: {
       id: customer?.id ?? '',
       displayName: customer?.display_name ?? 'Unknown',

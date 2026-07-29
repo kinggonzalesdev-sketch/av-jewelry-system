@@ -156,6 +156,45 @@ export function LayawayLedgerViewModal({ ledgerId }: { ledgerId: string }) {
                   <span className="font-mono">{detail.accountNo}</span>
                 </Row>
               </div>
+
+              {/* Per-gram interest (Grams × ₱150). Shown only for accounts on the
+                  new rule — every figure comes from SQL, computed from the real
+                  posted charges, so the modal never adds unposted future months to
+                  the total it displays. */}
+              {detail.perGram ? (
+                <div
+                  className="mt-3 rounded-lg border border-gold/30 bg-gold/5 p-3"
+                  data-testid="layaway-view-pergram"
+                >
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gold-strong">
+                    Monthly interest — Grams × ₱150
+                  </p>
+                  <div className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
+                    <Row label="Grams">
+                      {detail.perGram.grams ? `${detail.perGram.grams}g` : '—'}
+                    </Row>
+                    <Row label="Monthly Interest">
+                      {peso(detail.perGram.monthlyInterest)}
+                    </Row>
+                    <Row label="Interest Already Charged">
+                      {peso(detail.perGram.interestCharged)}
+                    </Row>
+                    <Row label="Next Interest Date">
+                      {detail.perGram.nextInterestDate
+                        ? fmtDate(detail.perGram.nextInterestDate)
+                        : '—'}
+                    </Row>
+                    <Row label="Remaining Possible Months">
+                      {detail.perGram.remainingMonths}
+                    </Row>
+                    <Row label="Term">
+                      {detail.perGram.term
+                        ? `${detail.perGram.term} month(s)`
+                        : '—'}
+                    </Row>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             {/* Payment history */}

@@ -339,10 +339,12 @@ describe('Staff administration is a real console (Bible §5.13, §30.5)', () => 
     expect(console_).toMatch(/narrows/i);
   });
 
-  it('enforces the two-Selected-Admin cap in the UI and defers to the database', () => {
-    expect(console_).toMatch(/MAX_SELECTED_ADMINS\s*=\s*2/);
-    // The cap is the database's; the screen only avoids offering a doomed click.
-    expect(console_).toMatch(/enforced by the database|database/i);
+  it('no longer caps Selected Admins — Admin is the standard role (Owner decision)', () => {
+    // The former max-2 Selected Admin cap was retired. The console must not
+    // reintroduce a hard-coded cap constant.
+    expect(console_).not.toMatch(/MAX_SELECTED_ADMINS\s*=\s*2/);
+    // The Super Admin cap of 2 is separate and still enforced.
+    expect(console_).toMatch(/Super Admin cap of 2|Super Admin/i);
   });
 
   it('deactivation requires a reason and preserves history', () => {

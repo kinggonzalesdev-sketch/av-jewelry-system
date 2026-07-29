@@ -124,7 +124,6 @@ export function InventoryItemActions({
         open={view}
         onClose={() => setView(false)}
         title="Inventory item"
-        description="Read-only view of this inventory record."
         size="sm"
       >
         <dl className="text-sm">

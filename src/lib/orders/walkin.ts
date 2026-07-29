@@ -3,6 +3,7 @@ import 'server-only';
 import { recordAuditEvent } from '@/lib/audit/log';
 import { AuthorizationError, requirePermission } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
+import { resolveAdminName } from '@/lib/authz/admin-name';
 
 /**
  * Walk-In sale (Owner decision 2026-07-25). A counter sale that creates a
@@ -37,6 +38,9 @@ export async function createWalkInOrder(input: {
   items: WalkInItemInput[];
   paymentMethod: string | null;
   saleDate: string | null;
+  /** Admin Name (§2) — a REQUEST. resolveAdminName pins a non-Super-Admin to
+   *  themselves, and the database re-applies the same rule. */
+  adminId?: string | null;
 }): Promise<WalkInResult> {
   const customerName = (input.customerName ?? '').trim();
   const items = input.items ?? [];
@@ -87,6 +91,7 @@ export async function createWalkInOrder(input: {
     p_items: payload,
     p_payment_method: input.paymentMethod ?? 'cash',
     p_sale_date: input.saleDate || null,
+    p_admin_id: await resolveAdminName(input.adminId ?? null),
   });
 
   if (response.error) {

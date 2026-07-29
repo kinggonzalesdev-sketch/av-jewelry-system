@@ -5,6 +5,7 @@ import { NewOrderWorkflow } from '@/components/orders/new-order-workflow';
 import { OrdersView } from '@/components/orders/orders-view';
 import { OwnerApprovalsPanel } from '@/components/orders/owner-approvals-panel';
 import { canOpenPage, getCurrentStaffProfile, getGrantedPermissions } from '@/lib/authz/guard';
+import { getAdminNameContext } from '@/lib/authz/admin-name';
 import { listOwnerApprovals } from '@/lib/fulfillment/service';
 import { listCaptureCustomers } from '@/lib/live/batches';
 import { listCaptureItems, listOrders, listWalkInItems } from '@/lib/orders/service';
@@ -51,6 +52,7 @@ export default async function OrdersPage({
     profile,
     keepLayaways,
     approvals,
+    admins,
   ] = await Promise.all([
     listOrders(),
     getGrantedPermissions(),
@@ -60,6 +62,7 @@ export default async function OrdersPage({
     getCurrentStaffProfile(),
     listKeepLayawayAccounts(),
     listOwnerApprovals(),
+    getAdminNameContext(),
   ]);
 
   return (
@@ -83,8 +86,7 @@ export default async function OrdersPage({
               items={items}
               walkInItems={walkInItems}
               canCreate={permissions.has('claim_capture')}
-              shopName="A.V. Jewelry"
-              salesperson={profile.fullName}
+              admins={admins}
             />
           }
         />

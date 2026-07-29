@@ -33,6 +33,7 @@ export function OrderCancelAction({
   customerName,
   status,
   isOwner,
+  compact = false,
   onDone,
 }: {
   orderId: string;
@@ -41,6 +42,9 @@ export function OrderCancelAction({
   status: string;
   /** Owner / Selected Admin — only they may finalize a cancellation. */
   isOwner: boolean;
+  /** Just the button, no top border or Danger-Zone explainer — for seating it on
+   *  the right of the Payment card (Owner request, standardized modal). */
+  compact?: boolean;
   onDone: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -93,36 +97,46 @@ export function OrderCancelAction({
     }
   };
 
+  const cancelButton = (
+    <Button
+      type="button"
+      size="sm"
+      variant="destructive"
+      data-testid="order-cancel"
+      disabled={awaitingReview && !isOwner}
+      title={
+        awaitingReview && !isOwner
+          ? 'Only the Owner or a Selected Admin can finalize a cancellation.'
+          : undefined
+      }
+      onClick={() => {
+        setReason('');
+        setConfirm('');
+        setError(null);
+        setFinalized(null);
+        setOpen(true);
+      }}
+    >
+      {awaitingReview ? 'Finalize Cancellation' : 'Cancel Order'}
+    </Button>
+  );
+
   return (
-    <div className="mt-3 border-t border-destructive/20 pt-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[11px] text-muted-foreground">
-          {awaitingReview
-            ? 'This order is awaiting cancellation review. Its items stay reserved until it is finalized.'
-            : 'Cancelling stops the order. Nothing is deleted and no stock is released yet.'}
-        </p>
-        <Button
-          type="button"
-          size="sm"
-          variant="destructive"
-          data-testid="order-cancel"
-          disabled={awaitingReview && !isOwner}
-          title={
-            awaitingReview && !isOwner
-              ? 'Only the Owner or a Selected Admin can finalize a cancellation.'
-              : undefined
-          }
-          onClick={() => {
-            setReason('');
-            setConfirm('');
-            setError(null);
-            setFinalized(null);
-            setOpen(true);
-          }}
-        >
-          {awaitingReview ? 'Finalize Cancellation' : 'Cancel Order'}
-        </Button>
-      </div>
+    <div className={compact ? '' : 'mt-3 border-t border-destructive/20 pt-3'}>
+      {/* Compact (standardized modal): just the button — no Danger-Zone text.
+          Legacy: the button beside its explanatory line. */}
+      {compact ? (
+        cancelButton
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-[11px] text-muted-foreground">
+            {awaitingReview
+              ? 'This order is awaiting cancellation review. Its items stay reserved until it is finalized.'
+              : 'Cancelling stops the order. Nothing is deleted and no stock is released yet.'}
+          </p>
+          {cancelButton}
+        </div>
+      )}
 
       <Modal
         open={open}

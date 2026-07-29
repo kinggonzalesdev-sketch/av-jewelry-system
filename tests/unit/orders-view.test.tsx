@@ -85,7 +85,7 @@ describe('OrdersView — honest states', () => {
     render(<OrdersView result={ok([])} />);
     expect(screen.getByTestId('orders-card-all')).toBeInTheDocument();
     expect(screen.getByTestId('orders-search')).toBeInTheDocument();
-    expect(screen.getByTestId('orders-filter-fulfillment')).toBeInTheDocument();
+    expect(screen.getByTestId('orders-filter-flow')).toBeInTheDocument();
     expect(screen.getByTestId('empty-state')).toBeInTheDocument();
   });
 
@@ -177,11 +177,16 @@ describe('OrdersView — search and filters (existing, preserved)', () => {
     expect(screen.queryByText('Maria Santos')).not.toBeInTheDocument();
   });
 
-  it('renders the approved Order Date, Ship Date, and Hide Keep filters', () => {
+  it('renders the approved Order Date and Ship Date filters', () => {
     render(<OrdersView result={ok(sample)} />);
     expect(screen.getByTestId('orders-filter-order-date')).toBeInTheDocument();
     expect(screen.getByTestId('orders-filter-ship-date')).toBeInTheDocument();
-    expect(screen.getByTestId('orders-filter-hide-keep')).toBeInTheDocument();
+  });
+
+  it('no longer renders the Hide Keep checkbox (removed by Owner request)', () => {
+    render(<OrdersView result={ok(sample)} />);
+    expect(screen.queryByTestId('orders-filter-hide-keep')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Hide Keep')).not.toBeInTheDocument();
   });
 
   it('Order Date filters to orders created on the selected day', () => {
@@ -197,15 +202,49 @@ describe('OrdersView — search and filters (existing, preserved)', () => {
     expect(screen.queryByText('Late Comer')).not.toBeInTheDocument();
   });
 
-  it('the fulfillment filter offers only statuses present in the data', () => {
+  /**
+   * The order-flow dropdown and the status cards are ONE state. These tests pin
+   * that: the options are exactly the card labels, Total is the default, and
+   * driving either control moves the other. A second source of truth here would
+   * let the highlighted card and the dropdown disagree about what is on screen.
+   */
+  it('offers exactly the status-card flows, in card order, defaulting to Total', () => {
     render(<OrdersView result={ok(sample)} />);
-    const select = screen.getByTestId('orders-filter-fulfillment');
-    expect(
-      within(select).getByRole('option', { name: /For Shipping/i }),
-    ).toBeInTheDocument();
-    expect(
-      within(select).queryByRole('option', { name: /Dispatched/i }),
-    ).not.toBeInTheDocument();
+    const select = screen.getByTestId<HTMLSelectElement>('orders-filter-flow');
+    expect([...select.options].map((o) => o.textContent)).toEqual([
+      'Total',
+      'For Invoice',
+      'For Reminder',
+      'For Prepare',
+      'For Confirm',
+      'For Shipping',
+      'Ship Confirm',
+      'Delivery',
+      'Pickup',
+      'For Layaway',
+      'Keep',
+      'For Cancel',
+      'Cancelled',
+      'Unverified Payment',
+      'Completed',
+    ]);
+    expect(select.value).toBe('all');
+  });
+
+  it('selecting a flow filters the list, and clicking a card updates the dropdown', () => {
+    render(<OrdersView result={ok(sample)} />);
+    const select = screen.getByTestId<HTMLSelectElement>('orders-filter-flow');
+
+    // Dropdown drives the list.
+    fireEvent.change(select, { target: { value: 'cancelled' } });
+    expect(select.value).toBe('cancelled');
+
+    // Card drives the dropdown — one state, so they can never disagree.
+    fireEvent.click(screen.getByTestId('orders-card-for_invoice'));
+    expect(select.value).toBe('for_invoice');
+
+    fireEvent.click(screen.getByTestId('orders-card-all'));
+    expect(select.value).toBe('all');
   });
 
   it('shows an honest "no matches" note when filters exclude everything', () => {
@@ -214,5 +253,99 @@ describe('OrdersView — search and filters (existing, preserved)', () => {
       target: { value: 'zzz-nothing' },
     });
     expect(screen.getByText(/No orders match these filters/i)).toBeInTheDocument();
+  });
+});
+
+/**
+ * For Shipping vs Ship Confirm (Owner request).
+ *
+ * They must be DISJOINT: For Shipping is awaiting release, Ship Confirm is
+ * release approved or already dispatched. If one bucket swallowed the other an
+ * order would be counted twice and the cards would stop summing to the total.
+ */
+describe('OrdersView — For Shipping is its own flow', () => {
+  const shipping: OrderListRow[] = [
+    row({
+      orderNumber: 'ORD-SHIP',
+      customerDisplayName: 'Awaiting Release',
+      status: 'for_shipping_or_pickup',
+    }),
+    row({
+      orderNumber: 'ORD-DEST',
+      customerDisplayName: 'Routed To Shipping',
+      status: 'for_preparation',
+      fulfillmentDestination: 'shipping',
+    }),
+    row({
+      orderNumber: 'ORD-CONF',
+      customerDisplayName: 'Released Already',
+      status: 'approved_for_release',
+    }),
+  ];
+
+  it('offers a For Shipping card and dropdown option', () => {
+    render(<OrdersView result={ok(shipping)} />);
+    expect(screen.getByTestId('orders-card-for_shipping')).toBeInTheDocument();
+    const select = screen.getByTestId<HTMLSelectElement>('orders-filter-flow');
+    expect(
+      within(select).getByRole('option', { name: 'For Shipping' }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows awaiting-release orders under For Shipping, not Ship Confirm', () => {
+    render(<OrdersView result={ok(shipping)} />);
+    fireEvent.click(screen.getByTestId('orders-card-for_shipping'));
+    expect(screen.getByText('Awaiting Release')).toBeInTheDocument();
+    expect(screen.getByText('Routed To Shipping')).toBeInTheDocument();
+    expect(screen.queryByText('Released Already')).not.toBeInTheDocument();
+  });
+
+  it('shows released orders under Ship Confirm, not For Shipping', () => {
+    render(<OrdersView result={ok(shipping)} />);
+    fireEvent.click(screen.getByTestId('orders-card-ship_confirm'));
+    expect(screen.getByText('Released Already')).toBeInTheDocument();
+    expect(screen.queryByText('Awaiting Release')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The fulfillment-status filter is a SECOND, independent filter (restored by
+ * Owner request). It narrows alongside the order flow rather than replacing it.
+ */
+describe('OrdersView — fulfillment filter alongside the flow dropdown', () => {
+  const mixed: OrderListRow[] = [
+    row({ customerDisplayName: 'Held Order', fulfillmentStatus: 'held' }),
+    row({ customerDisplayName: 'Shipping Order', fulfillmentStatus: 'for_shipping' }),
+    row({ customerDisplayName: 'No Record' }),
+  ];
+
+  it('offers only the statuses present in the data', () => {
+    render(<OrdersView result={ok(mixed)} />);
+    const select = screen.getByTestId('orders-filter-fulfillment');
+    expect(within(select).getByRole('option', { name: /Held/i })).toBeInTheDocument();
+    expect(
+      within(select).queryByRole('option', { name: /Dispatched/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('narrows the list independently of the order flow', () => {
+    render(<OrdersView result={ok(mixed)} />);
+    fireEvent.change(screen.getByTestId('orders-filter-fulfillment'), {
+      target: { value: 'held' },
+    });
+    expect(screen.getByText('Held Order')).toBeInTheDocument();
+    expect(screen.queryByText('Shipping Order')).not.toBeInTheDocument();
+
+    // The flow dropdown is untouched by the fulfillment filter.
+    expect(screen.getByTestId<HTMLSelectElement>('orders-filter-flow').value).toBe('all');
+  });
+
+  it('"No fulfillment record" finds orders with none', () => {
+    render(<OrdersView result={ok(mixed)} />);
+    fireEvent.change(screen.getByTestId('orders-filter-fulfillment'), {
+      target: { value: 'none' },
+    });
+    expect(screen.getByText('No Record')).toBeInTheDocument();
+    expect(screen.queryByText('Held Order')).not.toBeInTheDocument();
   });
 });

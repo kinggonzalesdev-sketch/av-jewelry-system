@@ -4,7 +4,10 @@ import { PageHeader } from '@/components/ui/page-primitives';
 
 import { PaymentsWorkspace } from '@/components/payments/payments-workspace';
 import { canOpenPage, getGrantedPermissions, requireActiveStaff } from '@/lib/authz/guard';
-import { listFinancers } from '@/lib/payments/financer';
+import { getAdminNameContext } from '@/lib/authz/admin-name';
+import { listCaptureItems } from '@/lib/orders/service';
+import { listCaptureCustomers } from '@/lib/live/batches';
+import { listDetectedFinancers, listFinancers } from '@/lib/payments/financer';
 import { listLayawayLedger } from '@/lib/payments/layaway-ledger';
 import {
   listLayaways,
@@ -62,6 +65,10 @@ export default async function PaymentsPage({
     financers,
     ledger,
     staff,
+    activeItems,
+    captureCustomers,
+    admins,
+    detectedFinancers,
   ] = await Promise.all([
     overviewCards(bounds),
     paymentVerificationQueue(),
@@ -73,6 +80,10 @@ export default async function PaymentsPage({
     listFinancers(),
     listLayawayLedger(),
     requireActiveStaff(),
+    listCaptureItems(),
+    listCaptureCustomers(),
+    getAdminNameContext(),
+    listDetectedFinancers(),
   ]);
 
   // Imported ledger accounts count toward the Active / Completed cards so an
@@ -121,6 +132,11 @@ export default async function PaymentsPage({
         canImportLayaway={canImportLayaway}
         canDeleteAllLedger={isOwner}
         canImportExport={isOwner}
+        activeItems={activeItems}
+        captureCustomers={captureCustomers.map((c) => c.displayName)}
+        admins={admins}
+        detectedFinancers={detectedFinancers}
+        canCreateLayaway={canImportLayaway}
       />
     </div>
   );

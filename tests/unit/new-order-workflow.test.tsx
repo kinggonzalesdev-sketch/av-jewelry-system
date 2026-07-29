@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { NewOrderWorkflow } from '@/components/orders/new-order-workflow';
 import type { CaptureItem, WalkInItem } from '@/lib/orders/service';
+import type { AdminNameContext } from '@/lib/authz/admin-name';
 
 // The order actions are transport (tested via the domain suites); the printer +
 // photo controls are exercised by their own tests. Stub the actions so this focuses
@@ -41,6 +42,15 @@ const walkInItems: WalkInItem[] = [
   { id: 'w1', itemCode: 'SBA-R-2276', facebookName: 'Ring', grams: '1.65' },
 ];
 
+// Admin Name context as a NON-Super-Admin receives it: exactly one option, so the
+// field is read-only and there is no one else to record the order under.
+const admins: AdminNameContext = {
+  selfId: 'staff-1',
+  selfName: 'UAT Owner',
+  canChange: false,
+  options: [{ id: 'staff-1', fullName: 'UAT Owner' }],
+};
+
 function renderWorkflow(canCreate = true) {
   return render(
     <NewOrderWorkflow
@@ -48,8 +58,7 @@ function renderWorkflow(canCreate = true) {
       items={items}
       walkInItems={walkInItems}
       canCreate={canCreate}
-      shopName="A.V. Jewelry"
-      salesperson="UAT Owner"
+      admins={admins}
     />,
   );
 }
@@ -80,8 +89,12 @@ describe('NewOrderWorkflow — multi-item form', () => {
     expect(screen.getByRole('dialog', { name: /new order/i })).toBeInTheDocument();
     expect(screen.getByTestId('mode-order')).toBeInTheDocument();
     expect(screen.getByTestId('mode-walkin')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('A.V. Jewelry')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('UAT Owner')).toBeInTheDocument();
+    // Shop Name was REMOVED from the entry form (§3); Admin Name replaced
+    // Salesperson (§2) and shows the signed-in account, read-only for a
+    // non-Super-Admin.
+    expect(screen.queryByDisplayValue('A.V. Jewelry')).not.toBeInTheDocument();
+    expect(screen.getByTestId('admin-name')).toHaveValue('UAT Owner');
+    expect(screen.getByTestId('admin-name')).toHaveAttribute('readonly');
     expect(screen.getByPlaceholderText(/select a customer/i)).toBeInTheDocument();
     // Exactly one item row + the Add Item control to start.
     expect(screen.getByTestId('order-item-row-0')).toBeInTheDocument();
@@ -186,5 +199,71 @@ describe('NewOrderWorkflow — multi-item form', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /close/i }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Admin Name is the SIGNED-IN account — always, for everyone (Owner request).
+ *
+ * The Super-Admin picker was removed outright rather than hidden, so these tests
+ * assert the absence of any selectable option: a form that cannot offer another
+ * account cannot be used to record work under someone else's name, even by a
+ * Super Admin with the DOM open.
+ */
+describe('NewOrderWorkflow — Admin Name is read-only session identity', () => {
+  const superAdmin: AdminNameContext = {
+    selfId: 'staff-1',
+    selfName: 'King Gonzales',
+    // Even when the server says this user COULD change it, the form must not
+    // offer a picker.
+    canChange: true,
+    options: [
+      { id: 'staff-1', fullName: 'King Gonzales' },
+      { id: 'staff-2', fullName: 'Lalyn De Dios' },
+    ],
+  };
+
+  function openAs(ctx: AdminNameContext) {
+    render(
+      <NewOrderWorkflow
+        customers={customers}
+        items={items}
+        walkInItems={walkInItems}
+        canCreate
+        admins={ctx}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('orders-new-order'));
+  }
+
+  it('shows the logged-in full name, read-only, and never a dropdown', () => {
+    openAs(superAdmin);
+    const field = screen.getByTestId('admin-name');
+    expect(field).toHaveValue('King Gonzales');
+    expect(field).toHaveAttribute('readonly');
+    expect(field.tagName).toBe('INPUT');
+  });
+
+  it('offers NO other account to select, even for a Super Admin', () => {
+    openAs(superAdmin);
+    expect(screen.queryByText('Lalyn De Dios')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('option', { name: 'Lalyn De Dios' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('posts the permanent staff id, not the display name', () => {
+    openAs(superAdmin);
+    const hidden = document.querySelector<HTMLInputElement>('input[name="adminId"]');
+    expect(hidden).not.toBeNull();
+    expect(hidden!.value).toBe('staff-1');
+  });
+
+  it('places Customer Name above Admin Name (Owner-specified order)', () => {
+    openAs(superAdmin);
+    const dialog = screen.getByRole('dialog');
+    const text = dialog.textContent ?? '';
+    expect(text.indexOf('Customer Name')).toBeGreaterThanOrEqual(0);
+    expect(text.indexOf('Customer Name')).toBeLessThan(text.indexOf('Admin Name'));
   });
 });

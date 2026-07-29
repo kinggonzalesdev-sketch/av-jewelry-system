@@ -34,8 +34,9 @@ import { Label } from '@/components/ui/label';
 
 const ALL_PERMISSIONS = Object.values(PERMISSIONS).sort();
 
-/** §5.13 item 10: at most two Selected Admins, ever. */
-const MAX_SELECTED_ADMINS = 2;
+// The max-2 Selected Admin cap was retired (Owner decision): Admin is now the
+// standard role and any number of members may hold it. The Super Admin cap of 2
+// is a separate, still-enforced rule.
 
 function Result({ state }: { state: StaffAdminActionState }) {
   if (state.error) {
@@ -58,12 +59,10 @@ function Result({ state }: { state: StaffAdminActionState }) {
 function AccountCard({
   account,
   scopes,
-  selectedAdminCount,
   auditTrail,
 }: {
   account: StaffAccountRow;
   scopes: Array<{ id: string; label: string }>;
-  selectedAdminCount: number;
   auditTrail: Array<{
     occurredAt: string;
     action: string;
@@ -104,9 +103,8 @@ function AccountCard({
   const isOwner = account.roleKey === 'owner';
   const isSelectedAdmin = account.roleKey === 'selected_admin';
 
-  // The cap is enforced by the database; this only avoids offering a click that
-  // is certain to be refused.
-  const adminSlotsFull = !isSelectedAdmin && selectedAdminCount >= MAX_SELECTED_ADMINS;
+  // No Admin cap any more — Make Selected Admin is always offerable.
+  const adminSlotsFull = false;
 
   const ungranted = ALL_PERMISSIONS.filter((p) => !account.permissions.includes(p));
   const unassignedScopes = scopes.filter(
@@ -275,11 +273,7 @@ function AccountCard({
               >
                 {isSelectedAdmin ? 'Remove Selected Admin' : 'Make Selected Admin'}
               </Button>
-              {adminSlotsFull && (
-                <span className="text-xs text-muted-foreground">
-                  Both Selected Admin slots are taken (maximum {MAX_SELECTED_ADMINS}).
-                </span>
-              )}
+
             </form>
             <Result state={adminState} />
           </section>
@@ -390,7 +384,7 @@ export function StaffConsole({
           never the protection.
         </p>
         <p className="mt-1">
-          Selected Admins: {selectedAdminCount} of {MAX_SELECTED_ADMINS}. Staff invitation
+          Selected Admins: {selectedAdminCount}. Staff invitation
           is not available in the app: creating an account needs the service-role key,
           which bypasses RLS and is deliberately unwired (ADR §11). Accounts are
           provisioned out-of-band.
@@ -402,7 +396,6 @@ export function StaffConsole({
           key={account.id}
           account={account}
           scopes={scopes}
-          selectedAdminCount={selectedAdminCount}
           auditTrail={auditTrails[account.id] ?? []}
         />
       ))}

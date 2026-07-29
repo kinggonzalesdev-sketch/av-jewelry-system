@@ -54,6 +54,11 @@ function detail(over: Partial<OrderDetail> = {}): OrderDetail {
     fulfillmentDestination: null,
     destinationSetAt: null,
     destinationSetByName: null,
+    // Not completable by default — the fixture order is not fully paid.
+    completionBlock: 'This order is not fully paid yet.',
+    adminName: 'UAT Owner',
+    completedAt: null,
+    completedByName: null,
     customer: {
       id: 'cust-1',
       displayName: 'Maria Santos',

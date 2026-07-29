@@ -139,7 +139,12 @@ export function MoneyInput({
         required={required}
         disabled={disabled}
         autoFocus={autoFocus}
-        className={cn('pl-7', className)}
+        // The left padding that clears the ₱ prefix must come AFTER className:
+        // callers pass their own `px-*`, and tailwind-merge lets the last class
+        // win, so ordered first the padding would be overridden and the value
+        // would sit right under the peso sign. Ordered last, it always keeps the
+        // gap regardless of the caller's field styling.
+        className={cn(className, 'pl-8')}
         {...rest}
       />
       {name ? <input type="hidden" name={name} value={toSubmitValue(raw)} /> : null}

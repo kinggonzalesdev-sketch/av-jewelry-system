@@ -28,13 +28,16 @@ import type { Financer } from '@/lib/payments/financer';
 import type { LayawayLedgerRow } from '@/lib/payments/layaway-ledger';
 import { LayawayDetailsModal } from '@/components/payments/layaway-details-modal';
 import { LayawayImportButton } from '@/components/payments/layaway-import-modal';
+import { LayawayNewEntry } from '@/components/payments/layaway-new-entry';
+import { requestDeletionAction } from '@/lib/authz/deletion-actions';
+import type { CaptureItem } from '@/lib/orders/service';
+import type { AdminNameContext } from '@/lib/authz/admin-name';
 import { LayawayLedgerViewModal } from '@/components/payments/layaway-ledger-view-modal';
 import {
   LedgerAddPayment,
   LedgerEditAccount,
 } from '@/components/payments/layaway-ledger-actions';
 import { layawayDedupKey } from '@/lib/import/layaway-csv';
-import { NewLayawayForm } from '@/components/payments/new-layaway-form';
 import { RecordPaymentForm } from '@/components/payments/record-payment-form';
 import { EmptyState } from '@/components/states/empty-state';
 import { Button } from '@/components/ui/button';
@@ -315,6 +318,11 @@ export function PaymentsWorkspace({
   canImportLayaway,
   canDeleteAllLedger,
   canImportExport,
+  activeItems,
+  captureCustomers,
+  admins,
+  detectedFinancers,
+  canCreateLayaway,
   initialSection,
 }: {
   cards: OverviewCards;
@@ -337,6 +345,15 @@ export function PaymentsWorkspace({
   canDeleteAllLedger: boolean;
   /** SUPER ADMIN only — Excel/CSV import and export (Owner request). */
   canImportExport: boolean;
+  /** Active Inventory, for the New Entry item selector (§1). */
+  activeItems: CaptureItem[];
+  captureCustomers: string[];
+  admins: AdminNameContext;
+  /** Every DETECTED financer (configured + seen on layaway remarks), for the New
+   *  Entry Remarks/Financer selector. */
+  detectedFinancers: string[];
+  /** Owner/Admin only — the same gate the database applies on save. */
+  canCreateLayaway: boolean;
   /** Preselected layaway section (from a dashboard card deep-link). */
   initialSection?: LayawaySection | undefined;
 }) {
@@ -750,18 +767,18 @@ export function PaymentsWorkspace({
               and Export. The section buttons switch which records the table + the
               financial summary above show — client-side, no page reload. */}
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            {canMonitorLayaway ? (
-              <NewLayawayForm
-                payableOrders={payableOrders}
-                verifiedPayments={history
-                  .filter((h) => h.status === 'verified' && !h.voided && !h.reversed)
-                  .map((h) => ({
-                    paymentId: h.paymentId,
-                    orderNumber: h.orderNumber,
-                    verifiedAmount: h.verifiedAmount,
-                  }))}
-              />
-            ) : null}
+            {/* ONE + New Entry, leading the row (Owner request). The old
+                order-derived NewLayawayForm was removed from here: it created a
+                layaway from an existing paid order, which the manual encoder now
+                covers end to end, and two identically-labelled buttons side by
+                side were indistinguishable. */}
+            <LayawayNewEntry
+              items={activeItems}
+              customers={captureCustomers}
+              financers={detectedFinancers}
+              admins={admins}
+              canCreate={canCreateLayaway}
+            />
 
             {(
               [
@@ -842,6 +859,7 @@ export function PaymentsWorkspace({
               rows={accountRows}
               onOpenOrder={setDetailOrderId}
               canDeleteLedger={canImportLayaway}
+              isSuperAdmin={canDeleteAllLedger}
             />
           ) : (
             <LayawayTable
@@ -850,6 +868,7 @@ export function PaymentsWorkspace({
               financers={financers}
               canManage={canMonitorLayaway}
               canDeleteLedger={canImportLayaway}
+              isSuperAdmin={canDeleteAllLedger}
               today={today}
             />
           )}
@@ -1081,14 +1100,17 @@ function LayawayTable({
   financers,
   canManage,
   canDeleteLedger,
+  isSuperAdmin,
   today,
 }: {
   rows: LayawayAccountRow[];
   onOpenOrder: (orderId: string) => void;
   financers: Financer[];
   canManage: boolean;
-  /** Owner/Admin: imported ledger rows get a Delete action. */
+  /** Owner/Admin: imported ledger rows get a delete-or-request action. */
   canDeleteLedger: boolean;
+  /** Super Admin deletes directly; an Admin only requests (§2). */
+  isSuperAdmin: boolean;
   /** The user's LOCAL date — overdue is judged against it, never a UTC date. */
   today: string;
 }) {
@@ -1213,7 +1235,7 @@ function LayawayTable({
                             />
                           ) : null}
                           <LedgerEditAccount id={r.ledgerId} accountNo={r.accountNo} />
-                          <LedgerRowDelete
+                          <LedgerRowDelete isSuperAdmin={isSuperAdmin}
                             id={r.ledgerId}
                             accountNo={r.accountNo}
                             customerName={r.customerName}
@@ -1245,10 +1267,13 @@ function CompletedLayawayTable({
   rows,
   onOpenOrder,
   canDeleteLedger,
+  isSuperAdmin,
 }: {
   rows: LayawayAccountRow[];
   onOpenOrder: (orderId: string) => void;
   canDeleteLedger: boolean;
+  /** Super Admin deletes directly; an Admin only requests (§2). */
+  isSuperAdmin: boolean;
 }) {
   const money = usePrivacyMoney();
   const cash = (v: string | null) => (v ? money(v) : '—');
@@ -1321,7 +1346,7 @@ function CompletedLayawayTable({
                     <div className="flex flex-wrap justify-end gap-1">
                       <LayawayLedgerViewModal ledgerId={r.ledgerId} />
                       {canDeleteLedger ? (
-                        <LedgerRowDelete
+                        <LedgerRowDelete isSuperAdmin={isSuperAdmin}
                           id={r.ledgerId}
                           accountNo={r.accountNo}
                           customerName={r.customerName}
@@ -1346,14 +1371,24 @@ function CompletedLayawayTable({
  * "type DELETE" confirmation; removes only the flat imported row (no order, payment,
  * or arrangement). The server action + DB function are the real gates.
  */
+/**
+ * Deleting a layaway account (§2).
+ *
+ * A SUPER ADMIN deletes directly — the type-DELETE confirmation stays, and the
+ * deletion is recorded in the register afterwards. An ADMIN cannot delete: the
+ * button becomes Request Deletion, which needs a reason and goes to the Super
+ * Admin for a decision. Both paths are re-checked in SQL.
+ */
 function LedgerRowDelete({
   id,
   accountNo,
   customerName,
+  isSuperAdmin,
 }: {
   id: string;
   accountNo: string;
   customerName: string;
+  isSuperAdmin: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -1365,7 +1400,7 @@ function LedgerRowDelete({
     if (pending || confirm !== 'DELETE') return;
     setPending(true);
     setError(null);
-    const res = await deleteLayawayLedgerRowAction(id);
+    const res = await deleteLayawayLedgerRowAction(id, `Layaway ${accountNo}`);
     if (!res.ok) {
       setPending(false);
       setError(res.error);
@@ -1375,6 +1410,17 @@ function LedgerRowDelete({
     setPending(false);
     router.refresh();
   };
+
+  // An Admin asks; only a Super Admin deletes (§2).
+  if (!isSuperAdmin) {
+    return (
+      <LedgerRowRequestDeletion
+        id={id}
+        accountNo={accountNo}
+        customerName={customerName}
+      />
+    );
+  }
 
   return (
     <>
@@ -1650,5 +1696,130 @@ function LayawayList({
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * The Admin's path: Request Deletion (§2).
+ *
+ * A reason is mandatory — a register of unexplained requests would be useless —
+ * and the button reports honestly once the request is queued, so nobody presses
+ * it twice expecting the record to disappear.
+ */
+function LedgerRowRequestDeletion({
+  id,
+  accountNo,
+  customerName,
+}: {
+  id: string;
+  accountNo: string;
+  customerName: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [requested, setRequested] = useState(false);
+
+  const run = async () => {
+    if (pending || !reason.trim()) return;
+    setPending(true);
+    setError(null);
+    const res = await requestDeletionAction({
+      entityType: 'layaway_ledger',
+      entityId: id,
+      entityLabel: `Layaway ${accountNo} — ${customerName}`,
+      reason: reason.trim(),
+    });
+    setPending(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setRequested(true);
+    setOpen(false);
+  };
+
+  if (requested) {
+    return (
+      <span
+        className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-700"
+        data-testid={`ledger-delete-requested-${id}`}
+      >
+        Deletion requested
+      </span>
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setReason('');
+          setError(null);
+          setOpen(true);
+        }}
+        data-testid={`ledger-request-delete-${id}`}
+        className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-accent"
+      >
+        Request Deletion
+      </button>
+
+      <Modal
+        open={open}
+        onClose={() => {
+          if (!pending) setOpen(false);
+        }}
+        title="Request deletion"
+        size="sm"
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpen(false)}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void run()}
+              disabled={pending || !reason.trim()}
+              data-testid="ledger-request-delete-confirm"
+            >
+              {pending ? 'Sending…' : 'Send request'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-sm">
+            Ask a Super Admin to delete account{' '}
+            <span className="font-mono">{accountNo}</span> for{' '}
+            <strong>{customerName}</strong>. Nothing is deleted until they approve.
+          </p>
+          <div>
+            <Label htmlFor={`req-reason-${id}`} className="text-xs">
+              Reason (required)
+            </Label>
+            <Input
+              id={`req-reason-${id}`}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Why should this be deleted?"
+              className="mt-1 h-9"
+              autoComplete="off"
+            />
+          </div>
+          {error ? (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
+        </div>
+      </Modal>
+    </>
   );
 }

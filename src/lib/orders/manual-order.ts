@@ -2,6 +2,7 @@ import 'server-only';
 
 import { createCustomer } from '@/lib/customers/create';
 import { createClient } from '@/lib/supabase/server';
+import { resolveAdminName } from '@/lib/authz/admin-name';
 
 /**
  * New Order manual entry (Bible §12, §13) — MULTI-ITEM.
@@ -29,6 +30,10 @@ export type ManualOrderInput = {
   customerId: string | null;
   customerName: string | null;
   items: ManualOrderItemInput[];
+  /** Admin Name (§2) — the team member the order is attributed to. Only a Super
+   *  Admin may name someone else; resolveAdminName and the database both pin
+   *  everyone else to their own profile. */
+  adminId?: string | null;
 };
 
 export type ManualOrderResult =
@@ -98,6 +103,7 @@ export async function captureManualOrder(
     p_customer_id: customerId,
     p_customer_name: customerName || null,
     p_items: payload,
+    p_admin_id: await resolveAdminName(input.adminId ?? null),
   })) as { data: CreateOrderRow | null; error: { message: string } | null };
 
   if (res.error) {

@@ -137,11 +137,10 @@ export async function reactivateAccount(
 /**
  * Promotes an account to Selected Admin, or demotes it back to Staff.
  *
- * Only the Owner may do this (Bible §5.4), and at most two Selected Admins may be
- * active. The cap is enforced atomically by a database trigger, so a concurrent
- * double-promotion cannot slip past — this function surfaces that rejection as a
- * readable message rather than re-implementing (and possibly disagreeing with)
- * the rule.
+ * Only the Owner may do this (Bible §5.4). The former max-2 Selected Admin cap was
+ * retired (Owner decision: Admin is the standard role), so any number of members
+ * may be Admin. The 23514 branch below is kept as a harmless backstop in case a
+ * cap is ever reinstated.
  */
 export async function setSelectedAdminStatus(
   staffProfileId: string,

@@ -3,29 +3,16 @@
 import { useActionState, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-import {
-  acknowledgeNotificationAction,
-  refreshDashboardAction,
-  runSalesReportAction,
-} from '@/lib/dashboard/actions';
+import { refreshDashboardAction } from '@/lib/dashboard/actions';
 import type { DashboardActionState } from '@/lib/dashboard/action-state';
 import { EMPTY_DASHBOARD_STATE } from '@/lib/dashboard/action-state';
-import type {
-  AuditRow,
-  DashboardCounts,
-  DashboardMetrics,
-  NotificationRow,
-  SearchResult,
-} from '@/lib/dashboard/service';
-import type { FollowUpQueue } from '@/lib/followups/service';
+import type { DashboardCounts, DashboardMetrics } from '@/lib/dashboard/service';
 import type { MoneyInTransitResult } from '@/lib/finance/money-in-transit';
 import type { ScrapIncomeRow, ScrapSaleRow, ScrapTotal } from '@/lib/scrap/service';
 import type { LayawayDashboard } from '@/lib/payments/layaway-ledger';
 import { formatPeso } from '@/lib/payments/format';
+import { ExportAllButton } from '@/components/export/export-all-button';
 import { usePrivacy } from '@/components/shell/privacy';
-import { EmptyState } from '@/components/states/empty-state';
-import { FollowUpCards } from '@/components/dashboard/follow-up-cards';
-import { BarChart } from '@/components/ui/bar-chart';
 import { ColumnChart } from '@/components/ui/column-chart';
 import { DonutChart } from '@/components/ui/donut-chart';
 import { MetricCard, ReadError } from '@/components/ui/page-primitives';
@@ -38,11 +25,15 @@ import { Label } from '@/components/ui/label';
  * Dashboard Profile — the approved prototype's Dashboard Report structure, backed
  * by REAL aggregation (Bible §7, §23, §25, §26, §31; FINAL-UI-SOURCE-OF-TRUTH §4).
  *
- * Restored to match the /preview prototype: two primary tabs (Dashboard, Gross
- * Profit), a date-range selector with the current range shown, Refresh, and
- * Export Reports; metric cards, an Order Status chart, and a Sales for the Period
- * chart. The existing real Reports / Search / Reminders / Audit functionality is
- * RETAINED (regression rule — never removed).
+ * A single, untabbed page: a date-range selector with the current range shown,
+ * Refresh and Export Reports, then the metric cards, charts and summaries.
+ *
+ * Follow-ups, Search, Reminders, Audit and the Sales-summary REPORT were all
+ * removed from THIS page by Owner request, which left one tab and so no tab bar at
+ * all. None of the underlying features were deleted: the audit trail, reminder
+ * records, follow-up queue, global search and the report action all still exist
+ * and still run where they are actually used. Export Reports stays, and now
+ * performs the real export here instead of opening a tab that no longer exists.
  *
  * Honesty that must not regress:
  *   - Every figure is real aggregation. A FAILED read shows an explicit error,
@@ -54,16 +45,6 @@ import { Label } from '@/components/ui/label';
  *   - Gross Profit is honest-unavailable: no cost/COGS rules exist, so no numbers
  *     are invented.
  */
-
-const TABS = [
-  'Dashboard',
-  'Follow-ups',
-  'Reports',
-  'Search',
-  'Reminders',
-  'Audit',
-] as const;
-type Tab = (typeof TABS)[number];
 
 // Date-range presets. Each resolves to concrete {from, to} ISO days (or null for
 // "all time"). The selected range lives in the URL so the server re-scopes EVERY
@@ -133,11 +114,6 @@ function sumMoney(...values: Array<string | null | undefined>): string {
 export function DashboardView({
   counts,
   metrics,
-  notifications,
-  audit,
-  results,
-  query,
-  followUps,
   moneyInTransit,
   scrapTotal,
   scrapSales,
@@ -149,11 +125,6 @@ export function DashboardView({
 }: {
   counts: DashboardCounts | null;
   metrics: DashboardMetrics | null;
-  notifications: NotificationRow[];
-  audit: AuditRow[];
-  results: SearchResult[];
-  query: string;
-  followUps: FollowUpQueue;
   moneyInTransit: MoneyInTransitResult;
   scrapTotal: ScrapTotal;
   scrapSales: ScrapSaleRow[];
@@ -168,7 +139,6 @@ export function DashboardView({
   // the user hides sensitive info. Display-only — the data is unchanged.
   const { hidden } = usePrivacy();
   const money = (amount: string): string => (hidden ? '₱••••••' : formatPeso(amount));
-  const [tab, setTab] = useState<Tab>('Dashboard');
   // The active range comes from the URL (props). Custom inputs are local until applied.
   const isAllTime = !rangeFrom && !rangeTo;
   const [customFrom, setCustomFrom] = useState(rangeFrom ?? '');
@@ -177,7 +147,6 @@ export function DashboardView({
   // Navigate to a range (or all time). The server re-scopes every money figure.
   const goRange = (next: { from: string; to: string } | null) => {
     const sp = new URLSearchParams();
-    if (query) sp.set('q', query);
     if (next) {
       sp.set('from', next.from);
       sp.set('to', next.to);
@@ -199,16 +168,8 @@ export function DashboardView({
     DashboardActionState,
     FormData
   >(refreshDashboardAction, EMPTY_DASHBOARD_STATE);
-  const [ackState, acknowledge, acking] = useActionState<DashboardActionState, FormData>(
-    acknowledgeNotificationAction,
-    EMPTY_DASHBOARD_STATE,
-  );
-  const [reportState, runReport, running] = useActionState<
-    DashboardActionState,
-    FormData
-  >(runSalesReportAction, EMPTY_DASHBOARD_STATE);
 
-  const notices = [refreshState, ackState, reportState];
+  const notices = [refreshState];
 
   return (
     <div className="space-y-4">
@@ -250,15 +211,14 @@ export function DashboardView({
                   {refreshing ? 'Refreshing…' : '⟳ Refresh'}
                 </Button>
               </form>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setTab('Reports')}
-                data-testid="dash-export"
-              >
-                ⭳ Export Reports
-              </Button>
+              {/* Export Reports used to do nothing but switch to the removed
+                  Reports tab. It now performs the REAL export in place — the same
+                  server-generated workbook the Reports page downloads — rather
+                  than bouncing the user to another screen. Hidden without the
+                  permission; the API route re-checks regardless. */}
+              {canExport ? (
+                <ExportAllButton label="⭳ Export Reports" testId="dash-export" size="sm" />
+              ) : null}
             </div>
           </div>
 
@@ -315,23 +275,6 @@ export function DashboardView({
         </CardContent>
       </Card>
 
-      {/* ---- Tabs ----------------------------------------------------------- */}
-      <div className="flex flex-wrap gap-1.5" role="tablist">
-        {TABS.map((t) => (
-          <Button
-            key={t}
-            type="button"
-            role="tab"
-            aria-selected={tab === t}
-            size="sm"
-            variant={tab === t ? 'default' : 'outline'}
-            onClick={() => setTab(t)}
-            data-testid={`dash-tab-${t.replace(/\s+/g, '-').toLowerCase()}`}
-          >
-            {t}
-          </Button>
-        ))}
-      </div>
 
       {notices.map((n, i) =>
         n.error ? (
@@ -348,15 +291,13 @@ export function DashboardView({
         ) : null,
       )}
 
-      {/* ================= DASHBOARD TAB ================= */}
-      {tab === 'Dashboard' ? (
-        metrics === null || counts === null ? (
-          <ReadError
-            title="Dashboard could not be loaded"
-            detail="The dashboard totals or counts could not be read."
-          />
-        ) : (
-          <div className="space-y-4">
+      {metrics === null || counts === null ? (
+        <ReadError
+          title="Dashboard could not be loaded"
+          detail="The dashboard totals or counts could not be read."
+        />
+      ) : (
+        <div className="space-y-4">
             {/* Metric cards — real business totals. */}
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
               <MetricCard
@@ -680,256 +621,8 @@ export function DashboardView({
                 </p>
               </CardContent>
             </Card>
-          </div>
-        )
-      ) : null}
-
-
-      {/* ================= FOLLOW-UPS TAB (real live counts) ================= */}
-      {tab === 'Follow-ups' ? (
-        <FollowUpCards categories={followUps.categories} total={followUps.total} />
-      ) : null}
-
-      {/* ================= REPORTS TAB (real, gated export) ================= */}
-      {tab === 'Reports' ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Sales summary</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form action={runReport} className="flex flex-wrap items-end gap-2">
-              <div>
-                <Label htmlFor="rfrom" className="text-xs">
-                  From
-                </Label>
-                <Input id="rfrom" name="from" type="date" required className="h-8" />
-              </div>
-              <div>
-                <Label htmlFor="rto" className="text-xs">
-                  To
-                </Label>
-                <Input id="rto" name="to" type="date" required className="h-8" />
-              </div>
-              <Button type="submit" size="sm" disabled={running}>
-                {running ? 'Running…' : 'Run Report'}
-              </Button>
-              {canExport ? null : (
-                <span className="self-center text-xs text-muted-foreground">
-                  Export/download needs the Export Data permission.
-                </span>
-              )}
-            </form>
-
-            {reportState.report ? (
-              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-4">
-                <div>
-                  <dt className="text-muted-foreground">Verified collected</dt>
-                  <dd className="text-lg font-bold tabular-nums">
-                    {money(reportState.report.verifiedCollected)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Payments recorded</dt>
-                  <dd className="font-medium tabular-nums">
-                    {reportState.report.paymentsRecorded}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Verified</dt>
-                  <dd className="font-medium tabular-nums">
-                    {reportState.report.paymentsVerified}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Unverified</dt>
-                  <dd className="font-medium tabular-nums">
-                    {reportState.report.paymentsUnverified}
-                  </dd>
-                </div>
-              </dl>
-            ) : null}
-
-            {reportState.report ? (
-              <div className="mt-3 border-t border-border pt-3">
-                <p className="mb-1.5 text-xs font-medium text-muted-foreground">
-                  Payments in range, by verification
-                </p>
-                <BarChart
-                  ariaLabel="Payments by verification status"
-                  noDataLabel="No data for this period"
-                  data={[
-                    { label: 'Verified', value: reportState.report.paymentsVerified },
-                    { label: 'Unverified', value: reportState.report.paymentsUnverified },
-                  ]}
-                />
-              </div>
-            ) : null}
-
-            <p className="mt-2 text-xs text-muted-foreground">
-              Verified money only — unverified evidence is not revenue. A report is
-              limited to records you can already see, and grants no authority over them.
-            </p>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {/* ================= SEARCH TAB ================= */}
-      {tab === 'Search' ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Global search</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form method="GET" className="flex flex-wrap items-end gap-2">
-              <div>
-                <Label htmlFor="q" className="text-xs">
-                  Search
-                </Label>
-                <Input
-                  id="q"
-                  name="q"
-                  defaultValue={query}
-                  placeholder="Order no., claim no., customer, item code…"
-                  className="h-8 w-72"
-                />
-              </div>
-              <Button type="submit" size="sm">
-                Search
-              </Button>
-            </form>
-
-            {query.length > 0 && query.trim().length < 2 ? (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Enter at least two characters.
-              </p>
-            ) : null}
-
-            {results.length === 0 && query.trim().length >= 2 ? (
-              <p className="mt-3 text-sm text-muted-foreground">No matches.</p>
-            ) : null}
-
-            {results.length > 0 ? (
-              <ul className="mt-3 space-y-1 text-xs">
-                {results.map((r) => (
-                  <li
-                    key={`${r.resultKind}-${r.entityId}`}
-                    className="flex flex-wrap justify-between gap-2 rounded border p-2"
-                  >
-                    <span>
-                      <span className="rounded bg-muted px-1.5 py-0.5">
-                        {r.resultKind.replace(/_/g, ' ')}
-                      </span>
-                      <span className="ml-2 font-mono">{r.reference}</span>
-                      <span className="ml-2">{r.label}</span>
-                    </span>
-                    <span className="text-muted-foreground">{r.detail}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-
-            <p className="mt-2 text-xs text-muted-foreground">
-              Search shows only records you already have permission to read, and returns
-              references only. Finding a record is not authority over it — nothing here
-              merges or reassigns anything.
-            </p>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {/* ================= REMINDERS TAB ================= */}
-      {tab === 'Reminders' ? (
-        notifications.length === 0 ? (
-          <EmptyState
-            title="No reminders"
-            description="Reminders are staff-triggered notes. Customers hold no account and are never notified here."
-          />
-        ) : (
-          <ul className="space-y-2">
-            {notifications.map((n) => (
-              <li key={n.id}>
-                <Card>
-                  <CardContent className="flex flex-wrap items-center justify-between gap-2 pt-6">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm">{n.body}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {n.kind.replace(/_/g, ' ')}
-                        {n.dueAt
-                          ? ` · due ${new Date(n.dueAt).toLocaleDateString()}`
-                          : ''}
-                      </p>
-                    </div>
-                    {n.acknowledgedAt ? (
-                      <span className="text-xs text-muted-foreground">Acknowledged</span>
-                    ) : (
-                      <form action={acknowledge}>
-                        <input type="hidden" name="notificationId" value={n.id} />
-                        <Button
-                          type="submit"
-                          size="sm"
-                          variant="outline"
-                          disabled={acking}
-                        >
-                          Acknowledge
-                        </Button>
-                      </form>
-                    )}
-                  </CardContent>
-                </Card>
-              </li>
-            ))}
-            <p className="text-xs text-muted-foreground">
-              A reminder is a note: acknowledging it changes no business record. Delivery
-              is manual-send only — Sent is an attestation, and Delivered and Read are not
-              observed.
-            </p>
-          </ul>
-        )
-      ) : null}
-
-      {/* ================= AUDIT TAB ================= */}
-      {tab === 'Audit' ? (
-        audit.length === 0 ? (
-          <EmptyState title="No audit events" />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left text-xs">
-              <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2">When</th>
-                  <th className="px-3 py-2">Actor</th>
-                  <th className="px-3 py-2">Action</th>
-                  <th className="px-3 py-2">Entity</th>
-                  <th className="px-3 py-2">Outcome</th>
-                  <th className="px-3 py-2">Reason</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {audit.map((a) => (
-                  <tr key={a.id}>
-                    <td className="px-3 py-2">
-                      {new Date(a.occurredAt).toLocaleString()}
-                    </td>
-                    <td className="px-3 py-2">{a.actorLabel ?? 'system'}</td>
-                    <td className="px-3 py-2 font-mono">{a.action}</td>
-                    <td className="px-3 py-2">{a.entityType}</td>
-                    <td className="px-3 py-2">{a.outcome}</td>
-                    <td className="px-3 py-2 text-muted-foreground">
-                      {a.reason ?? ''}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Append-only: audit events cannot be edited or deleted, and attribution is a
-              snapshot that survives rename and deactivation. Event context is not shown
-              here — it can carry operational detail, and the trail must never expose
-              secrets.
-            </p>
-          </div>
-        )
-      ) : null}
+        </div>
+      )}
     </div>
   );
 }

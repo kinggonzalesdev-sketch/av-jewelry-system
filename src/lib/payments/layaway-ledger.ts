@@ -61,6 +61,17 @@ export type LayawayLedgerDetail = {
   layawayTerm: number | null;
   interestRate: string | null;
   fixedInterest: string | null;
+  /** Per-gram interest summary (null for legacy/imported accounts). Every figure
+   *  is computed by SQL from the real charges — the modal only displays it. */
+  perGram: {
+    grams: string | null;
+    monthlyInterest: string;
+    interestCharged: string;
+    chargesCount: number;
+    nextInterestDate: string | null;
+    remainingMonths: number;
+    term: number | null;
+  } | null;
   installments: Array<{
     sequence: number;
     dueDate: string | null;
@@ -317,6 +328,25 @@ export async function getLayawayLedgerDetail(
   const r = acct.data as Record<string, unknown> | null;
   if (!r) return null;
 
+  // Per-gram interest summary — authoritative figures from SQL, computed from the
+  // real posted charges. Legacy/imported accounts return basis null → no summary.
+  const summaryRes = (await supabase.rpc('layaway_interest_summary', {
+    p_ledger_id: id,
+  })) as { data: Record<string, unknown> | null; error: unknown };
+  const sum = summaryRes.data ?? {};
+  const perGram =
+    sum.basis === 'per_gram_150'
+      ? {
+          grams: toStr(sum.grams),
+          monthlyInterest: toStr(sum.monthly_interest) ?? '0',
+          interestCharged: toStr(sum.interest_charged) ?? '0',
+          chargesCount: Number(sum.charges_count ?? 0),
+          nextInterestDate: (sum.next_interest_date as string | null) ?? null,
+          remainingMonths: Number(sum.remaining_months ?? 0),
+          term: sum.term === null || sum.term === undefined ? null : Number(sum.term),
+        }
+      : null;
+
   // Resolve "Received By" names for the recorded payments (older imported rows
   // have no recorder). One small lookup keyed by the distinct staff ids.
   const payRows = (pay.data ?? []) as Array<Record<string, unknown>>;
@@ -361,6 +391,7 @@ export async function getLayawayLedgerDetail(
     layawayTerm: r.layaway_term === null || r.layaway_term === undefined ? null : Number(r.layaway_term),
     interestRate: toStr(r.interest_rate),
     fixedInterest: toStr(r.fixed_interest),
+    perGram,
     installments: ((inst.data ?? []) as Array<Record<string, unknown>>).map((i) => ({
       sequence: Number(i.sequence),
       dueDate: (i.due_date as string | null) ?? null,

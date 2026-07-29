@@ -27,7 +27,6 @@ describe('LOCKED: desktop sidebar (exact order, labels, routes, icons)', () => {
     ).toEqual([
       { label: 'Dashboard Profile', href: '/dashboard', icon: '▥' },
       { label: 'Orders', href: '/orders', icon: '□' },
-      { label: 'Customers', href: '/customers', icon: '☺' },
       { label: 'Inventory', href: '/orders/inventory', icon: '◈' },
       { label: 'Layaway', href: '/orders/payments', icon: '₱' },
       { label: 'Scrap', href: '/admin/scrap', icon: '♻' },
@@ -41,9 +40,9 @@ describe('LOCKED: desktop sidebar (exact order, labels, routes, icons)', () => {
 });
 
 describe('LOCKED: mobile navigation', () => {
-  it('bottom bar is exactly Orders · Customers (+ More)', () => {
+  it('bottom bar is exactly Orders (+ More)', () => {
     // Invoice folded into Orders → For Invoice (Owner request 2026-07-22).
-    expect(mobilePrimaryItems().map((i) => i.label)).toEqual(['Orders', 'Customers']);
+    expect(mobilePrimaryItems().map((i) => i.label)).toEqual(['Orders']);
   });
 
   it('More carries the rest, Dashboard Profile first', () => {

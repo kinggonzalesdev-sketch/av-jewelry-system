@@ -1,5 +1,5 @@
 /**
- * ONE stage-to-actions configuration for the Order View modal.
+ * ONE stage-to-actions configuration for the Order View modal (§7).
  *
  * The rule this module exists to enforce: an order shows only the actions its
  * CURRENT stage allows. Visibility rules used to be scattered across the modal's
@@ -12,7 +12,9 @@
  *
  * Visibility is CONVENIENCE. Every action still re-checks its own permission and
  * the database still enforces the transition — hiding a button never authorizes
- * anything, and showing one never grants it.
+ * anything, and showing one never grants it. In particular the completion helpers
+ * only decide whether the BUTTON appears; `order_completion_block()` in SQL is
+ * what actually decides whether an order may complete.
  */
 
 /** The workflow stages an order can be in, as the modal understands them. */
@@ -32,15 +34,29 @@ export type OrderStage =
   | 'completed'
   | 'expired_overdue';
 
+/** The workflow buttons a stage may offer, beyond payment and cancellation. */
+export type StageAction =
+  /** Move the order to another section (§6). */
+  | 'transfer_destination'
+  /** Delivery's single finishing action: hand over + complete (§5). */
+  | 'done'
+  /** Fully paid + fulfilled → Completed (§5). */
+  | 'transfer_completed'
+  /** Pickup's handover confirmation. */
+  | 'confirm_released';
+
 export type StageConfig = {
-  /** What the operator calls this stage. */
+  /** What the operator calls this stage. Also the badge shown at the top of the
+   *  modal, so the header can never disagree with the section (§7). */
   label: string;
-  /** May money be recorded here (Add Payment / Add Down Payment · Deposit)? */
+  /** May money be recorded here (Add Payment)? */
   allowsPayment: boolean;
   /** May the order be cancelled from here? Drives the Danger Zone. */
   allowsCancel: boolean;
   /** Read-only stages show details and history, never workflow actions. */
   readOnly: boolean;
+  /** The workflow actions this stage offers, in the order they should render. */
+  actions: readonly StageAction[];
   /** Which detail tabs are worth showing. Never force the same tabs everywhere. */
   tabs: ReadonlyArray<'items' | 'payments' | 'fulfillment' | 'layaway' | 'history'>;
 };
@@ -58,6 +74,7 @@ export const STAGE_ACTIONS: Record<OrderStage, StageConfig> = {
     allowsPayment: true,
     allowsCancel: true,
     readOnly: false,
+    actions: [],
     tabs: [...BASE_TABS],
   },
   awaiting_required_payment: {
@@ -65,13 +82,17 @@ export const STAGE_ACTIONS: Record<OrderStage, StageConfig> = {
     allowsPayment: true,
     allowsCancel: true,
     readOnly: false,
+    actions: [],
     tabs: [...BASE_TABS],
   },
+  // For Confirm: confirmation or transfer only — no handover actions, because
+  // nothing has been prepared yet.
   required_payment_verified: {
     label: 'For Confirm',
     allowsPayment: true,
     allowsCancel: true,
     readOnly: false,
+    actions: ['transfer_destination'],
     tabs: [...BASE_TABS],
   },
   for_preparation: {
@@ -79,20 +100,26 @@ export const STAGE_ACTIONS: Record<OrderStage, StageConfig> = {
     allowsPayment: true,
     allowsCancel: true,
     readOnly: false,
+    actions: ['transfer_destination'],
     tabs: ['items', 'fulfillment', 'history'],
   },
+  // For Shipping keeps Transfer to Destination (§6) alongside its own workflow
+  // confirmation.
   for_shipping_or_pickup: {
     label: 'For Shipping',
     allowsPayment: true,
     allowsCancel: true,
     readOnly: false,
+    actions: ['transfer_destination'],
     tabs: ['items', 'fulfillment', 'history'],
   },
+  // Ship Confirm: shipping confirmation or transfer, nothing else.
   approved_for_release: {
     label: 'Ship Confirm',
     allowsPayment: true,
     allowsCancel: true,
     readOnly: false,
+    actions: ['transfer_destination'],
     tabs: ['items', 'fulfillment', 'history'],
   },
   exceptional_release_pending: {
@@ -100,13 +127,18 @@ export const STAGE_ACTIONS: Record<OrderStage, StageConfig> = {
     allowsPayment: true,
     allowsCancel: true,
     readOnly: false,
+    actions: ['transfer_destination'],
     tabs: ['items', 'fulfillment', 'history'],
   },
+  // Delivery / Pickup — the handover stage. Done finishes a delivery; Confirm
+  // Picked Up / Released finishes a pickup; Transfer to Completed covers the case
+  // where the handover was already recorded.
   dispatched_or_picked_up: {
     label: 'Delivery / Pickup',
     allowsPayment: true,
     allowsCancel: true,
     readOnly: false,
+    actions: ['done', 'confirm_released', 'transfer_completed', 'transfer_destination'],
     tabs: ['items', 'fulfillment', 'history'],
   },
   for_layaway: {
@@ -114,13 +146,18 @@ export const STAGE_ACTIONS: Record<OrderStage, StageConfig> = {
     allowsPayment: true,
     allowsCancel: true,
     readOnly: false,
+    actions: ['transfer_destination'],
     tabs: ['items', 'layaway', 'history'],
   },
+  // Keep is a holding state: the ONLY thing to do is move it somewhere else
+  // (Owner request §7 — an Actions row with Transfer to Destination and nothing
+  // below it).
   keep: {
     label: 'Keep',
     allowsPayment: true,
     allowsCancel: true,
     readOnly: false,
+    actions: ['transfer_destination'],
     tabs: [...BASE_TABS],
   },
   expired_overdue: {
@@ -128,15 +165,18 @@ export const STAGE_ACTIONS: Record<OrderStage, StageConfig> = {
     allowsPayment: true,
     allowsCancel: true,
     readOnly: false,
+    actions: ['transfer_destination'],
     tabs: [...BASE_TABS],
   },
-  // Awaiting a cancellation decision: the order is frozen. No money moves, and it
-  // cannot be cancelled again — it is already in the cancellation queue.
+  // Awaiting a cancellation decision: the order is frozen. No money moves, it
+  // cannot be cancelled again, and it cannot be transferred out from under the
+  // pending decision.
   for_cancel: {
     label: 'For Cancel',
     allowsPayment: false,
     allowsCancel: false,
     readOnly: false,
+    actions: [],
     tabs: [...BASE_TABS],
   },
   // Closed. Read-only: details and history, never workflow or money actions.
@@ -145,6 +185,7 @@ export const STAGE_ACTIONS: Record<OrderStage, StageConfig> = {
     allowsPayment: false,
     allowsCancel: false,
     readOnly: true,
+    actions: [],
     tabs: [...BASE_TABS],
   },
   completed: {
@@ -152,6 +193,7 @@ export const STAGE_ACTIONS: Record<OrderStage, StageConfig> = {
     allowsPayment: false,
     allowsCancel: false,
     readOnly: true,
+    actions: [],
     tabs: ['items', 'payments', 'history'],
   },
 };
@@ -164,9 +206,16 @@ export function stageConfig(status: string): StageConfig {
       allowsPayment: false,
       allowsCancel: false,
       readOnly: true,
+      actions: [],
       tabs: [...BASE_TABS],
     }
   );
+}
+
+/** The status label to show at the top of the modal. Single source, so the header
+ *  always matches the section the order is actually in (§7). */
+export function stageLabel(status: string): string {
+  return stageConfig(status).label;
 }
 
 /**
@@ -191,4 +240,32 @@ export function canOfferPayment(args: {
 /** May Cancel Order be offered? Never for For Cancel, Cancelled, or Completed. */
 export function canOfferCancel(status: string): boolean {
   return stageConfig(status).allowsCancel;
+}
+
+/** Does this stage offer the given workflow action at all? */
+export function stageOffers(status: string, action: StageAction): boolean {
+  return stageConfig(status).actions.includes(action);
+}
+
+/**
+ * May Transfer to Completed / Done be OFFERED?
+ *
+ * The stage must list it, the order must be fully paid, and the caller must hold
+ * the release permission. `completionBlock` is the database's own verdict
+ * (order_completion_block) and wins over everything here when present — the UI
+ * never claims an order is completable when SQL says otherwise.
+ */
+export function canOfferCompletion(args: {
+  status: string;
+  action: Extract<StageAction, 'done' | 'transfer_completed'>;
+  paidInFull: boolean;
+  balanceUnavailable: boolean;
+  canRelease: boolean;
+  completionBlock: string | null;
+}): boolean {
+  if (!args.canRelease) return false;
+  if (!stageOffers(args.status, args.action)) return false;
+  if (args.balanceUnavailable) return false;
+  if (!args.paidInFull) return false;
+  return args.completionBlock === null;
 }

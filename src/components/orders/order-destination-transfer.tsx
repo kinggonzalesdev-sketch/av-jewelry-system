@@ -13,29 +13,39 @@ import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 
 /**
- * For-Prepare fulfillment destination transfer (Orders Workflow — For Prepare).
+ * Transfer to Destination (§6).
  *
- * Selecting a destination NEVER transfers on its own — it opens a confirmation
- * modal ("Transfer this order to [X]?"), and only "Accept Transfer" performs it.
- * The transfer is one-way-once (the DB refuses a second one) and the button is
- * disabled while pending, so duplicate/repeated submissions cannot happen. On
- * success only this order + the parent's status counts refresh (no full reload).
+ * Offered from every ACTIVE stage that lists it in the shared stage table — not
+ * only For Prepare. Selecting a destination NEVER transfers on its own: it opens a
+ * confirmation modal ("Transfer this order to [X]?") and only "Accept Transfer"
+ * performs it.
+ *
+ * Duplicate transfers are prevented by the database, which refuses a transfer to
+ * the destination the order is ALREADY at; the button is also disabled while
+ * pending. Re-routing to a DIFFERENT destination stays allowed, which is what an
+ * operator correcting a mistake actually needs.
+ *
+ * Completed is offered only when the order is genuinely eligible — and even then
+ * the SQL routes it through the one completion gate, so picking it from this list
+ * can never skip the fully-paid and fulfilled checks. On success only this order +
+ * the parent's status counts refresh (no full reload).
  */
 export function OrderDestinationTransfer({
   orderId,
-  status,
   destination,
   destinationSetByName,
   destinationSetAt,
   canTransfer,
+  completionBlock,
   onTransferred,
 }: {
   orderId: string;
-  status: string;
   destination: string | null;
   destinationSetByName: string | null;
   destinationSetAt: string | null;
   canTransfer: boolean;
+  /** The database's completion verdict; null means Completed may be offered. */
+  completionBlock: string | null;
   onTransferred: () => void;
 }) {
   const [selected, setSelected] = useState('');
@@ -43,28 +53,19 @@ export function OrderDestinationTransfer({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Already transferred — read-only summary of where it went, by whom, and when.
-  if (destination) {
-    const d = destination as FulfillmentDestination;
-    return (
-      <div
-        className="rounded-lg border border-border p-3 text-xs"
-        data-testid="order-destination-done"
-      >
-        <p className="font-medium">
-          Transferred to {DESTINATION_LABEL[d] ?? destination}
-          {DESTINATION_CARD[d] ? ` → ${DESTINATION_CARD[d]}` : ''}
-        </p>
-        <p className="mt-0.5 text-muted-foreground">
-          {destinationSetByName ? `by ${destinationSetByName}` : ''}
-          {destinationSetAt ? ` · ${new Date(destinationSetAt).toLocaleString()}` : ''}
-        </p>
-      </div>
-    );
-  }
+  // The stage table already decided this stage offers a transfer; this component
+  // only needs the caller's permission.
+  if (!canTransfer) return null;
 
-  // Only a For-Prepare order, and only a permitted user, can transfer.
-  if (status !== 'for_preparation' || !canTransfer) return null;
+  const current = destination as FulfillmentDestination | null;
+
+  // Where it may go NOW: never back to where it already is (the DB refuses that),
+  // and Completed only when the database says it is eligible.
+  const choices = OFFERED_DESTINATIONS.filter((d) => {
+    if (d === current) return false;
+    if (d === 'completed') return completionBlock === null;
+    return true;
+  });
 
   const submit = async () => {
     if (!selected || pending) return;
@@ -97,7 +98,7 @@ export function OrderDestinationTransfer({
           className="h-9 flex-1 min-w-[12rem] rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
         >
           <option value="">Choose destination…</option>
-          {OFFERED_DESTINATIONS.map((d) => (
+          {choices.map((d) => (
             <option key={d} value={d}>
               {DESTINATION_LABEL[d]} → {DESTINATION_CARD[d]}
             </option>
@@ -116,10 +117,13 @@ export function OrderDestinationTransfer({
           Transfer
         </Button>
       </div>
-      <p className="mt-1 text-[11px] text-muted-foreground">
-        Selecting does not transfer — you confirm on the next step, and a transfer
-        happens only once.
-      </p>
+      {current ? (
+        <p className="mt-1 text-[11px] text-muted-foreground" data-testid="order-destination-current">
+          Currently in {DESTINATION_LABEL[current] ?? current}
+          {destinationSetByName ? ` · moved by ${destinationSetByName}` : ''}
+          {destinationSetAt ? ` · ${new Date(destinationSetAt).toLocaleString()}` : ''}
+        </p>
+      ) : null}
       {error && !confirmOpen ? (
         <p role="alert" className="mt-1 text-sm text-destructive">
           {error}
@@ -164,7 +168,7 @@ export function OrderDestinationTransfer({
             <span className="font-medium">
               {DESTINATION_CARD[selected as FulfillmentDestination]}
             </span>{' '}
-            section. This can only be done once.
+            section. Who moved it, and when, is recorded.
           </p>
         ) : null}
         {error ? (

@@ -39,6 +39,8 @@ export type OrderPaymentHistoryEntry = {
   paymentMethod: string | null;
   referenceNumber: string | null;
   recordedAt: string;
+  /** The payment/transaction date (when the money moved), for the verify modal. */
+  transactedAt: string | null;
   voided: boolean;
   reversed: boolean;
   correctionPending: boolean;
@@ -97,6 +99,18 @@ export type OrderDetail = {
   fulfillmentDestination: string | null;
   destinationSetAt: string | null;
   destinationSetByName: string | null;
+
+  /** Why this order may NOT be transferred to Completed right now, or null when
+   *  it may (§5). Read from `order_completion_block` — the SAME function the
+   *  write path enforces — so Done / Transfer to Completed is never offered on an
+   *  order the database would refuse, and the reason shown is the real one. */
+  completionBlock: string | null;
+
+  /** Admin Name (§2): who this order is attributed to, and when it was completed.
+   *  Completion attribution is null until the order actually completes. */
+  adminName: string | null;
+  completedAt: string | null;
+  completedByName: string | null;
 
   customer: {
     id: string;

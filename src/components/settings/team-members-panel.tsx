@@ -150,32 +150,12 @@ function DeleteMemberCell({ member }: { member: TeamMemberRow }) {
   );
 }
 
-function RevealBox({ reveal }: { reveal: { email: string; tempPassword: string } }) {
-  return (
-    <div
-      className="rounded-lg border border-gold/40 bg-gold/10 p-3 text-sm"
-      role="status"
-      data-testid="temp-password-reveal"
-    >
-      <p className="text-xs text-muted-foreground">
-        Temporary password for <strong>{reveal.email}</strong> — shown once. Give it to
-        them; they change it themselves at sign-in.
-      </p>
-      <div className="mt-1.5 flex flex-wrap items-center gap-2">
-        <code className="rounded bg-background px-2 py-1 font-mono text-base font-bold tracking-wider">
-          {reveal.tempPassword}
-        </code>
-        <button
-          type="button"
-          onClick={() => void navigator.clipboard?.writeText(reveal.tempPassword)}
-          className="rounded-md border border-border bg-card px-2 py-1 text-xs font-medium hover:bg-accent"
-        >
-          Copy
-        </button>
-      </div>
-    </div>
-  );
-}
+/**
+ * The generated temporary password is deliberately NOT shown after adding a member
+ * (Owner request). The account is still created with one; the Owner hands over
+ * access using the per-row "Set password" control instead, which is why removing
+ * this banner does not strip the only way for a new member to sign in.
+ */
 
 export function TeamMembersPanel({
   members,
@@ -190,7 +170,6 @@ export function TeamMembersPanel({
     EMPTY_TEAM_STATE,
   );
 
-  const reveal = addState.reveal;
   const error = addState.error;
   const onTemp = members.filter((m) => m.passwordIsTemp).length;
   // The cap counts ACTIVE Super Admins; the database re-checks it on every save.
@@ -253,7 +232,6 @@ export function TeamMembersPanel({
           {error}
         </p>
       ) : null}
-      {reveal ? <RevealBox reveal={reveal} /> : null}
 
       {/* Roster */}
       {members.length === 0 ? (

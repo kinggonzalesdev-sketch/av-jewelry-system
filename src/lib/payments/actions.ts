@@ -19,6 +19,13 @@ import {
   requestForfeiture,
 } from '@/lib/payments/layaway';
 import { recordPayment, verifyPayment } from '@/lib/payments/verification';
+import { recordDirectDeletion } from '@/lib/authz/deletion-requests';
+import {
+  createLayawayAccount,
+  previewLayawayCode,
+  type CreateLayawayInput,
+  type CreateLayawayResult,
+} from '@/lib/payments/layaway-entry';
 import { completeOrderForPaymentIfPaidInFull } from '@/lib/orders/complete-on-payment';
 import {
   addLayawayLedgerPayment,
@@ -196,12 +203,26 @@ export async function updateLayawayLedgerAccountAction(
   return result;
 }
 
-/** Delete ONE imported layaway ledger account (Owner/Admin). Revalidates on success. */
-export async function deleteLayawayLedgerRowAction(id: string): Promise<LedgerDeleteResult> {
+/**
+ * Delete ONE layaway ledger account. Super Admin only in practice — an Admin now
+ * uses Request Deletion instead (§2). The delete itself keeps its own guard; this
+ * additionally RECORDS the deletion in the register, so a direct deletion by a
+ * Super Admin is accounted for like any other.
+ */
+export async function deleteLayawayLedgerRowAction(
+  id: string,
+  label?: string,
+): Promise<LedgerDeleteResult> {
   const result = await deleteLayawayLedgerRow(id);
   if (result.ok) {
+    await recordDirectDeletion({
+      entityType: 'layaway_ledger',
+      entityId: id,
+      entityLabel: label ?? 'Layaway account',
+    });
     revalidatePath('/orders/payments');
     revalidatePath('/dashboard');
+    revalidatePath('/admin/deletions');
   }
   return result;
 }
@@ -238,6 +259,15 @@ export async function loadAvailableLayawayCodesAction(
   letter: string,
 ): Promise<string[]> {
   return listAvailableLayawayCodes(letter);
+}
+
+/** The code that WOULD be assigned for a customer name right now — reserves
+ *  nothing. Drives the read-only "Assigned Layaway Code" preview as the operator
+ *  types the customer name. */
+export async function previewLayawayCodeAction(
+  customerName: string,
+): Promise<{ letter: string | null; code: string | null }> {
+  return previewLayawayCode(customerName);
 }
 
 export async function activateLayawayAction(
@@ -366,4 +396,25 @@ export async function decideForfeitureAction(
         ? 'Forfeiture approved. Execution is a separate step, and the item routes to Returned-to-Stock Review — no stock returned automatically.'
         : 'Forfeiture rejected. The Layaway stands unchanged.',
   };
+}
+
+/**
+ * Layaway New Entry (§1) — create a layaway account by manual encoding.
+ *
+ * Transport only; `createLayawayAccount` and the guarded SQL behind it do the
+ * work atomically. On success everything the entry touched revalidates —
+ * Layaway, Inventory (the item just left Active Inventory), Orders and the
+ * Dashboard — so the screens agree without a full-page reload.
+ */
+export async function createLayawayAccountAction(
+  input: CreateLayawayInput,
+): Promise<CreateLayawayResult> {
+  const result = await createLayawayAccount(input);
+  if (result.ok) {
+    revalidatePath('/orders/payments');
+    revalidatePath('/orders/inventory');
+    revalidatePath('/orders');
+    revalidatePath('/dashboard');
+  }
+  return result;
 }

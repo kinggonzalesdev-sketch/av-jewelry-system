@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { DashboardView } from '@/components/dashboard/dashboard-view';
@@ -52,39 +52,6 @@ function renderView(over: Partial<Parameters<typeof DashboardView>[0]> = {}) {
     <DashboardView
       counts={zeroCounts}
       metrics={zeroMetrics}
-      notifications={[]}
-      audit={[]}
-      results={[]}
-      query=""
-      followUps={{
-        total: 3,
-        categories: [
-          {
-            key: 'deposit_overdue',
-            label: 'Deposit overdue',
-            description: 'past the hold',
-            count: 2,
-            href: '/orders/payments',
-            tone: 'danger',
-          },
-          {
-            key: 'invoice_not_sent',
-            label: 'Invoice not yet sent',
-            description: 'drafts',
-            count: 1,
-            href: '/orders/invoice',
-            tone: 'warning',
-          },
-          {
-            key: 'failed_delivery',
-            label: 'Failed delivery / to investigate',
-            description: 'held',
-            count: null,
-            href: '/orders/fulfillment',
-            tone: 'danger',
-          },
-        ],
-      }}
       moneyInTransit={{
         ok: true,
         data: {
@@ -122,20 +89,49 @@ function renderView(over: Partial<Parameters<typeof DashboardView>[0]> = {}) {
 }
 
 describe('DashboardView — approved structure restored', () => {
-  it('renders the date-range selector, current range, Refresh, and Export', () => {
+  it('renders the date-range selector, current range, and Refresh', () => {
     renderView();
     expect(screen.getByTestId('dash-range-today')).toBeInTheDocument();
     expect(screen.getByTestId('dash-range-30d')).toBeInTheDocument();
-    expect(screen.getByTestId('dash-export')).toBeInTheDocument();
     expect(screen.getByTestId('dash-range-active')).toHaveTextContent(/Showing/);
     expect(screen.getByText('⟳ Refresh')).toBeInTheDocument();
   });
 
-  it('renders the primary tabs', () => {
+  // Export Reports is not merely disabled without the permission — it is not
+  // offered at all, so nobody is invited to press something that would be refused.
+  it('offers Export Reports only with the export permission', () => {
     renderView();
-    for (const t of ['dashboard', 'reports', 'search', 'reminders', 'audit']) {
-      expect(screen.getByTestId(`dash-tab-${t}`)).toBeInTheDocument();
+    expect(screen.queryByTestId('dash-export')).not.toBeInTheDocument();
+  });
+
+  // Every tab was removed by Owner request, so there is no tab bar left at all —
+  // one tab is a label, not a choice, and rendering the row would be dead space.
+  it('renders no tab bar', () => {
+    renderView();
+    for (const t of [
+      'dashboard',
+      'reports',
+      'follow-ups',
+      'search',
+      'reminders',
+      'audit',
+    ]) {
+      expect(screen.queryByTestId(`dash-tab-${t}`)).not.toBeInTheDocument();
     }
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+  });
+
+  it('no longer renders the Sales summary report (removed by Owner request)', () => {
+    renderView();
+    expect(screen.queryByText('Sales summary')).not.toBeInTheDocument();
+    expect(screen.queryByText('Run Report')).not.toBeInTheDocument();
+  });
+
+  it('keeps Export Reports, and it performs the real export in place', () => {
+    renderView({ canExport: true });
+    const btn = screen.getByTestId('dash-export');
+    expect(btn).toBeEnabled();
+    expect(btn).toHaveTextContent('Export Reports');
   });
 
   it('no longer renders the Disassembly Report tab (removed by Owner request)', () => {
@@ -220,25 +216,15 @@ describe('DashboardView — honesty', () => {
   });
 });
 
-describe('DashboardView — Follow-up Queue tab', () => {
-  it('shows categorised follow-ups from real counts, "—" for an unavailable read', () => {
+/**
+ * The Follow-up Queue tab was REMOVED from Dashboard Profile by Owner request.
+ * The queue itself (getFollowUpQueue + FollowUpCards) is untouched and still
+ * covered by its own suite — only its place on this page is gone.
+ */
+describe('DashboardView — removed tabs', () => {
+  it('no longer renders the Follow-up Queue on the dashboard', () => {
     renderView();
-    fireEvent.click(screen.getByTestId('dash-tab-follow-ups'));
-
-    const queue = screen.getByTestId('follow-up-queue');
-    expect(queue).toBeInTheDocument();
-    // Deposit overdue is a real live count (2).
-    expect(
-      within(screen.getByTestId('follow-up-deposit_overdue')).getByText('2'),
-    ).toBeInTheDocument();
-    // A failed read shows "—", never a false zero.
-    expect(
-      within(screen.getByTestId('follow-up-failed_delivery')).getByText('—'),
-    ).toBeInTheDocument();
-    // Each category links to the workspace that owns the action.
-    expect(screen.getByTestId('follow-up-invoice_not_sent')).toHaveAttribute(
-      'href',
-      '/orders/invoice',
-    );
+    expect(screen.queryByTestId('dash-tab-follow-ups')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('follow-up-queue')).not.toBeInTheDocument();
   });
 });

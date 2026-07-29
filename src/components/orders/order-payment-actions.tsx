@@ -11,10 +11,17 @@ import { MoneyInput } from '@/components/ui/money-input';
 import { Modal } from '@/components/ui/modal';
 
 /**
- * Add Payment / Add Down Payment-Deposit for an order (Order View modal, beside the
- * payment summary). Records a real received payment strictly within the remaining
- * balance; the DB is the authority (this mirrors its checks for instant feedback).
- * A fully-paid order disables both buttons. Never advances the workflow status.
+ * Add Payment for an order (Order View modal, beside the payment summary).
+ *
+ * There is ONE money button. "Add Down Payment / Deposit" was removed by Owner
+ * request: a deposit is just a payment, and two buttons writing the same record
+ * only invited miscategorising it. Existing deposits keep their original label in
+ * payment history — nothing was rewritten.
+ *
+ * Records a real received payment strictly within the remaining balance; the DB is
+ * the authority (this mirrors its checks for instant feedback). The control is not
+ * rendered at all once the order is fully paid, and is disabled while saving.
+ * Never advances the workflow status.
  */
 
 const PRICE_RE = /^\d{1,12}(\.\d{1,2})?$/;
@@ -41,7 +48,7 @@ export function OrderPaymentActions({
   canRecord: boolean;
   onRefresh: () => void;
 }) {
-  const [mode, setMode] = useState<null | 'payment' | 'deposit'>(null);
+  const [showForm, setOpen] = useState(false);
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(today());
   const [mop, setMop] = useState('cash');
@@ -55,8 +62,8 @@ export function OrderPaymentActions({
   const remainingCentavos = centavos(remaining);
   const fullyPaid = paidInFull || remainingCentavos <= 0n;
 
-  const open = (m: 'payment' | 'deposit') => {
-    setMode(m);
+  const openForm = () => {
+    setOpen(true);
     setAmount('');
     setDate(today());
     setMop('cash');
@@ -87,7 +94,6 @@ export function OrderPaymentActions({
       method: mop,
       reference: reference.trim() || null,
       notes: notes.trim() || null,
-      isDeposit: mode === 'deposit',
     });
     if (!res.ok) {
       setPending(false);
@@ -95,11 +101,9 @@ export function OrderPaymentActions({
       return;
     }
     setPending(false);
-    setMode(null);
+    setOpen(false);
     onRefresh();
   };
-
-  const isDeposit = mode === 'deposit';
 
   return (
     <div className="rounded-lg border border-border p-3" data-testid="order-payment-actions">
@@ -119,32 +123,22 @@ export function OrderPaymentActions({
           type="button"
           size="sm"
           disabled={fullyPaid}
-          onClick={() => open('payment')}
+          onClick={openForm}
           data-testid="order-add-payment"
         >
           Add Payment
         </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={fullyPaid}
-          onClick={() => open('deposit')}
-          data-testid="order-add-deposit"
-        >
-          Add Down Payment / Deposit
-        </Button>
       </div>
 
       <Modal
-        open={mode !== null}
-        onClose={() => setMode(null)}
-        title={isDeposit ? 'Add Down Payment / Deposit' : 'Add Payment'}
+        open={showForm}
+        onClose={() => setOpen(false)}
+        title="Add Payment"
         description={`Remaining balance: ${formatPeso(remaining)}`}
         size="sm"
         footer={
           <>
-            <Button type="button" variant="outline" onClick={() => setMode(null)}>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
             <Button
@@ -152,14 +146,14 @@ export function OrderPaymentActions({
               onClick={() => void run()}
               disabled={pending || !amount.trim()}
             >
-              {pending ? 'Saving…' : isDeposit ? 'Record deposit' : 'Record payment'}
+              {pending ? 'Saving…' : 'Record payment'}
             </Button>
           </>
         }
       >
         <div className="space-y-3">
           <div>
-            <Label className="text-xs">{isDeposit ? 'Deposit Amount' : 'Payment Amount'}</Label>
+            <Label className="text-xs">Payment Amount</Label>
             <MoneyInput
               className="mt-1 h-9 w-full rounded-md border border-border bg-background px-3 text-right text-sm tabular-nums outline-none focus:border-gold"
               placeholder="0.00"
@@ -170,7 +164,7 @@ export function OrderPaymentActions({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label htmlFor="order-pay-date" className="text-xs">
-                {isDeposit ? 'Deposit Date' : 'Payment Date'}
+                Payment Date
               </Label>
               <Input
                 id="order-pay-date"

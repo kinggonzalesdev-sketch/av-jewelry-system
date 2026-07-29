@@ -3,6 +3,11 @@
 import { revalidatePath } from 'next/cache';
 
 import { getOrderDetail } from '@/lib/orders/detail';
+import {
+  markOrderDone,
+  transferOrderToCompleted,
+  type CompletionResult,
+} from '@/lib/orders/completion';
 import type { OrderDetailResult } from '@/lib/orders/detail-types';
 import {
   transferOrderDestination,
@@ -80,15 +85,51 @@ export async function loadOrderDetailAction(
   return getOrderDetail(officialOrderId);
 }
 
-/** Transfer a For-Prepare order to a fulfillment destination (For Prepare
- *  workflow). Guarded + one-way-once in the domain module + DB. On success the
- *  Orders list revalidates so the status cards move the order immediately. */
+/** Transfer an order to another section (§6). Guarded in the domain module + DB,
+ *  which refuse a transfer to the destination it is ALREADY at and route the
+ *  Completed destination through the completion gate. On success the Orders list
+ *  revalidates so the status cards move the order immediately. */
 export async function transferOrderDestinationAction(
   officialOrderId: string,
   destination: string,
 ): Promise<TransferDestinationResult> {
   const result = await transferOrderDestination(officialOrderId, destination);
-  if (result.ok) revalidatePath('/orders');
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/inventory');
+    revalidatePath('/orders/payments');
+  }
+  return result;
+}
+
+/**
+ * Delivery → Done (§5). Records the handover and moves the order to Completed in
+ * one transaction, stamping completed by / date / time. The database re-checks
+ * that the order is fully paid and actually fulfilled, so a premature Done is
+ * refused rather than silently accepted.
+ */
+export async function markOrderDoneAction(
+  officialOrderId: string,
+): Promise<CompletionResult> {
+  const result = await markOrderDone(officialOrderId);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/inventory');
+    revalidatePath('/orders/payments');
+  }
+  return result;
+}
+
+/** Transfer to Completed from any eligible active section (§5). Same gate as Done. */
+export async function transferOrderToCompletedAction(
+  officialOrderId: string,
+): Promise<CompletionResult> {
+  const result = await transferOrderToCompleted(officialOrderId);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/inventory');
+    revalidatePath('/orders/payments');
+  }
   return result;
 }
 
@@ -252,6 +293,8 @@ export async function captureWalkInOrderAction(input: {
   items: WalkInItemInput[];
   paymentMethod: string | null;
   saleDate: string | null;
+  /** Admin Name (§2). Re-resolved server-side; a client cannot impersonate. */
+  adminId?: string | null;
 }): Promise<WalkInResult> {
   const result = await createWalkInOrder(input);
   if (result.ok) {

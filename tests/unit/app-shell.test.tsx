@@ -39,7 +39,6 @@ describe('approved navigation model (navigation.ts is the source of truth)', () 
     expect(PRIMARY_NAV.map((i) => i.label)).toEqual([
       'Dashboard Profile',
       'Orders',
-      'Customers',
       'Inventory',
       'Layaway',
       'Scrap',
@@ -53,7 +52,7 @@ describe('approved navigation model (navigation.ts is the source of truth)', () 
 
   it('has the exact approved mobile bottom-nav primary items', () => {
     // Invoice was folded into Orders → For Invoice (Owner request 2026-07-22).
-    expect(mobilePrimaryItems().map((i) => i.label)).toEqual(['Orders', 'Customers']);
+    expect(mobilePrimaryItems().map((i) => i.label)).toEqual(['Orders']);
   });
 
   it('puts the rest under More, Dashboard Profile first', () => {

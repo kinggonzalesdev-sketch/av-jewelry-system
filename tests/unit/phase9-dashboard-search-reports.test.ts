@@ -104,30 +104,16 @@ describe('the screen never contradicts the counting rules', () => {
     expect(view).not.toMatch(/Claims are not Official Orders/i);
   });
 
-  it('says seeing a count grants no authority', () => {
-    expect(view).toMatch(/grants no authority/i);
-  });
-
-  it('says search returns references only', () => {
-    expect(view).toMatch(/Finding a record is not authority over it/i);
-    expect(view).toMatch(/nothing here merges or reassigns/i);
-  });
-
-  it('says a report is limited to visible records and counts verified money only', () => {
-    expect(view).toMatch(/limited to records you can already see/i);
-    expect(view).toMatch(/unverified evidence is not revenue/i);
-  });
-
-  it('says Sent is an attestation and Delivered/Read are unobserved', () => {
-    expect(view).toMatch(
-      /Sent is an attestation, and Delivered and Read are not observed/i,
-    );
-    expect(view).toMatch(/acknowledging it changes no business record/i);
-  });
-
-  it('says audit is append-only and hides context', () => {
-    expect(view).toMatch(/Append-only/i);
-    expect(view).toMatch(/must never expose secrets/i);
+  // The Search, Reminders and Audit PANELS were removed from Dashboard Profile by
+  // Owner request, so their on-screen honesty copy no longer lives in this view.
+  // The rules they stated are still enforced where those features actually run —
+  // the audit trail is still append-only, and search still returns references only.
+  it('no longer carries the removed Search / Reminders / Audit copy', () => {
+    expect(view).not.toMatch(/Finding a record is not authority over it/i);
+    expect(view).not.toMatch(/Sent is an attestation/i);
+    expect(view).not.toMatch(/Append-only/i);
+    // The Sales-summary report went with them.
+    expect(view).not.toMatch(/unverified evidence is not revenue/i);
   });
 });
 

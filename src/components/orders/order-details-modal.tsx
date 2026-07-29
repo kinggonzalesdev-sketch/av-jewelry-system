@@ -14,13 +14,21 @@ import {
   setCustomerResponseAction,
   verifyForInvoiceAction,
 } from '@/lib/orders/actions';
+import { renderOrderMessageAction } from '@/lib/messaging/actions';
 import { formatPeso } from '@/lib/payments/format';
 import type { OrderDetail, OrderDetailResult } from '@/lib/orders/detail-types';
 import type { PaymentStatus } from '@/lib/orders/service';
 import { OrderDestinationTransfer } from '@/components/orders/order-destination-transfer';
 import { OrderCancelAction } from '@/components/orders/order-cancel-action';
 import { OrderPaymentActions } from '@/components/orders/order-payment-actions';
-import { canOfferPayment } from '@/lib/orders/stage-actions';
+import { OrderVerifyPayment } from '@/components/orders/order-verify-payment';
+import { OrderCompletionActions } from '@/components/orders/order-completion-actions';
+import {
+  canOfferCancel,
+  canOfferPayment,
+  stageLabel,
+  stageOffers,
+} from '@/lib/orders/stage-actions';
 import { Money, SensitivePhone, Sensitive } from '@/components/shell/privacy';
 import { StatusBadge, type BadgeTone } from '@/components/ui/page-primitives';
 
@@ -74,13 +82,21 @@ const PRINT_CSS = `
 }
 `;
 
-const TABS = [
-  ['overview', 'Overview'],
-  ['items', 'Items'],
-  ['history', 'History'],
-] as const;
+/**
+ * Tabs (§8). Only the "Total" section keeps a separate Overview; every other
+ * section shows ONE combined tab so item details and workflow history are read
+ * together instead of being split across three near-empty panels.
+ */
+type TabKey = 'overview' | 'detail';
 
-type TabKey = (typeof TABS)[number][0];
+function tabsFor(section: string): ReadonlyArray<readonly [TabKey, string]> {
+  return section === 'all'
+    ? ([
+        ['overview', 'Overview'],
+        ['detail', 'Items & History'],
+      ] as const)
+    : ([['detail', 'Items & History']] as const);
+}
 
 function humanize(value: string): string {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -136,6 +152,108 @@ function Block({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
+/**
+ * The shared card shell every Order-flow modal uses — one look for the Summary,
+ * the stage actions, and the Payment section, so every status reads the same. An
+ * iconed gold title, an optional subtitle, and a right-hand slot (used to seat
+ * Cancel Order beside the payment actions instead of in a separate Danger Zone).
+ */
+function SectionCard({
+  icon,
+  title,
+  subtitle,
+  right,
+  children,
+  testId,
+}: {
+  icon?: string;
+  title: string;
+  subtitle?: string;
+  right?: React.ReactNode;
+  children?: React.ReactNode;
+  testId?: string;
+}) {
+  return (
+    <div
+      className="rounded-xl border border-border bg-card/40 p-4"
+      {...(testId ? { 'data-testid': testId } : {})}
+    >
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            {icon ? (
+              <span aria-hidden="true" className="text-sm text-gold-strong">
+                {icon}
+              </span>
+            ) : null}
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-gold-strong">
+              {title}
+            </h3>
+          </div>
+          {subtitle ? (
+            <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>
+          ) : null}
+        </div>
+        {right ? <div className="shrink-0">{right}</div> : null}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** One labelled figure in the Summary card. Label muted above, value strong. */
+function SummaryItem({
+  icon,
+  label,
+  children,
+}: {
+  icon?: string;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-2.5">
+      {icon ? (
+        <span
+          aria-hidden="true"
+          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gold/30 text-sm text-gold-strong"
+        >
+          {icon}
+        </span>
+      ) : null}
+      <div className="min-w-0">
+        <p className="text-[11px] text-muted-foreground">{label}</p>
+        <div className="text-sm font-semibold break-words">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The Order Summary card, shared by every stage. A 2-column grid of icon rows,
+ * exactly the reference layout. Callers pass the rows so each stage can label its
+ * money the way that stage talks about it (Required vs Total, and so on).
+ */
+function SummaryCard({
+  testId,
+  rows,
+}: {
+  testId?: string;
+  rows: Array<{ icon?: string; label: string; value: React.ReactNode }>;
+}) {
+  return (
+    <SectionCard icon="▤" title="Order Summary" {...(testId ? { testId } : {})}>
+      <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+        {rows.map((r) => (
+          <SummaryItem key={r.label} label={r.label} {...(r.icon ? { icon: r.icon } : {})}>
+            {r.value}
+          </SummaryItem>
+        ))}
+      </div>
+    </SectionCard>
+  );
+}
+
 /** One tab's panel. Kept in the DOM even when inactive (only hidden) so print and
  *  export see the whole record. */
 function TabPanel({ active, children }: { active: boolean; children: React.ReactNode }) {
@@ -146,15 +264,6 @@ function TabPanel({ active, children }: { active: boolean; children: React.React
   );
 }
 
-/** A compact financial figure in the sticky header. */
-function FinChip({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-md border border-border bg-secondary/40 px-2 py-1 text-center">
-      <p className="text-[9px] uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="text-xs font-semibold tabular-nums">{children}</p>
-    </div>
-  );
-}
 
 function ModalHeader({
   detail,
@@ -163,19 +272,17 @@ function ModalHeader({
   detail: OrderDetail;
   onClose: () => void;
 }) {
-  const a = detail.amounts;
   return (
     <div className="shrink-0 border-b border-border bg-card px-4 py-3">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-sm font-semibold">{detail.orderNumber}</span>
-            <StatusBadge label={humanize(detail.status)} tone="neutral" />
+            <StatusBadge label={stageLabel(detail.status)} tone="neutral" />
           </div>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {detail.customer.displayName} ·{' '}
-            <span className="font-mono">{detail.invoiceNumber}</span>
-          </p>
+          {/* The customer · invoice sub-line was removed from the header (Owner
+              request) — the Summary card carries the customer, and the order
+              number above is enough up top. */}
         </div>
         <button
           type="button"
@@ -187,19 +294,9 @@ function ModalHeader({
           ✕
         </button>
       </div>
-
-      {/* Compact financial summary — always visible in the header. */}
-      <div className="mt-2 grid grid-cols-3 gap-1.5">
-        <FinChip label="Total">
-          {a.unavailable ? '—' : <Money amount={a.totalAmountPayable} />}
-        </FinChip>
-        <FinChip label="Verified Paid">
-          {a.unavailable ? '—' : <Money amount={a.verifiedNetPayments} />}
-        </FinChip>
-        <FinChip label="Remaining">
-          {a.unavailable ? '—' : <Money amount={a.outstandingBalance} />}
-        </FinChip>
-      </div>
+      {/* The Total / Verified / Remaining chips were removed from the header (Owner
+          request) — the Summary card below already carries those figures, so the
+          header stays compact with just the order, customer, and status. */}
     </div>
   );
 }
@@ -289,7 +386,18 @@ function ForInvoiceView({
       setMsgState('open');
       return;
     }
-    setMsgBody(res.message?.body ?? '');
+
+    // A message the operator already prepared WINS — it is a real saved record and
+    // must never be silently replaced by a template. Only when none exists yet do
+    // we seed the editor from the Invoice template in Settings, so the shop's own
+    // wording is what actually goes out.
+    let body = res.message?.body ?? '';
+    if (!body.trim()) {
+      const rendered = await renderOrderMessageAction(orderId, 'invoice');
+      if (rendered.ok) body = rendered.message;
+    }
+
+    setMsgBody(body);
     setSavedMsg(false);
     setMsgState('open');
   };
@@ -352,25 +460,35 @@ function ForInvoiceView({
       </div>
 
       <div className="modal-scroll flex-1 space-y-3 overflow-y-auto px-4 py-3">
-        {/* The six visible facts. */}
-        <div
-          className="grid grid-cols-2 gap-x-4 rounded-lg border border-border p-3"
-          data-testid="for-invoice-fields"
-        >
-          <KV label="Order Number">
-            <span className="font-mono">{detail.orderNumber}</span>
-          </KV>
-          <KV label="Status">For Invoice</KV>
-          <KV label="Customer Name">{detail.customer.displayName}</KV>
-          <KV label="Date Created">{fmtDateTime(detail.createdAt)}</KV>
-          <KV label="Total Price">
-            {detail.amounts.unavailable ? '—' : <Money amount={detail.amounts.totalAmountPayable} />}
-          </KV>
-          <KV label="Total Grams">{gramsText}</KV>
-          <KV label="Price per Gram">
-            {pricePerGram === null ? '—' : <Money amount={pricePerGram} />}
-          </KV>
-        </div>
+        {/* The six visible facts — standardized Summary card. */}
+        <SummaryCard
+          testId="for-invoice-fields"
+          rows={[
+            {
+              icon: '▤',
+              label: 'Order Number',
+              value: <span className="font-mono">{detail.orderNumber}</span>,
+            },
+            { icon: '◔', label: 'Status', value: 'For Invoice' },
+            { icon: '☺', label: 'Customer Name', value: detail.customer.displayName },
+            { icon: '🗓', label: 'Date Created', value: fmtDateTime(detail.createdAt) },
+            {
+              icon: '₱',
+              label: 'Total Price',
+              value: detail.amounts.unavailable ? (
+                '—'
+              ) : (
+                <Money amount={detail.amounts.totalAmountPayable} />
+              ),
+            },
+            { icon: '⚖', label: 'Total Grams', value: gramsText },
+            {
+              icon: '▦',
+              label: 'Price per Gram',
+              value: pricePerGram === null ? '—' : <Money amount={pricePerGram} />,
+            },
+          ]}
+        />
 
         {/* Actions. */}
         <div className="no-print space-y-2 rounded-lg border border-gold/40 bg-gold/5 p-3">
@@ -587,7 +705,17 @@ function ForReminderView({
   const [sendingReminder, setSendingReminder] = useState(false);
   const [reminderError, setReminderError] = useState<string | null>(null);
 
-  const reminderBody = (n: number): string => {
+  /**
+   * The wording actually sent comes from Settings → Message Templates
+   * (reminder_1 / 2 / 3), rendered server-side with this order's real figures.
+   *
+   * `fallbackBody` is the built-in wording, used ONLY if the template cannot be
+   * read. A reminder that refuses to compose because Settings is unreachable
+   * would block chasing money, so the button always produces something true.
+   */
+  const [reminderBodies, setReminderBodies] = useState<Record<number, string>>({});
+
+  const fallbackBody = (n: number): string => {
     const amt = remaining ? formatPeso(remaining) : 'your remaining balance';
     return (
       `Hi ${detail.customer.displayName}! Friendly reminder (${n}/3) for order ` +
@@ -596,10 +724,18 @@ function ForReminderView({
     );
   };
 
+  const reminderBody = (n: number): string => reminderBodies[n] ?? fallbackBody(n);
+
   const startReminder = (n: number) => {
     setReminderError(null);
     setComposing(n);
     if (fbUrl) window.open(fbUrl, '_blank', 'noopener,noreferrer');
+    // Render the template for THIS reminder number; the composer shows the exact
+    // text that will be recorded as sent.
+    const key = n === 1 ? 'reminder_1' : n === 2 ? 'reminder_2' : 'reminder_3';
+    void renderOrderMessageAction(orderId, key).then((res) => {
+      if (res.ok) setReminderBodies((prev) => ({ ...prev, [n]: res.message }));
+    });
   };
 
   const confirmReminder = async (n: number) => {
@@ -660,30 +796,58 @@ function ForReminderView({
       </div>
 
       <div className="modal-scroll flex-1 space-y-3 overflow-y-auto px-4 py-3">
-        {/* Customer + payment figures. */}
-        <div
-          className="grid grid-cols-2 gap-x-4 rounded-lg border border-border p-3"
-          data-testid="for-reminder-fields"
-        >
-          <KV label="Customer Name">{detail.customer.displayName}</KV>
-          <KV label="Order Number">
-            <span className="font-mono">{detail.orderNumber}</span>
-          </KV>
-          <KV label="Required Payment">
-            {a.unavailable ? '—' : <Money amount={a.requiredDownPayment} />}
-          </KV>
-          <KV label="Verified Payment">
-            {a.unavailable ? '—' : <Money amount={a.verifiedNetPayments} />}
-          </KV>
-          <KV label="Remaining Required Payment">
-            {remaining === null ? '—' : <Money amount={remaining} />}
-          </KV>
-        </div>
+        {/* Summary card — the standardized layout, labelled the way For Reminder
+            talks about money (Required, not Total). */}
+        <SummaryCard
+          testId="for-reminder-fields"
+          rows={[
+            { icon: '☺', label: 'Customer Name', value: detail.customer.displayName },
+            {
+              icon: '▤',
+              label: 'Order Number',
+              value: <span className="font-mono">{detail.orderNumber}</span>,
+            },
+            {
+              icon: '₱',
+              label: 'Required Payment',
+              value: a.unavailable ? '—' : <Money amount={a.requiredDownPayment} />,
+            },
+            {
+              icon: '✓',
+              label: 'Verified Payment',
+              value: a.unavailable ? '—' : <Money amount={a.verifiedNetPayments} />,
+            },
+            {
+              icon: '▦',
+              label: 'Remaining Required Payment',
+              value: remaining === null ? '—' : <Money amount={remaining} />,
+            },
+          ]}
+        />
+
+        {/* Add Payment (Owner request §4). A reminder chases money, so the money
+            can be taken here rather than closing and reopening the order in
+            another view. Offered only while a balance remains — the shared stage
+            table decides, exactly as it does in the full modal. */}
+        {canOfferPayment({
+          status: detail.status,
+          paidInFull: a.paidInFull,
+          balanceUnavailable: a.unavailable !== null,
+          canRecordPayment: detail.permissions.canRecordPayment,
+        }) ? (
+          <OrderPaymentActions
+            orderId={orderId}
+            remaining={a.outstandingBalance}
+            paidInFull={a.paidInFull}
+            canRecord={detail.permissions.canRecordPayment}
+            onRefresh={onDone}
+          />
+        ) : null}
 
         {/* Reminders 1 · 2 · 3 — sequential, single-send each. */}
         <div className="no-print space-y-2 rounded-lg border border-gold/40 bg-gold/5 p-3">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-gold-strong">
-            Reminders
+            Reminder Actions
           </p>
           <div className="flex flex-wrap items-center gap-2">
             {[1, 2, 3].map((n) => {
@@ -815,15 +979,18 @@ function ForReminderView({
             </div>
           ) : null}
 
-          {/* Cancel Order — destructive, separated from the reminder actions. */}
-          <OrderCancelAction
-            orderId={detail.officialOrderId}
-            orderNumber={detail.orderNumber}
-            customerName={detail.customer.displayName}
-            status={detail.status}
-            isOwner={detail.permissions.isOwner}
-            onDone={onDone}
-          />
+          {/* Cancel Order — just the button, aligned right (no Danger Zone). */}
+          <div className="flex justify-end pt-1">
+            <OrderCancelAction
+              orderId={detail.officialOrderId}
+              orderNumber={detail.orderNumber}
+              customerName={detail.customer.displayName}
+              status={detail.status}
+              isOwner={detail.permissions.isOwner}
+              compact
+              onDone={onDone}
+            />
+          </div>
       </div>
     </>
   );
@@ -937,14 +1104,21 @@ function WorkflowActions({
 
 function DetailBody({
   detail,
+  section,
   onRefresh,
   onClose,
 }: {
   detail: OrderDetail;
+  /** Which Orders card the modal was opened from. Only 'all' (Total) keeps a
+   *  separate Overview tab (§8). */
+  section: string;
   onRefresh: () => void;
   onClose: () => void;
 }) {
-  const [tab, setTab] = useState<TabKey>('overview');
+  const tabs = tabsFor(section);
+  // Default to the first tab this section actually has — outside Total there is
+  // no Overview to land on.
+  const [tab, setTab] = useState<TabKey>(section === 'all' ? 'overview' : 'detail');
 
   // For Invoice orders get the dedicated, stripped-down view (Owner request) — no
   // tabs, no financial/fulfillment detail. Every other status keeps the full
@@ -958,100 +1132,104 @@ function DetailBody({
   }
 
   const a = detail.amounts;
-  const f = detail.fulfillment;
-  const fr = detail.fulfillmentRow;
   const itemCount = detail.items.reduce((n, it) => n + (it.quantity || 0), 0);
-
-  const methodText = fr?.method
-    ? humanize(fr.method)
-    : f?.collectionChannel
-      ? humanize(f.collectionChannel)
-      : 'Not set';
-  const fulfillStatus = f ? humanize(f.status) : fr ? humanize(fr.status) : 'Not started';
-  const codText = fr
-    ? fr.isCod
-      ? fr.codApproved
-        ? 'COD · approved'
-        : 'COD · not approved'
-      : 'No COD'
-    : '—';
-  const depositText = fr
-    ? fr.meetsDepositFloor
-      ? 'Deposit met'
-      : 'Below deposit floor'
-    : '—';
 
   return (
     <>
       <ModalHeader detail={detail} onClose={onClose} />
 
-      {/* Tab bar — horizontally scrollable on mobile; never navigates. */}
-      <div
-        role="tablist"
-        className="no-print flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-card px-2 py-1.5"
-      >
-        {TABS.map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={tab === key}
-            onClick={() => setTab(key)}
-            data-testid={`order-modal-tab-${key}`}
-            className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-              tab === key
-                ? 'bg-gold/15 text-gold-strong'
-                : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-            }`}
+      {/* One vertical flow: Summary card → stage action cards → Payment (+ Cancel
+          on the right) → the tabs. Same order and card style for every stage. */}
+      <div className="modal-scroll flex-1 space-y-3 overflow-y-auto px-4 py-3">
+        {/* Fully-paid banner — lifted to the UPPER part of the modal (Owner
+            request) so it is the first thing seen, not buried in the Payment card. */}
+        {!a.unavailable && a.paidInFull ? (
+          <div
+            className="flex items-center gap-2 rounded-xl border border-green-600/40 bg-green-600/10 px-4 py-3 text-sm font-semibold text-green-700"
+            data-testid="order-fully-paid"
           >
-            {label}
-          </button>
-        ))}
-      </div>
+            <span aria-hidden="true">✓</span>
+            This order is already fully paid.
+          </div>
+        ) : null}
 
-      {/* Scrollable tab content — every panel stays mounted for print/export. */}
-      <div className="modal-scroll flex-1 overflow-y-auto px-4 py-3">
+        {/* ---- Order Summary card (the reference layout) ------------------ */}
+        <SummaryCard
+          rows={[
+            { icon: '☺', label: 'Customer Name', value: detail.customer.displayName },
+            {
+              icon: '▤',
+              label: 'Order Number',
+              value: <span className="font-mono">{detail.orderNumber}</span>,
+            },
+            {
+              icon: '₱',
+              label: 'Total Amount',
+              value: a.unavailable ? '—' : <Money amount={a.totalAmountPayable} />,
+            },
+            {
+              icon: '✓',
+              label: 'Verified Payment',
+              value: a.unavailable ? '—' : <Money amount={a.verifiedNetPayments} />,
+            },
+            {
+              icon: '▦',
+              label: 'Remaining balance',
+              value: a.unavailable ? (
+                <span className="text-destructive">Unavailable</span>
+              ) : (
+                <Money amount={a.outstandingBalance} />
+              ),
+            },
+            {
+              icon: '◔',
+              label: 'Payment Status',
+              value: (
+                <StatusBadge
+                  label={PAYMENT_LABEL[detail.paymentStatus]}
+                  tone={PAYMENT_TONE[detail.paymentStatus]}
+                />
+              ),
+            },
+          ]}
+        />
+
+        {/* ---- Stage actions + Payment + Cancel (standardized cards) ------ */}
+        <OrderActionsBar detail={detail} onRefresh={onRefresh} />
+
+        {/* Tab bar — horizontally scrollable on mobile; never navigates. Hidden
+            entirely when a section has only one tab: a single tab is a label, not
+            a choice, and rendering the bar would just be a strip of dead space. */}
+        <div
+          role="tablist"
+          hidden={tabs.length < 2}
+          className="no-print flex gap-1 overflow-x-auto rounded-lg border border-border bg-card/40 p-1"
+        >
+          {tabs.map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={tab === key}
+              onClick={() => setTab(key)}
+              data-testid={`order-modal-tab-${key}`}
+              className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                tab === key
+                  ? 'bg-gold/15 text-gold-strong'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* -------------------------------- OVERVIEW ------------------------- */}
+        {/* Only the non-duplicate details — the money + customer name already sit
+            in the Summary card above, so this shows what that card does not. */}
         <TabPanel active={tab === 'overview'}>
           <div className="space-y-3">
-            {/* For Invoice ('invoiced') is handled by ForInvoiceView above and never
-                reaches this tabbed layout. */}
-            <WorkflowActions
-              orderId={detail.officialOrderId}
-              status={detail.status}
-              canConfirmPayment={detail.permissions.canRecordPayment}
-              canPrepare={detail.permissions.canPrepareFulfillment}
-              requiredDown={a.requiredDownPayment}
-              verified={a.verifiedNetPayments}
-              onDone={onRefresh}
-            />
-
-            {/* For Prepare: all fulfillment decisions (Delivery / Pickup / Layaway /
-                Keep / Cancelled) happen here, with a confirmation step. */}
-            {detail.status === 'for_preparation' ? (
-              <OrderDestinationTransfer
-                orderId={detail.officialOrderId}
-                status={detail.status}
-                destination={detail.fulfillmentDestination}
-                destinationSetByName={detail.destinationSetByName}
-                destinationSetAt={detail.destinationSetAt}
-                canTransfer={detail.permissions.canPrepareFulfillment}
-                onTransferred={onRefresh}
-              />
-            ) : null}
-
-            {/* Cancel Order — destructive, kept apart from the forward actions. */}
-            <OrderCancelAction
-              orderId={detail.officialOrderId}
-              orderNumber={detail.orderNumber}
-              customerName={detail.customer.displayName}
-              status={detail.status}
-              isOwner={detail.permissions.isOwner}
-              onDone={onRefresh}
-            />
-
             <Block title="Customer">
-              <KV label="Name">{detail.customer.displayName}</KV>
               <KV label="Contact">
                 {detail.customer.contactNumber ? (
                   <SensitivePhone value={detail.customer.contactNumber} />
@@ -1059,6 +1237,7 @@ function DetailBody({
                   '—'
                 )}
               </KV>
+              <KV label="Items">{itemCount}</KV>
               {detail.customer.address ? (
                 <KV label="Address" wide>
                   <Sensitive>{detail.customer.address}</Sensitive>
@@ -1066,75 +1245,27 @@ function DetailBody({
               ) : null}
             </Block>
 
-            <Block title="Order">
-              <KV label="Order No.">
-                <span className="font-mono">{detail.orderNumber}</span>
-              </KV>
-              <KV label="Invoice No.">
-                <span className="font-mono">{detail.invoiceNumber}</span>
-              </KV>
-              <KV label="Created">{fmtDateTime(detail.createdAt)}</KV>
-              <KV label="Items">{itemCount}</KV>
-            </Block>
+            {/* The "Order" block (Invoice No. / Created / Admin) was removed from
+                every stage's Overview by Owner request — the header already shows
+                the order and invoice, so it was duplicate. Completion attribution
+                stays, since nothing else surfaces it. */}
+            {detail.completedByName ? (
+              <Block title="Completion">
+                <KV label="Completed by" wide>
+                  {detail.completedByName}
+                  {detail.completedAt ? ` · ${fmtDateTime(detail.completedAt)}` : ''}
+                </KV>
+              </Block>
+            ) : null}
 
-            <Block title="Financial summary">
-              {a.unavailable ? (
-                <div className="col-span-2 text-sm" role="alert">
-                  <p className="font-semibold text-destructive">Balance unavailable</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{a.unavailable}</p>
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    This is <strong>not</strong> a zero balance.
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <KV label="Total amount">
-                    <Money amount={a.totalAmountPayable} />
-                  </KV>
-                  <KV label="Verified paid">
-                    <Money amount={a.verifiedNetPayments} />
-                  </KV>
-                  <KV label="Remaining balance">
-                    <Money
-                      amount={a.outstandingBalance}
-                      className={a.paidInFull ? '' : 'font-semibold'}
-                    />
-                  </KV>
-                  <KV label="Payment status">
-                    <StatusBadge
-                      label={PAYMENT_LABEL[detail.paymentStatus]}
-                      tone={PAYMENT_TONE[detail.paymentStatus]}
-                    />
-                  </KV>
-                </>
-              )}
-            </Block>
-
-            {/* Add Payment / Add Down Payment · Deposit. Offered ONLY when the
-                stage allows money, a balance actually remains, and the user may
-                record one — all three decided by the shared stage table, never by a
-                condition written here. A fully-paid order says so instead of
-                showing a button the server would refuse. */}
-            {canOfferPayment({
-              status: detail.status,
-              paidInFull: a.paidInFull,
-              balanceUnavailable: a.unavailable !== null,
-              canRecordPayment: detail.permissions.canRecordPayment,
-            }) ? (
-              <OrderPaymentActions
-                orderId={detail.officialOrderId}
-                remaining={a.outstandingBalance}
-                paidInFull={a.paidInFull}
-                canRecord={detail.permissions.canRecordPayment}
-                onRefresh={onRefresh}
-              />
-            ) : !a.unavailable && a.paidInFull ? (
-              <p
-                className="rounded-lg border border-green-600/40 bg-green-600/10 px-3 py-2 text-sm text-green-700"
-                data-testid="order-fully-paid"
-              >
-                This order is already fully paid.
-              </p>
+            {a.unavailable ? (
+              <div className="rounded-lg border border-border p-3 text-sm" role="alert">
+                <p className="font-semibold text-destructive">Balance unavailable</p>
+                <p className="mt-1 text-xs text-muted-foreground">{a.unavailable}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  This is <strong>not</strong> a zero balance.
+                </p>
+              </div>
             ) : null}
 
             {detail.paymentHistory.length > 0 ? (
@@ -1176,17 +1307,15 @@ function DetailBody({
               </div>
             ) : null}
 
-            <Block title="Fulfillment summary">
-              <KV label="Method">{methodText}</KV>
-              <KV label="Status">{fulfillStatus}</KV>
-              <KV label="COD">{codText}</KV>
-              <KV label="Deposit">{depositText}</KV>
-            </Block>
+            {/* Fulfillment summary was REMOVED from every Order View modal by
+                Owner request (§9). The underlying fulfillment records and workflow
+                are untouched — only this read-out is gone. */}
           </div>
         </TabPanel>
 
         {/* --------------------------------- ITEMS -------------------------- */}
-        <TabPanel active={tab === 'items'}>
+        <TabPanel active={tab === 'detail'}>
+          <div className="space-y-4">
           {detail.items.length === 0 ? (
             <p className="text-xs text-muted-foreground">
               No line items found for this order.
@@ -1233,10 +1362,8 @@ function DetailBody({
               </table>
             </div>
           )}
-        </TabPanel>
 
-        {/* -------------------------------- HISTORY ------------------------- */}
-        <TabPanel active={tab === 'history'}>
+          {/* ------------------------------ HISTORY ------------------------- */}
           <div className="space-y-3">
             <div>
               <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -1312,18 +1439,171 @@ function DetailBody({
               )}
             </div>
           </div>
+          </div>
         </TabPanel>
       </div>
     </>
   );
 }
 
+/**
+ * The actions row shared by every stage (§7, §10).
+ *
+ * Grouped at the top, ordered forward-first with the destructive action last and
+ * visually separated. What appears is decided ENTIRELY by the shared stage table
+ * plus each action's own guard — there is no `status === …` branch here, which is
+ * the whole point of centralising it.
+ */
+function OrderActionsBar({
+  detail,
+  onRefresh,
+}: {
+  detail: OrderDetail;
+  onRefresh: () => void;
+}) {
+  const a = detail.amounts;
+  const balanceUnavailable = a.unavailable !== null;
+
+  const showPayment = canOfferPayment({
+    status: detail.status,
+    paidInFull: a.paidInFull,
+    balanceUnavailable,
+    canRecordPayment: detail.permissions.canRecordPayment,
+  });
+  const showTransfer =
+    stageOffers(detail.status, 'transfer_destination') &&
+    detail.permissions.canPrepareFulfillment;
+
+  const canCancel = canOfferCancel(detail.status) || detail.status === 'for_cancel';
+
+  // Unverified, still-live payment records — these are what Verify Payment acts on.
+  // A payment added through Add Payment is auto-verified, so this is usually empty
+  // until evidence is recorded elsewhere. Never offered once fully paid.
+  const unverifiedPayments = detail.paymentHistory.filter(
+    (p) => p.status !== 'verified' && !p.voided && !p.reversed,
+  );
+  const showVerify =
+    detail.permissions.canRecordPayment &&
+    !a.paidInFull &&
+    unverifiedPayments.length > 0;
+
+  return (
+    <div className="no-print space-y-3">
+      {/* Actions card — the forward workflow for this stage. */}
+      <SectionCard
+        icon="◈"
+        title="Actions"
+        subtitle="Move this order forward in its workflow."
+      >
+        <div className="space-y-2">
+          <WorkflowActions
+            orderId={detail.officialOrderId}
+            status={detail.status}
+            canConfirmPayment={detail.permissions.canRecordPayment}
+            canPrepare={detail.permissions.canPrepareFulfillment}
+            requiredDown={a.requiredDownPayment}
+            verified={a.verifiedNetPayments}
+            onDone={onRefresh}
+          />
+
+          {/* Done / Transfer to Completed (§5). Renders nothing unless the stage
+              offers completion at all. */}
+          <OrderCompletionActions
+            orderId={detail.officialOrderId}
+            status={detail.status}
+            paidInFull={a.paidInFull}
+            balanceUnavailable={balanceUnavailable}
+            canRelease={detail.permissions.canReleaseFulfillment}
+            completionBlock={detail.completionBlock}
+            onDone={onRefresh}
+          />
+
+          {/* Transfer to Destination (§6). */}
+          {showTransfer ? (
+            <OrderDestinationTransfer
+              orderId={detail.officialOrderId}
+              destination={detail.fulfillmentDestination}
+              destinationSetByName={detail.destinationSetByName}
+              destinationSetAt={detail.destinationSetAt}
+              canTransfer={detail.permissions.canPrepareFulfillment}
+              completionBlock={detail.completionBlock}
+              onTransferred={onRefresh}
+            />
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              No further workflow action for this stage.
+            </p>
+          )}
+        </div>
+      </SectionCard>
+
+      {/* Payment card — Add Payment on the left, Cancel Order seated on the RIGHT
+          of the same lower section (no separate Danger Zone). Add Payment shows
+          only while a balance remains and the user may record one. */}
+      <SectionCard
+        icon="▭"
+        title="Payment"
+        subtitle="Record a payment made by the customer."
+        {...(canCancel
+          ? {
+              right: (
+                <OrderCancelAction
+                  orderId={detail.officialOrderId}
+                  orderNumber={detail.orderNumber}
+                  customerName={detail.customer.displayName}
+                  status={detail.status}
+                  isOwner={detail.permissions.isOwner}
+                  compact
+                  onDone={onRefresh}
+                />
+              ),
+            }
+          : {})}
+      >
+        {showPayment || showVerify ? (
+          // Add Payment then Verify Payment, aligned in one compact row.
+          <div className="flex flex-wrap items-center gap-2">
+            {showPayment ? (
+              <OrderPaymentActions
+                orderId={detail.officialOrderId}
+                remaining={a.outstandingBalance}
+                paidInFull={a.paidInFull}
+                canRecord={detail.permissions.canRecordPayment}
+                onRefresh={onRefresh}
+              />
+            ) : null}
+            {showVerify ? (
+              <OrderVerifyPayment
+                customerName={detail.customer.displayName}
+                orderNumber={detail.orderNumber}
+                unverified={unverifiedPayments}
+                canVerify={detail.permissions.canRecordPayment}
+                onRefresh={onRefresh}
+              />
+            ) : null}
+          </div>
+        ) : (
+          // The fully-paid notice now lives as a banner at the top of the modal,
+          // so the card just states there is nothing to collect.
+          <p className="text-xs text-muted-foreground">
+            No payment is due on this order right now.
+          </p>
+        )}
+      </SectionCard>
+    </div>
+  );
+}
+
 export function OrderDetailsModal({
   orderId,
+  section = 'all',
   onClose,
   onMutated,
 }: {
   orderId: string | null;
+  /** The Orders card this was opened from — drives the tab structure (§8).
+   *  Defaults to Total so callers outside Orders keep the full tabbed view. */
+  section?: string;
   onClose: () => void;
   /** Called after an in-modal action changes data, so the parent can refresh
    *  its status counts (e.g. router.refresh()) — never a full reload. */
@@ -1433,7 +1713,12 @@ export function OrderDetailsModal({
               </div>
             </>
           ) : result && result.ok ? (
-            <DetailBody detail={result.detail} onRefresh={refresh} onClose={onClose} />
+            <DetailBody
+              detail={result.detail}
+              section={section}
+              onRefresh={refresh}
+              onClose={onClose}
+            />
           ) : null}
         </div>
       </div>

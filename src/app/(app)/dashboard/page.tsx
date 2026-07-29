@@ -7,11 +7,7 @@ import { canOpenPage, getGrantedPermissions } from '@/lib/authz/guard';
 import {
   getDashboardCounts,
   getDashboardMetricsRanged,
-  listAuditEvents,
-  listNotifications,
-  search,
 } from '@/lib/dashboard/service';
-import { getFollowUpQueue } from '@/lib/followups/service';
 import { getMoneyInTransit } from '@/lib/finance/money-in-transit';
 import { getLayawayDashboard } from '@/lib/payments/layaway-ledger';
 import { getScrapIncome, getScrapTotal, listScrapSales } from '@/lib/scrap/service';
@@ -39,7 +35,6 @@ export default async function DashboardPage({
   // the page — by link OR by typing the URL. A Super Admin holds it implicitly.
   if (!(await canOpenPage('nav_dashboard'))) notFound();
   const params = await searchParams;
-  const query = typeof params.q === 'string' ? params.q : '';
 
   // The date range comes from the URL so every money figure is server-scoped to it.
   // No params → all time: from a sentinel epoch to today. The raw params are passed
@@ -53,10 +48,6 @@ export default async function DashboardPage({
   const [
     counts,
     metrics,
-    notifications,
-    audit,
-    results,
-    followUps,
     moneyInTransit,
     scrapTotal,
     scrapSales,
@@ -66,10 +57,6 @@ export default async function DashboardPage({
   ] = await Promise.all([
     getDashboardCounts(),
     getDashboardMetricsRanged(effFrom, effTo),
-    listNotifications(),
-    listAuditEvents(),
-    search(query),
-    getFollowUpQueue(),
     getMoneyInTransit(),
     getScrapTotal(effFrom, effTo),
     listScrapSales(8, { from: effFrom, to: effTo }),
@@ -84,17 +71,11 @@ export default async function DashboardPage({
     <div>
       <PageHeader
         title="Dashboard Profile"
-        description="Work queues, search, reports, reminders, and audit."
       />
 
       <DashboardView
         counts={counts}
         metrics={metrics}
-        notifications={notifications}
-        audit={audit}
-        results={results}
-        query={query}
-        followUps={followUps}
         moneyInTransit={moneyInTransit}
         scrapTotal={scrapTotal}
         scrapSales={scrapSales}

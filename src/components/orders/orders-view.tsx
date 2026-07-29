@@ -50,10 +50,15 @@ const PAYMENT_TONE: Record<PaymentStatus, BadgeTone> = {
   unavailable: 'danger',
 };
 
-/** Order statuses that count as "Ship Confirm" (shipping / pickup confirmed). */
+/**
+ * Order statuses that count as "Ship Confirm" — release APPROVED or already
+ * dispatched. `for_shipping_or_pickup` deliberately moved OUT: it is the
+ * awaiting-release stage and now has its own For Shipping card, and the two
+ * buckets must stay disjoint or an order would be counted twice.
+ */
 const SHIP_CONFIRMED = new Set([
-  'for_shipping_or_pickup',
   'approved_for_release',
+  'exceptional_release_pending',
   'dispatched_or_picked_up',
 ]);
 
@@ -67,9 +72,13 @@ function fulfillmentTone(status: string): BadgeTone {
 }
 
 /**
- * The Owner-approved Orders status cards, in order (reference mockup):
- * Total · For Invoice · For Reminder · For Prepare · For Confirm · Ship Confirm ·
- * Keep · For Cancel · Cancelled · Unverified Payment · For Layaway.
+ * The Owner-approved Orders status cards, in order:
+ * Total · For Invoice · For Reminder · For Prepare · For Confirm · For Shipping ·
+ * Ship Confirm · Delivery · Pickup · For Layaway · Keep · For Cancel · Cancelled ·
+ * Unverified Payment · Completed.
+ *
+ * These same definitions drive the order-flow dropdown, which is why the labels
+ * are written once here rather than repeated there.
  *
  * Each card both COUNTS and FILTERS the loaded orders. Cards map to REAL signals
  * (official_orders.status / paymentStatus / layaway). For Layaway, Keep, and For
@@ -82,6 +91,7 @@ type CardKey =
   | 'for_reminder'
   | 'for_prepare'
   | 'for_confirm'
+  | 'for_shipping'
   | 'ship_confirm'
   | 'delivery'
   | 'pickup'
@@ -98,6 +108,7 @@ const CARD_DEFS: Array<{ key: CardKey; label: string; icon: string; tone: BadgeT
   { key: 'for_reminder', label: 'For Reminder', icon: '⏱', tone: 'neutral' },
   { key: 'for_prepare', label: 'For Prepare', icon: '◈', tone: 'neutral' },
   { key: 'for_confirm', label: 'For Confirm', icon: '▣', tone: 'gold' },
+  { key: 'for_shipping', label: 'For Shipping', icon: '📦', tone: 'neutral' },
   { key: 'ship_confirm', label: 'Ship Confirm', icon: '➤', tone: 'strong' },
   // For-Prepare transfer destinations (Orders Workflow).
   { key: 'delivery', label: 'Delivery', icon: '🛵', tone: 'gold' },
@@ -219,8 +230,14 @@ function matchesCard(order: OrderListRow, key: CardKey): boolean {
       return order.status === 'for_preparation' && !order.fulfillmentDestination;
     case 'for_confirm':
       return order.status === 'required_payment_verified';
+    case 'for_shipping':
+      // Awaiting release: routed to shipping, or sitting at the shipping stage.
+      return (
+        order.status === 'for_shipping_or_pickup' ||
+        order.fulfillmentDestination === 'shipping'
+      );
     case 'ship_confirm':
-      return SHIP_CONFIRMED.has(order.status) || order.fulfillmentDestination === 'shipping';
+      return SHIP_CONFIRMED.has(order.status);
     case 'delivery':
       return order.fulfillmentDestination === 'delivery';
     case 'pickup':
@@ -269,13 +286,22 @@ export function OrdersView({
   // nowhere, so search/filters/scroll are preserved automatically.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
-  const [fulfillmentFilter, setFulfillmentFilter] = useState('all');
   const [orderDate, setOrderDate] = useState('');
   const [shipDate, setShipDate] = useState('');
-  const [hideKeep, setHideKeep] = useState(false);
 
-  // Distinct fulfillment statuses present in the loaded data — the filter only
-  // offers values that actually exist, so it never implies data we do not have.
+  /**
+   * Fulfillment status — a SECOND, independent filter alongside the order-flow
+   * dropdown (restored by Owner request).
+   *
+   * The two are orthogonal, not duplicates: order flow says which section an
+   * order sits in, fulfillment status says how far the physical handover has got.
+   * They narrow the list together, and only the flow dropdown is tied to the
+   * status cards, so the cards and the dropdown still cannot disagree.
+   */
+  const [fulfillmentFilter, setFulfillmentFilter] = useState('all');
+
+  // Only statuses PRESENT in the loaded data are offered, so the filter never
+  // implies records we do not have.
   const fulfillmentOptions = useMemo(() => {
     const seen = new Set<string>();
     for (const o of rows) if (o.fulfillmentStatus) seen.add(o.fulfillmentStatus);
@@ -298,7 +324,6 @@ export function OrdersView({
     const q = query.trim().toLowerCase();
     return rows.filter((o) => {
       if (!matchesCard(o, card)) return false;
-      if (hideKeep && matchesCard(o, 'keep')) return false;
       if (orderDate && o.createdAt.slice(0, 10) !== orderDate) return false;
       if (shipDate && (o.shipDate?.slice(0, 10) ?? '') !== shipDate) return false;
       if (fulfillmentFilter === 'none' && o.fulfillmentStatus !== null) return false;
@@ -315,7 +340,7 @@ export function OrdersView({
         .toLowerCase()
         .includes(q);
     });
-  }, [rows, card, query, fulfillmentFilter, orderDate, shipDate, hideKeep]);
+  }, [rows, card, query, fulfillmentFilter, orderDate, shipDate]);
 
   // A FAILED read is not "no orders" — say so loudly (the session's hard rule).
   if (!result.ok) {
@@ -390,6 +415,25 @@ export function OrdersView({
             data-testid="orders-search"
             className="h-9 flex-1 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold"
           />
+          {/* Order flow — the SAME state the status cards drive, so the dropdown
+              and the highlighted card can never disagree. Its options are derived
+              from CARD_DEFS rather than written out again, which is what keeps the
+              labels identical and stops a flow existing in one place but not the
+              other. Selecting filters in place; nothing navigates. */}
+          <select
+            value={card}
+            onChange={(e) => setCard(e.target.value as CardKey)}
+            aria-label="Filter by order flow"
+            data-testid="orders-filter-flow"
+            className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+          >
+            {CARD_DEFS.map((def) => (
+              <option key={def.key} value={def.key}>
+                {def.label}
+              </option>
+            ))}
+          </select>
+
           <select
             value={fulfillmentFilter}
             onChange={(e) => setFulfillmentFilter(e.target.value)}
@@ -399,17 +443,15 @@ export function OrdersView({
           >
             <option value="all">All fulfillment</option>
             <option value="none">No fulfillment record</option>
-            {fulfillmentOptions.map((s) => (
-              <option key={s} value={s}>
-                {humanize(s)}
+            {fulfillmentOptions.map((s2) => (
+              <option key={s2} value={s2}>
+                {humanize(s2)}
               </option>
             ))}
           </select>
 
-          {/* Approved filters: Order Date · Ship Date · Hide Keep. Real:
-              Order Date filters on the order's created day, Ship Date on the
-              fulfillment dispatch day. Hide Keep excludes the Keep bucket (a
-              no-op until Keep has a backing concept — kept for the approved UI). */}
+          {/* Approved date filters. Order Date filters on the order's created day,
+              Ship Date on the fulfillment dispatch day. */}
           <label className="flex items-center gap-1 text-xs text-muted-foreground">
             <span className="sr-only">Order date</span>
             <span aria-hidden="true">🗓</span>
@@ -435,19 +477,6 @@ export function OrdersView({
               title="Ship date"
               className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
             />
-          </label>
-          <label
-            className="flex h-9 items-center gap-1.5 rounded-md border border-border px-2.5 text-sm"
-            data-testid="orders-filter-hide-keep"
-          >
-            <input
-              type="checkbox"
-              checked={hideKeep}
-              onChange={(e) => setHideKeep(e.target.checked)}
-              aria-label="Hide Keep"
-              className="h-4 w-4 accent-gold"
-            />
-            Hide Keep
           </label>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
@@ -557,6 +586,9 @@ export function OrdersView({
           in-modal action, only this order's data + the counts refresh. */}
       <OrderDetailsModal
         orderId={selectedId}
+        // The active card decides the tab structure: only Total keeps a separate
+        // Overview (§8).
+        section={card}
         onClose={() => setSelectedId(null)}
         onMutated={() => router.refresh()}
       />

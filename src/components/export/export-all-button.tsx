@@ -19,7 +19,16 @@ import { Modal } from '@/components/ui/modal';
  * the finished file. The button locks while generating so a repeat click can't
  * start a second export.
  */
-export function ExportAllButton() {
+export function ExportAllButton({
+  label = '⭳ Export All Data',
+  testId = 'export-all-data',
+  size,
+}: {
+  /** The trigger's wording. Dashboard Profile shows it as "Export Reports". */
+  label?: string;
+  testId?: string;
+  size?: 'sm';
+} = {}) {
   const [open, setOpen] = useState(false);
   const [applyRange, setApplyRange] = useState(false);
   const [from, setFrom] = useState('');
@@ -89,13 +98,14 @@ export function ExportAllButton() {
       <Button
         type="button"
         variant="outline"
+        {...(size ? { size } : {})}
         onClick={() => {
           setError(null);
           setOpen(true);
         }}
-        data-testid="export-all-data"
+        data-testid={testId}
       >
-        ⭳ Export All Data
+        {label}
       </Button>
 
       <Modal

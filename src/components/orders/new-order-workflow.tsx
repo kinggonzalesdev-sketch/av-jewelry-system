@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation';
 import { useMemo, useRef, useState } from 'react';
 
 import type { CaptureItem, WalkInItem } from '@/lib/orders/service';
+import type { AdminNameContext } from '@/lib/authz/admin-name';
+import { AdminNameField } from '@/components/orders/admin-name-field';
 import {
   captureManualOrderAction,
   captureWalkInOrderAction,
@@ -358,24 +360,27 @@ function NewOrderModal({
   customers,
   items,
   walkInItems,
-  shopName,
-  salesperson,
+  admins,
   onClose,
 }: {
   customers: Customer[];
   items: CaptureItem[];
   walkInItems: WalkInItem[];
-  shopName: string;
-  salesperson: string;
+  admins: AdminNameContext;
   onClose: () => void;
 }) {
   const router = useRouter();
-  const { printer, activeChannel, printLang } = usePrinter();
+  const { activeChannel, printLang } = usePrinter();
 
   const [mode, setMode] = useState<'order' | 'walkin'>('order');
   const today = new Date().toISOString().slice(0, 10);
 
   // Customer (shared, pick-OR-type).
+  // Admin Name is ALWAYS the signed-in account — read-only, no picker, no
+  // impersonation (Owner request). The server re-derives it regardless.
+  const adminId = admins.selfId;
+  const adminName = admins.selfName;
+
   const [customerInput, setCustomerInput] = useState('');
   const matchedCustomer =
     customers.find((c) => c.displayName === customerInput.trim()) ?? null;
@@ -487,7 +492,8 @@ function NewOrderModal({
   const buildSlip = (orderNumber: string): OrderSlipData => ({
     orderNumber,
     customerName: matchedCustomer?.displayName ?? customerInput.trim(),
-    salesperson,
+    // The slip still carries one name; it is now the Admin Name.
+    salesperson: adminName,
     dateTime: slipDateTime(),
     items: resolvedRows().map(({ row, item }) => {
       const total = centavosToStr(rowTotalCentavos(row, item));
@@ -566,6 +572,7 @@ function NewOrderModal({
           })),
           paymentMethod,
           saleDate: saleDate || null,
+          adminId,
         });
         if (!res.ok) {
           setError(res.error);
@@ -587,6 +594,7 @@ function NewOrderModal({
           customerId: matchedCustomer?.id ?? null,
           customerName: matchedCustomer ? null : customerInput.trim(),
           items: payloadItems,
+          adminId,
         });
         if (!res.ok) {
           setError(res.error);
@@ -749,20 +757,10 @@ function NewOrderModal({
       </div>
 
       <div className="space-y-3">
-        {/* Shop + Salesperson — the caller's real session identity (read-only). */}
-        <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
-          <label className="block">
-            <L>Shop Name</L>
-            <input className={fieldClass} value={shopName} readOnly />
-          </label>
-          <label className="block">
-            <L>Salesperson</L>
-            <input className={fieldClass} value={salesperson} readOnly />
-          </label>
-        </div>
-
+        {/* Customer Name first, then Admin Name directly below it (Owner request).
+            The Walk-In tab keeps its own "Name" label — untouched. */}
         <label className="block">
-          <L>{mode === 'walkin' ? 'Name' : 'Customer'}</L>
+          <L>{mode === 'walkin' ? 'Name' : 'Customer Name'}</L>
           <Combobox
             className={fieldClass}
             placeholder="Select a customer… or type a new name"
@@ -770,13 +768,14 @@ function NewOrderModal({
             onChange={setCustomerInput}
             options={customers.map((c) => c.displayName)}
           />
-          <p className="mt-1 text-[10px] text-muted-foreground">
-            {matchedCustomer
-              ? 'Existing customer selected.'
-              : customerInput.trim()
-                ? 'New customer — will be created on confirm.'
-                : 'Pick from the list, or type a new name.'}
-          </p>
+        </label>
+
+        {/* Admin Name — the signed-in account, read-only. Shop Name was removed
+            from the entry form by Owner request; the saved business name lives on
+            in settings and still prints on the slip. */}
+        <label className="block">
+          <L>Admin Name</L>
+          <AdminNameField admins={admins} className={fieldClass} />
         </label>
 
         <hr className="border-border" />
@@ -831,26 +830,6 @@ function NewOrderModal({
           </p>
         ) : null}
 
-        <p className="rounded-lg border border-dashed border-border p-2 text-[11px] text-muted-foreground">
-          {mode === 'walkin' ? (
-            <>
-              Accepting records a <strong>fully-paid, Completed</strong> sale for all
-              items and moves them into <strong>Completed Items</strong>.
-            </>
-          ) : (
-            <>
-              Confirm <strong>saves the order to For Invoice</strong> with all items and
-              reserves them, then prints one combined slip.
-            </>
-          )}{' '}
-          {printer ? (
-            <>The slip prints to <strong>{printer.deviceName}</strong> over Bluetooth.</>
-          ) : (
-            <>The slip opens your browser&apos;s print dialog.</>
-          )}{' '}
-          Saved before printing, so a print failure never deletes or duplicates it —
-          you can reprint.
-        </p>
       </div>
     </Modal>
   );
@@ -861,15 +840,13 @@ export function NewOrderWorkflow({
   items,
   walkInItems,
   canCreate,
-  shopName,
-  salesperson,
+  admins,
 }: {
   customers: Customer[];
   items: CaptureItem[];
   walkInItems: WalkInItem[];
   canCreate: boolean;
-  shopName: string;
-  salesperson: string;
+  admins: AdminNameContext;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -897,8 +874,7 @@ export function NewOrderWorkflow({
           customers={customers}
           items={items}
           walkInItems={walkInItems}
-          shopName={shopName}
-          salesperson={salesperson}
+          admins={admins}
           onClose={() => setOpen(false)}
         />
       ) : null}

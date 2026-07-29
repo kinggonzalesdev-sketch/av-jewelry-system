@@ -101,13 +101,9 @@ export const PRIMARY_NAV: readonly NavItem[] = [
   // Invoice was removed as a standalone item (Owner request 2026-07-22): the
   // Invoice workspace now lives INSIDE Orders → For Invoice. The /orders/invoice
   // route still exists and redirects there, so old links never 404.
-  {
-    href: '/customers',
-    label: 'Customers',
-    icon: '☺',
-    mobilePrimary: true,
-    available: true,
-  },
+  // Customers was removed from the sidebar (Owner request). The /customers route,
+  // its data, and the nav_customers permission are untouched — customer records are
+  // still reached from the order and layaway screens that reference them.
   {
     href: '/orders/inventory',
     label: 'Inventory',

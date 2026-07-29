@@ -68,13 +68,14 @@ export default async function StaffManagementPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">
-            Selected Admins: {activeSelectedAdmins} of 2
+            Selected Admins: {activeSelectedAdmins}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
           <p>
-            A maximum of two Selected Admin accounts may be active at once. The limit is
-            enforced by the database, not by this screen.
+            Admin is the standard team role (Owner decision) — the former max-2 cap
+            was retired, so any number of members may be Admin. The Super Admin cap
+            of 2 is separate and still enforced.
           </p>
           <p>
             Selected Admin status does not grant permissions. Every permission is granted

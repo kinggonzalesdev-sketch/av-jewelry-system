@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   canOfferCancel,
+  canOfferCompletion,
   canOfferPayment,
   stageConfig,
+  stageLabel,
+  stageOffers,
   STAGE_ACTIONS,
 } from '@/lib/orders/stage-actions';
 
@@ -102,6 +105,97 @@ describe('Danger Zone — Cancel Order visibility', () => {
     'offers Cancel Order on the active stage %s',
     (status) => {
       expect(canOfferCancel(status)).toBe(true);
+    },
+  );
+});
+
+describe('the status shown at the top matches the section (§7)', () => {
+  it('names the stage the operator sees, never the raw status', () => {
+    expect(stageLabel('required_payment_verified')).toBe('For Confirm');
+    expect(stageLabel('approved_for_release')).toBe('Ship Confirm');
+    expect(stageLabel('exceptional_release_pending')).toBe('Ship Confirm');
+    expect(stageLabel('for_shipping_or_pickup')).toBe('For Shipping');
+    expect(stageLabel('dispatched_or_picked_up')).toBe('Delivery / Pickup');
+  });
+});
+
+describe('stage action sets (§7)', () => {
+  it('Keep offers ONLY Transfer to Destination', () => {
+    expect(STAGE_ACTIONS.keep.actions).toEqual(['transfer_destination']);
+  });
+
+  it.each(['required_payment_verified', 'approved_for_release', 'exceptional_release_pending'])(
+    '%s offers transfer but never a handover action',
+    (status) => {
+      expect(stageOffers(status, 'transfer_destination')).toBe(true);
+      expect(stageOffers(status, 'done')).toBe(false);
+      expect(stageOffers(status, 'transfer_completed')).toBe(false);
+    },
+  );
+
+  it('For Shipping keeps Transfer to Destination (§6)', () => {
+    expect(stageOffers('for_shipping_or_pickup', 'transfer_destination')).toBe(true);
+  });
+
+  it('Delivery / Pickup is the only stage offering Done, Released, and completion', () => {
+    expect(stageOffers('dispatched_or_picked_up', 'done')).toBe(true);
+    expect(stageOffers('dispatched_or_picked_up', 'confirm_released')).toBe(true);
+    expect(stageOffers('dispatched_or_picked_up', 'transfer_completed')).toBe(true);
+  });
+
+  it.each(['completed', 'cancelled', 'for_cancel'] as const)(
+    '%s offers no workflow action at all',
+    (stage) => {
+      expect(STAGE_ACTIONS[stage].actions).toEqual([]);
+    },
+  );
+});
+
+/**
+ * Completion is the action that closes money and retires stock, so its visibility
+ * rules get their own pinning. The DATABASE is the authority (order_completion_block);
+ * these tests assert the UI never offers what SQL would refuse.
+ */
+describe('completion visibility (§5)', () => {
+  const base = {
+    status: 'dispatched_or_picked_up',
+    action: 'done' as const,
+    paidInFull: true,
+    balanceUnavailable: false,
+    canRelease: true,
+    completionBlock: null,
+  };
+
+  it('is offered when fully paid, permitted, and the database raises no block', () => {
+    expect(canOfferCompletion(base)).toBe(true);
+    expect(canOfferCompletion({ ...base, action: 'transfer_completed' })).toBe(true);
+  });
+
+  it('is REFUSED when the order is not fully paid', () => {
+    expect(canOfferCompletion({ ...base, paidInFull: false })).toBe(false);
+  });
+
+  it('is REFUSED when the database says it cannot complete, however right it looks here', () => {
+    expect(
+      canOfferCompletion({
+        ...base,
+        completionBlock: 'Fulfillment is not finished yet.',
+      }),
+    ).toBe(false);
+  });
+
+  it('is REFUSED when the balance is unreadable — that is not a paid order', () => {
+    expect(canOfferCompletion({ ...base, balanceUnavailable: true })).toBe(false);
+  });
+
+  it('is REFUSED without the release permission', () => {
+    expect(canOfferCompletion({ ...base, canRelease: false })).toBe(false);
+  });
+
+  it.each(['keep', 'for_preparation', 'for_layaway', 'invoiced'])(
+    'is REFUSED on %s, which does not offer completion however paid it is',
+    (status) => {
+      expect(canOfferCompletion({ ...base, status })).toBe(false);
     },
   );
 });

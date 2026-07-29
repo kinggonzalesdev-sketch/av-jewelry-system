@@ -4,7 +4,7 @@ import { recordAuditEvent } from '@/lib/audit/log';
 import { createClient } from '@/lib/supabase/server';
 
 /**
- * Add a real received payment (or Down Payment / Deposit) against an official order.
+ * Add a real received payment against an official order.
  * The guarded DB function `add_order_payment` is the authority: it recomputes the
  * remaining balance from SQL, blocks a zero/over-balance amount, records the payment
  * as verified + attributed (received_by, date, time), and returns the updated
@@ -18,7 +18,10 @@ export type AddOrderPaymentInput = {
   method: string | null;
   reference: string | null;
   notes: string | null;
-  isDeposit: boolean;
+  /** Legacy Down Payment / Deposit flag. The UI no longer offers a second button
+   *  (Owner request, §4), so this stays optional and defaults to false; it is kept
+   *  only so historical deposit rows keep their meaning. */
+  isDeposit?: boolean;
 };
 
 export type AddOrderPaymentResult =
@@ -54,7 +57,7 @@ export async function addOrderPayment(
     p_method: input.method,
     p_reference: input.reference,
     p_notes: input.notes,
-    p_is_deposit: input.isDeposit,
+    p_is_deposit: input.isDeposit === true,
   })) as { data: Record<string, unknown> | null; error: { message: string } | null };
 
   if (res.error) {
@@ -63,7 +66,7 @@ export async function addOrderPayment(
   const d = res.data ?? {};
 
   await recordAuditEvent({
-    action: input.isDeposit ? 'order.add_deposit' : 'order.add_payment',
+    action: input.isDeposit === true ? 'order.add_deposit' : 'order.add_payment',
     entityType: 'official_order',
     entityId: input.orderId,
     context: { amount, paid_in_full: d.paid_in_full === true },
