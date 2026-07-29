@@ -40,7 +40,7 @@ describe('approved navigation model (navigation.ts is the source of truth)', () 
       'Dashboard Profile',
       'Orders',
       'Customers',
-      'Items / Inventory',
+      'Inventory',
       'Layaway',
       'Scrap',
       // Team Management collapsible group (Owner request 2026-07-22). Settings moved
@@ -59,7 +59,7 @@ describe('approved navigation model (navigation.ts is the source of truth)', () 
   it('puts the rest under More, Dashboard Profile first', () => {
     expect(mobileMoreItems().map((i) => i.label)).toEqual([
       'Dashboard Profile',
-      'Items / Inventory',
+      'Inventory',
       'Layaway',
       'Scrap',
       'Attendance',

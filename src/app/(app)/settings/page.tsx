@@ -55,6 +55,32 @@ export default async function SettingsPage() {
         </section>
       ) : null}
 
+      {/* Message Templates — SUPER ADMIN only. Admins may SEND the messages from
+          Orders but never see or change the wording; the page enforces that itself. */}
+      {isOwner ? (
+        <section
+          className="rounded-xl border border-border bg-card p-4"
+          aria-labelledby="messages-h"
+        >
+          <h2 id="messages-h" className="text-sm font-semibold text-foreground">
+            Message Templates
+          </h2>
+          <p className="mb-3 mt-0.5 text-xs text-muted-foreground">
+            The wording used for Send Invoice and the three reminders.
+          </p>
+          <Link
+            href="/settings/messages"
+            className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium text-foreground hover:bg-accent"
+            data-testid="settings-message-templates"
+          >
+            <span aria-hidden="true" className="w-4 text-center text-xs">
+              ✉
+            </span>
+            Edit Message Templates
+          </Link>
+        </section>
+      ) : null}
+
       {/* Administration — PRIMARY Super Admin only (Owner request). A second Super
           Admin does not see it; /admin/integrations enforces the same rule itself,
           so hiding the link is convenience, not the control. */}

@@ -798,10 +798,10 @@ export function PaymentsWorkspace({
               </Button>
             ) : null}
 
-            {/* Destructive, so it sits LAST and behind a separator — never beside
-                the everyday actions where it can be hit by reflex. */}
+            {/* Destructive, so it sits LAST and pushed right — never beside the
+                everyday actions where it can be hit by reflex. */}
             {canDeleteAllLedger && ledger.length > 0 ? (
-              <span className="ml-auto flex items-center gap-2 border-l border-border pl-2">
+              <span className="ml-auto">
                 <DeleteAllLedgerButton count={ledger.length} />
               </span>
             ) : null}
@@ -1485,7 +1485,7 @@ function DeleteAllLedgerButton({ count }: { count: number }) {
         data-testid="ledger-delete-all"
         className="text-destructive"
       >
-        🗑 Delete all imported
+        🗑 Delete All
       </Button>
 
       <Modal

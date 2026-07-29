@@ -284,7 +284,7 @@ export function InventoryWorkspace({
         </Button>
 
         {canDeleteAll && inventory.ok && inventory.rows.length > 0 ? (
-          <span className="ml-auto flex items-center gap-2 border-l border-border pl-2">
+          <span className="ml-auto">
             <DeleteAllInventoryButton count={inventory.rows.length} />
           </span>
         ) : null}

@@ -28,7 +28,7 @@ describe('LOCKED: desktop sidebar (exact order, labels, routes, icons)', () => {
       { label: 'Dashboard Profile', href: '/dashboard', icon: '▥' },
       { label: 'Orders', href: '/orders', icon: '□' },
       { label: 'Customers', href: '/customers', icon: '☺' },
-      { label: 'Items / Inventory', href: '/orders/inventory', icon: '◈' },
+      { label: 'Inventory', href: '/orders/inventory', icon: '◈' },
       { label: 'Layaway', href: '/orders/payments', icon: '₱' },
       { label: 'Scrap', href: '/admin/scrap', icon: '♻' },
       // Team Management collapsible group (Owner request 2026-07-22). Settings moved
@@ -49,7 +49,7 @@ describe('LOCKED: mobile navigation', () => {
   it('More carries the rest, Dashboard Profile first', () => {
     expect(mobileMoreItems().map((i) => i.label)).toEqual([
       'Dashboard Profile',
-      'Items / Inventory',
+      'Inventory',
       'Layaway',
       'Scrap',
       'Attendance',
