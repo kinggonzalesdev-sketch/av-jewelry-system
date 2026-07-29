@@ -80,7 +80,11 @@ export default async function PaymentsPage({
     activeLayaways: cards.activeLayaways + ledgerActive,
     completedLayaways: cards.completedLayaways + ledgerCompleted,
   };
-  const canImportLayaway = staff.roleKey === 'owner' || staff.roleKey === 'selected_admin';
+  // Owner and Selected Admin both manage the imported ledger (upload, add payment,
+  // edit, per-row delete). Clearing the WHOLE ledger is Owner-only — it is the one
+  // irreversible, everything-at-once action, so an admin never sees it.
+  const isOwner = staff.roleKey === 'owner';
+  const canImportLayaway = isOwner || staff.roleKey === 'selected_admin';
 
   // Deep-link from a dashboard layaway card (?layaway=active|completed|all|…) to
   // preselect the matching section.
@@ -111,6 +115,7 @@ export default async function PaymentsPage({
         canMonitorLayaway={permissions.has('layaway_monitoring')}
         canRequestForfeiture={permissions.has('initiate_high_risk_action')}
         canImportLayaway={canImportLayaway}
+        canDeleteAllLedger={isOwner}
       />
     </div>
   );

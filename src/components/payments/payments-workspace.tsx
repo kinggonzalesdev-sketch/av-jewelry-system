@@ -288,6 +288,7 @@ export function PaymentsWorkspace({
   canMonitorLayaway,
   canRequestForfeiture,
   canImportLayaway,
+  canDeleteAllLedger,
   initialSection,
 }: {
   cards: OverviewCards;
@@ -306,6 +307,8 @@ export function PaymentsWorkspace({
   canMonitorLayaway: boolean;
   canRequestForfeiture: boolean;
   canImportLayaway: boolean;
+  /** Owner ONLY — clearing the entire imported ledger is not an admin action. */
+  canDeleteAllLedger: boolean;
   /** Preselected layaway section (from a dashboard card deep-link). */
   initialSection?: LayawaySection | undefined;
 }) {
@@ -757,7 +760,7 @@ export function PaymentsWorkspace({
             {canImportLayaway ? (
               <LayawayImportButton existingKeys={ledgerKeys} />
             ) : null}
-            {canImportLayaway && ledger.length > 0 ? (
+            {canDeleteAllLedger && ledger.length > 0 ? (
               <DeleteAllLedgerButton count={ledger.length} />
             ) : null}
             <Button
