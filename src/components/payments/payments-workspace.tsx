@@ -72,7 +72,9 @@ const RANGES: DateRangeKey[] = ['today', '7d', '14d', '30d', 'month', 'custom'];
 
 /** Spreadsheet-style status colours for layaway (§13). Colour + the written
  *  label — never colour alone. */
-function layawayStatusClass(status: string): string {
+function layawayStatusClass(rawStatus: string): string {
+  // Case-insensitive: an imported `COMPLETED` must colour like `completed`.
+  const status = rawStatus.trim().toLowerCase();
   switch (status) {
     case 'completed':
       return 'border-green-500/40 bg-green-500/10 text-green-600';
@@ -230,6 +232,19 @@ function todayLocalISO(): string {
   ).padStart(2, '0')}`;
 }
 
+/**
+ * Status text is compared case- and space-insensitively throughout, so a record
+ * imported as `COMPLETED`, `Completed`, or `completed` is ONE status. Sources
+ * differ (manual entry, order transfer, CSV import, auto-completion on full
+ * payment) and must never split into separate buckets.
+ */
+function normStatus(status: string): string {
+  return status.trim().toLowerCase();
+}
+function isCompletedStatus(status: string): boolean {
+  return normStatus(status) === 'completed';
+}
+
 /** Statuses where an account is closed — never active and never overdue. */
 const TERMINAL_STATUSES = new Set(['completed', 'forfeited', 'cancelled']);
 /** Order-derived statuses the database already computed as past due. */
@@ -244,22 +259,32 @@ const EXCLUDED_STATUSES = new Set(['needs_review']);
  * Overdue automatically on the next render — no stored flag to go stale.
  */
 function isOverdueRow(r: LayawayAccountRow, today: string): boolean {
-  if (TERMINAL_STATUSES.has(r.status)) return false;
+  if (TERMINAL_STATUSES.has(normStatus(r.status))) return false;
   if (sumPesoCentavos([r.balance]) <= 0n) return false;
-  if (DERIVED_OVERDUE_STATUSES.has(r.status)) return true;
+  if (DERIVED_OVERDUE_STATUSES.has(normStatus(r.status))) return true;
   return r.nextDueDate !== null && r.nextDueDate < today;
 }
 
 /**
  * A COMPLETED layaway must have genuinely closed out: zero remaining balance AND
  * total payment equal to the grand total. An account marked completed while
- * principal or interest is unpaid is invalid and is never shown as Completed.
+ * principal or interest is still owed is invalid and is never shown as Completed.
+ *
+ * Deliberately does NOT require a non-zero grand total. Most imported historical
+ * accounts closed long ago and carry no money columns at all (grand total and
+ * payment both blank); they are perfectly valid completed records, and an earlier
+ * `grand > 0` guard wrongly hid 191 of them from Completed Layaways.
  */
 function isValidCompletedRow(r: LayawayAccountRow): boolean {
+  if (!isCompletedStatus(r.status)) return false;
   const grand = sumPesoCentavos([r.grandTotal]);
   const paid = sumPesoCentavos([r.payment]);
   const balance = sumPesoCentavos([r.balance]);
-  return grand > 0n && balance === 0n && paid === grand;
+  // `<=` / `>=` rather than `===`: a handful of imported accounts were overpaid by
+  // a peso, so the balance reads -1.00. Nothing is owed on those, which is what
+  // "completed" means. A completed record that STILL OWES money is the invalid
+  // case, and it is the one this keeps out.
+  return balance <= 0n && paid >= grand;
 }
 
 /** The account's financer — the order's financer, else its Remarks / Financer text. */
@@ -356,7 +381,7 @@ export function PaymentsWorkspace({
         ...layaways.map(fromDerived),
         ...completed.map(fromDerived),
         ...ledger.map(fromLedger),
-      ].filter((r) => !EXCLUDED_STATUSES.has(r.status)),
+      ].filter((r) => !EXCLUDED_STATUSES.has(normStatus(r.status))),
     [layaways, completed, ledger],
   );
 
@@ -394,8 +419,8 @@ export function PaymentsWorkspace({
             : section === 'overdue'
               ? overdue
               : section === 'forfeited'
-                ? r.status === 'forfeited'
-                : !TERMINAL_STATUSES.has(r.status) && !overdue;
+                ? normStatus(r.status) === 'forfeited'
+                : !TERMINAL_STATUSES.has(normStatus(r.status)) && !overdue;
       if (!inSection) return false;
 
       if (layFinancer !== FINANCER_ALL) {
@@ -1064,8 +1089,8 @@ function LayawayTable({
   // Overdue uses the one shared rule, so the badge and the Overdue section can
   // never disagree. Closed accounts and accounts with no due date show '—'.
   const overdueLabel = (r: LayawayAccountRow): string => {
-    if (TERMINAL_STATUSES.has(r.status)) return '—';
-    if (!r.nextDueDate && !DERIVED_OVERDUE_STATUSES.has(r.status)) return '—';
+    if (TERMINAL_STATUSES.has(normStatus(r.status))) return '—';
+    if (!r.nextDueDate && !DERIVED_OVERDUE_STATUSES.has(normStatus(r.status))) return '—';
     return isOverdueRow(r, today) ? 'Yes' : 'No';
   };
 
@@ -1170,7 +1195,7 @@ function LayawayTable({
                       <LayawayLedgerViewModal ledgerId={r.ledgerId} />
                       {canDeleteLedger ? (
                         <>
-                          {!TERMINAL_STATUSES.has(r.status) ? (
+                          {!TERMINAL_STATUSES.has(normStatus(r.status)) ? (
                             <LedgerAddPayment
                               id={r.ledgerId}
                               accountNo={r.accountNo}
