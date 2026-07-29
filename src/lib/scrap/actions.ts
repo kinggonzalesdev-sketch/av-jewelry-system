@@ -2,7 +2,11 @@
 
 import { revalidatePath } from 'next/cache';
 
-import { recordScrapSale } from '@/lib/scrap/service';
+import {
+  deleteScrapSale,
+  recordScrapSale,
+  type ScrapDeleteResult,
+} from '@/lib/scrap/service';
 import type { ScrapActionState } from '@/lib/scrap/action-state';
 
 /** Scrap server action (Bible §G). Transport only — validation, self-attribution,
@@ -30,4 +34,21 @@ export async function recordScrapAction(
 
   revalidatePath('/admin/scrap');
   return { error: null, success: 'Scrap sale recorded.' };
+}
+
+/** Permanently delete ONE scrap sale (Owner / Selected Admin). Revalidates so the
+ *  totals and table refresh without a full-page reload. */
+export async function deleteScrapSaleAction(
+  id: string,
+  confirm: string,
+): Promise<ScrapDeleteResult> {
+  if (confirm !== 'DELETE') {
+    return { ok: false, error: 'Type DELETE to permanently delete this scrap sale.' };
+  }
+  const result = await deleteScrapSale(id);
+  if (result.ok) {
+    revalidatePath('/admin/scrap');
+    revalidatePath('/dashboard');
+  }
+  return result;
 }

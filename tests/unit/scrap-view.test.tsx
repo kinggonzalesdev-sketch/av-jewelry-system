@@ -4,7 +4,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { ScrapView } from '@/components/scrap/scrap-view';
 import type { ScrapIncomeResult, ScrapSaleRow } from '@/lib/scrap/service';
 
-vi.mock('@/lib/scrap/actions', () => ({ recordScrapAction: vi.fn() }));
+vi.mock('@/lib/scrap/actions', () => ({
+  recordScrapAction: vi.fn(),
+  deleteScrapSaleAction: vi.fn(),
+}));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 const income: ScrapIncomeResult = {
   ok: true,
@@ -23,6 +27,8 @@ const sales: ScrapSaleRow[] = [
     buyer: 'Buyer A',
     soldOn: '2026-07-18',
     note: null,
+    encodedAt: '2026-07-18T02:30:00.000Z',
+    encodedBy: 'King Gonzales',
   },
 ];
 

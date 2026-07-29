@@ -5,6 +5,8 @@ import { useActionState, useEffect, useRef, useState } from 'react';
 import { recordScrapAction } from '@/lib/scrap/actions';
 import { EMPTY_SCRAP_STATE, type ScrapActionState } from '@/lib/scrap/action-state';
 import type { ScrapIncomeResult, ScrapSaleRow } from '@/lib/scrap/service';
+import { ScrapRowActions } from '@/components/scrap/scrap-row-actions';
+import { downloadCsv } from '@/lib/export/csv';
 import { formatPeso } from '@/lib/payments/format';
 import { MetricCard, ReadError } from '@/components/ui/page-primitives';
 import { Button } from '@/components/ui/button';
@@ -24,11 +26,14 @@ export function ScrapView({
   sales,
   from,
   to,
+  canDelete = false,
 }: {
   income: ScrapIncomeResult;
   sales: ScrapSaleRow[];
   from: string;
   to: string;
+  /** Owner / Selected Admin — shows the per-row Delete. */
+  canDelete?: boolean;
 }) {
   const [state, action, pending] = useActionState<ScrapActionState, FormData>(
     recordScrapAction,
@@ -36,6 +41,35 @@ export function ScrapView({
   );
 
   const [showRecord, setShowRecord] = useState(false);
+  // Guards a repeat Export click while the file is being built.
+  const [exporting, setExporting] = useState(false);
+
+  /**
+   * Export the scrap sales for the SELECTED range. `sales` is already scoped to
+   * from/to by the server, so nothing outside the range can leak in. Amounts and
+   * grams stay RAW numeric strings so Excel can sum them — formatting them with a
+   * peso sign would turn every figure into text.
+   */
+  const exportSales = () => {
+    if (exporting || sales.length === 0) return;
+    setExporting(true);
+    try {
+      downloadCsv(
+        `MineFlow-Scrap-Sales-${new Date().toISOString().slice(0, 10)}`,
+        [
+          { header: 'Material', value: (s) => s.material },
+          { header: 'Grams', value: (s) => s.grams },
+          { header: 'Amount', value: (s) => s.amount },
+          { header: 'Buyer', value: (s) => s.buyer ?? '' },
+          { header: 'Sold On', value: (s) => s.soldOn },
+          { header: 'Note', value: (s) => s.note ?? '' },
+        ],
+        sales,
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
   // Close the dialog once a sale records (once per new success).
   const lastSuccess = useRef<string | null>(null);
   useEffect(() => {
@@ -47,10 +81,22 @@ export function ScrapView({
 
   return (
     <div className="space-y-4">
-      {/* Primary action opens the standard dialog — never an inline page form. */}
-      <div className="flex justify-end">
+      {/* Top actions, side by side at the right: Export CSV then Record Scrap Sale.
+          Export covers exactly the rows in the SELECTED date range — the same rows
+          the table shows — and locks while generating so a repeat click cannot
+          produce a second file. */}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          disabled={exporting || sales.length === 0}
+          onClick={exportSales}
+          data-testid="scrap-export"
+        >
+          {exporting ? 'Preparing…' : '⭳ Export CSV'}
+        </Button>
         <Button type="button" onClick={() => setShowRecord(true)}>
-          ＋ Record scrap sale
+          ＋ Record Scrap Sale
         </Button>
       </div>
 
@@ -238,7 +284,9 @@ export function ScrapView({
                       <td className="px-3 py-2">{s.buyer ?? '—'}</td>
                       <td className="px-3 py-2 whitespace-nowrap">{s.soldOn}</td>
                       <td className="px-3 py-2 text-muted-foreground">{s.note ?? '—'}</td>
-                      <td className="px-3 py-2 text-right text-muted-foreground">—</td>
+                      <td className="px-3 py-2 text-right">
+                        <ScrapRowActions sale={s} canDelete={canDelete} />
+                      </td>
                     </tr>
                   ))
                 )}

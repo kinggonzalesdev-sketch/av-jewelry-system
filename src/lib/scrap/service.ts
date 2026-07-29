@@ -1,7 +1,11 @@
 import 'server-only';
 
 import { recordAuditEvent } from '@/lib/audit/log';
-import { requireActiveStaff } from '@/lib/authz/guard';
+import {
+  AuthorizationError,
+  requireActiveStaff,
+  requireOwnerOrAdmin,
+} from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 
 /**
@@ -18,6 +22,10 @@ export type ScrapSaleRow = {
   buyer: string | null;
   soldOn: string;
   note: string | null;
+  /** When the sale was entered (distinct from Sold On, the trade date). */
+  encodedAt: string | null;
+  /** Who entered it. Null when the recorder is no longer resolvable. */
+  encodedBy: string | null;
 };
 
 export type ScrapIncomeRow = {
@@ -94,7 +102,9 @@ export async function listScrapSales(
   const supabase = await createClient();
   const base = supabase
     .from('scrap_sales')
-    .select('id, material, grams, amount, buyer, sold_on, note')
+    .select(
+      'id, material, grams, amount, buyer, sold_on, note, created_at, recorded_by, staff_profiles!scrap_sales_recorded_by_fkey ( full_name )',
+    )
     .order('sold_on', { ascending: false })
     .limit(limit);
   const query = range ? base.gte('sold_on', range.from).lte('sold_on', range.to) : base;
@@ -102,15 +112,26 @@ export async function listScrapSales(
 
   if (error || !data) return [];
 
-  return (data as Array<Record<string, unknown>>).map((r) => ({
-    id: r.id as string,
-    material: r.material as 'gold' | 'silver',
-    grams: String(r.grams as string | number),
-    amount: String(r.amount as string | number),
-    buyer: (r.buyer as string | null) ?? null,
-    soldOn: r.sold_on as string,
-    note: (r.note as string | null) ?? null,
-  }));
+  return (data as Array<Record<string, unknown>>).map((r) => {
+    // The recorder's name, for the View modal. PostgREST returns the embedded row
+    // as an object or a one-element array depending on the relationship shape.
+    const embedded = r.staff_profiles;
+    const recorder = Array.isArray(embedded)
+      ? (embedded[0] as { full_name?: string } | undefined)
+      : (embedded as { full_name?: string } | null);
+
+    return {
+      id: r.id as string,
+      material: r.material as 'gold' | 'silver',
+      grams: String(r.grams),
+      amount: String(r.amount),
+      buyer: (r.buyer as string | null) ?? null,
+      soldOn: r.sold_on as string,
+      note: (r.note as string | null) ?? null,
+      encodedAt: (r.created_at as string | null) ?? null,
+      encodedBy: recorder?.full_name ?? null,
+    };
+  });
 }
 
 /**
@@ -152,4 +173,45 @@ export async function getScrapIncome(
   }));
 
   return { ok: true, rows };
+}
+
+export type ScrapDeleteResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Permanently delete ONE scrap sale (Owner / Selected Admin). Removes exactly the
+ * selected row — no totals are rewritten, because the income figures are summed
+ * from the remaining rows on every read. The audit event survives the deletion.
+ */
+export async function deleteScrapSale(id: string): Promise<ScrapDeleteResult> {
+  if (!id) return { ok: false, error: 'A scrap sale is required.' };
+
+  try {
+    await requireOwnerOrAdmin();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) {
+      await recordAuditEvent({
+        action: 'scrap_sale.delete',
+        entityType: 'scrap_sale',
+        entityId: id,
+        outcome: 'denied',
+        reason: cause.message,
+      });
+      return { ok: false, error: cause.message };
+    }
+    throw cause;
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('delete_scrap_sale', { p_id: id });
+  if (error) {
+    return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+
+  await recordAuditEvent({
+    action: 'scrap_sale.delete',
+    entityType: 'scrap_sale',
+    entityId: id,
+    context: { permanent: true },
+  });
+  return { ok: true };
 }

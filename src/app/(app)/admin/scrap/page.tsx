@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { canOpenPage } from '@/lib/authz/guard';
+import { canOpenPage, getCurrentStaffProfile } from '@/lib/authz/guard';
 
 import { ScrapView } from '@/components/scrap/scrap-view';
 import { PageHeader } from '@/components/ui/page-primitives';
@@ -35,12 +35,24 @@ export default async function ScrapPage({
   const from = typeof params.from === 'string' ? params.from : firstOfMonth();
   const to = typeof params.to === 'string' ? params.to : today();
 
-  const [income, sales] = await Promise.all([getScrapIncome(from, to), listScrapSales()]);
+  // Scope the sales to the SELECTED range so the table and the CSV export show
+  // exactly the same rows — an export must never include a record outside it.
+  const [income, sales, staff] = await Promise.all([
+    getScrapIncome(from, to),
+    listScrapSales(500, { from, to }),
+    getCurrentStaffProfile(),
+  ]);
 
   return (
     <div>
       <PageHeader title="Scrap Income" />
-      <ScrapView income={income} sales={sales} from={from} to={to} />
+      <ScrapView
+        income={income}
+        sales={sales}
+        from={from}
+        to={to}
+        canDelete={staff.roleKey === 'owner' || staff.roleKey === 'selected_admin'}
+      />
     </div>
   );
 }
