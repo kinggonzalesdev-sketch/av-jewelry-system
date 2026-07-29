@@ -20,6 +20,7 @@ import type { PaymentStatus } from '@/lib/orders/service';
 import { OrderDestinationTransfer } from '@/components/orders/order-destination-transfer';
 import { OrderCancelAction } from '@/components/orders/order-cancel-action';
 import { OrderPaymentActions } from '@/components/orders/order-payment-actions';
+import { canOfferPayment } from '@/lib/orders/stage-actions';
 import { Money, SensitivePhone, Sensitive } from '@/components/shell/privacy';
 import { StatusBadge, type BadgeTone } from '@/components/ui/page-primitives';
 
@@ -1109,10 +1110,17 @@ function DetailBody({
               )}
             </Block>
 
-            {/* Add Payment / Add Down Payment · Deposit — beside the payment summary.
-                Only when the balance is known; the component hides itself without the
-                record-payment permission and disables both when fully paid. */}
-            {a.unavailable ? null : (
+            {/* Add Payment / Add Down Payment · Deposit. Offered ONLY when the
+                stage allows money, a balance actually remains, and the user may
+                record one — all three decided by the shared stage table, never by a
+                condition written here. A fully-paid order says so instead of
+                showing a button the server would refuse. */}
+            {canOfferPayment({
+              status: detail.status,
+              paidInFull: a.paidInFull,
+              balanceUnavailable: a.unavailable !== null,
+              canRecordPayment: detail.permissions.canRecordPayment,
+            }) ? (
               <OrderPaymentActions
                 orderId={detail.officialOrderId}
                 remaining={a.outstandingBalance}
@@ -1120,7 +1128,14 @@ function DetailBody({
                 canRecord={detail.permissions.canRecordPayment}
                 onRefresh={onRefresh}
               />
-            )}
+            ) : !a.unavailable && a.paidInFull ? (
+              <p
+                className="rounded-lg border border-green-600/40 bg-green-600/10 px-3 py-2 text-sm text-green-700"
+                data-testid="order-fully-paid"
+              >
+                This order is already fully paid.
+              </p>
+            ) : null}
 
             {detail.paymentHistory.length > 0 ? (
               <div className="rounded-lg border border-border p-3">

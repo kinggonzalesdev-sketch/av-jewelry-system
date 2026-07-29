@@ -210,14 +210,12 @@ export function AttendanceView({
                     })}
                   </tbody>
                 </table>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Hours, overtime, and salary are computed from attendance in SQL.
-                  Overtime is per session beyond 8h (provisional). Salary needs an hourly
-                  rate; without one it stays honestly blank.
-                  {isOwner
-                    ? ' As Owner, set a rate below to compute salary — clear it to blank the salary again.'
-                    : ''}
-                </p>
+                {isOwner ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Set a rate below to compute salary — clear it to blank the salary
+                    again.
+                  </p>
+                ) : null}
               </div>
             )}
           </CardContent>

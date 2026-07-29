@@ -7,6 +7,7 @@ import {
   requestOrderCancellationAction,
 } from '@/lib/orders/actions';
 import { canCancelOrderStatus } from '@/lib/orders/cancellation-status';
+import { canOfferCancel } from '@/lib/orders/stage-actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -54,7 +55,10 @@ export function OrderCancelAction({
   const submittingRef = useRef(false);
 
   const awaitingReview = status === 'for_cancel';
-  const canRequest = canCancelOrderStatus(status);
+  // The shared stage table decides whether cancelling is offered at all; the
+  // cancellable-status list stays the transition rule the server enforces. Both
+  // must agree, so a stage marked read-only can never surface a Cancel button.
+  const canRequest = canCancelOrderStatus(status) && canOfferCancel(status);
 
   // Completed / already cancelled orders offer nothing here.
   if (!canRequest && !awaitingReview) return null;
