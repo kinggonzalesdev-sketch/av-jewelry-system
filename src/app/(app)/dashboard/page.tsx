@@ -99,8 +99,6 @@ export default async function DashboardPage({
         rangeFrom={rangeFrom}
         rangeTo={rangeTo}
         canExport={permissions.has('export_data_reports')}
-        canVerifyPayments={permissions.has('payment_verification')}
-        canMonitorInventory={permissions.has('inventory_monitoring')}
       />
     </div>
   );

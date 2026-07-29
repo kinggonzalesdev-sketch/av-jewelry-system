@@ -116,8 +116,6 @@ function renderView(over: Partial<Parameters<typeof DashboardView>[0]> = {}) {
         remainingBalance: '0',
       }}
       canExport={false}
-      canVerifyPayments={false}
-      canMonitorInventory={false}
       {...over}
     />,
   );

@@ -146,8 +146,6 @@ export function DashboardView({
   rangeFrom,
   rangeTo,
   canExport,
-  canVerifyPayments,
-  canMonitorInventory,
 }: {
   counts: DashboardCounts | null;
   metrics: DashboardMetrics | null;
@@ -164,8 +162,6 @@ export function DashboardView({
   rangeFrom?: string | undefined;
   rangeTo?: string | undefined;
   canExport: boolean;
-  canVerifyPayments: boolean;
-  canMonitorInventory: boolean;
 }) {
   const router = useRouter();
   // Privacy Mode (§7): every financial figure on the dashboard masks to dots when
@@ -534,77 +530,6 @@ export function DashboardView({
               </Card>
             </div>
 
-            {/* Operational summary — real counts. */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Operational summary</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-                  <MetricCard
-                    label="For Invoice"
-                    value={counts.confirmedClaimsForInvoice}
-                  />
-                  <MetricCard
-                    label="Pending Payment Verification"
-                    value={counts.paymentsAwaitingVerification}
-                  />
-                  {/* From the Layaway module itself (ledger + arrangements), not the
-                      order-derived count — see the Layaway card below. */}
-                  <MetricCard label="Active Layaway" value={layaway.active} />
-                  <MetricCard
-                    label="For Fulfillment"
-                    value={counts.ordersForFulfillment}
-                  />
-                  <MetricCard label="Pending Claims" value={counts.pendingClaims} />
-                  <MetricCard label="Cancelled" value={counts.ordersCancelled} />
-                </div>
-                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  <div className="flex items-center justify-between rounded-lg border border-border px-2.5 py-1.5 text-sm">
-                    <span className="text-muted-foreground">Payments to verify</span>
-                    <span className="flex items-center gap-2">
-                      <span className="font-bold tabular-nums">
-                        {counts.paymentsAwaitingVerification}
-                      </span>
-                      {canVerifyPayments ? (
-                        <a
-                          href="/orders/payments"
-                          className="rounded border px-2 py-0.5 text-xs hover:bg-muted"
-                        >
-                          Open
-                        </a>
-                      ) : null}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-lg border border-border px-2.5 py-1.5 text-sm">
-                    <span className="text-muted-foreground">Returned-to-Stock</span>
-                    <span className="flex items-center gap-2">
-                      <span className="font-bold tabular-nums">{counts.rtsInReview}</span>
-                      {canMonitorInventory ? (
-                        <a
-                          href="/orders/inventory"
-                          className="rounded border px-2 py-0.5 text-xs hover:bg-muted"
-                        >
-                          Open
-                        </a>
-                      ) : null}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-lg border border-border px-2.5 py-1.5 text-sm">
-                    <span className="text-muted-foreground">Owner approvals</span>
-                    <span className="font-bold tabular-nums">
-                      {counts.ownerApprovalsPending}
-                    </span>
-                  </div>
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Claims are not Official Orders. Never add these to the order tiles.
-                  Queue counts overlap the tiles by nature — they are work to do, not
-                  orders. Never sum them with order figures. Seeing a count grants no
-                  authority over it.
-                </p>
-              </CardContent>
-            </Card>
 
             {/* Layaway summary — real money aggregation. */}
             <Card>

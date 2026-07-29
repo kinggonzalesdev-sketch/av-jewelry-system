@@ -94,13 +94,14 @@ describe('the screen never contradicts the counting rules', () => {
   // rule is still proven against a real database in the pgTAP suite, and the
   // Work Queues note below still warns that claims are not orders.
 
-  it('says claims are not orders', () => {
-    expect(view).toMatch(/Claims are not Official Orders/i);
-    expect(view).toMatch(/Never add these to the order tiles/i);
-  });
-
-  it('separates queue counts and warns against summing them', () => {
-    expect(view).toMatch(/Never sum them with order figures/i);
+  // The Operational summary block was removed from the Dashboard by Owner request,
+  // and with it the queue-count copy these two tests locked ("Claims are not
+  // Official Orders", "Never sum them with order figures"). The RULES those lines
+  // described are unaffected — claims still never become orders without Approve &
+  // Send Invoice, and the queue counts are simply no longer displayed here.
+  it('no longer renders the Operational summary queue counts (removed by Owner request)', () => {
+    expect(view).not.toMatch(/Operational summary/i);
+    expect(view).not.toMatch(/Claims are not Official Orders/i);
   });
 
   it('says seeing a count grants no authority', () => {
