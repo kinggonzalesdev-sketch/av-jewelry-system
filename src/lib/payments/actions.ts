@@ -13,6 +13,7 @@ import {
 } from '@/lib/payments/financer';
 import {
   activateLayaway,
+  listAvailableLayawayCodes,
   decideForfeiture,
   recordInstallment,
   requestForfeiture,
@@ -232,6 +233,13 @@ export async function rejectPaymentAction(
   return { error: null, success: 'Evidence rejected. It counts toward no balance.' };
 }
 
+/** Free layaway codes for one customer-initial letter (A1–Z200). Read-only. */
+export async function loadAvailableLayawayCodesAction(
+  letter: string,
+): Promise<string[]> {
+  return listAvailableLayawayCodes(letter);
+}
+
 export async function activateLayawayAction(
   _prev: PaymentActionState,
   formData: FormData,
@@ -243,6 +251,7 @@ export async function activateLayawayAction(
     depositPaymentId: text(formData, 'depositPaymentId'),
     months: months ? Number(months) : 0,
     finalDueDate: text(formData, 'finalDueDate'),
+    layawayCode: text(formData, 'layawayCode'),
   });
 
   if (!result.ok) return { error: result.error, success: null };

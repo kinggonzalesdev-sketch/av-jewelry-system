@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { Fragment, useActionState, useEffect, useMemo, useRef, useState } from 'react';
+import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   createInventoryItemAction,
@@ -35,7 +35,7 @@ import { Modal, ModalFieldFull, ModalFormGrid } from '@/components/ui/modal';
  *   - Judging two customers duplicates merges NOTHING.
  */
 
-const TABS = ['Active Inventory', 'Completed Items'] as const;
+type Tab = 'Active Inventory' | 'Completed Items';
 
 /** Payment-status pill for the Completed Items table. Null → an honest "—". */
 const PAYMENT_LABEL: Record<string, { label: string; cls: string }> = {
@@ -59,7 +59,6 @@ function stageClass(stage: string): string {
   return 'border-gold/40 bg-gold/10 text-gold-strong';
 }
 
-type Tab = (typeof TABS)[number];
 
 /**
  * Statuses that still count as ACTIVE, sellable stock. An item consumed by ANY
@@ -228,53 +227,62 @@ export function InventoryWorkspace({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-1.5" role="tablist">
-        {TABS.map((t) => (
-          <Fragment key={t}>
-            <Button
-              type="button"
-              role="tab"
-              aria-selected={tab === t}
-              size="sm"
-              variant={tab === t ? 'default' : 'outline'}
-              onClick={() => setTab(t)}
-            >
-              {t}
-            </Button>
-            {/* New Entry · Upload · Export sit under Active Inventory — all open
-                the standard centered dialogs. */}
-            {t === 'Active Inventory' ? (
-              <>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setShowNewEntry(true)}
-                  data-testid="inventory-new-entry"
-                >
-                  ＋ New Entry
-                </Button>
-                <InventoryImportButton
-                  existingCodes={inventory.ok ? inventory.rows.map((r) => r.itemCode) : []}
-                />
-                {inventory.ok && inventory.rows.length > 0 ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={exportInventory}
-                    data-testid="inventory-export"
-                  >
-                    ⭳ Export CSV
-                  </Button>
-                ) : null}
-                {canDeleteAll && inventory.ok && inventory.rows.length > 0 ? (
-                  <DeleteAllInventoryButton count={inventory.rows.length} />
-                ) : null}
-              </>
-            ) : null}
-          </Fragment>
-        ))}
+      {/* Order (Owner request): Active Inventory · New Entry · Upload · Export ·
+          Completed Items · Delete All. The destructive action is LAST, pushed right
+          and behind a separator so it never sits among the everyday buttons.
+          Wraps on small screens without overlapping. */}
+      <div className="flex flex-wrap items-center gap-1.5" role="tablist">
+        <Button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'Active Inventory'}
+          size="sm"
+          variant={tab === 'Active Inventory' ? 'default' : 'outline'}
+          onClick={() => setTab('Active Inventory')}
+        >
+          Active Inventory
+        </Button>
+
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => setShowNewEntry(true)}
+          data-testid="inventory-new-entry"
+        >
+          ＋ New Entry
+        </Button>
+        <InventoryImportButton
+          existingCodes={inventory.ok ? inventory.rows.map((r) => r.itemCode) : []}
+        />
+        {inventory.ok && inventory.rows.length > 0 ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={exportInventory}
+            data-testid="inventory-export"
+          >
+            ⭳ Export CSV
+          </Button>
+        ) : null}
+
+        <Button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'Completed Items'}
+          size="sm"
+          variant={tab === 'Completed Items' ? 'default' : 'outline'}
+          onClick={() => setTab('Completed Items')}
+        >
+          Completed Items
+        </Button>
+
+        {canDeleteAll && inventory.ok && inventory.rows.length > 0 ? (
+          <span className="ml-auto flex items-center gap-2 border-l border-border pl-2">
+            <DeleteAllInventoryButton count={inventory.rows.length} />
+          </span>
+        ) : null}
       </div>
 
       {/* New Entry — create an inventory item in the standard modal. Permission is

@@ -3,7 +3,10 @@
 import { useRouter } from 'next/navigation';
 import { useActionState, useEffect, useState } from 'react';
 
-import { activateLayawayAction } from '@/lib/payments/actions';
+import {
+  activateLayawayAction,
+  loadAvailableLayawayCodesAction,
+} from '@/lib/payments/actions';
 import {
   EMPTY_PAYMENT_STATE,
   type PaymentActionState,
@@ -47,11 +50,41 @@ export function NewLayawayForm({
 
   const [open, setOpen] = useState(false);
   const [orderId, setOrderId] = useState('');
+  // Available layaway codes for the CUSTOMER'S initial (A1–A200 for "Ana", …).
+  const [codes, setCodes] = useState<string[]>([]);
+  const [code, setCode] = useState('');
+  const [codesLoading, setCodesLoading] = useState(false);
+  const [codeLetter, setCodeLetter] = useState('');
 
   const selectedOrder = payableOrders.find((o) => o.officialOrderId === orderId) ?? null;
   const depositsForOrder = selectedOrder
     ? verifiedPayments.filter((p) => p.orderNumber === selectedOrder.orderNumber)
     : [];
+
+  // The customer determines the letter, so the list follows the chosen order.
+  const letter = (selectedOrder?.customerDisplayName ?? '')
+    .trim()
+    .charAt(0)
+    .toUpperCase();
+
+  // Reload the free codes whenever the customer's initial changes. Adjusting state
+  // during render (guarded on the letter) is React's supported alternative to a
+  // derived-state effect and cannot loop.
+  if (letter !== codeLetter) {
+    setCodeLetter(letter);
+    setCode('');
+    setCodes([]);
+    if (/^[A-Z]$/.test(letter)) {
+      setCodesLoading(true);
+      void loadAvailableLayawayCodesAction(letter)
+        .then((list) => {
+          setCodes(list);
+          // Auto-select the first available code; another may still be chosen.
+          setCode(list[0] ?? '');
+        })
+        .finally(() => setCodesLoading(false));
+    }
+  }
 
   useEffect(() => {
     if (state.success) {
@@ -121,6 +154,59 @@ export function NewLayawayForm({
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* Available Code — filtered to the CUSTOMER'S initial, showing only
+                codes no live account holds. Compact: dropdown, count, selection. */}
+            <div>
+              <Label htmlFor="lay-code" className="text-xs">
+                Available Code
+              </Label>
+              <select
+                id="lay-code"
+                value={code}
+                disabled={!selectedOrder || codesLoading || codes.length === 0}
+                onChange={(e) => setCode(e.target.value)}
+                data-testid="layaway-code-select"
+                className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm disabled:opacity-50"
+              >
+                {!selectedOrder ? (
+                  <option value="">Select an order first</option>
+                ) : codesLoading ? (
+                  <option value="">Loading codes…</option>
+                ) : codes.length === 0 ? (
+                  <option value="">
+                    {/^[A-Z]$/.test(codeLetter)
+                      ? `No ${codeLetter} codes available`
+                      : 'No customer initial'}
+                  </option>
+                ) : (
+                  codes.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))
+                )}
+              </select>
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                {selectedOrder && /^[A-Z]$/.test(codeLetter) ? (
+                  <>
+                    <span data-testid="layaway-code-count">{codes.length}</span> available
+                    under <span className="font-mono">{codeLetter}</span>
+                    {code ? (
+                      <>
+                        {' · selected '}
+                        <span className="font-mono font-semibold text-gold-strong">
+                          {code}
+                        </span>
+                      </>
+                    ) : null}
+                  </>
+                ) : (
+                  'Codes filter to the customer’s first letter.'
+                )}
+              </p>
+              <input type="hidden" name="layawayCode" value={code} />
             </div>
 
             <div>

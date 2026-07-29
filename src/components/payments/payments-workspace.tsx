@@ -785,9 +785,6 @@ export function PaymentsWorkspace({
             {canImportLayaway ? (
               <LayawayImportButton existingKeys={ledgerKeys} />
             ) : null}
-            {canDeleteAllLedger && ledger.length > 0 ? (
-              <DeleteAllLedgerButton count={ledger.length} />
-            ) : null}
             <Button
               type="button"
               size="sm"
@@ -797,6 +794,14 @@ export function PaymentsWorkspace({
             >
               ⭳ Export CSV
             </Button>
+
+            {/* Destructive, so it sits LAST and behind a separator — never beside
+                the everyday actions where it can be hit by reflex. */}
+            {canDeleteAllLedger && ledger.length > 0 ? (
+              <span className="ml-auto flex items-center gap-2 border-l border-border pl-2">
+                <DeleteAllLedgerButton count={ledger.length} />
+              </span>
+            ) : null}
           </div>
 
           {layaways.length > 0 || ledger.length > 0 ? (

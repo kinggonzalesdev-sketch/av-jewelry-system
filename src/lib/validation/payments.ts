@@ -175,6 +175,12 @@ export const activateLayawaySchema = z.object({
     .max(LAYAWAY_MAX_MONTHS, 'The maximum Layaway term is 3 months'),
   depositPaymentId: uuid,
   finalDueDate: z.string().min(1, 'The final due date is required'),
+  /** Chosen reusable code (A1–Z200). Optional: omitted means auto-assign. */
+  layawayCode: z
+    .string()
+    .regex(/^[A-Z]([1-9]|[1-9][0-9]|1[0-9][0-9]|200)$/, 'Choose a valid layaway code')
+    .nullable()
+    .optional(),
 });
 
 export type ActivateLayawayInput = z.infer<typeof activateLayawaySchema>;

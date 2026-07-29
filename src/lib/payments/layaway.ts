@@ -32,6 +32,26 @@ export type LayawayResult = { ok: true } | { ok: false; error: string };
  * The threshold is re-read from the database, never from the screen: the
  * required down payment and the verified total both come from the approved SQL.
  */
+/**
+ * Free layaway codes for ONE letter, naturally sorted (A1, A2, A3 … A200).
+ *
+ * A code is unavailable while it is held by a live account (active, overdue, or
+ * reopened) and returns to the pool the moment that account completes, is
+ * cancelled, or is forfeited and closed. Historical records keep their original
+ * code on their own row — releasing frees the code for reuse, it never rewrites
+ * the past. The list is advisory: the claim re-checks at write time.
+ */
+export async function listAvailableLayawayCodes(letter: string): Promise<string[]> {
+  const initial = (letter ?? '').trim().charAt(0).toUpperCase();
+  if (!/^[A-Z]$/.test(initial)) return [];
+
+  const supabase = await createClient();
+  const res = (await supabase.rpc('available_layaway_codes', { p_letter: initial })) as {
+    data: Array<{ code: string }> | null;
+  };
+  return (res.data ?? []).map((r) => r.code);
+}
+
 export async function activateLayaway(input: unknown): Promise<LayawayResult> {
   const parsed = activateLayawaySchema.safeParse(input);
   if (!parsed.success) {
@@ -107,6 +127,29 @@ export async function activateLayaway(input: unknown): Promise<LayawayResult> {
       },
     });
     return { ok: false, error };
+  }
+
+  // A CHOSEN code is claimed BEFORE activation. The code-sync trigger reuses the
+  // code already held for this order's ref, so pre-claiming makes it adopt the
+  // operator's choice instead of auto-picking the next free one. The claim
+  // re-checks availability at write time and refuses a code taken since the list
+  // was drawn — activation does not proceed on a stale choice.
+  if (data.layawayCode) {
+    const claim = await supabase.rpc('assign_layaway_code', {
+      p_ref: `order:${data.officialOrderId}`,
+      p_code: data.layawayCode,
+    });
+    if (claim.error) {
+      const message = claim.error.message.replace(/^ERROR:\s*/i, '').trim();
+      await recordAuditEvent({
+        action: 'layaway.activate',
+        entityType: 'layaway_arrangement',
+        outcome: 'failed',
+        reason: message,
+        context: { requested_code: data.layawayCode },
+      });
+      return { ok: false, error: message };
+    }
   }
 
   const { data: updated, error } = await supabase
