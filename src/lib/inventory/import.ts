@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { recordAuditEvent } from '@/lib/audit/log';
-import { AuthorizationError, requirePermission } from '@/lib/authz/guard';
+import { AuthorizationError, requireOwner } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 
 /**
@@ -35,7 +35,9 @@ export async function importInventoryItems(
 
   let staff;
   try {
-    staff = await requirePermission('post_live_item_entry');
+    // Bulk import is SUPER ADMIN only (Owner request): an Admin or Staff member
+    // cannot bulk-load inventory even by calling this action directly.
+    staff = await requireOwner();
   } catch (cause) {
     if (cause instanceof AuthorizationError) {
       await recordAuditEvent({

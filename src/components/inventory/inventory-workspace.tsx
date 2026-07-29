@@ -89,12 +89,15 @@ export function InventoryWorkspace({
   completed = [],
   canMonitor,
   canDeleteAll = false,
+  canImportExport = false,
 }: {
   inventory: InventoryListResult;
   completed?: CompletedInventoryRow[];
   canMonitor: boolean;
   /** Owner / Selected Admin — shows the bulk "Delete All" control. */
   canDeleteAll?: boolean;
+  /** SUPER ADMIN only — Excel/CSV import and export (Owner request). */
+  canImportExport?: boolean;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('Active Inventory');
@@ -252,10 +255,12 @@ export function InventoryWorkspace({
         >
           ＋ New Entry
         </Button>
-        <InventoryImportButton
-          existingCodes={inventory.ok ? inventory.rows.map((r) => r.itemCode) : []}
-        />
-        {inventory.ok && inventory.rows.length > 0 ? (
+        {canImportExport ? (
+          <InventoryImportButton
+            existingCodes={inventory.ok ? inventory.rows.map((r) => r.itemCode) : []}
+          />
+        ) : null}
+        {canImportExport && inventory.ok && inventory.rows.length > 0 ? (
           <Button
             type="button"
             size="sm"

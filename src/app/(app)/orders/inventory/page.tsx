@@ -42,6 +42,7 @@ export default async function InventoryPage() {
         completed={completed}
         canMonitor={permissions.has('inventory_monitoring')}
         canDeleteAll={canDeleteAll}
+        canImportExport={profile.roleKey === 'owner'}
       />
     </div>
   );

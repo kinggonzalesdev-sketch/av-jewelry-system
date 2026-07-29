@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { recordAuditEvent } from '@/lib/audit/log';
-import { AuthorizationError, requireOwnerOrAdmin } from '@/lib/authz/guard';
+import { AuthorizationError, requireOwner, requireOwnerOrAdmin } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 
 /**
@@ -394,7 +394,9 @@ export async function importLayawayLedger(
   if (clean.length === 0) return { ok: false, error: 'No valid rows to import.' };
 
   try {
-    await requireOwnerOrAdmin();
+    // Bulk import is SUPER ADMIN only (Owner request) — an Admin or Staff member
+    // cannot bulk-load records even by calling this action directly.
+    await requireOwner();
   } catch (cause) {
     if (cause instanceof AuthorizationError) {
       await recordAuditEvent({

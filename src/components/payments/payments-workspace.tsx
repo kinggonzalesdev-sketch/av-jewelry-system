@@ -314,6 +314,7 @@ export function PaymentsWorkspace({
   canRequestForfeiture,
   canImportLayaway,
   canDeleteAllLedger,
+  canImportExport,
   initialSection,
 }: {
   cards: OverviewCards;
@@ -334,6 +335,8 @@ export function PaymentsWorkspace({
   canImportLayaway: boolean;
   /** Owner ONLY — clearing the entire imported ledger is not an admin action. */
   canDeleteAllLedger: boolean;
+  /** SUPER ADMIN only — Excel/CSV import and export (Owner request). */
+  canImportExport: boolean;
   /** Preselected layaway section (from a dashboard card deep-link). */
   initialSection?: LayawaySection | undefined;
 }) {
@@ -782,18 +785,18 @@ export function PaymentsWorkspace({
               </Button>
             ))}
 
-            {canImportLayaway ? (
-              <LayawayImportButton existingKeys={ledgerKeys} />
+            {canImportExport ? <LayawayImportButton existingKeys={ledgerKeys} /> : null}
+            {canImportExport ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={exportLayaways}
+                data-testid="layaway-export"
+              >
+                ⭳ Export CSV
+              </Button>
             ) : null}
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={exportLayaways}
-              data-testid="layaway-export"
-            >
-              ⭳ Export CSV
-            </Button>
 
             {/* Destructive, so it sits LAST and behind a separator — never beside
                 the everyday actions where it can be hit by reflex. */}

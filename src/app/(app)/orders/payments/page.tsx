@@ -120,6 +120,7 @@ export default async function PaymentsPage({
         canRequestForfeiture={permissions.has('initiate_high_risk_action')}
         canImportLayaway={canImportLayaway}
         canDeleteAllLedger={isOwner}
+        canImportExport={isOwner}
       />
     </div>
   );
