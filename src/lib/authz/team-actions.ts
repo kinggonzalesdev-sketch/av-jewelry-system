@@ -6,7 +6,12 @@ import {
   changeMyPassword,
   createTeamMember,
   deleteTeamMember,
+  getTeamMemberAccess,
   setTeamMemberPassword,
+  setTeamMemberPermissions,
+  setTeamMemberRole,
+  type AccessMutationResult,
+  type TeamMemberAccess,
 } from '@/lib/authz/team-accounts';
 import type { TeamActionState } from '@/lib/authz/team-action-state';
 
@@ -19,6 +24,33 @@ import type { TeamActionState } from '@/lib/authz/team-action-state';
 function text(formData: FormData, name: string): string | null {
   const value = formData.get(name);
   return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/** Load one member's saved access for the Manage Access modal. Super-Admin-only. */
+export async function loadTeamMemberAccessAction(
+  staffProfileId: string,
+): Promise<TeamMemberAccess | null> {
+  return getTeamMemberAccess(staffProfileId);
+}
+
+/** Change a member's role. Every rule is enforced in the database. */
+export async function setTeamMemberRoleAction(
+  staffProfileId: string,
+  roleKey: string,
+): Promise<AccessMutationResult> {
+  const result = await setTeamMemberRole(staffProfileId, roleKey);
+  if (result.ok) revalidatePath('/settings');
+  return result;
+}
+
+/** Save a member's permission toggles. Applies immediately on their next request. */
+export async function setTeamMemberPermissionsAction(
+  staffProfileId: string,
+  permissionKeys: string[],
+): Promise<AccessMutationResult> {
+  const result = await setTeamMemberPermissions(staffProfileId, permissionKeys);
+  if (result.ok) revalidatePath('/settings');
+  return result;
 }
 
 export async function addTeamMemberAction(

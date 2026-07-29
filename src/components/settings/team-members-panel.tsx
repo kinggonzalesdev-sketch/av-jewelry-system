@@ -9,14 +9,16 @@ import {
 } from '@/lib/authz/team-actions';
 import { EMPTY_TEAM_STATE, type TeamActionState } from '@/lib/authz/team-action-state';
 import type { TeamMemberRow } from '@/lib/authz/team-accounts';
+import { MAX_SUPER_ADMINS } from '@/lib/authz/access-catalogue';
+import { MemberAccessControls } from '@/components/settings/member-access-controls';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 const ROLE_LABEL: Record<string, string> = {
-  owner: 'Admin / Owner',
-  selected_admin: 'Selected Admin',
-  staff: 'Team Member',
+  owner: 'Super Admin',
+  selected_admin: 'Admin',
+  staff: 'Staff',
 };
 
 /**
@@ -175,7 +177,14 @@ function RevealBox({ reveal }: { reveal: { email: string; tempPassword: string }
   );
 }
 
-export function TeamMembersPanel({ members }: { members: TeamMemberRow[] }) {
+export function TeamMembersPanel({
+  members,
+  isPrimary = false,
+}: {
+  members: TeamMemberRow[];
+  /** True when the SIGNED-IN user is the Primary Super Admin. */
+  isPrimary?: boolean;
+}) {
   const [addState, add, adding] = useActionState<TeamActionState, FormData>(
     addTeamMemberAction,
     EMPTY_TEAM_STATE,
@@ -184,6 +193,11 @@ export function TeamMembersPanel({ members }: { members: TeamMemberRow[] }) {
   const reveal = addState.reveal;
   const error = addState.error;
   const onTemp = members.filter((m) => m.passwordIsTemp).length;
+  // The cap counts ACTIVE Super Admins; the database re-checks it on every save.
+  const activeSuperAdmins = members.filter(
+    (m) => m.roleKey === 'owner' && m.isActive,
+  ).length;
+  const superAdminSlotFree = activeSuperAdmins < MAX_SUPER_ADMINS;
 
   return (
     <div className="space-y-3">
@@ -255,6 +269,7 @@ export function TeamMembersPanel({ members }: { members: TeamMemberRow[] }) {
                 <th className="px-3 py-2 font-medium">Team member</th>
                 <th className="px-3 py-2 font-medium">Sign-in email</th>
                 <th className="px-3 py-2 font-medium">Password</th>
+                <th className="px-3 py-2 text-right font-medium">Role &amp; Access</th>
                 <th className="px-3 py-2 text-right font-medium">Actions</th>
               </tr>
             </thead>
@@ -279,9 +294,26 @@ export function TeamMembersPanel({ members }: { members: TeamMemberRow[] }) {
                     )}
                   </td>
                   <td className="px-3 py-2">
+                    <MemberAccessControls
+                      member={m}
+                      isPrimary={isPrimary}
+                      superAdminSlotFree={superAdminSlotFree}
+                    />
+                  </td>
+                  <td className="px-3 py-2">
                     <div className="flex items-center justify-end gap-2">
                       <SetPasswordCell member={m} />
-                      <DeleteMemberCell member={m} />
+                      {/* The Primary Super Admin can never be deleted. */}
+                      {m.isPrimarySuperAdmin ? (
+                        <span
+                          className="text-[11px] text-muted-foreground"
+                          title="The Primary Super Admin cannot be deleted."
+                        >
+                          Protected
+                        </span>
+                      ) : (
+                        <DeleteMemberCell member={m} />
+                      )}
                     </div>
                   </td>
                 </tr>

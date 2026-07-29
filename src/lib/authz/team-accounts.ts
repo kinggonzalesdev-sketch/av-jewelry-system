@@ -1,7 +1,13 @@
 import 'server-only';
 
 import { recordAuditEvent } from '@/lib/audit/log';
-import { AuthorizationError, requireActiveStaff, requireOwner } from '@/lib/authz/guard';
+import { ALL_ACCESS_KEYS } from '@/lib/authz/access-catalogue';
+import {
+  AuthorizationError,
+  PRIMARY_SUPER_ADMIN_EMAIL,
+  requireActiveStaff,
+  requireOwner,
+} from '@/lib/authz/guard';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { generateTempPassword } from '@/lib/authz/temp-password';
@@ -47,7 +53,23 @@ export type TeamMemberRow = {
   passwordIsTemp: boolean;
   /** True for the signed-in Owner's own row — the button reads "Set my password". */
   isSelf: boolean;
+  /** The Primary Super Admin — cannot be demoted, deleted, or disabled. */
+  isPrimarySuperAdmin: boolean;
 };
+
+/** One member's saved access, for the Manage Access modal. */
+export type TeamMemberAccess = {
+  staffProfileId: string;
+  fullName: string;
+  email: string | null;
+  roleKey: string;
+  isActive: boolean;
+  isPrimarySuperAdmin: boolean;
+  /** Permission keys currently granted. A Super Admin holds everything implicitly. */
+  permissionKeys: string[];
+};
+
+export type AccessMutationResult = { ok: true } | { ok: false; error: string };
 
 export type TeamActionResult =
   { ok: true; tempPassword: string; email: string } | { ok: false; error: string };
@@ -79,15 +101,172 @@ export async function listTeamMembers(): Promise<TeamMemberRow[]> {
 
   if (error || !data) return [];
 
-  return (data as Array<Record<string, unknown>>).map((r) => ({
-    staffProfileId: r.id as string,
-    fullName: (r.full_name as string | null) ?? 'Team member',
-    roleKey: (r.role_key as string | null) ?? 'staff',
-    email: emailById.get(r.auth_user_id as string) ?? null,
-    isActive: r.is_active === true,
-    passwordIsTemp: r.password_is_temp === true,
-    isSelf: (r.auth_user_id as string) === owner.authUserId,
-  }));
+  return (data as Array<Record<string, unknown>>).map((r) => {
+    const email = emailById.get(r.auth_user_id as string) ?? null;
+    return {
+      staffProfileId: r.id as string,
+      fullName: (r.full_name as string | null) ?? 'Team member',
+      roleKey: (r.role_key as string | null) ?? 'staff',
+      email,
+      isActive: r.is_active === true,
+      passwordIsTemp: r.password_is_temp === true,
+      isSelf: (r.auth_user_id as string) === owner.authUserId,
+      isPrimarySuperAdmin:
+        (email ?? '').trim().toLowerCase() === PRIMARY_SUPER_ADMIN_EMAIL,
+    };
+  });
+}
+
+/**
+ * One member's saved access for the Manage Access modal. Super-Admin-only, and the
+ * database re-checks on save — this read only decides what the modal shows.
+ */
+export async function getTeamMemberAccess(
+  staffProfileId: string,
+): Promise<TeamMemberAccess | null> {
+  await requireOwner();
+  if (!staffProfileId) return null;
+
+  const supabase = await createClient();
+  const [{ data: profile }, { data: grants }] = await Promise.all([
+    supabase
+      .from('staff_profiles')
+      .select('id, auth_user_id, full_name, role_key, is_active')
+      .eq('id', staffProfileId)
+      .maybeSingle(),
+    supabase
+      .from('staff_permission_grants')
+      .select('permission_key')
+      .eq('staff_profile_id', staffProfileId),
+  ]);
+
+  const p = profile as Record<string, unknown> | null;
+  if (!p) return null;
+
+  let email: string | null = null;
+  const admin = adminOrNull();
+  if (admin) {
+    const { data } = await admin.auth.admin.getUserById(p.auth_user_id as string);
+    email = data?.user?.email ?? null;
+  }
+
+  return {
+    staffProfileId: p.id as string,
+    fullName: (p.full_name as string | null) ?? 'Team member',
+    email,
+    roleKey: (p.role_key as string | null) ?? 'staff',
+    isActive: p.is_active === true,
+    isPrimarySuperAdmin: (email ?? '').trim().toLowerCase() === PRIMARY_SUPER_ADMIN_EMAIL,
+    permissionKeys: ((grants ?? []) as Array<{ permission_key: string }>).map(
+      (g) => g.permission_key,
+    ),
+  };
+}
+
+/**
+ * Change a member's role. The DATABASE is the authority: only the Primary Super
+ * Admin may create or remove a Super Admin, the cap of 2 is re-checked inside the
+ * transaction, the Primary can never be demoted, and nobody changes their own role.
+ * Its refusals are surfaced verbatim.
+ */
+export async function setTeamMemberRole(
+  staffProfileId: string,
+  roleKey: string,
+): Promise<AccessMutationResult> {
+  if (!staffProfileId) return { ok: false, error: 'A team member is required.' };
+
+  try {
+    await requireOwner();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
+    throw cause;
+  }
+
+  const before = await getTeamMemberAccess(staffProfileId);
+
+  const supabase = await createClient();
+  const res = (await supabase.rpc('set_team_member_role', {
+    p_staff_profile_id: staffProfileId,
+    p_role: roleKey,
+  })) as { data: Record<string, unknown> | null; error: { message: string } | null };
+
+  if (res.error) {
+    await recordAuditEvent({
+      action: 'team_member.role_change',
+      entityType: 'staff_profile',
+      entityId: staffProfileId,
+      outcome: 'failed',
+      reason: res.error.message,
+    });
+    return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+
+  if (res.data?.changed === true) {
+    await recordAuditEvent({
+      action: 'team_member.role_change',
+      entityType: 'staff_profile',
+      entityId: staffProfileId,
+      context: {
+        member: before?.fullName ?? null,
+        previousRole: before?.roleKey ?? null,
+        newRole: roleKey,
+      },
+    });
+  }
+  return { ok: true };
+}
+
+/**
+ * Replace a member's permission grants. Super-Admin-only; the database refuses a
+ * Super Admin target (they hold everything implicitly) and self-edits, and replaces
+ * the whole set in one transaction. The audit records the old AND new sets.
+ */
+export async function setTeamMemberPermissions(
+  staffProfileId: string,
+  permissionKeys: string[],
+): Promise<AccessMutationResult> {
+  if (!staffProfileId) return { ok: false, error: 'A team member is required.' };
+
+  try {
+    await requireOwner();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
+    throw cause;
+  }
+
+  // Only keys the access catalogue actually offers — never arbitrary input.
+  const keys = [...new Set(permissionKeys)].filter((k) => ALL_ACCESS_KEYS.includes(k));
+  const before = await getTeamMemberAccess(staffProfileId);
+
+  const supabase = await createClient();
+  const res = (await supabase.rpc('set_team_member_permissions', {
+    p_staff_profile_id: staffProfileId,
+    p_keys: keys,
+  })) as { data: Record<string, unknown> | null; error: { message: string } | null };
+
+  if (res.error) {
+    await recordAuditEvent({
+      action: 'team_member.permissions_change',
+      entityType: 'staff_profile',
+      entityId: staffProfileId,
+      outcome: 'failed',
+      reason: res.error.message,
+    });
+    return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+
+  await recordAuditEvent({
+    action: 'team_member.permissions_change',
+    entityType: 'staff_profile',
+    entityId: staffProfileId,
+    context: {
+      member: before?.fullName ?? null,
+      role: before?.roleKey ?? null,
+      previousPermissions: before?.permissionKeys ?? [],
+      newPermissions: keys,
+    },
+  });
+  return { ok: true };
 }
 
 /** Create a team member with an auto-generated temp password. Owner-only. */

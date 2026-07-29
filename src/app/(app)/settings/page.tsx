@@ -47,7 +47,7 @@ export default async function SettingsPage() {
           <p className="mb-3 mt-0.5 text-xs text-muted-foreground">
             Add team members and set a temporary password. Owner-only.
           </p>
-          <TeamMembersPanel members={members} />
+          <TeamMembersPanel members={members} isPrimary={isPrimary} />
         </section>
       ) : null}
 
