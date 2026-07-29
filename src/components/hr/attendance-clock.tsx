@@ -46,11 +46,6 @@ export type ClockStaffMember = {
   photoUrl?: string | null;
 };
 
-/** "selected_admin" → "Selected Admin", "owner" → "Owner". */
-function roleLabel(roleKey: string): string {
-  return roleKey.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 export function AttendanceClock({
   staff,
   openSessions,
@@ -219,9 +214,13 @@ export function AttendanceClock({
               className="mx-auto block h-10 w-full max-w-md rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold"
             >
               <option value="">Select a team member</option>
+              {/* Name only (Owner request). The role told the person clocking in
+                  nothing useful and leaked the org chart onto a shared kiosk
+                  screen. The permanent id is still the option VALUE, so who is
+                  clocked in is unchanged. */}
               {staff.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.fullName} — {roleLabel(m.roleKey)}
+                  {m.fullName}
                 </option>
               ))}
             </select>

@@ -37,7 +37,6 @@ export default async function ReviewAttendancePage() {
     <div>
       <PageHeader
         title="Review Attendance"
-        description="All team attendance — filter by employee, date, and status."
       />
       <ReviewAttendanceView records={records} selfies={selfies} />
     </div>

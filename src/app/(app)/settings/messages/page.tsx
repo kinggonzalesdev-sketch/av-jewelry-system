@@ -33,7 +33,6 @@ export default async function MessageTemplatesPage() {
     <div className="space-y-4">
       <PageHeader
         title="Message Templates"
-        description="The wording used for Send Invoice and the three reminders. Changes apply to the next message sent."
       />
       <Link
         href="/settings"

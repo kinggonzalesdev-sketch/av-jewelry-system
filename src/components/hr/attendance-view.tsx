@@ -443,7 +443,6 @@ function RateCell({ row }: { row: PayrollRow }) {
         open={open}
         onClose={() => setOpen(false)}
         title={`Salary rate — ${row.fullName}`}
-        description="A DAILY rate. Payroll pays it for each day actually worked, plus the night-shift bonus. Effective-dated, so past periods keep the rate that applied then."
         size="sm"
         footer={
           <>
@@ -498,10 +497,6 @@ function RateCell({ row }: { row: PayrollRow }) {
               className="mt-1 h-9"
             />
           </div>
-          <p className="text-[11px] text-muted-foreground">
-            Payroll = daily rate × days worked, plus ₱300 for each shift clocked out at
-            or after 10:00 PM.
-          </p>
           {state.error ? (
             <p role="alert" className="text-sm text-destructive">
               {state.error}

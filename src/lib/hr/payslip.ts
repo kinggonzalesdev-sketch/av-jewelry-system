@@ -28,10 +28,16 @@ export function mapSnapshotRow(row: Record<string, unknown>): PayslipSnapshot {
     payrollEndDate: row.payroll_end_date as string,
     regularHours: money(row.regular_hours),
     overtimeHours: money(row.overtime_hours),
+    // A daily payslip stores its figure in daily_rate; legacy ones in hourly_rate.
     hourlyRate:
-      row.hourly_rate === null || row.hourly_rate === undefined
-        ? null
-        : money(row.hourly_rate),
+      row.daily_rate !== null && row.daily_rate !== undefined
+        ? money(row.daily_rate)
+        : row.hourly_rate === null || row.hourly_rate === undefined
+          ? null
+          : money(row.hourly_rate),
+    rateBasis: (row.rate_basis as 'hourly' | 'daily' | null) ?? 'hourly',
+    daysWorked: Number(row.days_worked ?? 0),
+    nightShifts: Number(row.night_shifts ?? 0),
     regularSalary: money(row.regular_salary),
     overtimePay: money(row.overtime_pay),
     grossSalary: money(row.gross_salary),
@@ -44,7 +50,7 @@ export function mapSnapshotRow(row: Record<string, unknown>): PayslipSnapshot {
 }
 
 const SELECT =
-  'id, employee_id, payroll_start_date, payroll_end_date, regular_hours, overtime_hours, hourly_rate, regular_salary, overtime_pay, gross_salary, deductions, net_salary, payment_status, payment_date, generated_at, staff:staff_profiles!employee_id ( full_name, role_key )';
+  'id, employee_id, payroll_start_date, payroll_end_date, regular_hours, overtime_hours, hourly_rate, daily_rate, days_worked, night_shifts, rate_basis, regular_salary, overtime_pay, gross_salary, deductions, net_salary, payment_status, payment_date, generated_at, staff:staff_profiles!employee_id ( full_name, role_key )';
 
 /**
  * The payslip snapshots for an exact payroll period. Keyed by employee id so the

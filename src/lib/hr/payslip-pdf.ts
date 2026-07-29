@@ -95,11 +95,21 @@ export function downloadPayslipPdf(snap: PayslipSnapshot): void {
 
   // Two-column summary.
   const rate = snap.hourlyRate ? peso(snap.hourlyRate) : 'No rate set';
-  const leftRows: Array<[string, string]> = [
-    ['Regular hours', snap.regularHours],
-    ['Overtime hours', snap.overtimeHours],
-    ['Hourly rate', rate],
-  ];
+  // A payslip states the basis it was actually computed on. Legacy payslips were
+  // hourly; relabelling them "Daily rate" would misstate pay already issued.
+  const daily = snap.rateBasis === 'daily';
+  const leftRows: Array<[string, string]> = daily
+    ? [
+        ['Days worked', String(snap.daysWorked)],
+        ['Regular hours', snap.regularHours],
+        ['Night shifts (₱300 each)', String(snap.nightShifts)],
+        ['Daily rate', rate],
+      ]
+    : [
+        ['Regular hours', snap.regularHours],
+        ['Overtime hours', snap.overtimeHours],
+        ['Hourly rate', rate],
+      ];
   const rightRows: Array<[string, string]> = [
     ['Regular salary', peso(snap.regularSalary)],
     ['Overtime pay', peso(snap.overtimePay)],

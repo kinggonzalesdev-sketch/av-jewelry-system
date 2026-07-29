@@ -16,7 +16,14 @@ export type PayslipSnapshot = {
   payrollEndDate: string;
   regularHours: string;
   overtimeHours: string;
+  /** The rate this payslip was computed from. */
   hourlyRate: string | null;
+  /** 'daily' for the current model; 'hourly' on legacy payslips. */
+  rateBasis: 'hourly' | 'daily';
+  /** Days worked (daily model). */
+  daysWorked: number;
+  /** Shifts clocked out at or after 10 PM (each earns the flat bonus). */
+  nightShifts: number;
   regularSalary: string;
   overtimePay: string;
   grossSalary: string;

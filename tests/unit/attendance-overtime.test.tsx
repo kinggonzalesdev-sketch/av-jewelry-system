@@ -50,8 +50,8 @@ describe('ReviewAttendanceView — Overtime column', () => {
     expect(within(table).getByText('Overtime')).toBeInTheDocument();
     // The overtime row shows ₱300 (whole → no decimals); the day-shift row a dash.
     expect(within(table).getByText(/₱\s?300\b/)).toBeInTheDocument();
-    // Total overtime is summed in the footer.
-    expect(screen.getByText(/Total overtime shown/i)).toBeInTheDocument();
+    // The explanatory footer was removed by Owner request; the COLUMN is the record.
+    expect(screen.queryByText(/Total overtime shown/i)).not.toBeInTheDocument();
   });
 
   it('shows clock-in/out selfie thumbnails that link to the image (view/download)', () => {
@@ -79,10 +79,11 @@ describe('AttendanceClock', () => {
 
   it('requires picking a team member from the dropdown before offering Clock In', () => {
     render(<AttendanceClock staff={staff} openSessions={{}} />);
-    // One dropdown; the option reads "Full Name — Role"; no clock button until picked.
+    // One dropdown; the option reads the NAME ONLY (Owner request); no clock
+    // button until someone is picked.
     const select = screen.getByTestId<HTMLSelectElement>('clock-staff-select');
     expect(select).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Grace Villanueva — Staff' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Grace Villanueva' })).toBeInTheDocument();
     expect(screen.queryByTestId('clock-in')).not.toBeInTheDocument();
 
     fireEvent.change(select, { target: { value: 's1' } });

@@ -90,9 +90,22 @@ function PayslipDocument({ snap }: { snap: PayslipSnapshot }) {
       {/* 2 · Payroll Summary — compact two-column grid, Net Pay highlighted */}
       <div className="mt-4 grid grid-cols-2 gap-x-8">
         <div>
-          <Row label="Regular hours" value={snap.regularHours} />
-          <Row label="Overtime hours" value={snap.overtimeHours} />
-          <Row label="Hourly rate" value={rate} />
+          {/* A payslip states the basis it was actually computed on — legacy
+              payslips were hourly, and relabelling them would misstate issued pay. */}
+          {snap.rateBasis === 'daily' ? (
+            <>
+              <Row label="Days worked" value={String(snap.daysWorked)} />
+              <Row label="Regular hours" value={snap.regularHours} />
+              <Row label="Night shifts (₱300 each)" value={String(snap.nightShifts)} />
+              <Row label="Daily rate" value={rate} />
+            </>
+          ) : (
+            <>
+              <Row label="Regular hours" value={snap.regularHours} />
+              <Row label="Overtime hours" value={snap.overtimeHours} />
+              <Row label="Hourly rate" value={rate} />
+            </>
+          )}
         </div>
         <div>
           <Row label="Regular salary" value={formatPeso(snap.regularSalary)} />
@@ -239,10 +252,6 @@ export function PayslipButton({
           <div className="space-y-3">
             {canManage ? (
               <>
-                <p className="text-sm text-muted-foreground">
-                  This generates an immutable payslip from the period&apos;s attendance +
-                  the current rate. Later rate/attendance edits won&apos;t change it.
-                </p>
                 <div className="max-w-[12rem]">
                   <Label htmlFor="ded" className="text-xs">
                     Deductions

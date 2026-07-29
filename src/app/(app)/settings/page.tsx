@@ -48,9 +48,6 @@ export default async function SettingsPage() {
           <h2 id="portal-h" className="text-sm font-semibold text-foreground">
             Portal &amp; Access — Team Members
           </h2>
-          <p className="mb-3 mt-0.5 text-xs text-muted-foreground">
-            Add team members and set a temporary password. Owner-only.
-          </p>
           <TeamMembersPanel members={members} isPrimary={isPrimary} />
         </section>
       ) : null}
@@ -65,9 +62,6 @@ export default async function SettingsPage() {
           <h2 id="messages-h" className="text-sm font-semibold text-foreground">
             Message Templates
           </h2>
-          <p className="mb-3 mt-0.5 text-xs text-muted-foreground">
-            The wording used for Send Invoice and the three reminders.
-          </p>
           <Link
             href="/settings/messages"
             className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium text-foreground hover:bg-accent"

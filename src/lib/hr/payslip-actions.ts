@@ -75,7 +75,7 @@ export async function generatePayslipAction(
   const readBack = await supabase
     .from('payroll_snapshots')
     .select(
-      'id, employee_id, payroll_start_date, payroll_end_date, regular_hours, overtime_hours, hourly_rate, regular_salary, overtime_pay, gross_salary, deductions, net_salary, payment_status, payment_date, generated_at, staff:staff_profiles!employee_id ( full_name, role_key )',
+      'id, employee_id, payroll_start_date, payroll_end_date, regular_hours, overtime_hours, hourly_rate, daily_rate, days_worked, night_shifts, rate_basis, regular_salary, overtime_pay, gross_salary, deductions, net_salary, payment_status, payment_date, generated_at, staff:staff_profiles!employee_id ( full_name, role_key )',
     )
     .eq('id', rowId)
     .single();

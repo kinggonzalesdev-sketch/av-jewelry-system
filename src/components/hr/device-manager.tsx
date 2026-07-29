@@ -53,12 +53,6 @@ export function DeviceManager({
         <CardTitle className="text-base">Approved shop phone</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-xs text-muted-foreground">
-          Only the approved device can Clock In/Out. Registering <strong>this</strong>{' '}
-          phone makes it the shop device and deactivates any previous one. Until a device
-          is registered, clock-in works on any device.
-        </p>
-
         <div
           className={
             thisApproved

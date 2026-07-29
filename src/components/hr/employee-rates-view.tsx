@@ -73,7 +73,6 @@ function EditRate({ row }: { row: EmployeeRateRow }) {
         open={open}
         onClose={() => setOpen(false)}
         title={`Salary rate — ${row.fullName}`}
-        description="Sets the rate from the effective date forward. Previous rates are kept in history; payroll uses the rate effective for each period."
         size="sm"
         footer={
           <>
@@ -130,10 +129,6 @@ function EditRate({ row }: { row: EmployeeRateRow }) {
               />
             </div>
           </ModalFormGrid>
-          <p className="text-[11px] text-muted-foreground">
-            A DAILY rate. Payroll = rate × days worked, plus ₱300 for each shift clocked
-            out at or after 10:00 PM. Effective-dated, so past pay is never rewritten.
-          </p>
           {state.error ? (
             <p role="alert" className="text-sm text-destructive">
               {state.error}

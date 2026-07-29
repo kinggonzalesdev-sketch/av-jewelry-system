@@ -86,16 +86,6 @@ export function ReviewAttendanceView({
     });
   }, [records, employee, from, to, status]);
 
-  // Overtime total for the filtered set — exact centavos, rendered as pesos.
-  const totalOvertime = useMemo(
-    () => centavosToPeso(sumOvertimeCentavos(filtered)),
-    [filtered],
-  );
-  const overtimeCount = useMemo(
-    () => filtered.filter((r) => r.isOvertime).length,
-    [filtered],
-  );
-
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-card p-3">
@@ -227,17 +217,6 @@ export function ReviewAttendanceView({
         </div>
       )}
 
-      <p className="text-xs text-muted-foreground">
-        Overtime is added automatically when a session is clocked in at or
-        after 10:00&nbsp;PM (a flat ₱300, decided by the database from the real clock-in
-        time). Total overtime shown:{' '}
-        <span className="font-medium text-foreground">{formatPeso(totalOvertime)}</span>{' '}
-        across <span className="tabular-nums">{overtimeCount}</span>{' '}
-        {overtimeCount === 1 ? 'session' : 'sessions'}. Clock-in and clock-out selfies
-        show as thumbnails — click one to view it full size or save it to your
-        computer&apos;s Downloads folder. Admin corrections (with a required reason + audit
-        log) arrive next.
-      </p>
     </div>
   );
 }
@@ -335,19 +314,4 @@ function ReviewRowDelete({ row }: { row: AttendanceRow }) {
       </Modal>
     </>
   );
-}
-
-/** Sum overtime pay as exact integer centavos, then render — never via a float. */
-function sumOvertimeCentavos(rows: AttendanceRow[]): bigint {
-  let cents = 0n;
-  for (const r of rows) {
-    if (!r.isOvertime) continue;
-    const [whole = '0', fraction = ''] = r.overtimeAmount.split('.');
-    cents += BigInt(whole) * 100n + BigInt(`${fraction}00`.slice(0, 2) || '0');
-  }
-  return cents;
-}
-
-function centavosToPeso(cents: bigint): string {
-  return `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`;
 }
