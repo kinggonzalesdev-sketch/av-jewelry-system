@@ -1,7 +1,6 @@
 'use client';
 
 import { useActionState, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 import {
@@ -385,42 +384,9 @@ export function DashboardView({
               />
             </div>
 
-            {/* Layaway — live from the database (imported ledger + order-derived
-                arrangements). Each card opens the Layaway section with its filter;
-                Needs-Review / invalid rows never contribute. */}
-            <div>
-              <p className="mb-2 text-sm font-semibold text-foreground">Layaway</p>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                {(
-                  [
-                    ['Active Layaways', String(layaway.active), 'active'],
-                    ['Completed Layaways', String(layaway.completed), 'completed'],
-                    ['Overdue Layaways', String(layaway.overdue), 'overdue'],
-                    ['Forfeited Layaways', String(layaway.forfeited), 'forfeited'],
-                    ['Total Qty / Items', String(layaway.totalQty), 'all'],
-                    ['Created Today', String(layaway.createdToday), 'all'],
-                    ['Created This Month', String(layaway.createdMonth), 'all'],
-                    ['Due Today', String(layaway.dueToday), 'active'],
-                    ['Due Within 7 Days', String(layaway.due7d), 'active'],
-                    ['Total Item Amount', money(layaway.totalItem), 'all'],
-                    ['Total Interest', money(layaway.totalInterest), 'all'],
-                    ['Grand Total', money(layaway.grandTotal), 'all'],
-                    ['Total Payments', money(layaway.totalPayment), 'all'],
-                    ['Remaining Balance', money(layaway.remainingBalance), 'all'],
-                  ] as const
-                ).map(([label, value, section]) => (
-                  <Link
-                    key={label}
-                    href={`/orders/payments?layaway=${section}`}
-                    data-testid={`dash-layaway-${section}-${label}`}
-                    className="rounded-xl border border-border bg-card p-3 transition-colors hover:border-gold/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold"
-                  >
-                    <p className="text-[11px] leading-tight text-muted-foreground">{label}</p>
-                    <p className="mt-1 text-xl font-bold tabular-nums">{value}</p>
-                  </Link>
-                ))}
-              </div>
-            </div>
+            {/* The 14-card Layaway grid was removed by Owner request. The layaway
+                figures themselves are unchanged and still live below (the Layaway
+                chart and the Layaway summary card) and in the Layaway module. */}
 
             {/* ===== Colourful visual overview (Owner request 2026-07-22) =====
                 Income mix as a donut, then General / Layaway / Scrap as colourful
