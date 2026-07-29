@@ -1,12 +1,10 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { SupplierCodesPanel } from '@/components/settings/supplier-codes-panel';
 import { TeamMembersPanel } from '@/components/settings/team-members-panel';
 import { PageHeader } from '@/components/ui/page-primitives';
-import { requireActiveStaff } from '@/lib/authz/guard';
+import { isPrimarySuperAdmin, requireActiveStaff } from '@/lib/authz/guard';
 import { listTeamMembers } from '@/lib/authz/team-accounts';
-import { listSupplierCodes } from '@/lib/inventory/suppliers';
 
 export const metadata: Metadata = {
 };
@@ -29,11 +27,9 @@ export const dynamic = 'force-dynamic';
 export default async function SettingsPage() {
   const staff = await requireActiveStaff();
   const isOwner = staff.roleKey === 'owner';
-  const canManageSuppliers = isOwner || staff.roleKey === 'selected_admin';
-  const [members, supplierCodes] = await Promise.all([
-    isOwner ? listTeamMembers() : Promise.resolve([]),
-    canManageSuppliers ? listSupplierCodes() : Promise.resolve([]),
-  ]);
+  // Administration is reserved to the PRIMARY Super Admin — not every Super Admin.
+  const isPrimary = await isPrimarySuperAdmin();
+  const members = isOwner ? await listTeamMembers() : [];
 
   return (
     <div className="space-y-4">
@@ -55,46 +51,32 @@ export default async function SettingsPage() {
         </section>
       ) : null}
 
-      {/* Supplier Codes — configurable supplier-initial → name mapping (Owner/Admin). */}
-      {canManageSuppliers ? (
+      {/* Administration — PRIMARY Super Admin only (Owner request). A second Super
+          Admin does not see it; /admin/integrations enforces the same rule itself,
+          so hiding the link is convenience, not the control. */}
+      {isPrimary ? (
         <section
           className="rounded-xl border border-border bg-card p-4"
-          aria-labelledby="supplier-h"
+          aria-labelledby="admin-h"
         >
-          <h2 id="supplier-h" className="text-sm font-semibold text-foreground">
-            Inventory — Supplier Codes
+          <h2 id="admin-h" className="text-sm font-semibold text-foreground">
+            Administration
           </h2>
-          <p className="mb-3 mt-0.5 text-xs text-muted-foreground">
-            Map the supplier initial in an inventory code (e.g. the{' '}
-            <span className="font-mono">A</span> in{' '}
-            <span className="font-mono">SBA-N-2683</span>) to a supplier name.
-          </p>
-          <SupplierCodesPanel codes={supplierCodes} />
+          <ul className="mt-2 space-y-1.5">
+            <li>
+              <Link
+                href="/admin/integrations"
+                className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium text-foreground hover:bg-accent"
+              >
+                <span aria-hidden="true" className="w-4 text-center text-xs">
+                  ⇄
+                </span>
+                Integration (Pancake)
+              </Link>
+            </li>
+          </ul>
         </section>
       ) : null}
-
-      {/* Administration — links to existing admin routes. */}
-      <section
-        className="rounded-xl border border-border bg-card p-4"
-        aria-labelledby="admin-h"
-      >
-        <h2 id="admin-h" className="text-sm font-semibold text-foreground">
-          Administration
-        </h2>
-        <ul className="mt-2 space-y-1.5">
-          <li>
-            <Link
-              href="/admin/integrations"
-              className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium text-foreground hover:bg-accent"
-            >
-              <span aria-hidden="true" className="w-4 text-center text-xs">
-                ⇄
-              </span>
-              Integration (Pancake)
-            </Link>
-          </li>
-        </ul>
-      </section>
     </div>
   );
 }

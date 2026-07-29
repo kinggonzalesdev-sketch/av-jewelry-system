@@ -253,6 +253,35 @@ export async function requireOwner(): Promise<StaffContext> {
 }
 
 /**
+ * The PRIMARY Super Admin — identified by email, not by role, so the authority
+ * survives renames, role edits, and profile changes. Mirrors
+ * `app_private.primary_super_admin_email()`; the database is the real gate, this
+ * only decides what the UI offers.
+ */
+export const PRIMARY_SUPER_ADMIN_EMAIL = 'kingfmgonzales@gmail.com';
+
+/** True when the signed-in user IS the Primary Super Admin (case/space-insensitive). */
+export async function isPrimarySuperAdmin(): Promise<boolean> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const email = user?.email?.trim().toLowerCase() ?? '';
+  return email === PRIMARY_SUPER_ADMIN_EMAIL;
+}
+
+/** Refuses anyone who is not the Primary Super Admin. */
+export async function requirePrimarySuperAdmin(): Promise<StaffContext> {
+  const staff = await requireActiveStaff();
+  if (!(await isPrimarySuperAdmin())) {
+    throw new AuthorizationError(
+      'Not authorized: this action is reserved to the Primary Super Admin. No record was changed.',
+    );
+  }
+  return staff;
+}
+
+/**
  * Requires the Owner OR a Selected Admin.
  *
  * The gate for destructive admin maintenance the Owner has chosen to delegate to
