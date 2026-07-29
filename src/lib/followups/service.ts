@@ -148,7 +148,7 @@ export async function getFollowUpQueue(): Promise<FollowUpQueue> {
       description:
         'Prepared or shipping-confirmed orders not yet dispatched or picked up.',
       count: deliveryPending,
-      href: '/orders/fulfillment',
+      href: '/orders',
       tone: 'neutral',
     },
     {
@@ -157,7 +157,7 @@ export async function getFollowUpQueue(): Promise<FollowUpQueue> {
       description:
         'Failed deliveries, unclaimed pickups, or held parcels needing a decision.',
       count: failedDelivery,
-      href: '/orders/fulfillment',
+      href: '/orders',
       tone: 'danger',
     },
     {

@@ -2,7 +2,9 @@ import type { Metadata } from 'next';
 
 import { NewOrderWorkflow } from '@/components/orders/new-order-workflow';
 import { OrdersView } from '@/components/orders/orders-view';
+import { OwnerApprovalsPanel } from '@/components/orders/owner-approvals-panel';
 import { getCurrentStaffProfile, getGrantedPermissions } from '@/lib/authz/guard';
+import { listOwnerApprovals } from '@/lib/fulfillment/service';
 import { listCaptureCustomers } from '@/lib/live/batches';
 import { listCaptureItems, listOrders, listWalkInItems } from '@/lib/orders/service';
 import { listKeepLayawayAccounts } from '@/lib/payments/layaway-ledger';
@@ -36,16 +38,25 @@ export default async function OrdersPage({
   const params = await searchParams;
   const openForInvoice = params.view === 'invoice';
 
-  const [result, permissions, customers, items, walkInItems, profile, keepLayaways] =
-    await Promise.all([
-      listOrders(),
-      getGrantedPermissions(),
-      listCaptureCustomers(),
-      listCaptureItems(),
-      listWalkInItems(),
-      getCurrentStaffProfile(),
-      listKeepLayawayAccounts(),
-    ]);
+  const [
+    result,
+    permissions,
+    customers,
+    items,
+    walkInItems,
+    profile,
+    keepLayaways,
+    approvals,
+  ] = await Promise.all([
+    listOrders(),
+    getGrantedPermissions(),
+    listCaptureCustomers(),
+    listCaptureItems(),
+    listWalkInItems(),
+    getCurrentStaffProfile(),
+    listKeepLayawayAccounts(),
+    listOwnerApprovals(),
+  ]);
 
   return (
     <div>
@@ -60,6 +71,10 @@ export default async function OrdersPage({
           shopName="A.V. Jewelry"
           salesperson={profile.fullName}
         />
+        {/* The six non-delegable Owner approvals. They used to live on the retired
+            /orders/fulfillment page; this panel is why that page could not simply be
+            deleted. It renders only when something is actually waiting. */}
+        <OwnerApprovalsPanel approvals={approvals} isOwner={profile.roleKey === 'owner'} />
         <OrdersView
           result={result}
           openForInvoice={openForInvoice}
