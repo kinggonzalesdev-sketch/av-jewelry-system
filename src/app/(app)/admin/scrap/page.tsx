@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
+import { canOpenPage } from '@/lib/authz/guard';
 
 import { ScrapView } from '@/components/scrap/scrap-view';
 import { PageHeader } from '@/components/ui/page-primitives';
@@ -26,6 +28,9 @@ export default async function ScrapPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  // Page access (Portal & Access). A member without this permission cannot open
+  // the page — by link OR by typing the URL. A Super Admin holds it implicitly.
+  if (!(await canOpenPage('nav_scrap'))) notFound();
   const params = await searchParams;
   const from = typeof params.from === 'string' ? params.from : firstOfMonth();
   const to = typeof params.to === 'string' ? params.to : today();

@@ -39,6 +39,33 @@ export const PERMISSIONS = {
   INVENTORY_MONITORING: 'inventory_monitoring',
   MINER_ALLOCATION_REVIEW: 'miner_allocation_review',
   INITIATE_HIGH_RISK_ACTION: 'initiate_high_risk_action',
+
+  // ---- Portal & Access catalogue (Owner request) ---------------------------
+  // Page access. A member without these cannot open the page even by URL.
+  NAV_DASHBOARD: 'nav_dashboard',
+  NAV_ORDERS: 'nav_orders',
+  NAV_CUSTOMERS: 'nav_customers',
+  NAV_INVENTORY: 'nav_inventory',
+  NAV_PAYMENTS: 'nav_payments',
+  NAV_LAYAWAY: 'nav_layaway',
+  NAV_SCRAP: 'nav_scrap',
+  VIEW_REPORTS: 'view_reports',
+  VIEW_SETTINGS: 'view_settings',
+  // Order + fulfillment actions.
+  ORDER_ADD_DEPOSIT: 'order_add_deposit',
+  ORDER_CANCEL: 'order_cancel',
+  FULFILLMENT_DELIVERY: 'fulfillment_delivery',
+  FULFILLMENT_SHIPPING: 'fulfillment_shipping',
+  FULFILLMENT_PICKUP: 'fulfillment_pickup',
+  // Record management.
+  CUSTOMER_EDIT: 'customer_edit',
+  CUSTOMER_DELETE: 'customer_delete',
+  INVENTORY_EDIT: 'inventory_edit',
+  INVENTORY_DELETE: 'inventory_delete',
+  // Team management.
+  HR_ATTENDANCE: 'hr_attendance',
+  HR_REVIEW_ATTENDANCE: 'hr_review_attendance',
+  HR_PAYROLL: 'hr_payroll',
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

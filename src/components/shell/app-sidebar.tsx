@@ -145,11 +145,14 @@ export function AppSidebar({
   fullName,
   roleKey,
   userEmail,
+  allowedPages,
   children,
 }: {
   fullName: string;
   roleKey?: string | undefined;
   userEmail: string;
+  /** The member's granted page keys (undefined = do not filter). */
+  allowedPages?: readonly string[] | undefined;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -158,6 +161,10 @@ export function AppSidebar({
   // active (so navigating into Attendance/Payroll auto-expands Team Management).
   const [openSection, setOpenSection] = useState<Record<string, boolean>>({});
   const roleWord = roleKey ? (ROLE_WORD[roleKey] ?? 'Team') : 'Team';
+  // Page permissions the member holds. Undefined -> no filtering (unchanged
+  // behaviour); a Set -> links they cannot open are hidden. The PAGE still
+  // re-checks, so hiding is convenience, never the control.
+  const allowed = allowedPages ? new Set(allowedPages) : undefined;
 
   const isActive = (href: string) =>
     pathname === href ||
@@ -216,11 +223,15 @@ export function AppSidebar({
           <nav aria-label="Primary" className="flex-1 overflow-y-auto p-2">
             <ul className="space-y-0.5">
               {navRows().map((row) => {
-                if (row.kind === 'item') return renderSidebarLink(row.item);
+                if (row.kind === 'item') {
+                  return canSeeNavItem(row.item, roleKey, allowed)
+                    ? renderSidebarLink(row.item)
+                    : null;
+                }
 
                 // A collapsible group (e.g. Team Management). Role-filter first; a
                 // group with nothing visible renders nothing.
-                const items = row.items.filter((it) => canSeeNavItem(it, roleKey));
+                const items = row.items.filter((it) => canSeeNavItem(it, roleKey, allowed));
                 if (items.length === 0) return null;
                 const childActive = items.some((it) => isActive(it.href));
                 const open = openSection[row.section] ?? childActive;
@@ -335,7 +346,9 @@ export function AppSidebar({
         data-testid="bottom-nav"
       >
         <ul className="grid grid-cols-5">
-          {mobilePrimaryItems().map((item) => (
+          {mobilePrimaryItems()
+            .filter((item) => canSeeNavItem(item, roleKey, allowed))
+            .map((item) => (
             <li key={item.href}>
               <Link
                 href={item.href}

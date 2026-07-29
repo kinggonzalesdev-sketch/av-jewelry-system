@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-primitives';
 
 import { DashboardView } from '@/components/dashboard/dashboard-view';
-import { getGrantedPermissions } from '@/lib/authz/guard';
+import { canOpenPage, getGrantedPermissions } from '@/lib/authz/guard';
 import {
   getDashboardCounts,
   getDashboardMetricsRanged,
@@ -34,6 +35,9 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  // Page access (Portal & Access). A member without this permission cannot open
+  // the page — by link OR by typing the URL. A Super Admin holds it implicitly.
+  if (!(await canOpenPage('nav_dashboard'))) notFound();
   const params = await searchParams;
   const query = typeof params.q === 'string' ? params.q : '';
 

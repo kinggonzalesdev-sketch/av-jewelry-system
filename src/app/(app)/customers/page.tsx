@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 
 import { CustomersView } from '@/components/customers/customers-view';
 import { PageHeader } from '@/components/ui/page-primitives';
-import { hasPermission, requireActiveStaff } from '@/lib/authz/guard';
+import { canOpenPage, hasPermission, requireActiveStaff } from '@/lib/authz/guard';
 import { listCustomers } from '@/lib/customers/service';
 
 export const metadata: Metadata = {
@@ -24,6 +25,9 @@ export default async function CustomersPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  // Page access (Portal & Access). A member without this permission cannot open
+  // the page — by link OR by typing the URL. A Super Admin holds it implicitly.
+  if (!(await canOpenPage('nav_customers'))) notFound();
   const params = await searchParams;
   const query = typeof params.q === 'string' ? params.q : '';
 

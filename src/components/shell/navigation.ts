@@ -64,6 +64,29 @@ export type NavItem = {
    * RLS change first (a deliberate follow-up), so it stays Owner-only for now.
    */
   readonly ownerOnly?: boolean;
+  /**
+   * The permission a member needs to REACH this page. The sidebar hides items the
+   * member lacks, and the page itself re-checks the SAME key server-side — so
+   * typing the URL gets nothing either. Nav visibility is convenience; the page
+   * guard is the control (Bible §30.3 r2).
+   */
+  readonly permission?: string;
+};
+
+/** Route → the permission that opens it. One map, used by the sidebar AND pages. */
+export const PAGE_PERMISSION: Record<string, string> = {
+  '/dashboard': 'nav_dashboard',
+  '/orders': 'nav_orders',
+  '/customers': 'nav_customers',
+  '/orders/inventory': 'nav_inventory',
+  '/orders/payments': 'nav_layaway',
+  '/orders/invoice': 'nav_orders',
+  '/admin/scrap': 'nav_scrap',
+  '/admin/attendance': 'hr_attendance',
+  '/admin/attendance/review': 'hr_review_attendance',
+  '/admin/payroll': 'hr_payroll',
+  '/reports': 'view_reports',
+  '/settings': 'view_settings',
 };
 
 export const PRIMARY_NAV: readonly NavItem[] = [
@@ -181,10 +204,28 @@ export function navRows(): NavRow[] {
   return rows;
 }
 
-/** True when `roleKey` may SEE `item` in the sidebar (ownerOnly → Owner only). */
-export function canSeeNavItem(item: NavItem, roleKey: string | undefined): boolean {
-  if (!item.ownerOnly) return true;
-  return roleKey === 'owner';
+/**
+ * True when this member may SEE `item` in the sidebar.
+ *
+ * Two filters: the legacy `ownerOnly` flag, and the page permission from
+ * PAGE_PERMISSION. `allowed` is the member's granted key set — when it is
+ * undefined the permission filter is skipped (callers that do not know the grants
+ * yet keep the previous behaviour rather than hiding everything).
+ *
+ * Hiding a link is CONVENIENCE. The page re-checks the same key server-side, so a
+ * member who types the URL still gets nothing.
+ */
+export function canSeeNavItem(
+  item: NavItem,
+  roleKey: string | undefined,
+  allowed?: ReadonlySet<string>,
+): boolean {
+  if (item.ownerOnly && roleKey !== 'owner') return false;
+  if (allowed) {
+    const needed = item.permission ?? PAGE_PERMISSION[item.href];
+    if (needed && !allowed.has(needed)) return false;
+  }
+  return true;
 }
 
 /** The four mobile bottom-nav destinations (before the More button). */

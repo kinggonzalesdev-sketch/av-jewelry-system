@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 
 import { ReportsView, type ReportsResult } from '@/components/reports/reports-view';
 import { ExportAllButton } from '@/components/export/export-all-button';
 import { PageHeader } from '@/components/ui/page-primitives';
-import { getGrantedPermissions, requireActiveStaff } from '@/lib/authz/guard';
+import { canOpenPage, getGrantedPermissions, requireActiveStaff } from '@/lib/authz/guard';
 import { getSalesSummary } from '@/lib/dashboard/service';
 
 export const metadata: Metadata = {
@@ -24,6 +25,9 @@ export default async function ReportsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  // Page access (Portal & Access). A member without this permission cannot open
+  // the page — by link OR by typing the URL. A Super Admin holds it implicitly.
+  if (!(await canOpenPage('view_reports'))) notFound();
   const params = await searchParams;
   const from = typeof params.from === 'string' ? params.from : '';
   const to = typeof params.to === 'string' ? params.to : '';

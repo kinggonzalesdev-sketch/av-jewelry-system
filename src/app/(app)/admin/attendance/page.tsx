@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 
 import { AttendanceView } from '@/components/hr/attendance-view';
 import { DeviceManager } from '@/components/hr/device-manager';
-import { requireActiveStaff } from '@/lib/authz/guard';
+import { canOpenPage, requireActiveStaff } from '@/lib/authz/guard';
 import { listTeamMembers } from '@/lib/authz/team-accounts';
 import { PageHeader } from '@/components/ui/page-primitives';
 import { listAttendance, listOpenSessions } from '@/lib/hr/attendance';
@@ -28,6 +29,9 @@ export const dynamic = 'force-dynamic';
  * a no-op (nobody is locked out).
  */
 export default async function AttendancePage() {
+  // Page access (Portal & Access). A member without this permission cannot open
+  // the page — by link OR by typing the URL. A Super Admin holds it implicitly.
+  if (!(await canOpenPage('hr_attendance'))) notFound();
   const staff = await requireActiveStaff();
   const isOwner = staff.roleKey === 'owner';
 

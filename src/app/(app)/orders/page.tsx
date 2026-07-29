@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 
 import { NewOrderWorkflow } from '@/components/orders/new-order-workflow';
 import { OrdersView } from '@/components/orders/orders-view';
 import { OwnerApprovalsPanel } from '@/components/orders/owner-approvals-panel';
-import { getCurrentStaffProfile, getGrantedPermissions } from '@/lib/authz/guard';
+import { canOpenPage, getCurrentStaffProfile, getGrantedPermissions } from '@/lib/authz/guard';
 import { listOwnerApprovals } from '@/lib/fulfillment/service';
 import { listCaptureCustomers } from '@/lib/live/batches';
 import { listCaptureItems, listOrders, listWalkInItems } from '@/lib/orders/service';
@@ -35,6 +36,9 @@ export default async function OrdersPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  // Page access (Portal & Access). A member without this permission cannot open
+  // the page — by link OR by typing the URL. A Super Admin holds it implicitly.
+  if (!(await canOpenPage('nav_orders'))) notFound();
   const params = await searchParams;
   const openForInvoice = params.view === 'invoice';
 

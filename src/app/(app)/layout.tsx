@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { AppShell } from '@/components/shell/app-shell';
 import {
   getCurrentStaffProfile,
+  getGrantedPermissions,
   requireActiveStaff,
   requireUser,
 } from '@/lib/authz/guard';
@@ -34,13 +35,20 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // request. A deactivated account is redirected to /account-disabled: its
   // credentials are valid, but the account is not (Bible §30.6).
   await requireActiveStaff();
-  const [profile, user] = await Promise.all([getCurrentStaffProfile(), requireUser()]);
+  const [profile, user, permissions] = await Promise.all([
+    getCurrentStaffProfile(),
+    requireUser(),
+    getGrantedPermissions(),
+  ]);
 
   return (
     <AppShell
       userEmail={user.email ?? 'Unknown user'}
       fullName={profile.fullName}
       roleKey={profile.roleKey}
+      // The sidebar hides links this member cannot open. Each PAGE re-checks the
+      // same key, so hiding is convenience — never the authorization control.
+      allowedPages={[...permissions]}
     >
       {children}
     </AppShell>

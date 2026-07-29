@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 
 import { TeamMembersPanel } from '@/components/settings/team-members-panel';
 import { PageHeader } from '@/components/ui/page-primitives';
-import { isPrimarySuperAdmin, requireActiveStaff } from '@/lib/authz/guard';
+import { canOpenPage, isPrimarySuperAdmin, requireActiveStaff } from '@/lib/authz/guard';
 import { listTeamMembers } from '@/lib/authz/team-accounts';
 
 export const metadata: Metadata = {
@@ -25,6 +26,9 @@ export const dynamic = 'force-dynamic';
  * 2026-07-22) — the Owner sets passwords from the Team Members panel above.
  */
 export default async function SettingsPage() {
+  // Page access (Portal & Access). A member without this permission cannot open
+  // the page — by link OR by typing the URL. A Super Admin holds it implicitly.
+  if (!(await canOpenPage('view_settings'))) notFound();
   const staff = await requireActiveStaff();
   const isOwner = staff.roleKey === 'owner';
   // Administration is reserved to the PRIMARY Super Admin — not every Super Admin.

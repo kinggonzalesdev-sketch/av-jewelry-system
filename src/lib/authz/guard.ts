@@ -270,6 +270,18 @@ export async function isPrimarySuperAdmin(): Promise<boolean> {
   return email === PRIMARY_SUPER_ADMIN_EMAIL;
 }
 
+/**
+ * Gate for a PAGE. Returns true when the caller may open it.
+ *
+ * A Super Admin (owner) holds everything, so they always pass. Everyone else needs
+ * the explicit grant the Manage Access screen sets. Fail-closed: an unreadable
+ * grant list means no access, never all.
+ */
+export async function canOpenPage(permission: string): Promise<boolean> {
+  const granted = await getGrantedPermissions();
+  return granted.has(permission as PermissionKey);
+}
+
 /** Refuses anyone who is not the Primary Super Admin. */
 export async function requirePrimarySuperAdmin(): Promise<StaffContext> {
   const staff = await requireActiveStaff();

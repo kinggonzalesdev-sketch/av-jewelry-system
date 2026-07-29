@@ -17,11 +17,14 @@ export function AppShell({
   userEmail,
   fullName,
   roleKey,
+  allowedPages,
   children,
 }: {
   userEmail: string;
   fullName: string;
   roleKey?: string | undefined;
+  /** Page permissions the member holds — the sidebar hides the rest. */
+  allowedPages?: readonly string[] | undefined;
   children: ReactNode;
 }) {
   return (
@@ -29,7 +32,12 @@ export function AppShell({
       <PrivacyProvider>
         {/* Auto sign-out after 30 min idle; session-only cookies handle browser close. */}
         <IdleLogout minutes={30} />
-        <AppSidebar fullName={fullName} roleKey={roleKey} userEmail={userEmail}>
+        <AppSidebar
+          fullName={fullName}
+          roleKey={roleKey}
+          userEmail={userEmail}
+          allowedPages={allowedPages}
+        >
           {children}
         </AppSidebar>
       </PrivacyProvider>

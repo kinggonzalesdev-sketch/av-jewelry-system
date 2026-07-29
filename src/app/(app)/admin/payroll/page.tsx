@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 
 import { PayrollTabs } from '@/components/hr/payroll-tabs';
-import { requireActiveStaff } from '@/lib/authz/guard';
+import { canOpenPage, requireActiveStaff } from '@/lib/authz/guard';
 import { PageHeader } from '@/components/ui/page-primitives';
 import { getPayroll } from '@/lib/hr/payroll';
 import { listPayslipsForPeriod } from '@/lib/hr/payslip';
@@ -32,6 +33,9 @@ export default async function PayrollPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  // Page access (Portal & Access). A member without this permission cannot open
+  // the page — by link OR by typing the URL. A Super Admin holds it implicitly.
+  if (!(await canOpenPage('hr_payroll'))) notFound();
   const params = await searchParams;
   const from = typeof params.from === 'string' ? params.from : firstOfMonth();
   const to = typeof params.to === 'string' ? params.to : today();

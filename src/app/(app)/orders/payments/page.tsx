@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-primitives';
 
 import { PaymentsWorkspace } from '@/components/payments/payments-workspace';
-import { getGrantedPermissions, requireActiveStaff } from '@/lib/authz/guard';
+import { canOpenPage, getGrantedPermissions, requireActiveStaff } from '@/lib/authz/guard';
 import { listFinancers } from '@/lib/payments/financer';
 import { listLayawayLedger } from '@/lib/payments/layaway-ledger';
 import {
@@ -37,6 +38,9 @@ export default async function PaymentsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  // Page access (Portal & Access). A member without this permission cannot open
+  // the page — by link OR by typing the URL. A Super Admin holds it implicitly.
+  if (!(await canOpenPage('nav_layaway'))) notFound();
   const params = await searchParams;
   const requested = typeof params.range === 'string' ? params.range : '30d';
   const range: DateRangeKey = VALID_RANGES.includes(requested as DateRangeKey)

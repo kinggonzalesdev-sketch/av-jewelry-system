@@ -46,9 +46,35 @@ function readCode(...segments: string[]): string {
   return stripComments(readFileSync(join(projectRoot, ...segments), 'utf8'));
 }
 
-describe('permission catalog (approved 23)', () => {
-  it('contains exactly 23 permissions', () => {
-    expect(ALL_PERMISSION_KEYS).toHaveLength(23);
+describe('permission catalog (approved 23 + Portal & Access)', () => {
+  it('keeps the original 23 approved permissions', () => {
+    // The Portal & Access catalogue (Owner request) ADDED keys; it never removed
+    // one. The original 23 must all still be here.
+    for (const key of [
+      'claim_capture', 'claim_review', 'confirm_claim_print_label',
+      'invoice_preparation', 'payment_verification', 'layaway_monitoring',
+      'fulfillment_preparation', 'fulfillment_release', 'existing_record_entry',
+      'live_batch_operation', 'live_batch_closure', 'current_flex_item_control',
+      'item_withdrawal', 'post_live_item_entry', 'message_preparation',
+      'message_sending', 'retry_reprint_label', 'void_cancel_label_job',
+      'export_data_reports', 'payment_correction', 'inventory_monitoring',
+      'miner_allocation_review', 'initiate_high_risk_action',
+    ]) {
+      expect(ALL_PERMISSION_KEYS).toContain(key);
+    }
+  });
+
+  it('adds the Portal & Access keys that gate pages and record actions', () => {
+    for (const key of [
+      'nav_dashboard', 'nav_orders', 'nav_customers', 'nav_inventory',
+      'nav_payments', 'nav_layaway', 'nav_scrap', 'view_reports', 'view_settings',
+      'order_add_deposit', 'order_cancel', 'fulfillment_delivery',
+      'fulfillment_shipping', 'fulfillment_pickup', 'customer_edit',
+      'customer_delete', 'inventory_edit', 'inventory_delete', 'hr_attendance',
+      'hr_review_attendance', 'hr_payroll',
+    ]) {
+      expect(ALL_PERMISSION_KEYS).toContain(key);
+    }
   });
 
   it('includes the three permissions named directly in Bible §22', () => {
@@ -61,17 +87,29 @@ describe('permission catalog (approved 23)', () => {
     expect(new Set(ALL_PERMISSION_KEYS).size).toBe(ALL_PERMISSION_KEYS.length);
   });
 
-  it('matches the permission catalog seeded in the database migration', () => {
-    // The TypeScript catalog and the SQL seed must not drift apart.
-    const migration = readFileSync(
-      join(
-        projectRoot,
-        'supabase',
-        'migrations',
-        '20260715120100_phase1_identity_access.sql',
+  it('matches the permission catalog seeded in the database migrations', () => {
+    // The TypeScript catalog and the SQL seeds must not drift apart. The original
+    // 23 live in the phase-1 migration; the Portal & Access keys were added later.
+    const migration = [
+      readFileSync(
+        join(
+          projectRoot,
+          'supabase',
+          'migrations',
+          '20260715120100_phase1_identity_access.sql',
+        ),
+        'utf8',
       ),
-      'utf8',
-    );
+      readFileSync(
+        join(
+          projectRoot,
+          'supabase',
+          'migrations',
+          '20260729120000_portal_access_permissions.sql',
+        ),
+        'utf8',
+      ),
+    ].join('\n');
 
     for (const key of ALL_PERMISSION_KEYS) {
       expect(migration, `permission ${key} must exist in the migration`).toContain(

@@ -321,11 +321,32 @@ export async function createTeamMember(input: {
     return { ok: false, error: 'The team member profile could not be created.' };
   }
 
+  // A BASELINE grant so a brand-new member can sign in and land somewhere real.
+  // Page access is deny-by-default, so without this they would see a blank app
+  // and reasonably think it was broken. Everything beyond the Dashboard is still
+  // granted deliberately through Manage Access.
+  const { data: newProfile } = await supabase
+    .from('staff_profiles')
+    .select('id')
+    .eq('auth_user_id', created.user.id)
+    .maybeSingle();
+  const newProfileId = newProfile?.id ?? null;
+  if (newProfileId) {
+    await supabase
+      .from('staff_permission_grants')
+      .insert({ staff_profile_id: newProfileId, permission_key: 'nav_dashboard' });
+  }
+
   await recordAuditEvent({
     action: 'team.create_member',
     entityType: 'staff_profile',
     entityId: created.user.id,
-    context: { email, role: 'staff', password_is_temp: true },
+    context: {
+      email,
+      role: 'staff',
+      password_is_temp: true,
+      baseline_permissions: ['nav_dashboard'],
+    },
   });
 
   return { ok: true, tempPassword, email };

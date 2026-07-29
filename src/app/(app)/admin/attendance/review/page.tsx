@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 
 import { ReviewAttendanceView } from '@/components/hr/review-attendance-view';
-import { requireActiveStaff } from '@/lib/authz/guard';
+import { canOpenPage, requireActiveStaff } from '@/lib/authz/guard';
 import { PageHeader } from '@/components/ui/page-primitives';
 import { listAttendance, listAttendanceSelfies } from '@/lib/hr/attendance';
 
@@ -19,6 +19,9 @@ export const dynamic = 'force-dynamic';
  * policy permits it — this page never bypasses that.
  */
 export default async function ReviewAttendancePage() {
+  // Page access (Portal & Access). A member without this permission cannot open
+  // the page — by link OR by typing the URL. A Super Admin holds it implicitly.
+  if (!(await canOpenPage('hr_review_attendance'))) notFound();
   const staff = await requireActiveStaff();
   if (staff.roleKey !== 'owner') {
     // Non-Owners have no all-records review yet; send them to their own attendance.

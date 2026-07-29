@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 
 import { InventoryWorkspace } from '@/components/inventory/inventory-workspace';
-import { getCurrentStaffProfile, getGrantedPermissions } from '@/lib/authz/guard';
+import { canOpenPage, getCurrentStaffProfile, getGrantedPermissions } from '@/lib/authz/guard';
 import { listCompletedInventory } from '@/lib/inventory/completed';
 import { listInventory } from '@/lib/inventory/service';
 
@@ -19,6 +20,9 @@ export const metadata: Metadata = {
  * this page could show stale.
  */
 export default async function InventoryPage() {
+  // Page access (Portal & Access). A member without this permission cannot open
+  // the page — by link OR by typing the URL. A Super Admin holds it implicitly.
+  if (!(await canOpenPage('nav_inventory'))) notFound();
   const [inventory, completed, permissions, profile] = await Promise.all([
     listInventory(),
     listCompletedInventory(),
