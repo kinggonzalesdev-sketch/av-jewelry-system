@@ -248,8 +248,12 @@ export function OrdersView({
   result,
   openForInvoice = false,
   keepLayaways = [],
+  newOrderAction,
 }: {
   result: OrdersResult;
+  /** The + New Order control, rendered in the top action row so Send All Invoices
+   *  can sit beside it — the active-card state that gates it lives HERE. */
+  newOrderAction?: React.ReactNode;
   /** Open on the For Invoice card (e.g. arriving from the old /orders/invoice). */
   openForInvoice?: boolean;
   /** Layaway accounts marked KEEP — surfaced under the Keep card (Owner request). */
@@ -325,6 +329,15 @@ export function OrdersView({
 
   return (
     <div className="space-y-4">
+      {/* Top action row: + New Order, then Send All Invoices while For Invoice is
+          the active card. Hidden otherwise, with no leftover gap. */}
+      {newOrderAction || card === 'for_invoice' ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {newOrderAction}
+          {card === 'for_invoice' ? <SendAllInvoices /> : null}
+        </div>
+      ) : null}
+
       {/* Approved status cards (11) — real counts of the loaded orders; each is a
           quick filter with a coloured icon badge. Active card is ringed in the
           brand accent. Keep also counts layaway accounts flagged KEEP. */}
@@ -392,9 +405,6 @@ export function OrdersView({
               </option>
             ))}
           </select>
-
-          {/* Bulk action — only on the For Invoice view. */}
-          {card === 'for_invoice' ? <SendAllInvoices /> : null}
 
           {/* Approved filters: Order Date · Ship Date · Hide Keep. Real:
               Order Date filters on the order's created day, Ship Date on the

@@ -67,14 +67,6 @@ export default async function OrdersPage({
       <PageHeader title="Orders" />
 
       <div className="space-y-4">
-        <NewOrderWorkflow
-          customers={customers}
-          items={items}
-          walkInItems={walkInItems}
-          canCreate={permissions.has('claim_capture')}
-          shopName="A.V. Jewelry"
-          salesperson={profile.fullName}
-        />
         {/* The six non-delegable Owner approvals. They used to live on the retired
             /orders/fulfillment page; this panel is why that page could not simply be
             deleted. It renders only when something is actually waiting. */}
@@ -83,6 +75,18 @@ export default async function OrdersPage({
           result={result}
           openForInvoice={openForInvoice}
           keepLayaways={keepLayaways}
+          // Passed as a slot so Send All Invoices can sit beside it: the active-card
+          // state that decides when to show that button lives inside OrdersView.
+          newOrderAction={
+            <NewOrderWorkflow
+              customers={customers}
+              items={items}
+              walkInItems={walkInItems}
+              canCreate={permissions.has('claim_capture')}
+              shopName="A.V. Jewelry"
+              salesperson={profile.fullName}
+            />
+          }
         />
       </div>
     </div>
