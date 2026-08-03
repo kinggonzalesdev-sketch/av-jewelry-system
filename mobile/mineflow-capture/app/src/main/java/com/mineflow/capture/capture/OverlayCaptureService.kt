@@ -110,14 +110,24 @@ class OverlayCaptureService : Service() {
                 val code = intent.getIntExtra(EXTRA_CODE, 0)
                 val data = intent.getParcelableExtra<Intent>(EXTRA_DATA)
                 if (data != null) {
-                    val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-                    projection = mpm.getMediaProjection(code, data).also {
-                        it.registerCallback(object : MediaProjection.Callback() {
-                            override fun onStop() { projection = null }
-                        }, handler)
+                    try {
+                        // Android 14+: the service MUST already be a mediaProjection-type
+                        // foreground service BEFORE we obtain/use the projection, or
+                        // getMediaProjection()/createVirtualDisplay throws a
+                        // SecurityException (the "keeps stopping" crash). Consent has
+                        // just been granted, so promote the FGS type now.
+                        startAsForeground(mediaProjection = true)
+                        val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                        projection = mpm.getMediaProjection(code, data).also {
+                            it.registerCallback(object : MediaProjection.Callback() {
+                                override fun onStop() { projection = null }
+                            }, handler)
+                        }
+                        // Consent just granted for THIS tap — capture now.
+                        doCapture()
+                    } catch (t: Throwable) {
+                        onCaptureFailed("Screen capture couldn't start — please try again.")
                     }
-                    // Consent just granted for THIS tap — capture now.
-                    doCapture()
                 }
             }
         }
