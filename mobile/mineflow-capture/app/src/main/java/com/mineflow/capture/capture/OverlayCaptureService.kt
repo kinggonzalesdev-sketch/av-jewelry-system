@@ -11,6 +11,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
@@ -26,7 +27,6 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
@@ -148,19 +148,24 @@ class OverlayCaptureService : Service() {
         }
         layoutParams = lp
 
-        // Match the launcher icon (black disc + Soft Gold lens ring) and read as a
-        // camera shutter — a gold camera glyph, no text.
-        val disc = GradientDrawable().apply {
+        // A camera "shutter" button (no icon, no text): a black disc with a Soft
+        // Gold rim and an ivory centre — the universal "take a picture" look. Built
+        // from two stacked ovals so it reads as concentric camera-shutter circles.
+        val body = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
-            setColor(0xFF111111.toInt()) // black disc, like the app icon
-            setStroke(dp(3), 0xFFC9A227.toInt()) // Soft Gold "lens" ring
+            setColor(0xFF111111.toInt()) // black body (contrast on any app behind it)
+            setStroke(dp(2), 0xFFC9A227.toInt()) // Soft Gold rim
         }
-        val view = ImageView(this).apply {
-            setImageResource(android.R.drawable.ic_menu_camera)
-            setColorFilter(0xFFC9A227.toInt()) // gold camera icon
-            background = disc
-            val p = dp(14)
-            setPadding(p, p, p, p)
+        val centre = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(0xFFF5EFE0.toInt()) // ivory shutter centre
+        }
+        val shutter = LayerDrawable(arrayOf(body, centre)).apply {
+            val inset = dp(9) // gap between rim and centre → the shutter ring
+            setLayerInset(1, inset, inset, inset, inset)
+        }
+        val view = View(this).apply {
+            background = shutter
             contentDescription = "Capture Mine"
             setOnTouchListener(DragTapListener())
         }
