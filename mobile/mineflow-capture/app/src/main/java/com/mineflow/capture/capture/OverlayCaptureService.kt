@@ -10,6 +10,7 @@ import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.drawable.GradientDrawable
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
@@ -25,8 +26,8 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -131,9 +132,12 @@ class OverlayCaptureService : Service() {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
 
+        // A round, label-free camera button — fixed square bounds so the OVAL
+        // background renders as a perfect circle.
+        val size = dp(58)
         val lp = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            size,
+            size,
             type,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT,
@@ -144,12 +148,20 @@ class OverlayCaptureService : Service() {
         }
         layoutParams = lp
 
-        val view = TextView(this).apply {
-            text = LABEL_IDLE
-            setTextColor(0xFF111111.toInt())
-            setBackgroundColor(0xFFC9A227.toInt()) // Soft Gold — compact, rounded pill.
-            setPadding(dp(16), dp(12), dp(16), dp(12))
-            textSize = 14f
+        // Match the launcher icon (black disc + Soft Gold lens ring) and read as a
+        // camera shutter — a gold camera glyph, no text.
+        val disc = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(0xFF111111.toInt()) // black disc, like the app icon
+            setStroke(dp(3), 0xFFC9A227.toInt()) // Soft Gold "lens" ring
+        }
+        val view = ImageView(this).apply {
+            setImageResource(android.R.drawable.ic_menu_camera)
+            setColorFilter(0xFFC9A227.toInt()) // gold camera icon
+            background = disc
+            val p = dp(14)
+            setPadding(p, p, p, p)
+            contentDescription = "Capture Mine"
             setOnTouchListener(DragTapListener())
         }
         button = view
@@ -198,7 +210,6 @@ class OverlayCaptureService : Service() {
         if (busy) return
         busy = true
         hideQuickMenu()
-        (button as? TextView)?.text = LABEL_BUSY
         // Hide the button so it is not part of the screenshot, then capture.
         button?.visibility = View.GONE
         handler.postDelayed({
@@ -316,7 +327,6 @@ class OverlayCaptureService : Service() {
 
     private fun restoreButton() {
         busy = false
-        (button as? TextView)?.text = LABEL_IDLE
         button?.visibility = View.VISIBLE
     }
 
@@ -370,8 +380,6 @@ class OverlayCaptureService : Service() {
         @Volatile var isRunning: Boolean = false
             private set
 
-        private const val LABEL_IDLE = "◉ Capture Mine"
-        private const val LABEL_BUSY = "…"
         private const val ACTION_STOP = "com.mineflow.capture.STOP"
         private const val ACTION_HIDE = "com.mineflow.capture.HIDE"
         private const val ACTION_SHOW = "com.mineflow.capture.SHOW"

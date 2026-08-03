@@ -103,7 +103,7 @@ class SetupActivity : AppCompatActivity() {
             refreshStatus()
             Toast.makeText(
                 this,
-                "Floating button shown. Switch to Facebook and tap ◉ Capture Mine.",
+                "Floating button shown. Switch to Facebook and tap the round camera button.",
                 Toast.LENGTH_LONG,
             ).show()
         }
