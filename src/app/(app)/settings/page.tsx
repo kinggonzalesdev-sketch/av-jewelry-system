@@ -2,10 +2,18 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 
+import { SystemDiagnostics } from '@/components/settings/system-diagnostics';
 import { TeamMembersPanel } from '@/components/settings/team-members-panel';
 import { PageHeader } from '@/components/ui/page-primitives';
 import { canOpenPage, isPrimarySuperAdmin, requireActiveStaff } from '@/lib/authz/guard';
 import { listTeamMembers } from '@/lib/authz/team-accounts';
+
+/** Mask a Supabase project ref (keeps the first 3 + last 4, hides the middle). */
+function maskProject(url: string | undefined): string {
+  const ref = (url ?? '').match(/https?:\/\/([a-z0-9]+)\.supabase\.co/i)?.[1];
+  if (!ref) return '—';
+  return ref.length > 8 ? `${ref.slice(0, 3)}…${ref.slice(-4)}` : ref;
+}
 
 export const metadata: Metadata = {
 };
@@ -38,9 +46,33 @@ export default async function SettingsPage() {
   const isAdminOrAbove = isOwner || staff.roleKey === 'selected_admin';
   const members = isOwner ? await listTeamMembers() : [];
 
+  const diagnostics = isPrimary
+    ? {
+        env: process.env.VERCEL_ENV ?? 'development',
+        commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? '').slice(0, 7) || 'local',
+        projectMasked: maskProject(process.env.NEXT_PUBLIC_SUPABASE_URL),
+        accountId: staff.staffProfileId,
+        business: 'A.V. Jewelry (single-tenant)',
+      }
+    : null;
+
   return (
     <div className="space-y-4">
       <PageHeader title="Settings" description="Portal & access and integrations." />
+
+      {/* System Diagnostics — Super Admin only. Sanitized (no keys/tokens); proves
+          every device is on the same deployment + database, with Refresh Official Data. */}
+      {diagnostics ? (
+        <section
+          className="rounded-xl border border-border bg-card p-4"
+          aria-labelledby="diagnostics-h"
+        >
+          <h2 id="diagnostics-h" className="mb-2 text-sm font-semibold text-foreground">
+            System Diagnostics
+          </h2>
+          <SystemDiagnostics {...diagnostics} />
+        </section>
+      ) : null}
 
       {/* Portal & Access — Team Members (Owner-only). */}
       {isOwner ? (

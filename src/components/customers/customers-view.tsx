@@ -59,15 +59,15 @@ function CustomerList({
   return (
     <div className="rounded-xl border border-border bg-card">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-left text-sm">
+        <table className="data-table w-full min-w-[640px] text-left text-sm">
           <thead>
             <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
-              <th className="px-3 py-2 font-medium">Customer Name</th>
-              <th className="px-3 py-2 font-medium">Address</th>
-              <th className="px-3 py-2 font-medium">Contact</th>
-              <th className="px-3 py-2 font-medium">Status</th>
-              <th className="px-3 py-2 font-medium">Stage</th>
-              <th className="px-3 py-2 text-right font-medium">Details</th>
+              <th className="px-3 py-2.5 text-left font-medium">Customer Name</th>
+              <th className="px-3 py-2.5 text-left font-medium">Address</th>
+              <th className="px-3 py-2.5 text-left font-medium">Contact</th>
+              <th className="px-3 py-2.5 text-center font-medium">Status</th>
+              <th className="px-3 py-2.5 text-center font-medium">Stage</th>
+              <th className="px-3 py-2.5 text-right font-medium">Details</th>
             </tr>
           </thead>
           <tbody>
@@ -84,13 +84,13 @@ function CustomerList({
                     '—'
                   )}
                 </td>
-                <td className="px-3 py-2.5">
+                <td className="px-3 py-2.5 text-center">
                   <StatusBadge
                     label={row.isActive ? 'Active' : 'Inactive'}
                     tone={row.isActive ? 'strong' : 'warning'}
                   />
                 </td>
-                <td className="px-3 py-2.5 text-muted-foreground">{row.stage}</td>
+                <td className="px-3 py-2.5 text-center text-muted-foreground">{row.stage}</td>
                 <td className="px-3 py-2.5 text-right">
                   <div className="flex items-center justify-end gap-1.5">
                     {canManage ? (
@@ -226,52 +226,57 @@ function CustomerModalContent({
 
   return (
     <div className="space-y-3 text-sm" data-testid="customer-edit-form">
-      <div>
-        <Label htmlFor="cust-name" className="text-xs">
-          Full Name
-        </Label>
-        <Input
-          id="cust-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
-          className="mt-1 h-9"
-          data-testid="customer-edit-name"
-        />
+      {/* Compact two-column layout: short fields pair up; full name spans both. */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <Label htmlFor="cust-name" className="text-xs">
+            Full Name
+          </Label>
+          <Input
+            id="cust-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            className="mt-1 h-9"
+            data-testid="customer-edit-name"
+          />
+        </div>
+        <div>
+          <Label htmlFor="cust-contact" className="text-xs">
+            Contact Number
+          </Label>
+          <Input
+            id="cust-contact"
+            type="tel"
+            value={contact}
+            onChange={(e) => setContact(e.target.value)}
+            placeholder="e.g. 0999-000-0001"
+            className="mt-1 h-9"
+            data-testid="customer-edit-contact"
+          />
+        </div>
+        <div>
+          <Label htmlFor="cust-address" className="text-xs">
+            Address
+          </Label>
+          <Input
+            id="cust-address"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            className="mt-1 h-9"
+            data-testid="customer-edit-address"
+          />
+        </div>
+        <div>
+          <Label className="text-xs">Stage</Label>
+          <p className="mt-1 rounded-md border border-dashed border-border px-2 py-1.5 text-xs text-muted-foreground">
+            {customer.stage || '—'} — from the latest order.
+          </p>
+        </div>
+        <div className="flex flex-col justify-end">
+          <DetailRow label="Date Created" value={fmtDate(customer.createdAt)} />
+        </div>
       </div>
-      <div>
-        <Label htmlFor="cust-contact" className="text-xs">
-          Contact Number
-        </Label>
-        <Input
-          id="cust-contact"
-          type="tel"
-          value={contact}
-          onChange={(e) => setContact(e.target.value)}
-          placeholder="e.g. 0999-000-0001"
-          className="mt-1 h-9"
-          data-testid="customer-edit-contact"
-        />
-      </div>
-      <div>
-        <Label htmlFor="cust-address" className="text-xs">
-          Address
-        </Label>
-        <Input
-          id="cust-address"
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          className="mt-1 h-9"
-          data-testid="customer-edit-address"
-        />
-      </div>
-      <div>
-        <Label className="text-xs">Stage</Label>
-        <p className="mt-1 rounded-md border border-dashed border-border px-2 py-1.5 text-xs text-muted-foreground">
-          {customer.stage || '—'} — reflects the latest order; not edited here.
-        </p>
-      </div>
-      <DetailRow label="Date Created" value={fmtDate(customer.createdAt)} />
       {error ? (
         <p role="alert" className="text-sm text-destructive">
           {error}

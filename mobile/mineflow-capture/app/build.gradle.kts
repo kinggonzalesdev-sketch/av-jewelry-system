@@ -1,0 +1,87 @@
+import java.util.Properties
+
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
+
+/*
+ * Build-time configuration. Values resolve in this order:
+ *   1. local.properties  (gitignored — the correct place for per-machine overrides)
+ *   2. an environment variable of the same name (CI)
+ *   3. the committed default below
+ *
+ * All three keys here are PUBLIC by design: the Vercel URL, the Supabase project
+ * URL, and the Supabase *anon/publishable* key (safe to ship in a client app —
+ * it is NOT the service-role key and grants nothing beyond RLS-scoped access).
+ * No password and no service-role key is ever placed in the build or the app.
+ */
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+fun cfg(key: String, default: String): String =
+    (localProps.getProperty(key) ?: System.getenv(key) ?: default).trim()
+
+android {
+    namespace = "com.mineflow.capture"
+    compileSdk = 34
+
+    defaultConfig {
+        applicationId = "com.mineflow.capture"
+        minSdk = 26
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0.0"
+
+        // The MineFlow backend the app talks to — the SAME production system as web.
+        buildConfigField(
+            "String", "API_BASE_URL",
+            "\"${cfg("MINEFLOW_API_BASE_URL", "https://av-jewelry.vercel.app")}\"",
+        )
+        // Supabase Auth (sign-in) — the SAME production project as web (eqfddwxsmzzojuasffjx).
+        buildConfigField(
+            "String", "SUPABASE_URL",
+            "\"${cfg("SUPABASE_URL", "https://eqfddwxsmzzojuasffjx.supabase.co")}\"",
+        )
+        // Publishable anon key for project eqfddwxsmzzojuasffjx. Safe to ship; overridable
+        // via local.properties (SUPABASE_ANON_KEY=...). This is NOT the service-role key.
+        buildConfigField(
+            "String", "SUPABASE_ANON_KEY",
+            "\"${cfg(
+                "SUPABASE_ANON_KEY",
+                "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxZmRkd3hzbXp6b2p1YXNmZmp4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQxMzAyMTAsImV4cCI6MjA5OTcwNjIxMH0.RKWjPS9GpWditcllrMeid5KF3kXVZroEfUBWQm73QAI",
+            )}\"",
+        )
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}
+
+dependencies {
+    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("com.google.android.material:material:1.12.0")
+    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+    // Encrypted token storage (Android Keystore-backed).
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    // Networking. org.json ships with Android, so no JSON dependency is needed.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+}

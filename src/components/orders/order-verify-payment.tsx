@@ -124,7 +124,7 @@ export function OrderVerifyPayment({
           {unverified.length > 1 ? (
             <div>
               <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Unverified payments
+                Pending payments
               </p>
               <div className="space-y-1">
                 {unverified.map((p) => (
@@ -164,7 +164,7 @@ export function OrderVerifyPayment({
               <Field label="Order Number">
                 <span className="font-mono">{orderNumber}</span>
               </Field>
-              <Field label="Unverified Amount">
+              <Field label="Pending Amount">
                 <span className="font-semibold">{formatPeso(selected.amount)}</span>
               </Field>
               <Field label="Payment Method">{humanize(selected.paymentMethod)}</Field>

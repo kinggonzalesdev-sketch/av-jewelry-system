@@ -37,6 +37,17 @@ function isPublicRoute(pathname: string): boolean {
 }
 
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
+  // The MineFlow Capture (Android) app authenticates the /api/mobile/* endpoints
+  // with a Supabase Bearer token in the Authorization header — verified inside each
+  // route handler (resolveMobileStaff), NOT with the session cookie this proxy
+  // manages. Running the cookie check here would find no cookie and 307-redirect the
+  // app to /sign-in, so these token-authenticated routes are bypassed entirely and
+  // left to their own verification. (The matcher also excludes them; this guard keeps
+  // the behaviour correct even if the matcher is ever narrowed.)
+  if (request.nextUrl.pathname.startsWith('/api/mobile/')) {
+    return NextResponse.next({ request });
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const env = getClientEnv();

@@ -7,12 +7,12 @@ import { refreshDashboardAction } from '@/lib/dashboard/actions';
 import type { DashboardActionState } from '@/lib/dashboard/action-state';
 import { EMPTY_DASHBOARD_STATE } from '@/lib/dashboard/action-state';
 import type { DashboardCounts, DashboardMetrics } from '@/lib/dashboard/service';
-import type { MoneyInTransitResult } from '@/lib/finance/money-in-transit';
-import type { ScrapIncomeRow, ScrapSaleRow, ScrapTotal } from '@/lib/scrap/service';
+import type { ScrapIncomeRow, ScrapTotal } from '@/lib/scrap/service';
 import type { LayawayDashboard } from '@/lib/payments/layaway-ledger';
 import { formatPeso } from '@/lib/payments/format';
 import { ExportAllButton } from '@/components/export/export-all-button';
 import { usePrivacy } from '@/components/shell/privacy';
+import { useDashboardSync } from '@/components/shell/dashboard-sync';
 import { ColumnChart } from '@/components/ui/column-chart';
 import { DonutChart } from '@/components/ui/donut-chart';
 import { MetricCard, ReadError } from '@/components/ui/page-primitives';
@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 
 /**
  * Dashboard Profile — the approved prototype's Dashboard Report structure, backed
@@ -114,9 +115,7 @@ function sumMoney(...values: Array<string | null | undefined>): string {
 export function DashboardView({
   counts,
   metrics,
-  moneyInTransit,
   scrapTotal,
-  scrapSales,
   scrapByMaterial,
   layaway,
   rangeFrom,
@@ -125,9 +124,7 @@ export function DashboardView({
 }: {
   counts: DashboardCounts | null;
   metrics: DashboardMetrics | null;
-  moneyInTransit: MoneyInTransitResult;
   scrapTotal: ScrapTotal;
-  scrapSales: ScrapSaleRow[];
   scrapByMaterial: ScrapIncomeRow[];
   layaway: LayawayDashboard;
   rangeFrom?: string | undefined;
@@ -169,6 +166,14 @@ export function DashboardView({
     FormData
   >(refreshDashboardAction, EMPTY_DASHBOARD_STATE);
 
+  // Live reflection status (Realtime). Shows a subtle "syncing" pulse and the
+  // last-updated time so the operator can trust the figures are current.
+  const sync = useDashboardSync();
+  const lastUpdated =
+    sync.lastSyncedAt != null
+      ? new Date(sync.lastSyncedAt).toLocaleTimeString()
+      : null;
+
   const notices = [refreshState];
 
   return (
@@ -206,8 +211,32 @@ export function DashboardView({
               Custom
             </Button>
             <div className="ml-auto flex items-center gap-1.5">
+              <span
+                className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
+                data-testid="dash-live-status"
+                title={
+                  lastUpdated
+                    ? `Live — last updated ${lastUpdated}`
+                    : 'Live — updates automatically'
+                }
+              >
+                <span
+                  className={cn(
+                    'inline-block h-1.5 w-1.5 rounded-full',
+                    sync.isSyncing ? 'animate-pulse bg-amber-500' : 'bg-green-500',
+                  )}
+                  aria-hidden
+                />
+                {sync.isSyncing ? 'Syncing…' : lastUpdated ? `Updated ${lastUpdated}` : 'Live'}
+              </span>
               <form action={refresh}>
-                <Button type="submit" size="sm" variant="outline" disabled={refreshing}>
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="outline"
+                  disabled={refreshing}
+                  onClick={() => sync.refresh()}
+                >
                   {refreshing ? 'Refreshing…' : '⟳ Refresh'}
                 </Button>
               </form>
@@ -503,121 +532,6 @@ export function DashboardView({
                   {metrics.totalOfficialOrders} Official Orders. An Active Layaway is an
                   Official Order — never double-counted. Forfeiture needs Owner approval;
                   no automatic stock return.
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* Money in Transit — money not yet in the bank (problem #14). Real
-                SQL sums; a failed read shows an error, never a false ₱0. */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Money in Transit</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {moneyInTransit.ok ? (
-                  <>
-                    <div
-                      className="grid grid-cols-1 gap-2 sm:grid-cols-3"
-                      data-testid="money-in-transit"
-                    >
-                      <MetricCard
-                        label="Awaiting Verification"
-                        value={money(moneyInTransit.data.awaitingVerification)}
-                      />
-                      <MetricCard
-                        label="Customer Pending"
-                        value={money(moneyInTransit.data.customerPending)}
-                      />
-                      <MetricCard
-                        label="Still to Collect (COD)"
-                        value={money(moneyInTransit.data.inTransitToCollect)}
-                        accent
-                      />
-                    </div>
-                    {/* Rider-vs-LBC split of "still to collect", plus cash collected
-                        but not yet remitted (#3 deeper). */}
-                    <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                      <MetricCard
-                        label="To Collect — Rider"
-                        value={money(moneyInTransit.data.riderToCollect)}
-                      />
-                      <MetricCard
-                        label="To Collect — LBC"
-                        value={money(moneyInTransit.data.lbcToCollect)}
-                      />
-                      <MetricCard
-                        label="Collected, Not Remitted"
-                        value={money(moneyInTransit.data.collectedUnremitted)}
-                        accent
-                      />
-                    </div>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Money not yet in the bank. Still to Collect = outstanding on COD
-                      orders dispatched but not yet collected (split by who carries it —
-                      rider vs LBC; a dispatched order with no channel set yet shows in
-                      the total but neither split). Collected, Not Remitted = cash already
-                      taken on delivery but not yet handed to the shop.
-                    </p>
-                  </>
-                ) : (
-                  <ReadError
-                    title="Money in Transit unavailable"
-                    detail="The money-in-transit totals could not be read."
-                  />
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Scrap details — the most recent scrap gold/silver sales. Real rows,
-                RLS-scoped; amounts shown as authoritative peso strings. Sits at the
-                very bottom of the dashboard. */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Scrap details</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {scrapSales.length === 0 ? (
-                  <p className="text-xs text-muted-foreground" data-testid="scrap-empty">
-                    No scrap sales yet.
-                  </p>
-                ) : (
-                  <div className="overflow-x-auto rounded-lg border border-border">
-                    <table
-                      className="w-full min-w-[520px] text-left text-sm"
-                      data-testid="scrap-details"
-                    >
-                      <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
-                        <tr>
-                          <th className="px-3 py-2 font-medium">Date</th>
-                          <th className="px-3 py-2 font-medium">Material</th>
-                          <th className="px-3 py-2 text-right font-medium">Grams</th>
-                          <th className="px-3 py-2 text-right font-medium">Amount</th>
-                          <th className="px-3 py-2 font-medium">Buyer</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {scrapSales.map((s) => (
-                          <tr key={s.id} className="border-b last:border-0">
-                            <td className="px-3 py-2 tabular-nums">{s.soldOn}</td>
-                            <td className="px-3 py-2 capitalize">{s.material}</td>
-                            <td className="px-3 py-2 text-right tabular-nums">
-                              {s.grams}
-                            </td>
-                            <td className="px-3 py-2 text-right font-medium tabular-nums">
-                              {money(s.amount)}
-                            </td>
-                            <td className="px-3 py-2 text-muted-foreground">
-                              {s.buyer ?? '—'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Most recent scrap sales. Full history and recording are on the Scrap
-                  page in the sidebar.
                 </p>
               </CardContent>
             </Card>

@@ -106,6 +106,13 @@ export type OrderDetail = {
    *  order the database would refuse, and the reason shown is the real one. */
   completionBlock: string | null;
 
+  /** Shipping waybill / tracking number (Ship Confirm). Null until set. */
+  waybillNumber: string | null;
+
+  /** True once "Set Up Layaway" created a layaway account from this order — the
+   *  order then leaves the For Layaway card and is tracked in the Layaway ledger. */
+  convertedToLayaway: boolean;
+
   /** Admin Name (§2): who this order is attributed to, and when it was completed.
    *  Completion attribution is null until the order actually completes. */
   adminName: string | null;
@@ -119,6 +126,8 @@ export type OrderDetail = {
     address: string | null;
     /** Stored Facebook Messenger URL for "Open FB Chat" (or null = not available). */
     facebookConversationUrl: string | null;
+    /** Pancake conversation id — enables auto-delivery of Send Invoice/Reminder. */
+    pancakeConversationId: string | null;
   };
 
   items: OrderLineItemDetail[];

@@ -23,6 +23,7 @@ import {
   saveOrderInvoiceMessage,
   sendOrderReminder,
   setCustomerFacebookUrl,
+  setCustomerPancakeConversation,
   setOrderCustomerResponse,
   type BulkInvoiceOrder,
   type ForInvoiceResult,
@@ -35,6 +36,7 @@ import {
   requestOrderCancellation,
   type CancellationResult,
   type FinalizeCancellationResult,
+  rejectOrderCancellation,
 } from '@/lib/orders/cancellation';
 import {
   captureManualOrder,
@@ -48,7 +50,13 @@ import {
 } from '@/lib/orders/order-payment';
 import { getOrderLineItems, type OrderLineItem } from '@/lib/orders/service';
 import {
+  completeWalkInOrder,
   createWalkInOrder,
+  saveWalkInOrder,
+  setOrderWaybill,
+  updateInventoryGrams,
+  type SaveWalkInInput,
+  type SaveWalkInResult,
   type WalkInItemInput,
   type WalkInResult,
 } from '@/lib/orders/walkin';
@@ -143,9 +151,12 @@ export async function transferOrderToCompletedAction(
  * the domain module + DB. On success the Orders list revalidates so the order
  * moves to the For Reminder card without a full-page reload.
  */
-export async function verifyForInvoiceAction(orderId: string): Promise<ForInvoiceResult> {
+export async function verifyForInvoiceAction(
+  orderId: string,
+  message?: string | null,
+): Promise<ForInvoiceResult> {
   if (!orderId) return { ok: false, error: 'An order is required.' };
-  const result = await advanceOrderToReminder(orderId);
+  const result = await advanceOrderToReminder(orderId, message ?? null);
   if (result.ok) revalidatePath('/orders');
   return result;
 }
@@ -196,6 +207,22 @@ export async function finalizeOrderCancellationAction(
   if (result.ok) {
     revalidatePath('/orders');
     revalidatePath('/orders/inventory');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+/**
+ * Reject a cancellation request (Super Admin) — the order returns to its prior
+ * status. Paired with finalize (Accept) to give the one-step Accept / Reject flow.
+ */
+export async function rejectOrderCancellationAction(
+  orderId: string,
+  note?: string | null,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const result = await rejectOrderCancellation(orderId, note ?? null);
+  if (result.ok) {
+    revalidatePath('/orders');
     revalidatePath('/dashboard');
   }
   return result;
@@ -283,6 +310,18 @@ export async function setCustomerFacebookUrlAction(
   return result;
 }
 
+/** Set a customer's Pancake conversation id (Owner/Admin) — powers auto-delivery
+ *  of Send Invoice / Send Reminder through Pancake. */
+export async function setCustomerPancakeConversationAction(
+  customerId: string,
+  conversationId: string | null,
+): Promise<ForInvoiceResult> {
+  if (!customerId) return { ok: false, error: 'A customer is required.' };
+  const result = await setCustomerPancakeConversation(customerId, conversationId);
+  if (result.ok) revalidatePath('/orders');
+  return result;
+}
+
 /**
  * Walk-In multi-item sale (transport only). Creates one fully-paid, Completed order
  * with every selected item retired to Completed inventory, atomically in the DB. On
@@ -356,6 +395,69 @@ export async function captureManualOrderAction(
     revalidatePath('/orders');
     revalidatePath('/orders/invoice');
     revalidatePath('/orders/inventory');
+  }
+  return result;
+}
+
+/** Save a Walk-In (no auto-complete/print). Revalidates the affected screens. */
+export async function saveWalkInOrderAction(input: SaveWalkInInput): Promise<SaveWalkInResult> {
+  const result = await saveWalkInOrder(input);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/inventory');
+    revalidatePath('/orders/payments');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+/** Transfer a saved Walk-In → Completed (fully-paid gate in the DB). */
+export async function completeWalkInOrderAction(
+  orderId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const result = await completeWalkInOrder(orderId);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/inventory');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+/** Transfer a saved Walk-In (or any invoiced order) → For Reminder. */
+export async function transferWalkInToReminderAction(
+  orderId: string,
+): Promise<ForInvoiceResult> {
+  if (!orderId) return { ok: false, error: 'An order is required.' };
+  const result = await advanceOrderToReminder(orderId);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+/** Edit an inventory item's grams (Walk-In editable grams). Audited in the DB. */
+export async function updateInventoryGramsAction(
+  itemId: string,
+  newGrams: string,
+): Promise<{ ok: true; previous: string; next: string } | { ok: false; error: string }> {
+  const result = await updateInventoryGrams(itemId, newGrams);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/inventory');
+  }
+  return result;
+}
+
+/** Set / update the shipping waybill on an order (Ship Confirm). */
+export async function setOrderWaybillAction(
+  orderId: string,
+  waybill: string,
+): Promise<{ ok: true; waybill: string } | { ok: false; error: string }> {
+  const result = await setOrderWaybill(orderId, waybill);
+  if (result.ok) {
+    revalidatePath('/orders');
   }
   return result;
 }

@@ -105,7 +105,11 @@ function ConnectedControls() {
 
 /** Full sidebar control. Sits directly above Logout in the approved footer. */
 export function PrinterStatusRow() {
-  const { supported, printer, connecting, error, connect, disconnect } = usePrinter();
+  const { supported, adapterAvailable, printer, connecting, error, connect, disconnect } =
+    usePrinter();
+  // "Ready to link" only when the API exists AND an adapter is on. When Bluetooth is
+  // off / absent we say so plainly instead of showing a raw browser error later.
+  const adapterOff = supported && adapterAvailable === false;
 
   return (
     <div
@@ -121,6 +125,10 @@ export function PrinterStatusRow() {
             {printer ? (
               <span className={cn(BADGE, 'bg-gold/15 text-gold-strong')}>
                 {printer.deviceName} connected
+              </span>
+            ) : adapterOff ? (
+              <span className={cn(BADGE, 'bg-muted text-muted-foreground')}>
+                Bluetooth is off
               </span>
             ) : supported ? (
               <span className={cn(BADGE, 'bg-muted text-muted-foreground')}>
@@ -169,7 +177,13 @@ export function PrinterStatusRow() {
 
       {!supported ? (
         <p className="mt-1 text-[10px] text-muted-foreground">
-          Needs Chrome or Edge over HTTPS (not available on iOS).
+          Use Chrome or Edge on a computer, or Chrome on Android. iPhone / Safari / Firefox
+          can&apos;t print over Bluetooth — use manual print there.
+        </p>
+      ) : adapterOff ? (
+        <p className="mt-1 text-[10px] text-amber-600">
+          Turn on this device&apos;s Bluetooth (it&apos;s off or has no adapter), then tap the
+          switch to link the printer.
         </p>
       ) : null}
       {error ? (

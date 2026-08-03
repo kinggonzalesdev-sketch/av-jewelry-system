@@ -10,6 +10,7 @@ import {
 } from 'react';
 
 import {
+  bluetoothAdapterAvailable,
   bluetoothPrintingSupported,
   connectThermalPrinter,
   writeToChannel,
@@ -28,6 +29,8 @@ import { encodeTest, type ReceiptLanguage } from '@/lib/print/receipt-encoders';
 
 export type PrinterContextValue = {
   supported: boolean;
+  /** true = adapter on · false = Bluetooth off / no adapter · null = unknown. */
+  adapterAvailable: boolean | null;
   printer: PrinterHandle | null;
   activeChannel: PrinterChannel | null;
   channelIdx: number;
@@ -46,6 +49,7 @@ export type PrinterContextValue = {
 // that render a screen in isolation) — it simply reports "no printer".
 const DEFAULT: PrinterContextValue = {
   supported: false,
+  adapterAvailable: null,
   printer: null,
   activeChannel: null,
   channelIdx: 0,
@@ -68,6 +72,7 @@ export function usePrinter(): PrinterContextValue {
 
 export function PrinterProvider({ children }: { children: ReactNode }) {
   const [supported, setSupported] = useState(false);
+  const [adapterAvailable, setAdapterAvailable] = useState<boolean | null>(null);
   const [printer, setPrinter] = useState<PrinterHandle | null>(null);
   const [channelIdx, setChannelIdx] = useState(0);
   const [printLang, setPrintLang] = useState<ReceiptLanguage>('tspl');
@@ -78,8 +83,10 @@ export function PrinterProvider({ children }: { children: ReactNode }) {
   // Evaluate support after mount — reading the browser capability during render
   // would cause an SSR/client hydration mismatch, so it is deliberately set here.
   useEffect(() => {
+    const ok = bluetoothPrintingSupported();
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSupported(bluetoothPrintingSupported());
+    setSupported(ok);
+    if (ok) void bluetoothAdapterAvailable().then(setAdapterAvailable);
   }, []);
 
   const activeChannel = printer?.channels[channelIdx] ?? printer?.channels[0] ?? null;
@@ -126,6 +133,7 @@ export function PrinterProvider({ children }: { children: ReactNode }) {
 
     return {
       supported,
+      adapterAvailable,
       printer,
       activeChannel,
       channelIdx,
@@ -141,6 +149,7 @@ export function PrinterProvider({ children }: { children: ReactNode }) {
     };
   }, [
     supported,
+    adapterAvailable,
     printer,
     activeChannel,
     channelIdx,

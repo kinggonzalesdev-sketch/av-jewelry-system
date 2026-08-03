@@ -1,28 +1,102 @@
 'use server';
 
-import { syncPancakeData, testPancakeConnection } from '@/lib/integrations/pancake';
+import { revalidatePath } from 'next/cache';
+
+import {
+  saveSelectedPancakePage,
+  sendPancakeConversationMessage,
+  syncPancakeConversationsToCustomers,
+} from '@/lib/integrations/pancake';
+import { AuthorizationError, requirePrimarySuperAdmin } from '@/lib/authz/guard';
 import type { IntegrationActionState } from '@/lib/integrations/action-state';
 
 /** Integration server actions. Transport only — authority (Owner) and the real
  *  connection attempt live in the domain module. */
 
-export async function testPancakeAction(
+/**
+ * Primary Super Admin only: save the selected managed Page. Stores the (non-secret)
+ * Page ID with an audit trail — never a token. The Page ID / name / platform come
+ * from the Pages the server itself loaded, so nothing sensitive is trusted from the
+ * client beyond the choice of which Page.
+ */
+export async function saveSelectedPageAction(
+  _prev: IntegrationActionState,
+  formData: FormData,
+): Promise<IntegrationActionState> {
+  const field = (key: string): string => {
+    const v = formData.get(key);
+    return typeof v === 'string' ? v.trim() : '';
+  };
+  const pageId = field('pageId');
+  const pageName = field('pageName') || null;
+  const platform = field('platform') || null;
+
+  const result = await saveSelectedPancakePage({ pageId, pageName, platform });
+  if (!result.ok) return { error: result.error, success: null };
+
+  revalidatePath('/admin/integrations');
+  return { error: null, success: result.message };
+}
+
+/**
+ * Primary Super Admin only: send a REAL test message to a Pancake conversation, to
+ * verify the send pipeline end-to-end from the browser (no mobile app needed).
+ * Requires an explicit conversation id — never sends by Facebook name.
+ */
+export async function sendPancakeTestAction(
+  _prev: IntegrationActionState,
+  formData: FormData,
+): Promise<IntegrationActionState> {
+  try {
+    await requirePrimarySuperAdmin();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { error: cause.message, success: null };
+    throw cause;
+  }
+
+  const field = (key: string): string => {
+    const v = formData.get(key);
+    return typeof v === 'string' ? v.trim() : '';
+  };
+  const conversationId = field('conversationId');
+  const message = field('message') || 'MineFlow test message ✅';
+  if (!conversationId) {
+    return { error: 'Enter a Pancake conversation id to send a test.', success: null };
+  }
+
+  return sendTestInner(conversationId, message);
+}
+
+/**
+ * Primary Super Admin only: auto-link Pancake conversations to customers by name,
+ * filling each customer's Pancake conversation id so Send Invoice / Reminder can
+ * auto-deliver without any manual entry.
+ */
+export async function syncPancakeConversationsAction(
   _prev: IntegrationActionState,
   _formData: FormData,
 ): Promise<IntegrationActionState> {
-  const result = await testPancakeConnection();
+  const result = await syncPancakeConversationsToCustomers();
+  if (result.ok) revalidatePath('/orders');
   return result.ok
     ? { error: null, success: result.message }
     : { error: result.message, success: null };
 }
 
-/** Owner-only: pull data from Pancake now. Reports what actually came back. */
-export async function syncPancakeAction(
-  _prev: IntegrationActionState,
-  _formData: FormData,
+async function sendTestInner(
+  conversationId: string,
+  message: string,
 ): Promise<IntegrationActionState> {
-  const result = await syncPancakeData();
+  const result = await sendPancakeConversationMessage({ conversationId, message });
+  // The raw Pancake response is shown so the exact send contract can be verified.
+  const debug = result.debug ? `\n\nPancake response: ${result.debug}` : '';
   return result.ok
-    ? { error: null, success: result.message }
-    : { error: result.message, success: null };
+    ? {
+        error: null,
+        success:
+          `${result.message}` +
+          (result.pancakeMessageId ? ` (message id ${result.pancakeMessageId})` : '') +
+          debug,
+      }
+    : { error: `${result.message} [${result.code}]${debug}`, success: null };
 }

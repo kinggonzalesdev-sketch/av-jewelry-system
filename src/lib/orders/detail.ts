@@ -47,6 +47,8 @@ type OrderRow = {
   fulfillment_destination_set_at: string | null;
   destination_by: unknown;
   completed_at: string | null;
+  waybill_number: string | null;
+  converted_to_layaway: boolean | null;
   completed_by_staff: unknown;
   admin_staff: unknown;
   customers: unknown;
@@ -62,11 +64,12 @@ export async function getOrderDetail(officialOrderId: string): Promise<OrderDeta
     .from('official_orders')
     .select(
       `id, order_number, invoice_number, status, created_at,
-       fulfillment_destination, fulfillment_destination_set_at, completed_at,
+       fulfillment_destination, fulfillment_destination_set_at, completed_at, waybill_number,
+       converted_to_layaway,
        destination_by:staff_profiles!fulfillment_destination_set_by ( full_name ),
        completed_by_staff:staff_profiles!completed_by ( full_name ),
        admin_staff:staff_profiles!admin_staff_profile_id ( full_name ),
-       customers ( id, display_name, contact_number, address, facebook_conversation_url )`,
+       customers ( id, display_name, contact_number, address, facebook_conversation_url, pancake_conversation_id )`,
     )
     .eq('id', officialOrderId)
     .maybeSingle();
@@ -88,6 +91,7 @@ export async function getOrderDetail(officialOrderId: string): Promise<OrderDeta
     contact_number: string | null;
     address: string | null;
     facebook_conversation_url: string | null;
+    pancake_conversation_id: string | null;
   }>(order.customers);
 
   // Everything else loads in parallel; each degrades gracefully on its own.
@@ -271,6 +275,8 @@ export async function getOrderDetail(officialOrderId: string): Promise<OrderDeta
     destinationSetByName:
       one<{ full_name: string }>(order.destination_by)?.full_name ?? null,
     completionBlock,
+    waybillNumber: order.waybill_number ?? null,
+    convertedToLayaway: order.converted_to_layaway === true,
     adminName: one<{ full_name: string }>(order.admin_staff)?.full_name ?? null,
     completedAt: order.completed_at ?? null,
     completedByName:
@@ -281,6 +287,7 @@ export async function getOrderDetail(officialOrderId: string): Promise<OrderDeta
       contactNumber: customer?.contact_number ?? null,
       address: customer?.address ?? null,
       facebookConversationUrl: customer?.facebook_conversation_url ?? null,
+      pancakeConversationId: customer?.pancake_conversation_id ?? null,
     },
     items,
     amounts: {

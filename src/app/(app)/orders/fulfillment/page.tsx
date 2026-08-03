@@ -9,6 +9,8 @@ import { redirect } from 'next/navigation';
  * The page is kept (rather than deleted) so old links, bookmarks, and the waybill
  * sub-route at /orders/fulfillment/[officialOrderId]/waybill keep working.
  */
+export const dynamic = 'force-dynamic';
+
 export default function FulfillmentPage() {
   redirect('/orders');
 }

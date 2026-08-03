@@ -7,9 +7,11 @@ const requestCancel = vi.fn(() => Promise.resolve({ ok: true as const, changed: 
 const finalizeCancel = vi.fn(() =>
   Promise.resolve({ ok: true as const, changed: true, returned: 1, kept: 0 }),
 );
+const rejectCancel = vi.fn(() => Promise.resolve({ ok: true as const }));
 vi.mock('@/lib/orders/actions', () => ({
   requestOrderCancellationAction: () => requestCancel(),
   finalizeOrderCancellationAction: () => finalizeCancel(),
+  rejectOrderCancellationAction: () => rejectCancel(),
 }));
 
 function renderAction(status: string, isOwner = true) {
@@ -46,14 +48,18 @@ describe('Cancel Order — where it appears', () => {
     expect(screen.queryByTestId('order-cancel')).not.toBeInTheDocument();
   });
 
-  it('offers Finalize (not Cancel) once the order is already For Cancel', () => {
+  it('offers one-step Accept / Reject once the order is For Cancel (Super Admin)', () => {
     renderAction('for_cancel');
-    expect(screen.getByTestId('order-cancel')).toHaveTextContent('Finalize Cancellation');
+    // No "Finalize Cancellation" / "Execute" — just Accept and Reject.
+    expect(screen.queryByText(/Finalize Cancellation/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId('order-cancel-accept')).toBeInTheDocument();
+    expect(screen.getByTestId('order-cancel-reject')).toBeInTheDocument();
   });
 
-  it('only the Owner / Selected Admin may finalize', () => {
+  it('shows a review note (no decision controls) to a non-Owner', () => {
     renderAction('for_cancel', false);
-    expect(screen.getByTestId('order-cancel')).toBeDisabled();
+    expect(screen.getByTestId('order-cancel-awaiting')).toBeInTheDocument();
+    expect(screen.queryByTestId('order-cancel-accept')).not.toBeInTheDocument();
   });
 });
 

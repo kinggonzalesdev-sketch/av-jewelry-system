@@ -139,32 +139,32 @@ export function AttendanceView({
             ) : (
               <div className="overflow-x-auto">
                 <table
-                  className="w-full min-w-[900px] text-left text-sm"
+                  className="data-table w-full min-w-[900px] text-left text-sm"
                   data-testid="payroll"
                 >
                   <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
                     <tr>
-                      <th className="px-3 py-2 font-medium whitespace-nowrap">Employee</th>
-                      <th className="px-3 py-2 font-medium whitespace-nowrap">Role</th>
-                      <th className="min-w-[7rem] px-4 py-2 text-right font-medium whitespace-nowrap">
+                      <th className="whitespace-nowrap px-3 py-2.5 text-left font-medium">Employee</th>
+                      <th className="whitespace-nowrap px-3 py-2.5 text-center font-medium">Role</th>
+                      <th className="min-w-[7rem] whitespace-nowrap px-3 py-2.5 text-right font-medium">
                         Regular Hours
                       </th>
-                      <th className="min-w-[7rem] px-4 py-2 text-right font-medium whitespace-nowrap">
+                      <th className="min-w-[7rem] whitespace-nowrap px-3 py-2.5 text-right font-medium">
                         Overtime Hours
                       </th>
-                      <th className="min-w-[6rem] px-4 py-2 text-right font-medium whitespace-nowrap">
+                      <th className="min-w-[6rem] whitespace-nowrap px-3 py-2.5 text-right font-medium">
                         Salary Rate
                       </th>
-                      <th className="min-w-[6rem] px-4 py-2 font-medium whitespace-nowrap">
+                      <th className="min-w-[6rem] whitespace-nowrap px-3 py-2.5 text-center font-medium">
                         Pay Frequency
                       </th>
-                      <th className="min-w-[6rem] px-4 py-2 text-right font-medium whitespace-nowrap">
+                      <th className="min-w-[6rem] whitespace-nowrap px-3 py-2.5 text-right font-medium">
                         Salary
                       </th>
-                      <th className="min-w-[6rem] py-2 pl-10 pr-4 font-medium whitespace-nowrap">
+                      <th className="min-w-[6rem] whitespace-nowrap px-3 py-2.5 text-center font-medium">
                         Status
                       </th>
-                      <th className="px-3 py-2 text-right font-medium whitespace-nowrap">
+                      <th className="whitespace-nowrap px-3 py-2.5 text-right font-medium">
                         Actions
                       </th>
                     </tr>
@@ -175,17 +175,17 @@ export function AttendanceView({
                       const paid = snap?.paymentStatus === 'paid';
                       return (
                       <tr key={r.staffProfileId} className="border-b last:border-0">
-                        <td className="px-3 py-2 font-medium whitespace-nowrap">{r.fullName}</td>
-                        <td className="px-3 py-2 capitalize text-muted-foreground whitespace-nowrap">
+                        <td className="whitespace-nowrap px-3 py-2.5 font-medium">{r.fullName}</td>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-center capitalize text-muted-foreground">
                           {r.roleKey.replace(/_/g, ' ')}
                         </td>
-                        <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                        <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">
                           {formatDuration(r.totalHours)}
                         </td>
-                        <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                        <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">
                           {formatDuration(r.overtimeHours)}
                         </td>
-                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                        <td className="whitespace-nowrap px-3 py-2.5 text-right">
                           {isOwner ? (
                             <RateCell row={r} />
                           ) : r.dailyRate === null ? (
@@ -199,10 +199,10 @@ export function AttendanceView({
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-2 whitespace-nowrap capitalize">
+                        <td className="whitespace-nowrap px-3 py-2.5 text-center capitalize">
                           {FREQUENCY_LABEL[r.payFrequency] ?? r.payFrequency}
                         </td>
-                        <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                        <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">
                           {r.computedSalary === null ? (
                             <span className="text-[11px] text-muted-foreground">
                               No rate set
@@ -211,7 +211,7 @@ export function AttendanceView({
                             formatPeso(r.computedSalary)
                           )}
                         </td>
-                        <td className="py-2 pl-10 pr-4 whitespace-nowrap">
+                        <td className="whitespace-nowrap px-3 py-2.5 text-center">
                           <span
                             className={`inline-block rounded-full border px-2 py-0.5 text-[11px] ${
                               paid
@@ -222,7 +222,7 @@ export function AttendanceView({
                             {paid ? 'Paid' : 'Unpaid'}
                           </span>
                         </td>
-                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                        <td className="whitespace-nowrap px-3 py-2.5 text-right">
                           <PayslipButton
                             employeeId={r.staffProfileId}
                             from={from}
@@ -262,39 +262,39 @@ export function AttendanceView({
               />
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[620px] text-left text-sm">
+                <table className="data-table w-full min-w-[620px] text-left text-sm">
                   <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
                     <tr>
-                      <th className="px-3 py-2 font-medium">Staff</th>
-                      <th className="px-3 py-2 font-medium">Date</th>
-                      <th className="px-3 py-2 font-medium">Time in</th>
-                      <th className="px-3 py-2 font-medium">Time out</th>
-                      <th className="px-3 py-2 text-right font-medium">Duration</th>
+                      <th className="px-3 py-2.5 text-left font-medium">Staff</th>
+                      <th className="px-3 py-2.5 text-center font-medium">Date</th>
+                      <th className="px-3 py-2.5 text-center font-medium">Time in</th>
+                      <th className="px-3 py-2.5 text-center font-medium">Time out</th>
+                      <th className="px-3 py-2.5 text-right font-medium">Duration</th>
                       {canManage ? (
-                        <th className="px-3 py-2 text-right font-medium">Actions</th>
+                        <th className="px-3 py-2.5 text-right font-medium">Actions</th>
                       ) : null}
                     </tr>
                   </thead>
                   <tbody>
                     {records.map((r) => (
                       <tr key={r.id} className="border-b last:border-0">
-                        <td className="px-3 py-2">{r.staffName ?? '—'}</td>
-                        <td className="px-3 py-2">{r.workDate}</td>
-                        <td className="px-3 py-2">
+                        <td className="px-3 py-2.5">{r.staffName ?? '—'}</td>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-center">{r.workDate}</td>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-center">
                           {new Date(r.timeIn).toLocaleTimeString()}
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="whitespace-nowrap px-3 py-2.5 text-center">
                           {r.timeOut ? (
                             new Date(r.timeOut).toLocaleTimeString()
                           ) : (
                             <span className="text-gold-strong">Open</span>
                           )}
                         </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
+                        <td className="px-3 py-2.5 text-right tabular-nums">
                           {formatDuration(durationHours(r.timeIn, r.timeOut))}
                         </td>
                         {canManage ? (
-                          <td className="px-3 py-2 text-right">
+                          <td className="px-3 py-2.5 text-right">
                             <AttendanceRowDelete row={r} />
                           </td>
                         ) : null}

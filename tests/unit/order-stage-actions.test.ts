@@ -87,9 +87,12 @@ describe('payment visibility', () => {
     'approved_for_release',
     'dispatched_or_picked_up',
     'for_layaway',
-    'keep',
   ])('offers payment on the live stage %s', (status) => {
     expect(payable({ status })).toBe(true);
+  });
+
+  it('does NOT offer payment on Keep (Owner request 2026-07-30 — Keep modal has no Add Payment)', () => {
+    expect(payable({ status: 'keep' })).toBe(false);
   });
 });
 
@@ -120,8 +123,11 @@ describe('the status shown at the top matches the section (§7)', () => {
 });
 
 describe('stage action sets (§7)', () => {
-  it('Keep offers ONLY Transfer to Destination', () => {
-    expect(STAGE_ACTIONS.keep.actions).toEqual(['transfer_destination']);
+  it('Keep offers ONLY Transfer to Completed (Owner request 2026-07-30)', () => {
+    // The destination dropdown was removed from Keep; its one workflow action is
+    // Transfer to Completed (gated by order_completion_block in SQL).
+    expect(STAGE_ACTIONS.keep.actions).toEqual(['transfer_completed']);
+    expect(stageOffers('keep', 'transfer_destination')).toBe(false);
   });
 
   it.each(['required_payment_verified', 'approved_for_release', 'exceptional_release_pending'])(
@@ -192,10 +198,20 @@ describe('completion visibility (§5)', () => {
     expect(canOfferCompletion({ ...base, canRelease: false })).toBe(false);
   });
 
-  it.each(['keep', 'for_preparation', 'for_layaway', 'invoiced'])(
+  it.each(['for_preparation', 'for_layaway', 'invoiced'])(
     'is REFUSED on %s, which does not offer completion however paid it is',
     (status) => {
       expect(canOfferCompletion({ ...base, status })).toBe(false);
     },
   );
+
+  it('is OFFERED on keep via Transfer to Completed once paid (Owner request 2026-07-30)', () => {
+    // Keep now completes directly; the SQL block (order_completion_block) is still
+    // the authority, mirrored here by completionBlock: null.
+    expect(
+      canOfferCompletion({ ...base, status: 'keep', action: 'transfer_completed' }),
+    ).toBe(true);
+    // It still never offers Delivery's "Done" — that is not a Keep action.
+    expect(canOfferCompletion({ ...base, status: 'keep', action: 'done' })).toBe(false);
+  });
 });

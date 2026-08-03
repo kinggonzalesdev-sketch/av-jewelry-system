@@ -36,6 +36,11 @@ const VALID_RANGES: DateRangeKey[] = ['today', '7d', '14d', '30d', 'month', 'cus
  * Permission flags decide what renders and nothing more: every action re-checks
  * server-side, and the money rules are enforced in the database beneath that.
  */
+// Always render fresh from Supabase (never a cached route) so every device sees
+// the same official data on load. The page already reads auth cookies (dynamic);
+// this makes the intent explicit and guards against future caching.
+export const dynamic = 'force-dynamic';
+
 export default async function PaymentsPage({
   searchParams,
 }: {

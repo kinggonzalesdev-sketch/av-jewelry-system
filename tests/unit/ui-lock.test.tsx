@@ -35,6 +35,8 @@ describe('LOCKED: desktop sidebar (exact order, labels, routes, icons)', () => {
       { label: 'Attendance', href: '/admin/attendance', icon: '⏱' },
       { label: 'Review Attendance', href: '/admin/attendance/review', icon: '☑' },
       { label: 'Payroll', href: '/admin/payroll', icon: '▤' },
+      // Owner request 2026-08-01 — staff pricing/down-payment utility, placed last.
+      { label: 'Special Calculator', href: '/calculator', icon: '🧮' },
     ]);
   });
 });
@@ -54,6 +56,7 @@ describe('LOCKED: mobile navigation', () => {
       'Attendance',
       'Review Attendance',
       'Payroll',
+      'Special Calculator',
     ]);
   });
 });

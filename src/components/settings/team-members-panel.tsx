@@ -239,46 +239,46 @@ export function TeamMembersPanel({
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border">
           <table
-            className="w-full min-w-[520px] text-left text-sm"
+            className="data-table w-full min-w-[520px] text-left text-sm"
             data-testid="team-roster"
           >
             <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="px-3 py-2 font-medium">Team member</th>
-                <th className="px-3 py-2 font-medium">Sign-in email</th>
-                <th className="px-3 py-2 font-medium">Password</th>
-                <th className="px-3 py-2 text-right font-medium">Role &amp; Access</th>
-                <th className="px-3 py-2 text-right font-medium">Actions</th>
+                <th className="px-3 py-2.5 text-left font-medium">Team member</th>
+                <th className="px-3 py-2.5 text-left font-medium">Sign-in email</th>
+                <th className="px-3 py-2.5 text-center font-medium">Password</th>
+                <th className="px-3 py-2.5 text-left font-medium">Role &amp; Access</th>
+                <th className="px-3 py-2.5 text-right font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
               {members.map((m) => (
                 <tr key={m.staffProfileId} className="border-b last:border-0">
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2.5">
                     <div className="font-medium">{m.fullName}</div>
                     <div className="text-[11px] text-muted-foreground">
                       {ROLE_LABEL[m.roleKey] ?? m.roleKey}
                       {m.isActive ? '' : ' · disabled'}
                     </div>
                   </td>
-                  <td className="px-3 py-2">{m.email ?? '—'}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2.5">{m.email ?? '—'}</td>
+                  <td className="px-3 py-2.5 text-center">
                     {m.passwordIsTemp ? (
-                      <span className="rounded-md bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+                      <span className="whitespace-nowrap rounded-md bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
                         Temp (Not Changed)
                       </span>
                     ) : (
-                      <span className="text-xs text-gold-strong">Changed by them</span>
+                      <span className="whitespace-nowrap text-xs text-gold-strong">Changed by them</span>
                     )}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2.5">
                     <MemberAccessControls
                       member={m}
                       isPrimary={isPrimary}
                       superAdminSlotFree={superAdminSlotFree}
                     />
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2.5">
                     <div className="flex items-center justify-end gap-2">
                       <SetPasswordCell member={m} />
                       {/* The Primary Super Admin can never be deleted. */}

@@ -487,7 +487,12 @@ export type LayawayRow = {
   officialOrderId: string;
   orderNumber: string;
   invoiceNumber: string;
+  /** The linked inventory item Unique Code(s) — comma-separated for multi-item
+   *  orders. Null when the order has no resolvable inventory link ("Not linked"). */
+  uniqueCode: string | null;
   customerDisplayName: string;
+  /** Stored Facebook Messenger URL for a quick "Open Chat" button (or null). */
+  facebookUrl: string | null;
   status: string;
   /** Layaway financer (spec §14) — separate from supplier/custody. */
   financer: string | null;
@@ -538,7 +543,7 @@ export async function listLayaways(statuses?: string[]): Promise<LayawayRow[]> {
        final_due_date, grace_period_days, completed_at, layaway_code,
        financer_id, current_holder, current_location, remarks,
        financers ( name ),
-       official_orders ( order_number, invoice_number, customers ( display_name ) ),
+       official_orders ( order_number, invoice_number, customers ( display_name, facebook_conversation_url ) ),
        layaway_installments ( installment_number, due_date, amount_due, payment_id )`,
     )
     .order('created_at', { ascending: false })
@@ -549,6 +554,38 @@ export async function listLayaways(statuses?: string[]): Promise<LayawayRow[]> {
   const { data } = await query;
   if (!data) return [];
 
+  // Resolve each order's linked inventory Unique Code(s) in ONE guarded query
+  // (order → claims → inventory items). Isolated on purpose: if the embed can't be
+  // resolved it simply yields no codes ("Not linked") and never breaks the list.
+  const orderIds = [
+    ...new Set(
+      (data as Array<Record<string, unknown>>)
+        .map((r) => r.official_order_id as string)
+        .filter((v): v is string => Boolean(v)),
+    ),
+  ];
+  const codeByOrder = new Map<string, string>();
+  if (orderIds.length > 0) {
+    const { data: claimRows } = await supabase
+      .from('official_order_claims')
+      .select('official_order_id, claims ( inventory_items ( item_code ) )')
+      .in('official_order_id', orderIds);
+    for (const cr of (claimRows ?? []) as Array<Record<string, unknown>>) {
+      const oid = cr.official_order_id as string;
+      const claim = one<{ inventory_items: unknown }>(cr.claims);
+      const inv = one<{ item_code: string }>(claim?.inventory_items);
+      const code = inv?.item_code;
+      if (code) {
+        const existing = codeByOrder.get(oid);
+        // Multiple items → comma-separated codes (e.g. "AV001, AV014"), deduped.
+        if (!existing) codeByOrder.set(oid, code);
+        else if (!existing.split(', ').includes(code)) {
+          codeByOrder.set(oid, `${existing}, ${code}`);
+        }
+      }
+    }
+  }
+
   return Promise.all(
     (data as unknown[]).map(async (row) => {
       const r = row as Record<string, unknown>;
@@ -558,7 +595,9 @@ export async function listLayaways(statuses?: string[]): Promise<LayawayRow[]> {
         invoice_number: string;
         customers: unknown;
       }>(r.official_orders);
-      const customer = one<{ display_name: string }>(order?.customers);
+      const customer = one<{ display_name: string; facebook_conversation_url: string | null }>(
+        order?.customers,
+      );
       const financer = one<{ name: string }>(r.financers);
 
       const balanceResponse = await supabase.rpc('order_balance', {
@@ -611,7 +650,9 @@ export async function listLayaways(statuses?: string[]): Promise<LayawayRow[]> {
         officialOrderId: orderId,
         orderNumber: order?.order_number ?? '—',
         invoiceNumber: order?.invoice_number ?? '—',
+        uniqueCode: codeByOrder.get(orderId) ?? null,
         customerDisplayName: customer?.display_name ?? 'Unknown',
+        facebookUrl: customer?.facebook_conversation_url ?? null,
         status: r.status as string,
         financer: financer?.name ?? null,
         financerId: (r.financer_id as string | null) ?? null,

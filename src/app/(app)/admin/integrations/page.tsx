@@ -5,33 +5,38 @@ import { notFound } from 'next/navigation';
 import { IntegrationsView } from '@/components/integrations/integrations-view';
 import { PageHeader } from '@/components/ui/page-primitives';
 import { isPrimarySuperAdmin, requireActiveStaff } from '@/lib/authz/guard';
-import { getPancakeStatus } from '@/lib/integrations/pancake';
+import { getPancakeLinkStatus, getSelectedPancakePage } from '@/lib/integrations/pancake';
 
 export const metadata: Metadata = {
 };
 
 export const dynamic = 'force-dynamic';
+// The Auto-link server action does a paced, multi-window Pancake fetch (429 backoff).
+export const maxDuration = 60;
 
 /**
- * Integrations (Bible §14.28) — honest connection status for Pancake/Facebook and
- * the Bluetooth printer. Neither is faked as connected. Reachable under
- * Settings → Administration.
+ * Integrations (Bible §14.28) — Pancake Page management, reachable under
+ * Settings → Administration. Primary Super Admin only.
  */
 export default async function IntegrationsPage() {
-  // getPancakeStatus() is synchronous — only the staff guard is async.
-  const staff = await requireActiveStaff();
+  await requireActiveStaff();
   // PRIMARY Super Admin only (Owner request). Enforced HERE, not just by hiding the
   // Settings link, so typing the URL directly gets nothing either.
   if (!(await isPrimarySuperAdmin())) notFound();
-  const pancake = getPancakeStatus();
+  // Reaching this page already proves Primary Super Admin — Lalyn De Dios and any
+  // Admin/Staff are stopped by the guard above, in both the UI and the backend.
+  const [selectedPage, linkStatus] = await Promise.all([
+    getSelectedPancakePage(),
+    getPancakeLinkStatus(),
+  ]);
 
   return (
     <div>
       <PageHeader
         title="Integrations"
-        description="Pancake / Facebook and the Bluetooth printer — honest connection status, never a faked one."
+        description="Pancake / Facebook — load and select the Page this system posts as."
       />
-      <IntegrationsView pancake={pancake} canTest={staff.roleKey === 'owner'} />
+      <IntegrationsView canManagePages selectedPage={selectedPage} linkStatus={linkStatus} />
     </div>
   );
 }

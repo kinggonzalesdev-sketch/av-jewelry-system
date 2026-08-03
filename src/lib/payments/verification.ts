@@ -3,6 +3,7 @@ import 'server-only';
 import { recordAuditEvent } from '@/lib/audit/log';
 import { AuthorizationError, requirePermission } from '@/lib/authz/guard';
 import { getOrderBalance } from '@/lib/payments/balances';
+import { isCashMethod } from '@/lib/payments/methods';
 import { createClient } from '@/lib/supabase/server';
 import { recordPaymentSchema, type PaymentMethod } from '@/lib/validation/payments';
 
@@ -131,9 +132,16 @@ export async function recordPayment(input: unknown): Promise<PaymentResult> {
       status: 'submitted_unverified',
       payment_method: data.paymentMethod,
       reference_number: data.referenceNumber ?? null,
-      provider: data.provider ?? null,
+      // For GCash / BPI / BDO / Credit Card the method IS the channel, so when the
+      // caller sends no separate provider we record the method as the provider —
+      // keeping the payment channel visible in the verification queue and audit.
+      provider:
+        data.provider ??
+        (isCashMethod(data.paymentMethod) ? null : data.paymentMethod),
       transacted_at: data.transactedAt,
-      received_by: data.paymentMethod === 'cash' ? staff.staffProfileId : null,
+      // Cash (canonical "Cash" or legacy "cash") is attributed to the receiving
+      // staff member — the DB cash-attribution constraint requires it.
+      received_by: isCashMethod(data.paymentMethod) ? staff.staffProfileId : null,
       collection_location: data.collectionLocation ?? null,
       method_detail_note: data.note ?? null,
       recorded_by: staff.staffProfileId,

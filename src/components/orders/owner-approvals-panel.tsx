@@ -2,7 +2,12 @@
 
 import { useActionState } from 'react';
 
-import { decideApprovalAction, executeApprovalAction } from '@/lib/fulfillment/actions';
+import {
+  acceptCancellationApprovalAction,
+  decideApprovalAction,
+  executeApprovalAction,
+  rejectCancellationApprovalAction,
+} from '@/lib/fulfillment/actions';
 import {
   EMPTY_FULFILLMENT_STATE,
   type FulfillmentActionState,
@@ -44,6 +49,14 @@ export function OwnerApprovalsPanel({
     executeApprovalAction,
     EMPTY_FULFILLMENT_STATE,
   );
+  const [, acceptCancel, acceptingCancel] = useActionState<FulfillmentActionState, FormData>(
+    acceptCancellationApprovalAction,
+    EMPTY_FULFILLMENT_STATE,
+  );
+  const [, rejectCancel, rejectingCancel] = useActionState<FulfillmentActionState, FormData>(
+    rejectCancellationApprovalAction,
+    EMPTY_FULFILLMENT_STATE,
+  );
 
   // Only outstanding work belongs here: anything decided AND executed is history.
   const open = approvals.filter((a) => !a.executedAt && a.status !== 'rejected');
@@ -79,7 +92,32 @@ export function OwnerApprovalsPanel({
                 </span>
               </div>
 
-              {isOwner && a.status === 'pending_owner_approval' ? (
+              {/* Order cancellation is simplified (Owner request): Accept finalizes
+                  in ONE step, Reject undoes it. The other approval kinds keep the
+                  deliberate Approve → Execute two-step. */}
+              {isOwner &&
+              a.status === 'pending_owner_approval' &&
+              a.actionKind === 'official_order_cancellation' ? (
+                <div className="mt-2 flex flex-wrap items-end gap-2">
+                  <form action={acceptCancel}>
+                    <input type="hidden" name="orderId" value={a.entityId} />
+                    <Button type="submit" size="sm" disabled={acceptingCancel}>
+                      Accept
+                    </Button>
+                  </form>
+                  <form action={rejectCancel}>
+                    <input type="hidden" name="orderId" value={a.entityId} />
+                    <Button
+                      type="submit"
+                      size="sm"
+                      variant="outline"
+                      disabled={rejectingCancel}
+                    >
+                      Reject
+                    </Button>
+                  </form>
+                </div>
+              ) : isOwner && a.status === 'pending_owner_approval' ? (
                 <div className="mt-2 flex flex-wrap items-end gap-2">
                   <form action={decide}>
                     <input type="hidden" name="requestId" value={a.id} />
@@ -98,7 +136,10 @@ export function OwnerApprovalsPanel({
                 </div>
               ) : null}
 
-              {isOwner && a.status === 'approved' && !a.executedAt ? (
+              {isOwner &&
+              a.status === 'approved' &&
+              !a.executedAt &&
+              a.actionKind !== 'official_order_cancellation' ? (
                 <form action={execute} className="mt-2">
                   <input type="hidden" name="requestId" value={a.id} />
                   <Button type="submit" size="sm" variant="outline" disabled={executing}>

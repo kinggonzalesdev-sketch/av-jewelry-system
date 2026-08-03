@@ -22,6 +22,10 @@ import {
   type ImportResult,
 } from '@/lib/inventory/import';
 import {
+  parseInventoryWorkbook,
+  type ParseWorkbookResult,
+} from '@/lib/inventory/workbook-import';
+import {
   decideRtsReview,
   openMigrationBatch,
   returnItemToAvailable,
@@ -58,6 +62,20 @@ export async function createInventoryItemAction(
 
   revalidatePath('/orders/inventory');
   return { error: null, success: 'New item added to inventory.' };
+}
+
+/**
+ * Owner-only: parse an uploaded Excel/CSV workbook (every worksheet) and return the
+ * detected inventory candidates + summary for the preview. Nothing is written; the
+ * confirmed insert is `importInventoryItemsAction`.
+ */
+export async function parseInventoryWorkbookAction(
+  formData: FormData,
+): Promise<ParseWorkbookResult> {
+  const file = formData.get('file');
+  if (!(file instanceof File)) return { ok: false, error: 'Choose a file to import.' };
+  const buffer = await file.arrayBuffer();
+  return parseInventoryWorkbook(file.name, buffer);
 }
 
 /** Bulk import of validated inventory rows (spec §B). Preserves original codes,

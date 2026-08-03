@@ -251,16 +251,25 @@ export function ScrapView({
               visible even with no data — an empty state is a single full-width row,
               never a large empty box. */}
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left text-sm">
+            <table className="data-table w-full min-w-[720px] table-fixed text-left text-sm">
+              <colgroup>
+                <col style={{ width: '16%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '18%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '16%' }} />
+                <col style={{ width: '12%' }} />
+              </colgroup>
               <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th className="px-3 py-2 font-medium">Material</th>
-                  <th className="px-3 py-2 text-right font-medium">Grams</th>
-                  <th className="px-3 py-2 text-right font-medium">Amount</th>
-                  <th className="px-3 py-2 font-medium">Buyer</th>
-                  <th className="px-3 py-2 font-medium">Sold On</th>
-                  <th className="px-3 py-2 font-medium">Note</th>
-                  <th className="px-3 py-2 text-right font-medium">Actions</th>
+                  <th className="px-3 py-2.5 text-left font-medium">Material</th>
+                  <th className="px-3 py-2.5 text-center font-medium">Grams</th>
+                  <th className="px-3 py-2.5 pr-6 text-right font-medium">Amount</th>
+                  <th className="px-3 py-2.5 text-left font-medium">Buyer</th>
+                  <th className="px-3 py-2.5 text-center font-medium">Sold On</th>
+                  <th className="px-3 py-2.5 text-left font-medium">Note</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -276,15 +285,19 @@ export function ScrapView({
                 ) : (
                   sales.map((s) => (
                     <tr key={s.id} className="border-b last:border-0">
-                      <td className="px-3 py-2 capitalize">{s.material}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{s.grams}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">
+                      <td className="px-3 py-2.5 capitalize">{s.material}</td>
+                      <td className="px-3 py-2.5 text-center tabular-nums">{s.grams}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 pr-6 text-right tabular-nums">
                         {formatPeso(s.amount)}
                       </td>
-                      <td className="px-3 py-2">{s.buyer ?? '—'}</td>
-                      <td className="px-3 py-2 whitespace-nowrap">{s.soldOn}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{s.note ?? '—'}</td>
-                      <td className="px-3 py-2 text-right">
+                      <td className="truncate px-3 py-2.5" title={s.buyer ?? undefined}>
+                        {s.buyer ?? '—'}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-center">{s.soldOn}</td>
+                      <td className="truncate px-3 py-2.5 text-muted-foreground" title={s.note ?? undefined}>
+                        {s.note ?? '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
                         <ScrapRowActions sale={s} canDelete={canDelete} />
                       </td>
                     </tr>

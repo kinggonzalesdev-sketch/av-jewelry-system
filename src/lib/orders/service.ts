@@ -23,7 +23,11 @@ export type OrderListRow = {
   officialOrderId: string;
   orderNumber: string;
   invoiceNumber: string;
+  /** Tracking / air-waybill number saved on Ship Confirm, or null when none yet. */
+  waybillNumber: string | null;
   customerDisplayName: string;
+  /** Stored Facebook Messenger URL for a quick "Open Chat" button (or null). */
+  facebookUrl: string | null;
   status: string;
   createdAt: string;
   /** Authoritative, string money — never a float, never a zero-on-failure. */
@@ -42,6 +46,15 @@ export type OrderListRow = {
   fulfillmentDestination: string | null;
   /** 'walk_in' for a counter sale, else 'online'. Labelling only. */
   orderSource: string;
+  /** True once the order was "Set Up as Layaway" — it then leaves the For Layaway
+   *  card and is tracked in the Layaway ledger instead. */
+  convertedToLayaway: boolean;
+  /** Timestamps that drive latest-first sorting. `updatedAt` is bumped by every
+   *  real order action (status transitions, payments, verifications, waybill,
+   *  cancellation, completion…); `completedAt` backs the Completed card's
+   *  completed_at-first order. Both can be null on very old rows. */
+  updatedAt: string | null;
+  completedAt: string | null;
 };
 
 function one<T>(value: unknown): T | undefined {
@@ -67,12 +80,19 @@ export async function listOrders(limit = 100): Promise<OrdersResult> {
       // fulfillment_records has a single FK back to official_orders, so this
       // embed is unambiguous. official_orders → customers is likewise single.
       // layaway_arrangements is UNIQUE(official_order_id) — one per order.
-      `id, order_number, invoice_number, status, created_at, fulfillment_destination, order_source,
-       customers ( display_name ),
+      `id, order_number, invoice_number, status, created_at, updated_at, completed_at,
+       fulfillment_destination, order_source, converted_to_layaway, waybill_number,
+       customers ( display_name, facebook_conversation_url ),
        fulfillment_records ( status, dispatched_at ),
        layaway_arrangements ( status )`,
     )
+    // Latest activity first (Owner request): updated_at is bumped by every real
+    // action, so the most recently touched order sits on top. created_at + id are
+    // the stable fallbacks when updated_at ties or is null. Opening/viewing writes
+    // nothing, so it never reorders the list.
+    .order('updated_at', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
     .limit(limit);
 
   if (error) {
@@ -88,7 +108,9 @@ export async function listOrders(limit = 100): Promise<OrdersResult> {
 
   const rows: OrderListRow[] = raw.map((row, index) => {
     const r = row as Record<string, unknown>;
-    const customer = one<{ display_name: string }>(r.customers);
+    const customer = one<{ display_name: string; facebook_conversation_url: string | null }>(
+      r.customers,
+    );
     const fulfillment = one<{ status: string; dispatched_at: string | null }>(
       r.fulfillment_records,
     );
@@ -117,7 +139,9 @@ export async function listOrders(limit = 100): Promise<OrdersResult> {
       officialOrderId: r.id as string,
       orderNumber: (r.order_number as string | null) ?? '—',
       invoiceNumber: (r.invoice_number as string | null) ?? '—',
+      waybillNumber: (r.waybill_number as string | null) ?? null,
       customerDisplayName: customer?.display_name ?? 'Unknown',
+      facebookUrl: customer?.facebook_conversation_url ?? null,
       status: (r.status as string | null) ?? 'unknown',
       createdAt: r.created_at as string,
       totalAmountPayable,
@@ -128,6 +152,9 @@ export async function listOrders(limit = 100): Promise<OrdersResult> {
       shipDate: fulfillment?.dispatched_at ?? null,
       fulfillmentDestination: (r.fulfillment_destination as string | null) ?? null,
       orderSource: (r.order_source as string | null) ?? 'online',
+      convertedToLayaway: r.converted_to_layaway === true,
+      updatedAt: (r.updated_at as string | null) ?? null,
+      completedAt: (r.completed_at as string | null) ?? null,
     };
   });
 

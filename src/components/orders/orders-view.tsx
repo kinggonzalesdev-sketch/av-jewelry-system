@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 
 import { OrderDetailsModal } from '@/components/orders/order-details-modal';
 import { SendAllInvoices } from '@/components/orders/send-all-invoices';
+import { LayawayLedgerViewModal } from '@/components/payments/layaway-ledger-view-modal';
 
 import type { OrderListRow, OrdersResult, PaymentStatus } from '@/lib/orders/service';
 import type { KeepLayawayRow } from '@/lib/payments/layaway-ledger';
@@ -44,7 +45,7 @@ const PAYMENT_LABEL: Record<PaymentStatus, string> = {
 };
 
 const PAYMENT_TONE: Record<PaymentStatus, BadgeTone> = {
-  paid_in_full: 'gold',
+  paid_in_full: 'success',
   partial: 'warning',
   awaiting: 'neutral',
   unavailable: 'danger',
@@ -107,17 +108,16 @@ const CARD_DEFS: Array<{ key: CardKey; label: string; icon: string; tone: BadgeT
   { key: 'for_invoice', label: 'For Invoice', icon: '▦', tone: 'warning' },
   { key: 'for_reminder', label: 'For Reminder', icon: '⏱', tone: 'neutral' },
   { key: 'for_prepare', label: 'For Prepare', icon: '◈', tone: 'neutral' },
-  { key: 'for_confirm', label: 'For Confirm', icon: '▣', tone: 'gold' },
   { key: 'for_shipping', label: 'For Shipping', icon: '📦', tone: 'neutral' },
   { key: 'ship_confirm', label: 'Ship Confirm', icon: '➤', tone: 'strong' },
   // For-Prepare transfer destinations (Orders Workflow).
-  { key: 'delivery', label: 'Delivery', icon: '🛵', tone: 'gold' },
+  { key: 'delivery', label: 'For Delivery', icon: '🛵', tone: 'gold' },
   { key: 'pickup', label: 'Pickup', icon: '🏬', tone: 'gold' },
   { key: 'for_layaway', label: 'For Layaway', icon: '❐', tone: 'neutral' },
   { key: 'keep', label: 'Keep', icon: '❏', tone: 'neutral' },
   { key: 'for_cancel', label: 'For Cancel', icon: '⚠', tone: 'warning' },
   { key: 'cancelled', label: 'Cancelled', icon: '✕', tone: 'danger' },
-  { key: 'unverified_pay', label: 'Unverified Payment', icon: '⚠', tone: 'warning' },
+  { key: 'unverified_pay', label: 'Pending Payment', icon: '⚠', tone: 'warning' },
   { key: 'completed', label: 'Completed', icon: '✓', tone: 'strong' },
 ];
 
@@ -133,6 +133,18 @@ const COMPLETED_STATUSES = new Set([
   'released',
 ]);
 
+/**
+ * Statuses that OVERRIDE a fulfillment destination: a cancelled, awaiting-cancel,
+ * or completed order must leave its destination card (Delivery / Pickup / For
+ * Shipping / For Layaway / Keep) and show under its true card — so the modal's
+ * status badge always matches the section the order sits in.
+ */
+const DESTINATION_OVERRIDDEN = new Set([
+  'cancelled',
+  'for_cancel',
+  ...COMPLETED_STATUSES,
+]);
+
 /** Icon-badge tint per tone (matches the mockup's coloured card icons). */
 const CARD_ICON_TONE: Record<BadgeTone, string> = {
   gold: 'bg-gold/15 text-gold-strong',
@@ -140,6 +152,7 @@ const CARD_ICON_TONE: Record<BadgeTone, string> = {
   strong: 'bg-foreground/10 text-foreground',
   warning: 'bg-amber-100 text-amber-800',
   danger: 'bg-destructive/10 text-destructive',
+  success: 'bg-green-600/10 text-green-700',
 };
 
 function OrderRow({
@@ -169,11 +182,16 @@ function OrderRow({
       <td className="px-3 py-2.5">
         <StatusBadge label={humanize(order.status)} tone="neutral" />
       </td>
-      <td className="px-3 py-2.5 font-mono text-xs">{order.orderNumber}</td>
-      <td className="px-3 py-2.5 font-mono text-xs">
+      <td
+        className="truncate px-3 py-2.5 font-mono text-xs"
+        title={order.waybillNumber || order.orderNumber}
+      >
+        {order.waybillNumber || <span className="text-muted-foreground">—</span>}
+      </td>
+      <td className="truncate px-3 py-2.5 font-mono text-xs" title={order.invoiceNumber || undefined}>
         {order.invoiceNumber || <span className="text-muted-foreground">—</span>}
       </td>
-      <td className="px-3 py-2.5 font-medium">
+      <td className="truncate px-3 py-2.5 font-medium" title={order.customerDisplayName}>
         {order.customerDisplayName}
         {order.orderSource === 'walk_in' ? (
           <span className="ml-1.5 rounded-full border border-gold/40 bg-gold/10 px-1.5 py-0.5 text-[10px] font-medium text-gold-strong">
@@ -181,25 +199,25 @@ function OrderRow({
           </span>
         ) : null}
       </td>
-      <td className="px-3 py-2.5 text-right tabular-nums">
+      <td className="whitespace-nowrap px-3 py-2.5 pr-6 text-right tabular-nums">
         {order.paymentStatus === 'unavailable' ? (
           '—'
         ) : (
           <Money amount={order.totalAmountPayable} />
         )}
       </td>
-      <td className="px-3 py-2.5">
+      <td className="whitespace-nowrap px-3 py-2.5 text-center">
         <StatusBadge
           label={PAYMENT_LABEL[order.paymentStatus]}
           tone={PAYMENT_TONE[order.paymentStatus]}
         />
         {order.paymentStatus === 'partial' ? (
-          <span className="ml-1 text-xs text-muted-foreground">
+          <span className="ml-1 whitespace-nowrap text-xs text-muted-foreground">
             <Money amount={order.outstandingBalance} /> due
           </span>
         ) : null}
       </td>
-      <td className="px-3 py-2.5">
+      <td className="px-3 py-2.5 text-center">
         {order.fulfillmentStatus ? (
           <StatusBadge
             label={humanize(order.fulfillmentStatus)}
@@ -209,11 +227,51 @@ function OrderRow({
           <span className="text-xs text-muted-foreground">—</span>
         )}
       </td>
-      <td className="px-3 py-2.5 text-right text-xs font-medium text-gold-strong">
+      <td className="whitespace-nowrap px-3 py-2.5 text-right text-xs font-medium text-gold-strong">
         View ›
       </td>
     </tr>
   );
+}
+
+/** ms since epoch for an ISO string, or 0 when null/blank. */
+function ts(s: string | null): number {
+  if (!s) return 0;
+  const n = Date.parse(s);
+  return Number.isNaN(n) ? 0 : n;
+}
+
+/**
+ * ONE latest-first comparator for every Orders result list (Owner request).
+ *
+ * The backend already returns rows in updated_at-first order; this mirrors that
+ * precedence exactly so the client never re-sorts by order number and never
+ * contradicts the query: latest `updated_at` → latest `created_at` → permanent id
+ * as the only stable tie-breaker. The Completed card overrides the primary key with
+ * `completed_at` (a viewed order must not jump above a more recently completed one).
+ */
+function latestFirst(a: OrderListRow, b: OrderListRow): number {
+  const au = ts(a.updatedAt) || ts(a.createdAt);
+  const bu = ts(b.updatedAt) || ts(b.createdAt);
+  if (bu !== au) return bu - au;
+  const ac = ts(a.createdAt);
+  const bc = ts(b.createdAt);
+  if (bc !== ac) return bc - ac;
+  // Permanent id, descending — the final stable tie-breaker.
+  return a.officialOrderId < b.officialOrderId ? 1 : a.officialOrderId > b.officialOrderId ? -1 : 0;
+}
+
+function completedFirst(a: OrderListRow, b: OrderListRow): number {
+  const ac = ts(a.completedAt);
+  const bc = ts(b.completedAt);
+  if (bc !== ac) return bc - ac;
+  return latestFirst(a, b);
+}
+
+/** Sort a card's rows latest-first — Completed by completed_at, everything else by
+ *  the shared updated_at-first order. */
+export function sortOrdersForCard(rows: OrderListRow[], card: CardKey): OrderListRow[] {
+  return [...rows].sort(card === 'completed' ? completedFirst : latestFirst);
 }
 
 function matchesCard(order: OrderListRow, key: CardKey): boolean {
@@ -221,9 +279,13 @@ function matchesCard(order: OrderListRow, key: CardKey): boolean {
     case 'all':
       return true;
     case 'for_invoice':
-      return order.status === 'invoiced';
+      // Leaves this card once routed to a destination (Transfer to Destination is
+      // now available from For Invoice) — it then shows under that destination.
+      return order.status === 'invoiced' && !order.fulfillmentDestination;
     case 'for_reminder':
-      return order.status === 'awaiting_required_payment';
+      return (
+        order.status === 'awaiting_required_payment' && !order.fulfillmentDestination
+      );
     case 'for_prepare':
       // A For-Prepare order LEAVES this card once it is transferred to a
       // destination (Orders Workflow) — it then shows under that destination.
@@ -232,21 +294,44 @@ function matchesCard(order: OrderListRow, key: CardKey): boolean {
       return order.status === 'required_payment_verified';
     case 'for_shipping':
       // Awaiting release: routed to shipping, or sitting at the shipping stage.
+      // Once the order is Ship-Confirmed (status approved_for_release) — or closed /
+      // cancelled — it LEAVES this card even though it keeps
+      // fulfillment_destination = 'shipping', so it never shows "Ship Confirm",
+      // "Cancelled", etc. here.
       return (
-        order.status === 'for_shipping_or_pickup' ||
-        order.fulfillmentDestination === 'shipping'
+        !SHIP_CONFIRMED.has(order.status) &&
+        !DESTINATION_OVERRIDDEN.has(order.status) &&
+        (order.status === 'for_shipping_or_pickup' ||
+          order.fulfillmentDestination === 'shipping')
       );
     case 'ship_confirm':
       return SHIP_CONFIRMED.has(order.status);
     case 'delivery':
-      return order.fulfillmentDestination === 'delivery';
+      // A cancelled / for-cancel / completed order leaves the Delivery card and
+      // shows under its true status, matching the modal's status badge.
+      return (
+        !DESTINATION_OVERRIDDEN.has(order.status) &&
+        order.fulfillmentDestination === 'delivery'
+      );
     case 'pickup':
-      return order.fulfillmentDestination === 'pickup';
+      return (
+        !DESTINATION_OVERRIDDEN.has(order.status) &&
+        order.fulfillmentDestination === 'pickup'
+      );
     case 'for_layaway':
-      // Real status now; also match legacy rows tagged only by destination.
-      return order.status === 'for_layaway' || order.fulfillmentDestination === 'layaway';
+      // Real status now; also match legacy rows tagged only by destination. Once an
+      // order is Set Up as a layaway it leaves this card — it now lives in the
+      // Layaway ledger (Payments & Layaway).
+      return (
+        !order.convertedToLayaway &&
+        !DESTINATION_OVERRIDDEN.has(order.status) &&
+        (order.status === 'for_layaway' || order.fulfillmentDestination === 'layaway')
+      );
     case 'keep':
-      return order.status === 'keep' || order.fulfillmentDestination === 'keep';
+      return (
+        !DESTINATION_OVERRIDDEN.has(order.status) &&
+        (order.status === 'keep' || order.fulfillmentDestination === 'keep')
+      );
     case 'cancelled':
       return order.status === 'cancelled';
     case 'unverified_pay':
@@ -256,8 +341,14 @@ function matchesCard(order: OrderListRow, key: CardKey): boolean {
       // Genuinely completed — final handoff confirmed (not merely shipped).
       return COMPLETED_STATUSES.has(order.status);
     case 'for_cancel':
-      // Real status now; also match legacy rows tagged only by destination.
-      return order.status === 'for_cancel' || order.fulfillmentDestination === 'cancelled';
+      // Awaiting a cancellation decision: a Cancel Order request parks the order
+      // here (status 'for_cancel'). Once the cancellation is APPROVED (status
+      // 'cancelled') it LEAVES this card — even though it keeps
+      // fulfillment_destination = 'cancelled' — and shows only under Cancelled.
+      return (
+        order.status !== 'cancelled' &&
+        (order.status === 'for_cancel' || order.fulfillmentDestination === 'cancelled')
+      );
   }
 }
 
@@ -298,16 +389,6 @@ export function OrdersView({
    * They narrow the list together, and only the flow dropdown is tied to the
    * status cards, so the cards and the dropdown still cannot disagree.
    */
-  const [fulfillmentFilter, setFulfillmentFilter] = useState('all');
-
-  // Only statuses PRESENT in the loaded data are offered, so the filter never
-  // implies records we do not have.
-  const fulfillmentOptions = useMemo(() => {
-    const seen = new Set<string>();
-    for (const o of rows) if (o.fulfillmentStatus) seen.add(o.fulfillmentStatus);
-    return [...seen].sort();
-  }, [rows]);
-
   const counts = useMemo(() => {
     const c = Object.fromEntries(CARD_DEFS.map((d) => [d.key, 0])) as Record<
       CardKey,
@@ -322,25 +403,20 @@ export function OrdersView({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return rows.filter((o) => {
+    const matched = rows.filter((o) => {
       if (!matchesCard(o, card)) return false;
       if (orderDate && o.createdAt.slice(0, 10) !== orderDate) return false;
       if (shipDate && (o.shipDate?.slice(0, 10) ?? '') !== shipDate) return false;
-      if (fulfillmentFilter === 'none' && o.fulfillmentStatus !== null) return false;
-      if (
-        fulfillmentFilter !== 'all' &&
-        fulfillmentFilter !== 'none' &&
-        o.fulfillmentStatus !== fulfillmentFilter
-      ) {
-        return false;
-      }
       if (!q) return true;
-      return [o.orderNumber, o.invoiceNumber, o.customerDisplayName]
+      return [o.orderNumber, o.invoiceNumber, o.waybillNumber ?? '', o.customerDisplayName]
         .join(' ')
         .toLowerCase()
         .includes(q);
     });
-  }, [rows, card, query, fulfillmentFilter, orderDate, shipDate]);
+    // Latest activity first (Completed by completed_at); filters/search above are
+    // untouched — only the display order is applied here.
+    return sortOrdersForCard(matched, card);
+  }, [rows, card, query, orderDate, shipDate]);
 
   // A FAILED read is not "no orders" — say so loudly (the session's hard rule).
   if (!result.ok) {
@@ -363,10 +439,11 @@ export function OrdersView({
         </div>
       ) : null}
 
-      {/* Approved status cards (11) — real counts of the loaded orders; each is a
-          quick filter with a coloured icon badge. Active card is ringed in the
-          brand accent. Keep also counts layaway accounts flagged KEEP. */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-11">
+      {/* Status cards — real counts of the loaded orders; each is a quick filter
+          with a coloured icon badge. Active card is ringed in the brand accent.
+          Kept on ONE line: a single horizontally-scrollable row (Owner request),
+          so every stage stays visible in order without wrapping. */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
         {CARD_DEFS.map((def) => {
           const active = card === def.key;
           return (
@@ -377,7 +454,7 @@ export function OrdersView({
               aria-pressed={active}
               data-testid={`orders-card-${def.key}`}
               className={cn(
-                'flex min-h-[84px] flex-col items-start gap-1.5 rounded-xl border bg-card p-2.5 text-left transition-colors',
+                'flex min-h-[92px] min-w-[100px] flex-1 flex-col items-start gap-1.5 rounded-xl border bg-card p-2.5 text-left transition-colors',
                 active
                   ? 'border-gold ring-1 ring-gold'
                   : 'border-border hover:border-gold/40',
@@ -392,10 +469,10 @@ export function OrdersView({
               >
                 {def.icon}
               </span>
-              <span className="text-[10px] font-medium uppercase leading-tight tracking-wide text-muted-foreground [hyphens:auto]">
+              <span className="text-[11px] font-semibold uppercase leading-tight tracking-wide text-muted-foreground [hyphens:auto]">
                 {def.label}
               </span>
-              <span className="text-xl font-bold leading-none tabular-nums text-foreground">
+              <span className="text-2xl font-bold leading-none tabular-nums text-foreground">
                 {counts[def.key]}
               </span>
             </button>
@@ -410,7 +487,7 @@ export function OrdersView({
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search order no., invoice no., or customer"
+            placeholder="Search waybill, order no., invoice no., or customer"
             aria-label="Search orders"
             data-testid="orders-search"
             className="h-9 flex-1 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold"
@@ -430,22 +507,6 @@ export function OrdersView({
             {CARD_DEFS.map((def) => (
               <option key={def.key} value={def.key}>
                 {def.label}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={fulfillmentFilter}
-            onChange={(e) => setFulfillmentFilter(e.target.value)}
-            aria-label="Filter by fulfillment status"
-            data-testid="orders-filter-fulfillment"
-            className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
-          >
-            <option value="all">All fulfillment</option>
-            <option value="none">No fulfillment record</option>
-            {fulfillmentOptions.map((s2) => (
-              <option key={s2} value={s2}>
-                {humanize(s2)}
               </option>
             ))}
           </select>
@@ -502,17 +563,27 @@ export function OrdersView({
       ) : (
         <div className="rounded-xl border border-border bg-card">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left text-sm">
+            <table className="data-table w-full min-w-[860px] table-fixed text-left text-sm">
+              <colgroup>
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '17%' }} />
+                <col style={{ width: '11%' }} />
+                <col style={{ width: '11%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '10%' }} />
+              </colgroup>
               <thead>
                 <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <th className="px-3 py-2 font-medium">Status</th>
-                  <th className="px-3 py-2 font-medium">Order No.</th>
-                  <th className="px-3 py-2 font-medium">Invoice No.</th>
-                  <th className="px-3 py-2 font-medium">Customer</th>
-                  <th className="px-3 py-2 text-right font-medium">Amount</th>
-                  <th className="px-3 py-2 font-medium">Payment</th>
-                  <th className="px-3 py-2 font-medium">Fulfillment</th>
-                  <th className="px-3 py-2 text-right font-medium">Actions</th>
+                  <th className="px-3 py-2.5 text-left font-medium">Status</th>
+                  <th className="px-3 py-2.5 text-left font-medium">Waybill Number</th>
+                  <th className="px-3 py-2.5 text-left font-medium">Invoice No.</th>
+                  <th className="px-3 py-2.5 text-left font-medium">Customer</th>
+                  <th className="px-3 py-2.5 pr-6 text-right font-medium">Amount</th>
+                  <th className="px-3 py-2.5 text-center font-medium">Payment</th>
+                  <th className="px-3 py-2.5 text-center font-medium">Fulfillment</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -547,7 +618,7 @@ export function OrdersView({
             </a>
           </div>
           <div className="overflow-x-auto border-t border-border">
-            <table className="w-full min-w-[640px] text-left text-sm">
+            <table className="data-table w-full min-w-[640px] text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
                   <th className="px-3 py-2 font-medium">Code</th>
@@ -556,6 +627,7 @@ export function OrdersView({
                   <th className="px-3 py-2 text-right font-medium">Grand Total</th>
                   <th className="px-3 py-2 text-right font-medium">Balance</th>
                   <th className="px-3 py-2 font-medium">Account No.</th>
+                  <th className="px-3 py-2 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -573,6 +645,12 @@ export function OrdersView({
                       {k.balance ? <Money amount={k.balance} /> : '—'}
                     </td>
                     <td className="px-3 py-2 font-mono text-xs">{k.accountNo}</td>
+                    <td className="px-3 py-2 text-right">
+                      {/* View opens the layaway account (these KEEP rows are layaway
+                          ledger records, not official orders). From here it can be
+                          transferred to Completed, which removes it from Keep. */}
+                      <LayawayLedgerViewModal ledgerId={k.id} allowComplete />
+                    </td>
                   </tr>
                 ))}
               </tbody>

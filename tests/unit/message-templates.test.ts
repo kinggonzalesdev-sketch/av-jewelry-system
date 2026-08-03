@@ -27,8 +27,8 @@ describe('message template variables', () => {
     ]);
   });
 
-  it('covers the four template types', () => {
-    expect(TEMPLATE_KEYS).toEqual(['invoice', 'reminder_1', 'reminder_2', 'reminder_3']);
+  it('covers the invoice and (single) reminder template', () => {
+    expect(TEMPLATE_KEYS).toEqual(['invoice', 'reminder_1']);
   });
 
   it('gives every variable a sample value for the live preview', () => {

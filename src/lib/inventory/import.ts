@@ -2,6 +2,7 @@ import 'server-only';
 
 import { recordAuditEvent } from '@/lib/audit/log';
 import { AuthorizationError, requireOwner } from '@/lib/authz/guard';
+import { parseInventoryCode } from '@/lib/inventory/code-parser';
 import { createClient } from '@/lib/supabase/server';
 
 /**
@@ -78,7 +79,10 @@ export async function importInventoryItems(
       is_unique_item: true,
       quantity_total: 1,
       total_price_per_piece: i.price?.trim() || null,
-      grams_per_piece: i.grams?.trim() || null,
+      // Auto-detect grams: use the supplied value, otherwise parse the grams encoded
+      // in the item code (e.g. "SBA-N-2683 1.80g" → 1.80) so every upload lands with
+      // its weight already populated.
+      grams_per_piece: i.grams?.trim() || parseInventoryCode(i.itemCode).grams || null,
       size: i.size?.trim() || null,
       supplier_name: i.supplier?.trim() || null,
       availability_status: 'available',
@@ -100,23 +104,42 @@ export async function importInventoryItems(
     .insert(toInsert)
     .select('id');
 
+  let inserted: number;
+  let conflictSkipped = 0;
+
   if (error) {
-    await recordAuditEvent({
-      action: 'inventory_item.import',
-      entityType: 'inventory_item',
-      outcome: 'failed',
-      reason: error.message,
-      context: { attempted: toInsert.length },
-    });
-    return { ok: false, error: 'The import could not be saved.' };
+    // A UNIQUE lower(item_code) violation means a code collided with a row the
+    // visible pre-filter missed (e.g. an archived item). Rather than fail the whole
+    // batch, insert row-by-row and SKIP the conflicting ones — a duplicate is never
+    // saved, and the rest still import.
+    const isConflict = error.code === '23505' || /duplicate key|unique/i.test(error.message);
+    if (!isConflict) {
+      await recordAuditEvent({
+        action: 'inventory_item.import',
+        entityType: 'inventory_item',
+        outcome: 'failed',
+        reason: error.message,
+        context: { attempted: toInsert.length },
+      });
+      return { ok: false, error: 'The import could not be saved.' };
+    }
+    let ok = 0;
+    for (const row of toInsert) {
+      const r = await supabase.from('inventory_items').insert(row).select('id').single();
+      if (r.error) conflictSkipped += 1;
+      else ok += 1;
+    }
+    inserted = ok;
+  } else {
+    inserted = data?.length ?? 0;
   }
 
-  const inserted = data?.length ?? 0;
+  const totalSkipped = skipped + conflictSkipped;
   await recordAuditEvent({
     action: 'inventory_item.import',
     entityType: 'inventory_item',
-    context: { inserted, skipped },
+    context: { inserted, skipped: totalSkipped },
   });
 
-  return { ok: true, inserted, skipped };
+  return { ok: true, inserted, skipped: totalSkipped };
 }

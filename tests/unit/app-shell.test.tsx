@@ -47,6 +47,7 @@ describe('approved navigation model (navigation.ts is the source of truth)', () 
       'Attendance',
       'Review Attendance',
       'Payroll',
+      'Special Calculator',
     ]);
   });
 
@@ -64,6 +65,7 @@ describe('approved navigation model (navigation.ts is the source of truth)', () 
       'Attendance',
       'Review Attendance',
       'Payroll',
+      'Special Calculator',
     ]);
   });
 

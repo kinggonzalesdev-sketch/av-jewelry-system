@@ -4,37 +4,37 @@ import { describe, expect, it, vi } from 'vitest';
 import { IntegrationsView } from '@/components/integrations/integrations-view';
 
 vi.mock('@/lib/integrations/actions', () => ({
-  testPancakeAction: vi.fn(),
-  syncPancakeAction: vi.fn(),
+  saveSelectedPageAction: vi.fn(),
+  sendPancakeTestAction: vi.fn(),
+  syncPancakeConversationsAction: vi.fn(),
 }));
 
 describe('IntegrationsView', () => {
-  it('shows Pancake as Not Connected when not configured — never a fake connected', () => {
-    render(
-      <IntegrationsView
-        pancake={{ state: 'not_configured', detail: 'API access is not configured.' }}
-        canTest
-      />,
-    );
-    expect(screen.getByTestId('pancake-status')).toHaveTextContent('Not Connected');
-    expect(screen.getByText(/To enable Pancake sync/i)).toBeInTheDocument();
-    // The Owner can test the connection.
-    expect(screen.getByRole('button', { name: /test connection/i })).toBeInTheDocument();
+  it('offers Load Pancake Pages to the Primary Super Admin', () => {
+    render(<IntegrationsView canManagePages />);
+    expect(screen.getByTestId('pancake-load-pages')).toBeInTheDocument();
+    expect(screen.getByText(/Managed Pages/i)).toBeInTheDocument();
   });
 
-  it('hides the test button from non-Owners', () => {
+  it('shows the currently-saved Page when one is selected', () => {
     render(
       <IntegrationsView
-        pancake={{ state: 'configured_unverified', detail: 'Set but unverified.' }}
-        canTest={false}
+        canManagePages
+        selectedPage={{
+          pageId: '588622885161430',
+          pageName: 'A.V. Jewelry',
+          platform: 'facebook',
+          selectedByName: 'King Gonzales',
+          selectedAt: null,
+        }}
       />,
     );
-    expect(screen.getByTestId('pancake-status')).toHaveTextContent(
-      'Configured — Unverified',
-    );
-    expect(
-      screen.queryByRole('button', { name: /test connection/i }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByText(/Only the Owner can test/i)).toBeInTheDocument();
+    expect(screen.getByTestId('pancake-selected-page')).toHaveTextContent('588622885161430');
+  });
+
+  it('hides Page management from non-Primary-Super-Admins', () => {
+    render(<IntegrationsView canManagePages={false} />);
+    expect(screen.queryByTestId('pancake-load-pages')).not.toBeInTheDocument();
+    expect(screen.getByText(/Primary Super Admin only/i)).toBeInTheDocument();
   });
 });

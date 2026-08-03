@@ -99,7 +99,7 @@ export function PayrollSummaryButton({
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left text-xs">
+            <table className="data-table w-full min-w-[720px] text-left text-xs">
               <thead className="border-b border-neutral-300 text-[10px] uppercase text-neutral-500">
                 <tr>
                   <th className="px-3 py-1.5">Employee</th>

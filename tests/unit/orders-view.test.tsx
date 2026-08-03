@@ -22,7 +22,9 @@ function row(over: Partial<OrderListRow>): OrderListRow {
     officialOrderId: crypto.randomUUID(),
     orderNumber: 'ORD-0001',
     invoiceNumber: 'INV-0001',
+    waybillNumber: null,
     customerDisplayName: 'Maria Santos',
+    facebookUrl: null,
     status: 'invoiced',
     createdAt: '2026-07-16T00:00:00.000Z',
     totalAmountPayable: '1000.00',
@@ -33,6 +35,9 @@ function row(over: Partial<OrderListRow>): OrderListRow {
     shipDate: null,
     fulfillmentDestination: null,
     orderSource: 'online',
+    convertedToLayaway: false,
+    updatedAt: '2026-07-16T00:00:00.000Z',
+    completedAt: null,
     ...over,
   };
 }
@@ -114,7 +119,6 @@ describe('OrdersView — the approved 11 status cards over real data', () => {
       'for_invoice',
       'for_reminder',
       'for_prepare',
-      'for_confirm',
       'ship_confirm',
       'delivery',
       'pickup',
@@ -216,16 +220,15 @@ describe('OrdersView — search and filters (existing, preserved)', () => {
       'For Invoice',
       'For Reminder',
       'For Prepare',
-      'For Confirm',
       'For Shipping',
       'Ship Confirm',
-      'Delivery',
+      'For Delivery',
       'Pickup',
       'For Layaway',
       'Keep',
       'For Cancel',
       'Cancelled',
-      'Unverified Payment',
+      'Pending Payment',
       'Completed',
     ]);
     expect(select.value).toBe('all');
@@ -308,44 +311,3 @@ describe('OrdersView — For Shipping is its own flow', () => {
   });
 });
 
-/**
- * The fulfillment-status filter is a SECOND, independent filter (restored by
- * Owner request). It narrows alongside the order flow rather than replacing it.
- */
-describe('OrdersView — fulfillment filter alongside the flow dropdown', () => {
-  const mixed: OrderListRow[] = [
-    row({ customerDisplayName: 'Held Order', fulfillmentStatus: 'held' }),
-    row({ customerDisplayName: 'Shipping Order', fulfillmentStatus: 'for_shipping' }),
-    row({ customerDisplayName: 'No Record' }),
-  ];
-
-  it('offers only the statuses present in the data', () => {
-    render(<OrdersView result={ok(mixed)} />);
-    const select = screen.getByTestId('orders-filter-fulfillment');
-    expect(within(select).getByRole('option', { name: /Held/i })).toBeInTheDocument();
-    expect(
-      within(select).queryByRole('option', { name: /Dispatched/i }),
-    ).not.toBeInTheDocument();
-  });
-
-  it('narrows the list independently of the order flow', () => {
-    render(<OrdersView result={ok(mixed)} />);
-    fireEvent.change(screen.getByTestId('orders-filter-fulfillment'), {
-      target: { value: 'held' },
-    });
-    expect(screen.getByText('Held Order')).toBeInTheDocument();
-    expect(screen.queryByText('Shipping Order')).not.toBeInTheDocument();
-
-    // The flow dropdown is untouched by the fulfillment filter.
-    expect(screen.getByTestId<HTMLSelectElement>('orders-filter-flow').value).toBe('all');
-  });
-
-  it('"No fulfillment record" finds orders with none', () => {
-    render(<OrdersView result={ok(mixed)} />);
-    fireEvent.change(screen.getByTestId('orders-filter-fulfillment'), {
-      target: { value: 'none' },
-    });
-    expect(screen.getByText('No Record')).toBeInTheDocument();
-    expect(screen.queryByText('Held Order')).not.toBeInTheDocument();
-  });
-});

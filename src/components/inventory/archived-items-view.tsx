@@ -119,24 +119,24 @@ export function ArchivedItemsView({
       </p>
 
       <div className="overflow-x-auto rounded-xl border border-border bg-card">
-        <table className="w-full min-w-[860px] text-left text-xs" data-testid="archived-items">
+        <table className="data-table w-full min-w-[860px] text-left text-xs" data-testid="archived-items">
           <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
             <tr>
-              <th className="px-3 py-2">Inventory Code</th>
-              <th className="px-3 py-2">Item</th>
-              <th className="px-3 py-2">Reason</th>
-              <th className="px-3 py-2">Archived By</th>
-              <th className="px-3 py-2">Archived</th>
-              <th className="px-3 py-2">Original Status</th>
-              <th className="px-3 py-2 text-right">Actions</th>
+              <th className="px-3 py-2.5 text-left">Inventory Code</th>
+              <th className="px-3 py-2.5 text-left">Item</th>
+              <th className="px-3 py-2.5 text-left">Reason</th>
+              <th className="px-3 py-2.5 text-left">Archived By</th>
+              <th className="px-3 py-2.5 text-center">Archived</th>
+              <th className="px-3 py-2.5 text-center">Original Status</th>
+              <th className="px-3 py-2.5 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {archived.rows.map((r) => (
               <tr key={r.inventoryItemId}>
-                <td className="px-3 py-2 font-mono">{r.itemCode}</td>
-                <td className="px-3 py-2">{r.itemName ?? '—'}</td>
-                <td className="px-3 py-2">
+                <td className="px-3 py-2.5 font-mono">{r.itemCode}</td>
+                <td className="px-3 py-2.5">{r.itemName ?? '—'}</td>
+                <td className="px-3 py-2.5">
                   <span className="font-medium">
                     {REASON_LABEL[r.archiveReasonCode] ?? humanize(r.archiveReasonCode)}
                   </span>
@@ -144,10 +144,10 @@ export function ArchivedItemsView({
                     <span className="block text-muted-foreground">{r.archiveReasonDetail}</span>
                   ) : null}
                 </td>
-                <td className="px-3 py-2">{r.archivedByName ?? '—'}</td>
-                <td className="px-3 py-2">{r.archivedAt.slice(0, 10)}</td>
-                <td className="px-3 py-2">{humanize(r.archivedFromStatus)}</td>
-                <td className="px-3 py-2 text-right">
+                <td className="px-3 py-2.5">{r.archivedByName ?? '—'}</td>
+                <td className="whitespace-nowrap px-3 py-2.5 text-center">{r.archivedAt.slice(0, 10)}</td>
+                <td className="px-3 py-2.5 text-center">{humanize(r.archivedFromStatus)}</td>
+                <td className="px-3 py-2.5 text-right">
                   <div className="flex justify-end gap-1">
                     {canMonitor ? (
                       <button

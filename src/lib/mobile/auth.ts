@@ -1,0 +1,102 @@
+import 'server-only';
+
+import { createClient as createSupabaseClient, type SupabaseClient } from '@supabase/supabase-js';
+
+import { getClientEnv } from '@/lib/env';
+import type { RoleKey } from '@/lib/authz/permissions';
+
+/**
+ * Mobile (MineFlow Capture app) authentication.
+ *
+ * The Android app signs in with the SAME MineFlow account and sends the Supabase
+ * access token as `Authorization: Bearer <token>`. This never trusts a
+ * client-supplied identity: it verifies the JWT with Supabase, then loads the
+ * staff profile through an RLS-scoped client (so the caller can only ever see
+ * their own row). No Supabase service-role key is used, and no Pancake token is
+ * ever exposed to the device — every privileged action happens server-side.
+ */
+
+export type MobileStaff = {
+  staffProfileId: string;
+  authUserId: string;
+  roleKey: RoleKey;
+  fullName: string;
+  /** A Supabase client bound to the caller's token — RLS applies to every query. */
+  supabase: SupabaseClient;
+};
+
+function bearerToken(request: Request): string | null {
+  const header = request.headers.get('authorization') ?? '';
+  if (!header.toLowerCase().startsWith('bearer ')) return null;
+  const token = header.slice(7).trim();
+  return token.length > 0 ? token : null;
+}
+
+/**
+ * Why a mobile caller was rejected. Lets the session route return a precise,
+ * non-sensitive reason the Capture app can turn into a clear message.
+ *   - session_invalid  : no token, or the JWT is invalid/expired.
+ *   - account_not_found: valid token, but no staff_profiles row for that user.
+ *   - account_inactive : staff row exists but has been deactivated.
+ */
+export type MobileAuthFailure = 'session_invalid' | 'account_not_found' | 'account_inactive';
+
+export type MobileAuthResult =
+  | { ok: true; staff: MobileStaff }
+  | { ok: false; reason: MobileAuthFailure };
+
+/**
+ * Verify the caller and return their staff context, or a typed failure reason.
+ * The reason never leaks a secret — it only says why sign-in cannot proceed, so
+ * the operator can be told to fix the right thing (wrong account vs deactivated).
+ */
+export async function resolveMobileStaff(request: Request): Promise<MobileAuthResult> {
+  const token = bearerToken(request);
+  if (!token) return { ok: false, reason: 'session_invalid' };
+
+  const env = getClientEnv();
+  const supabase = createSupabaseClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    },
+  );
+
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+  if (error || !user) return { ok: false, reason: 'session_invalid' };
+
+  const { data } = await supabase
+    .from('staff_profiles')
+    .select('id, auth_user_id, role_key, is_active, full_name')
+    .eq('auth_user_id', user.id)
+    .maybeSingle();
+
+  if (!data) return { ok: false, reason: 'account_not_found' };
+  if (data.is_active !== true) return { ok: false, reason: 'account_inactive' };
+
+  return {
+    ok: true,
+    staff: {
+      staffProfileId: data.id as string,
+      authUserId: data.auth_user_id as string,
+      roleKey: data.role_key as RoleKey,
+      fullName: (data.full_name as string) ?? 'Staff member',
+      supabase,
+    },
+  };
+}
+
+/**
+ * Verify the caller and return their staff context, or null when the token is
+ * missing / invalid / expired, or the account is not an active staff member.
+ * Callers translate null into a 401 with a safe, generic message.
+ */
+export async function authenticateMobile(request: Request): Promise<MobileStaff | null> {
+  const result = await resolveMobileStaff(request);
+  return result.ok ? result.staff : null;
+}

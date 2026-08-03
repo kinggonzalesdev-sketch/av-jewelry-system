@@ -178,19 +178,29 @@ describe('NewOrderWorkflow — multi-item form', () => {
     expect(screen.getByTestId('order-summary-total')).toHaveTextContent('₱11,000');
   });
 
-  it('switches to Walk In mode with Name, item rows, MOP, and Date', () => {
+  it('switches to Walk In mode with a Save button, item rows, payment amount, and Date', () => {
     renderWorkflow();
     openForm();
     fireEvent.click(screen.getByTestId('mode-walkin'));
 
-    expect(screen.getByRole('button', { name: /accept — complete sale/i })).toBeInTheDocument();
+    // The Walk-In overhaul replaced the instant "Accept — Complete Sale" with a
+    // "Save" button that opens a review before writing anything.
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /accept — complete sale/i }),
+    ).not.toBeInTheDocument();
+
     // The Walk-In item selector offers the sellable inventory item.
     const row0 = screen.getByTestId('order-item-row-0');
     const itemBox = within(row0).getByPlaceholderText(/search active inventory/i);
     fireEvent.focus(itemBox);
     expect(screen.getByRole('option', { name: 'SBA-R-2276 — Ring' })).toBeInTheDocument();
-    // Mode of Payment + Date present.
+
+    // Payment (with an amount) + Date present.
+    expect(screen.getByTestId('walkin-payments')).toBeInTheDocument();
     expect(screen.getByText('Mode of Payment')).toBeInTheDocument();
+    expect(screen.getByText('Amount Paid')).toBeInTheDocument();
+    expect(screen.getByTestId('walkin-balance')).toBeInTheDocument();
   });
 
   it('closes the form on Close', () => {

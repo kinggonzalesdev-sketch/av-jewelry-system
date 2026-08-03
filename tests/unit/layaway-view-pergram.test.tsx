@@ -4,15 +4,22 @@ import { describe, expect, it, vi } from 'vitest';
 import { LayawayLedgerViewModal } from '@/components/payments/layaway-ledger-view-modal';
 import type { LayawayLedgerDetail } from '@/lib/payments/layaway-ledger';
 
+// The view modal now uses the app router (for the post-complete refresh) — stub it.
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
+
 const loadMock = vi.fn<(id: string) => Promise<LayawayLedgerDetail | null>>();
 vi.mock('@/lib/payments/actions', () => ({
   loadLayawayLedgerDetailAction: (id: string) => loadMock(id),
+  completeLayawayLedgerAction: vi.fn(() => Promise.resolve({ ok: true })),
 }));
 
 function detail(over: Partial<LayawayLedgerDetail> = {}): LayawayLedgerDetail {
   return {
     id: 'L1',
     code: 'A5',
+    uniqueCode: 'SBA-N-2683',
     accountNo: 'LAY-2026-000101',
     customerName: 'Abby Santos',
     status: 'active',
@@ -79,7 +86,7 @@ describe('Layaway View — per-gram interest block', () => {
       render(<LayawayLedgerViewModal ledgerId="L2" />);
       fireEvent.click(screen.getByRole('button'));
       void waitFor(() =>
-        expect(screen.getByText('LAY-2026-000101')).toBeInTheDocument(),
+        expect(screen.getByText('Abby Santos')).toBeInTheDocument(),
       ).then(() => resolve());
     });
     expect(screen.queryByTestId('layaway-view-pergram')).not.toBeInTheDocument();

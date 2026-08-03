@@ -2,6 +2,10 @@
 
 import type { FulfillmentActionState } from '@/lib/fulfillment/action-state';
 import { revalidatePath } from 'next/cache';
+import {
+  finalizeOrderCancellationAction,
+  rejectOrderCancellationAction,
+} from '@/lib/orders/actions';
 
 import {
   completeFulfillment,
@@ -249,4 +253,37 @@ export async function executeApprovalAction(
     error: null,
     success: 'Executed. State was re-validated, and an approval executes exactly once.',
   };
+}
+
+/**
+ * One-step cancellation Accept / Reject for the Owner Approval Center (Owner
+ * request). Accept finalizes the cancellation immediately; Reject undoes it and
+ * returns the order to its prior status. Both are guarded in the database (Super
+ * Admin only) — form-shaped so the panel can drive them with useActionState.
+ */
+export async function acceptCancellationApprovalAction(
+  _prev: FulfillmentActionState,
+  formData: FormData,
+): Promise<FulfillmentActionState> {
+  const raw = formData.get('orderId');
+  const orderId = typeof raw === 'string' ? raw : '';
+  if (!orderId) return { error: 'An order is required.', success: null };
+  const res = await finalizeOrderCancellationAction(orderId);
+  if (!res.ok) return { error: res.error, success: null };
+  return {
+    error: null,
+    success: `Cancellation accepted. ${res.returned} item(s) returned to Active Inventory.`,
+  };
+}
+
+export async function rejectCancellationApprovalAction(
+  _prev: FulfillmentActionState,
+  formData: FormData,
+): Promise<FulfillmentActionState> {
+  const raw = formData.get('orderId');
+  const orderId = typeof raw === 'string' ? raw : '';
+  if (!orderId) return { error: 'An order is required.', success: null };
+  const res = await rejectOrderCancellationAction(orderId);
+  if (!res.ok) return { error: res.error, success: null };
+  return { error: null, success: 'Cancellation rejected. The order was restored.' };
 }

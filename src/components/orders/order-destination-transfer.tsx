@@ -59,13 +59,14 @@ export function OrderDestinationTransfer({
 
   const current = destination as FulfillmentDestination | null;
 
-  // Where it may go NOW: never back to where it already is (the DB refuses that),
-  // and Completed only when the database says it is eligible.
-  const choices = OFFERED_DESTINATIONS.filter((d) => {
-    if (d === current) return false;
-    if (d === 'completed') return completionBlock === null;
-    return true;
-  });
+  // Where it may go NOW: never back to where it already is (the DB refuses that).
+  // "Complete Order → Completed" is ALWAYS offered (Owner request); when the order
+  // is not yet eligible the Transfer button is disabled with the reason shown, so a
+  // refused round-trip never happens and the operator sees exactly what is missing.
+  const choices = OFFERED_DESTINATIONS.filter((d) => d !== current);
+
+  // Selected Complete Order but the database says it cannot complete yet.
+  const completedBlocked = selected === 'completed' && completionBlock !== null;
 
   const submit = async () => {
     if (!selected || pending) return;
@@ -107,7 +108,7 @@ export function OrderDestinationTransfer({
         <Button
           type="button"
           size="sm"
-          disabled={!selected}
+          disabled={!selected || completedBlocked}
           onClick={() => {
             setError(null);
             setConfirmOpen(true);
@@ -117,6 +118,11 @@ export function OrderDestinationTransfer({
           Transfer
         </Button>
       </div>
+      {completedBlocked ? (
+        <p className="mt-1 text-[11px] text-amber-600" data-testid="order-destination-complete-blocked">
+          Cannot complete yet — {completionBlock}
+        </p>
+      ) : null}
       {current ? (
         <p className="mt-1 text-[11px] text-muted-foreground" data-testid="order-destination-current">
           Currently in {DESTINATION_LABEL[current] ?? current}

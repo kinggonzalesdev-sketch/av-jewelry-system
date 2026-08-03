@@ -9,6 +9,8 @@ const addPayment = vi.fn(() =>
 );
 vi.mock('@/lib/payments/actions', () => ({
   addLayawayLedgerPaymentAction: () => addPayment(),
+  addLayawayPaymentAndTransferAction: vi.fn(),
+  transferLayawayToDestinationAction: vi.fn(),
   loadLayawayLedgerDetailAction: vi.fn(),
   updateLayawayLedgerAccountAction: vi.fn(),
 }));
@@ -68,11 +70,15 @@ describe('Layaway Add Payment — remaining balance', () => {
     expect(screen.getByRole('button', { name: /record payment/i })).toBeDisabled();
   });
 
-  it('disables Add Payment entirely once the account is fully paid', () => {
+  it('replaces Add Payment with a Transfer control once the account is fully paid', () => {
     renderControl('20000.00', '20000.00');
     const button = screen.getByTestId('ledger-add-payment-lay-1');
-    expect(button).toBeDisabled();
-    expect(button).toHaveAttribute('title', 'This layaway account is already fully paid.');
+    // A fully-paid account no longer auto-completes: the trigger becomes "Transfer"
+    // and opens the ✓ notice + Transfer-to-Destination control (no new payment).
+    expect(button).toBeEnabled();
+    expect(button).toHaveTextContent('Transfer');
+    fireEvent.click(button);
+    expect(screen.getByTestId('ledger-payment-fully-paid')).toBeInTheDocument();
   });
 
   it('does not submit an invalid payment to the server', () => {

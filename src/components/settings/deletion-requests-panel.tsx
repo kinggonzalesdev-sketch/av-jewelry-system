@@ -107,39 +107,39 @@ export function DeletionRequestsPanel({
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border bg-card">
           <table
-            className="w-full min-w-[760px] text-left text-sm"
+            className="data-table w-full min-w-[760px] text-left text-sm"
             data-testid="deletion-requests"
           >
             <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="px-3 py-2 font-medium">Record</th>
-                <th className="px-3 py-2 font-medium">Type</th>
-                <th className="px-3 py-2 font-medium">Reason</th>
-                <th className="px-3 py-2 font-medium">Requested by</th>
-                <th className="px-3 py-2 font-medium">Requested</th>
-                <th className="px-3 py-2 font-medium">Status</th>
-                <th className="px-3 py-2 font-medium">Decided</th>
+                <th className="px-3 py-2.5 text-left font-medium">Record</th>
+                <th className="px-3 py-2.5 text-center font-medium">Type</th>
+                <th className="px-3 py-2.5 text-left font-medium">Reason</th>
+                <th className="px-3 py-2.5 text-left font-medium">Requested by</th>
+                <th className="px-3 py-2.5 text-center font-medium">Requested</th>
+                <th className="px-3 py-2.5 text-center font-medium">Status</th>
+                <th className="px-3 py-2.5 text-left font-medium">Decided</th>
                 {isSuperAdmin && tab === 'pending' ? (
-                  <th className="px-3 py-2 text-right font-medium">Actions</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Actions</th>
                 ) : null}
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className="border-b last:border-0">
-                  <td className="px-3 py-2 font-medium">{r.entityLabel}</td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                  <td className="px-3 py-2.5 font-medium">{r.entityLabel}</td>
+                  <td className="px-3 py-2.5 text-center text-xs text-muted-foreground">
                     {humanize(r.entityType)}
                   </td>
-                  <td className="px-3 py-2 text-xs">{r.reason}</td>
-                  <td className="px-3 py-2">{r.requestedByName}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-xs">
+                  <td className="px-3 py-2.5 text-xs">{r.reason}</td>
+                  <td className="px-3 py-2.5">{r.requestedByName}</td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-center text-xs">
                     {fmt(r.requestedAt)}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2.5 text-center">
                     <StatusBadge label={LABEL[r.status]} tone={TONE[r.status]} />
                   </td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                  <td className="px-3 py-2.5 text-xs text-muted-foreground">
                     {r.decidedByName ? (
                       <>
                         {r.decidedByName}
@@ -157,7 +157,7 @@ export function DeletionRequestsPanel({
                     )}
                   </td>
                   {isSuperAdmin && tab === 'pending' ? (
-                    <td className="px-3 py-2 text-right">
+                    <td className="px-3 py-2.5 text-right">
                       <DecideActions row={r} />
                     </td>
                   ) : null}

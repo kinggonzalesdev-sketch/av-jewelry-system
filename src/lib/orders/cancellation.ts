@@ -111,3 +111,40 @@ export async function finalizeOrderCancellation(
   }
   return { ok: true, changed, returned, kept };
 }
+
+/**
+ * Reject a cancellation (Super Admin). Undoes the request and returns the order to
+ * the status it held before it was requested — a rejected cancel is a true no-op.
+ */
+export async function rejectOrderCancellation(
+  officialOrderId: string,
+  note?: string | null,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!officialOrderId) return { ok: false, error: 'An order is required.' };
+
+  const supabase = await createClient();
+  const res = (await supabase.rpc('reject_order_cancellation', {
+    p_order_id: officialOrderId,
+    p_note: note?.trim() || null,
+  })) as { error: { message: string } | null };
+
+  if (res.error) {
+    const error = clean(res.error.message);
+    await recordAuditEvent({
+      action: 'order.cancellation_rejected',
+      entityType: 'official_order',
+      entityId: officialOrderId,
+      outcome: 'failed',
+      reason: error,
+    });
+    return { ok: false, error };
+  }
+
+  await recordAuditEvent({
+    action: 'order.cancellation_rejected',
+    entityType: 'official_order',
+    entityId: officialOrderId,
+    context: { note: note?.trim() ?? null },
+  });
+  return { ok: true };
+}

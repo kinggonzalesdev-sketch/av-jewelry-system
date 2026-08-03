@@ -5,6 +5,7 @@ import { AuthorizationError, requireOwner } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 import {
   renderTemplate,
+  TEMPLATE_KEYS,
   tokensUsed,
   unsupportedTokens,
   type TemplateKey,
@@ -76,6 +77,9 @@ export async function listMessageTemplates(): Promise<MessageTemplate[]> {
   const { data, error } = await supabase
     .from('message_templates')
     .select('key, label, body, default_body, updated_at, updated_by')
+    // Only the current template keys — so a retired row (e.g. reminder_2/3) never
+    // resurfaces in the editor even if it lingers in the table.
+    .in('key', [...TEMPLATE_KEYS])
     .order('key');
   if (error || !data) return [];
 

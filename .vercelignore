@@ -1,0 +1,10 @@
+# Not part of the Next.js web deployment — excluding these also avoids Windows
+# file-lock (EBUSY) errors when the Vercel uploader reads build/gradle artifacts.
+.next
+# Leading slash: exclude ONLY the top-level Android project. A bare `mobile` also
+# matched `src/app/api/mobile/**`, which stripped the Capture app's backend routes
+# from the deploy and made them 404 in production. Keep this anchored to root.
+/mobile
+supabase/.branches
+supabase/.temp
+*.log

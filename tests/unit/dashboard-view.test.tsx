@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { DashboardView } from '@/components/dashboard/dashboard-view';
@@ -52,19 +52,7 @@ function renderView(over: Partial<Parameters<typeof DashboardView>[0]> = {}) {
     <DashboardView
       counts={zeroCounts}
       metrics={zeroMetrics}
-      moneyInTransit={{
-        ok: true,
-        data: {
-          awaitingVerification: '5000.00',
-          customerPending: '12000.00',
-          inTransitToCollect: '8000.00',
-          riderToCollect: '5000.00',
-          lbcToCollect: '3000.00',
-          collectedUnremitted: '2000.00',
-        },
-      }}
       scrapTotal={{ totalAmount: '0', saleCount: 0 }}
-      scrapSales={[]}
       scrapByMaterial={[]}
       layaway={{
         active: 0,
@@ -158,18 +146,10 @@ describe('DashboardView — charts stay VISIBLE at zero data', () => {
     expect(screen.queryByText('Work Queues')).not.toBeInTheDocument();
   });
 
-  it('shows Money in Transit from real SQL sums', () => {
+  it('no longer renders the Money in Transit section (removed)', () => {
     renderView();
-    const mit = screen.getByTestId('money-in-transit');
-    expect(mit).toBeInTheDocument();
-    expect(within(mit).getByText('₱5,000')).toBeInTheDocument();
-    expect(within(mit).getByText('₱12,000')).toBeInTheDocument();
-    expect(within(mit).getByText('₱8,000')).toBeInTheDocument();
-  });
-
-  it('shows an explicit error, not ₱0, when money-in-transit could not be read', () => {
-    renderView({ moneyInTransit: { ok: false } });
-    expect(screen.getByText(/Money in Transit unavailable/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('money-in-transit')).not.toBeInTheDocument();
+    expect(screen.queryByText('Money in Transit')).not.toBeInTheDocument();
   });
 });
 

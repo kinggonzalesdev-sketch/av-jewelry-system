@@ -16,7 +16,6 @@ import { parseInventoryCode } from '@/lib/inventory/code-parser';
 import { downloadCsv } from '@/lib/export/csv';
 import { InventoryImportButton } from '@/components/inventory/inventory-import-modal';
 import { InventoryItemActions } from '@/components/inventory/inventory-item-actions';
-import { EmptyState } from '@/components/states/empty-state';
 import { Button } from '@/components/ui/button';
 import { ReadError } from '@/components/ui/page-primitives';
 import { Input } from '@/components/ui/input';
@@ -255,11 +254,7 @@ export function InventoryWorkspace({
         >
           ＋ New Entry
         </Button>
-        {canImportExport ? (
-          <InventoryImportButton
-            existingCodes={inventory.ok ? inventory.rows.map((r) => r.itemCode) : []}
-          />
-        ) : null}
+        {canImportExport ? <InventoryImportButton /> : null}
         {canImportExport && inventory.ok && inventory.rows.length > 0 ? (
           <Button
             type="button"
@@ -367,8 +362,6 @@ export function InventoryWorkspace({
         !inventory.ok ? (
           // A FAILED read, not an empty result — say so, never a false "no items".
           <ReadError title="Inventory could not be loaded" detail={inventory.reason} />
-        ) : inventory.rows.length === 0 ? (
-          <EmptyState title="No inventory items" />
         ) : (
           <div className="space-y-3">
             {/* Spreadsheet-style search + filters over the loaded items. */}
@@ -400,64 +393,75 @@ export function InventoryWorkspace({
               </span>
             </div>
 
-            {filteredInventory.length === 0 ? (
-              <div className="rounded-xl border border-border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
-                No items match these filters.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left text-xs">
+            {/* The table (headers + container) stays fixed even with no rows — the
+                empty message sits inside the body so the layout never collapses. */}
+            <div className="overflow-x-auto rounded-xl border border-border bg-card">
+            <table className="data-table w-full min-w-[720px] table-fixed text-left text-xs">
+              <colgroup>
+                <col style={{ width: '16%' }} />
+                <col style={{ width: '20%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '8%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '20%' }} />
+                <col style={{ width: '10%' }} />
+              </colgroup>
               <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                 <tr>
-                  <th className="px-3 py-2">Unique Code</th>
-                  <th className="px-3 py-2">Facebook Name</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2 text-right">Grams</th>
-                  <th className="px-3 py-2">Date Encoded</th>
-                  <th className="px-3 py-2">Notes</th>
-                  <th className="px-3 py-2 text-right">Actions</th>
+                  <th className="px-3 py-2.5 text-left">Unique Code</th>
+                  <th className="px-3 py-2.5 text-left">Facebook Name</th>
+                  <th className="px-3 py-2.5 text-left">Status</th>
+                  <th className="px-3 py-2.5 text-center">Grams</th>
+                  <th className="px-3 py-2.5 text-center">Date Encoded</th>
+                  <th className="px-3 py-2.5 text-left">Notes</th>
+                  <th className="px-3 py-2.5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {filteredInventory.map((i) => (
+                {filteredInventory.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-3 py-10 text-center text-muted-foreground">
+                      {inventory.rows.length === 0
+                        ? 'No inventory items.'
+                        : 'No items match these filters.'}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredInventory.map((i) => (
                   <tr key={i.inventoryItemId}>
-                    <td className="px-3 py-2 font-mono">{i.itemCode}</td>
-                    <td className="px-3 py-2">
+                    <td className="truncate px-3 py-2.5 font-mono" title={i.itemCode}>
+                      {i.itemCode}
+                    </td>
+                    <td className="truncate px-3 py-2.5" title={i.facebookName ?? undefined}>
                       {i.facebookName ?? <span className="text-muted-foreground">—</span>}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2.5 text-left capitalize">
                       {i.availabilityStatus.replace(/_/g, ' ')}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
+                    <td className="px-3 py-2.5 text-center tabular-nums">
                       {i.gramsPerPiece ?? parseInventoryCode(i.itemCode).grams ?? '—'}
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap">
+                    <td className="whitespace-nowrap px-3 py-2.5 text-center">
                       {fmtEncoded(i.createdAt)}
                     </td>
-                    <td className="px-3 py-2 text-muted-foreground">
+                    <td className="truncate px-3 py-2.5 text-muted-foreground">
                       {i.inRtsReview ? 'In RTS review' : ''}
                       {i.isForfeited ? ' · forfeited (excluded from auto-return)' : ''}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2.5 text-right">
                       <InventoryItemActions row={i} canMonitor={canMonitor} />
                     </td>
                   </tr>
-                ))}
+                  ))
+                )}
               </tbody>
             </table>
-              </div>
-            )}
+            </div>
           </div>
         )
       ) : null}
 
       {tab === 'Completed Items' ? (
-        completed.length === 0 ? (
-          <EmptyState
-            title="No completed items yet"
-            description="Sold and released items appear here (historical). The record is never deleted — it moves here by status when an order completes."
-          />
-        ) : (
           <div className="space-y-3">
             {/* Search + completion-type filter + export (§12). */}
             <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3">
@@ -493,75 +497,108 @@ export function InventoryWorkspace({
 
             <div className="overflow-x-auto rounded-xl border border-border bg-card">
               <table
-                className="w-full min-w-[960px] text-left text-xs"
+                className="data-table w-full min-w-[960px] table-fixed text-left text-xs"
                 data-testid="completed-items"
               >
+                {/* Balanced, content-aware widths (sum = 100%). */}
+                <colgroup>
+                  <col style={{ width: '14%' }} />
+                  <col style={{ width: '8%' }} />
+                  <col style={{ width: '6%' }} />
+                  <col style={{ width: '11%' }} />
+                  <col style={{ width: '11%' }} />
+                  <col style={{ width: '11%' }} />
+                  <col style={{ width: '9%' }} />
+                  <col style={{ width: '8%' }} />
+                  <col style={{ width: '9%' }} />
+                  <col style={{ width: '9%' }} />
+                  <col style={{ width: '4%' }} />
+                </colgroup>
                 <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                   <tr>
-                    <th className="px-3 py-2 min-w-[9rem]">Inventory Code</th>
-                    <th className="px-3 py-2 min-w-[5rem]">Type</th>
-                    <th className="px-3 py-2 text-right min-w-[4.5rem]">Grams</th>
-                    <th className="px-3 py-2 min-w-[8rem]">Customer</th>
-                    <th className="px-3 py-2 min-w-[7rem]">Order</th>
-                    <th className="px-3 py-2 min-w-[7rem]">Invoice</th>
-                    <th className="px-3 py-2 text-right min-w-[6.5rem]">Sale Amount</th>
-                    <th className="px-3 py-2 min-w-[6rem]">Payment</th>
-                    <th className="px-3 py-2 min-w-[7rem]">Current Stage</th>
-                    <th className="px-3 py-2 min-w-[7rem]">Completion Date</th>
-                    <th className="px-3 py-2 text-right min-w-[5rem]">Actions</th>
+                    <th className="px-3 py-2.5 text-left">Inventory Code</th>
+                    <th className="px-3 py-2.5 text-center">Type</th>
+                    <th className="px-3 py-2.5 text-center">Grams</th>
+                    <th className="px-3 py-2.5 text-left">Customer</th>
+                    <th className="px-3 py-2.5 text-left">Order</th>
+                    <th className="px-3 py-2.5 text-left">Invoice</th>
+                    <th className="px-3 py-2.5 text-right">Sale Amount</th>
+                    <th className="px-3 py-2.5 text-center">Payment</th>
+                    <th className="px-3 py-2.5 text-center">Current Stage</th>
+                    <th className="px-3 py-2.5 text-center">Completion Date</th>
+                    <th className="px-3 py-2.5 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {filteredCompleted.map((c) => {
-                    const parsed = parseInventoryCode(c.itemCode);
-                    return (
-                      <tr key={c.inventoryItemId}>
-                        <td className="px-3 py-2 font-mono">{c.itemCode}</td>
-                        <td className="px-3 py-2 text-muted-foreground">
-                          {parsed.itemType ?? '—'}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          {parsed.grams ?? '—'}
-                        </td>
-                        <td className="px-3 py-2">{c.customerName ?? '—'}</td>
-                        <td className="px-3 py-2 font-mono">{c.orderNumber ?? '—'}</td>
-                        <td className="px-3 py-2 font-mono">{c.invoiceNumber ?? '—'}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          {c.finalSale ? <Money amount={c.finalSale} /> : '—'}
-                        </td>
-                        <td className="px-3 py-2">
-                          {(() => {
-                            const p = paymentText(c.paymentStatus);
-                            return <span className={`font-medium ${p.cls}`}>{p.label}</span>;
-                          })()}
-                        </td>
-                        {/* Current Stage — derived live from the linked order, so it
-                            follows the workflow without any stored copy to go stale. */}
-                        <td className="px-3 py-2">
-                          <span
-                            className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-medium ${stageClass(
-                              c.currentStage,
-                            )}`}
-                          >
-                            {c.currentStage}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          {c.completedDate ? c.completedDate.slice(0, 10) : '—'}
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          <button
-                            type="button"
-                            onClick={() => setCompView(c)}
-                            data-testid={`completed-view-${c.inventoryItemId}`}
-                            className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
-                          >
-                            View
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {filteredCompleted.length === 0 ? (
+                    <tr>
+                      <td colSpan={11} className="px-4 py-10 text-center text-muted-foreground">
+                        {completed.length === 0
+                          ? 'No completed items yet.'
+                          : 'No items match these filters.'}
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredCompleted.map((c) => {
+                      const parsed = parseInventoryCode(c.itemCode);
+                      return (
+                        <tr key={c.inventoryItemId}>
+                          <td className="truncate px-3 py-2.5 font-mono" title={c.itemCode}>
+                            {c.itemCode}
+                          </td>
+                          <td className="truncate px-3 py-2.5 text-center text-muted-foreground">
+                            {parsed.itemType ?? '—'}
+                          </td>
+                          <td className="px-3 py-2.5 text-center tabular-nums">
+                            {parsed.grams ?? '—'}
+                          </td>
+                          <td className="truncate px-3 py-2.5" title={c.customerName ?? undefined}>
+                            {c.customerName ?? '—'}
+                          </td>
+                          <td className="truncate px-3 py-2.5 font-mono">{c.orderNumber ?? '—'}</td>
+                          <td className="truncate px-3 py-2.5 font-mono">
+                            {c.invoiceNumber ?? '—'}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">
+                            {c.finalSale ? <Money amount={c.finalSale} /> : '—'}
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            {(() => {
+                              const p = paymentText(c.paymentStatus);
+                              return (
+                                <span className={`whitespace-nowrap font-medium ${p.cls}`}>
+                                  {p.label}
+                                </span>
+                              );
+                            })()}
+                          </td>
+                          {/* Current Stage — derived live from the linked order. */}
+                          <td className="px-3 py-2.5 text-center">
+                            <span
+                              className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-medium ${stageClass(
+                                c.currentStage,
+                              )}`}
+                            >
+                              {c.currentStage}
+                            </span>
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2.5 text-center">
+                            {c.completedDate ? c.completedDate.slice(0, 10) : '—'}
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => setCompView(c)}
+                              data-testid={`completed-view-${c.inventoryItemId}`}
+                              className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+                            >
+                              View
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
               <p className="px-3 py-2 text-[11px] text-muted-foreground">
@@ -570,7 +607,6 @@ export function InventoryWorkspace({
               </p>
             </div>
           </div>
-        )
       ) : null}
 
       {/* Read-only Completed Item detail (§5). */}

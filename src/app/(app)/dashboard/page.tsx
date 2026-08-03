@@ -8,9 +8,8 @@ import {
   getDashboardCounts,
   getDashboardMetricsRanged,
 } from '@/lib/dashboard/service';
-import { getMoneyInTransit } from '@/lib/finance/money-in-transit';
 import { getLayawayDashboard } from '@/lib/payments/layaway-ledger';
-import { getScrapIncome, getScrapTotal, listScrapSales } from '@/lib/scrap/service';
+import { getScrapIncome, getScrapTotal } from '@/lib/scrap/service';
 
 export const metadata: Metadata = {
 };
@@ -26,6 +25,11 @@ export const metadata: Metadata = {
  * shows only what the caller may already read. Permission flags decide what
  * renders; every action re-checks server-side (ADR §7).
  */
+// Always render fresh from Supabase (never a cached route) so every device sees
+// the same official data on load. The page already reads auth cookies (dynamic);
+// this makes the intent explicit and guards against future caching.
+export const dynamic = 'force-dynamic';
+
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -45,25 +49,15 @@ export default async function DashboardPage({
   const effFrom = rangeFrom ?? '2000-01-01';
   const effTo = rangeTo ?? today;
 
-  const [
-    counts,
-    metrics,
-    moneyInTransit,
-    scrapTotal,
-    scrapSales,
-    scrapIncome,
-    permissions,
-    layaway,
-  ] = await Promise.all([
-    getDashboardCounts(),
-    getDashboardMetricsRanged(effFrom, effTo),
-    getMoneyInTransit(),
-    getScrapTotal(effFrom, effTo),
-    listScrapSales(8, { from: effFrom, to: effTo }),
-    getScrapIncome(effFrom, effTo),
-    getGrantedPermissions(),
-    getLayawayDashboard(),
-  ]);
+  const [counts, metrics, scrapTotal, scrapIncome, permissions, layaway] =
+    await Promise.all([
+      getDashboardCounts(),
+      getDashboardMetricsRanged(effFrom, effTo),
+      getScrapTotal(effFrom, effTo),
+      getScrapIncome(effFrom, effTo),
+      getGrantedPermissions(),
+      getLayawayDashboard(),
+    ]);
 
   const scrapByMaterial = scrapIncome.ok ? scrapIncome.rows : [];
 
@@ -76,9 +70,7 @@ export default async function DashboardPage({
       <DashboardView
         counts={counts}
         metrics={metrics}
-        moneyInTransit={moneyInTransit}
         scrapTotal={scrapTotal}
-        scrapSales={scrapSales}
         scrapByMaterial={scrapByMaterial}
         layaway={layaway}
         rangeFrom={rangeFrom}

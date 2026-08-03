@@ -158,6 +158,17 @@ export const PRIMARY_NAV: readonly NavItem[] = [
     mobilePrimary: false,
     available: true,
   },
+  // Special Calculator (Owner request 2026-08-01): a staff utility to quickly compute
+  // fixed / per-gram item prices and the 10/20/30% down payment + remaining balance.
+  // Placed LAST — below Team Management, in the lower sidebar area (Owner request). It
+  // only calculates; it changes no order, payment, inventory, or layaway record.
+  {
+    href: '/calculator',
+    label: 'Special Calculator',
+    icon: '🧮',
+    mobilePrimary: false,
+    available: true,
+  },
 ] as const;
 
 /**

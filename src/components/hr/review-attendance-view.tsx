@@ -151,46 +151,45 @@ export function ReviewAttendanceView({
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border bg-card">
           <table
-            className="w-full min-w-[720px] text-left text-sm"
-            data-testid="review-attendance"
+            className="data-table w-full min-w-[720px] text-left text-sm"            data-testid="review-attendance"
           >
             <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="px-3 py-2 font-medium">Employee</th>
-                <th className="px-3 py-2 font-medium">Date</th>
-                <th className="px-3 py-2 font-medium">Time in</th>
-                <th className="px-3 py-2 font-medium">Time out</th>
-                <th className="px-3 py-2 text-right font-medium">Total hours</th>
-                <th className="px-3 py-2 font-medium">Status</th>
-                <th className="px-3 py-2 text-right font-medium">Overtime</th>
-                <th className="px-3 py-2 font-medium">Selfies</th>
+                <th className="px-3 py-2.5 text-left font-medium">Employee</th>
+                <th className="px-3 py-2.5 text-center font-medium">Date</th>
+                <th className="px-3 py-2.5 text-center font-medium">Time in</th>
+                <th className="px-3 py-2.5 text-center font-medium">Time out</th>
+                <th className="px-3 py-2.5 text-right font-medium">Total hours</th>
+                <th className="px-3 py-2.5 text-center font-medium">Status</th>
+                <th className="px-3 py-2.5 text-right font-medium">Overtime</th>
+                <th className="px-3 py-2.5 text-center font-medium">Selfies</th>
                 {canManage ? (
-                  <th className="px-3 py-2 text-right font-medium">Actions</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Actions</th>
                 ) : null}
               </tr>
             </thead>
             <tbody>
               {filtered.map((r) => (
                 <tr key={r.id} className="border-b last:border-0">
-                  <td className="px-3 py-2 font-medium">{r.staffName ?? '—'}</td>
-                  <td className="px-3 py-2">{r.workDate}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2.5 font-medium">{r.staffName ?? '—'}</td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-center">{r.workDate}</td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-center">
                     {new Date(r.timeIn).toLocaleTimeString()}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="whitespace-nowrap px-3 py-2.5 text-center">
                     {r.timeOut ? new Date(r.timeOut).toLocaleTimeString() : '—'}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
+                  <td className="px-3 py-2.5 text-right tabular-nums">
                     {formatDuration(durationHours(r.timeIn, r.timeOut))}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2.5 text-center">
                     {r.timeOut ? (
                       <StatusBadge label="Complete" tone="strong" />
                     ) : (
                       <StatusBadge label="Open" tone="gold" />
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
+                  <td className="px-3 py-2.5 text-right tabular-nums">
                     {r.isOvertime ? (
                       <span className="font-medium text-gold-strong">
                         {formatPeso(r.overtimeAmount)}
@@ -199,14 +198,14 @@ export function ReviewAttendanceView({
                       <span className="text-muted-foreground">—</span>
                     )}
                   </td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-2">
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center justify-center gap-2">
                       <SelfieThumb label="In" url={selfies[r.id]?.inUrl ?? null} />
                       <SelfieThumb label="Out" url={selfies[r.id]?.outUrl ?? null} />
                     </div>
                   </td>
                   {canManage ? (
-                    <td className="px-3 py-2 text-right">
+                    <td className="px-3 py-2.5 text-right">
                       <ReviewRowDelete row={r} />
                     </td>
                   ) : null}

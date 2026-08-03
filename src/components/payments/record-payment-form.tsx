@@ -6,6 +6,7 @@ import { recordPaymentAction } from '@/lib/payments/actions';
 import type { RecordPaymentActionState } from '@/lib/payments/action-state';
 import { EMPTY_RECORD_PAYMENT_STATE } from '@/lib/payments/action-state';
 import { formatPeso } from '@/lib/payments/format';
+import { PAYMENT_METHODS } from '@/lib/payments/methods';
 import type { PayableOrderRow } from '@/lib/payments/workspace';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,51 +32,17 @@ import { Label } from '@/components/ui/label';
  * screen computes a balance.
  */
 
-/** Per-method required fields, mirroring recordPaymentSchema's superRefine. */
-const METHODS = [
-  {
-    value: 'bank_transfer',
-    label: 'Bank Transfer',
-    providerLabel: 'Bank',
-    needsProvider: true,
-    needsProof: true,
-    needsLocation: false,
-  },
-  {
-    value: 'e_wallet',
-    label: 'GCash / Maya / e-wallet',
-    providerLabel: 'Wallet provider',
-    needsProvider: true,
-    needsProof: true,
-    needsLocation: false,
-  },
-  {
-    value: 'cash',
-    label: 'Cash',
-    providerLabel: null,
-    needsProvider: false,
-    // §3: photo evidence is OPTIONAL for cash — the receiving staff identity and
-    // the receipt number are the attribution.
-    needsProof: false,
-    needsLocation: true,
-  },
-  {
-    value: 'card',
-    label: 'Credit / Debit card',
-    providerLabel: 'Payment channel',
-    needsProvider: true,
-    needsProof: true,
-    needsLocation: false,
-  },
-  {
-    value: 'other',
-    label: 'Other (authorized only)',
-    providerLabel: 'Method name',
-    needsProvider: false,
-    needsProof: true,
-    needsLocation: false,
-  },
-] as const;
+/**
+ * The five canonical Mode-of-Payment choices (shared source of truth). The method
+ * name IS the channel, so only Cash needs an extra field (the collection location);
+ * GCash / BPI / BDO / Credit Card need nothing beyond the reference number. No card
+ * number, CVV, or PIN is ever collected.
+ */
+const METHODS = PAYMENT_METHODS.map((m) => ({
+  value: m,
+  label: m,
+  needsLocation: m === 'Cash',
+}));
 
 type MethodValue = (typeof METHODS)[number]['value'];
 
@@ -104,7 +71,7 @@ export function RecordPaymentForm({
 
   const effectiveOrders = lockedOrder ? [lockedOrder] : orders;
   const [orderId, setOrderId] = useState(lockedOrder?.officialOrderId ?? '');
-  const [method, setMethod] = useState<MethodValue>('bank_transfer');
+  const [method, setMethod] = useState<MethodValue>('Cash');
 
   // Notify the parent exactly once per successful record (partial refresh).
   const lastSuccess = useRef<string | null>(null);
@@ -116,7 +83,11 @@ export function RecordPaymentForm({
   }, [state.success, onRecorded]);
 
   const selected = effectiveOrders.find((o) => o.officialOrderId === orderId) ?? null;
-  const spec = METHODS.find((m) => m.value === method) ?? METHODS[0];
+  const spec = METHODS.find((m) => m.value === method) ?? {
+    value: 'Cash' as MethodValue,
+    label: 'Cash',
+    needsLocation: true,
+  };
 
   if (!lockedOrder && orders.length === 0) {
     const emptyMessage = (
@@ -297,32 +268,12 @@ export function RecordPaymentForm({
             </div>
           </div>
 
-          {/* --- Method-specific fields + note, paired to save vertical space --- */}
+          {/* --- Note (optional). The method name (GCash / BPI / BDO / Credit Card)
+              is itself the channel, so there is no separate provider field. --- */}
           <div className="grid gap-3 sm:grid-cols-2">
-            {spec.needsProvider && spec.providerLabel && (
-              <div className="space-y-1">
-                <Label htmlFor="provider">{spec.providerLabel}</Label>
-                <Input id="provider" name="provider" required className="h-9 text-sm" />
-              </div>
-            )}
-
-            {method === 'other' && (
-              <div className="space-y-1">
-                <Label htmlFor="provider-other">Method name</Label>
-                <Input id="provider-other" name="provider" className="h-9 text-sm" />
-              </div>
-            )}
-
             <div className="space-y-1">
-              <Label htmlFor="note">
-                Note {method === 'other' ? '(required)' : '(optional)'}
-              </Label>
-              <Input
-                id="note"
-                name="note"
-                required={method === 'other'}
-                className="h-9 text-sm"
-              />
+              <Label htmlFor="note">Note (optional)</Label>
+              <Input id="note" name="note" className="h-9 text-sm" />
             </div>
           </div>
 

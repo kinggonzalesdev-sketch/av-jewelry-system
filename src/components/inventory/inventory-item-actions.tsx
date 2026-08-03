@@ -141,8 +141,7 @@ export function InventoryItemActions({
       <Modal
         open={edit}
         onClose={() => setEdit(false)}
-        title="Correct item details"
-        description="Fix an encoding mistake. Price is not editable here — changing an existing price is a separate Owner price-override."
+        ariaLabel="Correct item details"
         size="sm"
         critical
         footer={
@@ -178,18 +177,9 @@ export function InventoryItemActions({
                 className="mt-1 h-9"
               />
             </ModalFieldFull>
-            <ModalFieldFull>
-              <Label htmlFor={`ed-fb-${row.inventoryItemId}`} className="text-xs">
-                Facebook Name
-              </Label>
-              <Input
-                id={`ed-fb-${row.inventoryItemId}`}
-                name="facebookName"
-                defaultValue={row.facebookName ?? ''}
-                placeholder="Optional — the live-selling label"
-                className="mt-1 h-9"
-              />
-            </ModalFieldFull>
+            {/* Facebook Name removed from this form (Owner request). Its stored
+                value is preserved on save via a hidden field so it is never wiped. */}
+            <input type="hidden" name="facebookName" value={row.facebookName ?? ''} />
             <div>
               <Label htmlFor={`ed-grams-${row.inventoryItemId}`} className="text-xs">
                 Grams

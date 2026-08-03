@@ -1,17 +1,31 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
-import { loadLayawayLedgerDetailAction } from '@/lib/payments/actions';
+import {
+  completeLayawayLedgerAction,
+  loadLayawayLedgerDetailAction,
+} from '@/lib/payments/actions';
 import type { LayawayLedgerDetail } from '@/lib/payments/layaway-ledger';
 import { formatPeso } from '@/lib/payments/format';
+import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
+import {
+  LedgerAddPayment,
+  LedgerCancelAccount,
+} from '@/components/payments/layaway-ledger-actions';
 
 /**
  * View modal for an imported layaway account. Loads the account + its parsed
  * installment schedule + payment history on open (read-only). Money is formatted
  * as pesos in the UI while stored numeric. A clear 0% Interest badge shows when the
  * account carries zero interest.
+ *
+ * Layout matches the Orders → View "Order Summary" style: a gold-titled card shell
+ * with iconed summary rows, a secondary details card, then Payment History at the
+ * bottom. "Add Payment" lives INSIDE this modal (Owner request) — not in the table
+ * row — so the row keeps only View · Edit · Delete.
  */
 function fmtDate(iso: string | null): string {
   if (!iso) return '—';
@@ -26,25 +40,137 @@ function humanize(v: string | null): string {
   return v.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+/** Card shell matching the Orders "Order Summary" look — a gold iconed header, an
+ *  optional right-hand slot (used to seat the Add Payment action). */
+function SectionCard({
+  icon,
+  title,
+  right,
+  children,
+  testId,
+}: {
+  icon?: string;
+  title: string;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+  testId?: string;
+}) {
   return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
-      <span className="text-sm font-medium">{children}</span>
+    <div
+      className="rounded-xl border border-border bg-card/40 p-4"
+      {...(testId ? { 'data-testid': testId } : {})}
+    >
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2">
+          {icon ? (
+            <span aria-hidden="true" className="text-sm text-gold-strong">
+              {icon}
+            </span>
+          ) : null}
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-gold-strong">
+            {title}
+          </h3>
+        </div>
+        {right ? <div className="shrink-0">{right}</div> : null}
+      </div>
+      {children}
     </div>
   );
 }
 
-export function LayawayLedgerViewModal({ ledgerId }: { ledgerId: string }) {
+/** One labelled figure in the summary card — icon circle, muted label, strong value. */
+function SummaryItem({
+  icon,
+  label,
+  children,
+}: {
+  icon?: string;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-2.5">
+      {icon ? (
+        <span
+          aria-hidden="true"
+          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gold/30 text-sm text-gold-strong"
+        >
+          {icon}
+        </span>
+      ) : null}
+      <div className="min-w-0">
+        <p className="text-[11px] text-muted-foreground">{label}</p>
+        <div className="text-sm font-semibold break-words">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/** A compact label/value line for the secondary details grid. */
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="text-sm font-medium break-words">{children}</span>
+    </div>
+  );
+}
+
+export function LayawayLedgerViewModal({
+  ledgerId,
+  allowComplete = false,
+  canAddPayment = false,
+}: {
+  ledgerId: string;
+  /** Show a "Transfer to Completed" action (used from the Keep account view). The
+   *  database still enforces Owner/Admin and the open-status rule. */
+  allowComplete?: boolean;
+  /** Show an "Add Payment" action inside this modal. The caller passes true only for
+   *  a manager on a non-terminal account (Owner request: Add Payment moved off the
+   *  table row and into View). The DB re-checks authority and status regardless. */
+  canAddPayment?: boolean;
+}) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<LayawayLedgerDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [completing, setCompleting] = useState(false);
+  const [completeErr, setCompleteErr] = useState<string | null>(null);
+
+  const canComplete =
+    allowComplete &&
+    detail !== null &&
+    !['completed', 'cancelled', 'forfeited', 'needs_review'].includes(detail.status ?? '');
+
+  // Add Payment shows only for a manager on a non-terminal, non-review account.
+  const showAddPayment =
+    canAddPayment &&
+    detail !== null &&
+    !['completed', 'cancelled', 'forfeited', 'needs_review'].includes(detail.status ?? '');
+
+  const runComplete = async () => {
+    if (completing) return;
+    setCompleting(true);
+    setCompleteErr(null);
+    const res = await completeLayawayLedgerAction(ledgerId);
+    setCompleting(false);
+    if (!res.ok) {
+      setCompleteErr(res.error);
+      return;
+    }
+    setConfirming(false);
+    setOpen(false);
+    router.refresh();
+  };
 
   const openModal = async () => {
     setOpen(true);
     setError(null);
     setDetail(null);
+    setConfirming(false);
+    setCompleteErr(null);
     setLoading(true);
     try {
       const d = await loadLayawayLedgerDetailAction(ledgerId);
@@ -71,7 +197,7 @@ export function LayawayLedgerViewModal({ ledgerId }: { ledgerId: string }) {
         type="button"
         onClick={() => void openModal()}
         data-testid={`ledger-view-${ledgerId}`}
-        className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+        className="rounded-md border border-border px-1.5 py-0.5 text-[11px] hover:bg-accent"
       >
         View
       </button>
@@ -80,9 +206,70 @@ export function LayawayLedgerViewModal({ ledgerId }: { ledgerId: string }) {
         open={open}
         onClose={() => setOpen(false)}
         title="Layaway account"
-        description="Imported account summary, installment schedule, and payment history."
-        size="lg"
+        // Match the Orders-flow View popup width (max-w-[800px]).
+        maxWidthClass="sm:max-w-[800px]"
+        // Add Payment / Cancel Order sit in the header beside the ✕ (Orders-flow
+        // style), shown only for a manager on a non-terminal account.
+        headerActions={
+          showAddPayment && detail ? (
+            <>
+              <LedgerAddPayment
+                id={ledgerId}
+                accountNo={detail.accountNo}
+                customerName={detail.customerName}
+                grandTotal={detail.grandTotal}
+                paidToDate={detail.payment}
+                nextDueDate={detail.nextDueDate}
+                code={detail.code}
+              />
+              <LedgerCancelAccount
+                id={ledgerId}
+                accountNo={detail.accountNo}
+                customerName={detail.customerName}
+                code={detail.code}
+                onDone={() => setOpen(false)}
+              />
+            </>
+          ) : undefined
+        }
+        footer={
+          canComplete ? (
+            confirming ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setConfirming(false)}
+                  disabled={completing}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => void runComplete()}
+                  disabled={completing}
+                  data-testid="ledger-complete-confirm"
+                >
+                  {completing ? 'Completing…' : 'Yes, Transfer to Completed'}
+                </Button>
+              </>
+            ) : (
+              <Button
+                type="button"
+                onClick={() => setConfirming(true)}
+                data-testid="ledger-complete"
+              >
+                Transfer to Completed
+              </Button>
+            )
+          ) : undefined
+        }
       >
+        {completeErr ? (
+          <p role="alert" className="mb-2 text-sm text-destructive">
+            {completeErr}
+          </p>
+        ) : null}
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : error ? (
@@ -90,130 +277,117 @@ export function LayawayLedgerViewModal({ ledgerId }: { ledgerId: string }) {
             {error}
           </p>
         ) : detail ? (
-          <div className="space-y-4" data-testid="ledger-view-body">
-            {/* Account summary */}
-            <div>
-              <div className="mb-2 flex items-center gap-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Account Summary
-                </p>
-                {isZero ? (
+          <div className="space-y-3" data-testid="ledger-view-body">
+            {/* Account Summary — the Orders "Order Summary" card style. Add Payment
+                sits in the header's right slot so it is visible the moment you View. */}
+            <SectionCard
+              icon="▤"
+              title="Account Summary"
+              testId="ledger-account-summary"
+              right={
+                isZero ? (
                   <span className="rounded-full border border-green-600/40 bg-green-600/10 px-2 py-0.5 text-[10px] font-medium text-green-700">
                     0% Interest
                   </span>
-                ) : null}
-              </div>
-              <div className="grid grid-cols-2 gap-3 rounded-lg border border-border p-3 sm:grid-cols-3">
-                <Row label="Code">
+                ) : undefined
+              }
+            >
+              <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+                <SummaryItem icon="☺" label="Customer Name">
+                  {detail.customerName}
+                </SummaryItem>
+                <SummaryItem icon="#" label="Layaway Code">
                   <span className="font-mono">{detail.code ?? '—'}</span>
-                </Row>
-                <Row label="Customer Name">{detail.customerName}</Row>
-                <Row label="Status">{humanize(detail.status)}</Row>
-                <Row label="Remarks / Financer">{detail.remarks ?? '—'}</Row>
-                <Row label="Date Purchased">{fmtDate(detail.datePurchased)}</Row>
-                <Row label="Overdue">
+                </SummaryItem>
+                <SummaryItem icon="⛓" label="Unique Code">
+                  {detail.uniqueCode ? (
+                    <span className="font-mono">{detail.uniqueCode}</span>
+                  ) : (
+                    <span className="text-muted-foreground">Not linked</span>
+                  )}
+                </SummaryItem>
+                <SummaryItem icon="◈" label="Status">
+                  {humanize(detail.status)}
+                </SummaryItem>
+                <SummaryItem icon="▦" label="Date Purchased">
+                  {fmtDate(detail.datePurchased)}
+                </SummaryItem>
+                <SummaryItem icon="◔" label="Next Due Date">
+                  {fmtDate(detail.nextDueDate)}
+                </SummaryItem>
+                <SummaryItem icon="!" label="Overdue">
                   {overdue === 'Yes' ? (
                     <span className="text-destructive">Yes</span>
                   ) : (
                     <span className="text-muted-foreground">{overdue}</span>
                   )}
-                </Row>
-                <Row label="Item">{peso(detail.itemAmount)}</Row>
-                <Row label="Interest Type">
-                  {isZero ? '0% Interest' : humanize(detail.interestType)}
-                </Row>
-                <Row label="Layaway Term">
-                  {detail.layawayTerm ? `${detail.layawayTerm} month(s)` : '—'}
-                </Row>
-                <Row label="Interest Rate / Fixed">
-                  {detail.interestRate
-                    ? `${detail.interestRate}%`
-                    : detail.fixedInterest
-                      ? peso(detail.fixedInterest)
-                      : '—'}
-                </Row>
-                <Row label="Total Interest">{isZero ? '₱0' : peso(detail.interest)}</Row>
-                <Row label="Grand Total">{peso(detail.grandTotal)}</Row>
-                <Row label="Payment">{peso(detail.payment)}</Row>
-                <Row label="Balance">
+                </SummaryItem>
+                <SummaryItem icon="Σ" label="Grand Total">
+                  {peso(detail.grandTotal)}
+                </SummaryItem>
+                <SummaryItem icon="✓" label="Payment">
+                  {peso(detail.payment)}
+                </SummaryItem>
+                <SummaryItem icon="₱" label="Balance">
                   {peso(detail.balance)}
                   {detail.balanceMismatch ? (
                     <span className="ml-1 text-amber-600" title="Balance ≠ Grand Total − Payment">
                       ⚠
                     </span>
                   ) : null}
-                </Row>
-                <Row label="Next Due Date">{fmtDate(detail.nextDueDate)}</Row>
-                <Row label="Monthly Interest">{isZero ? '₱0' : peso(detail.monthlyInterest)}</Row>
-                <Row label="Total Installment Interest">
-                  {isZero ? '₱0' : peso(detail.totalInstallmentInterest)}
-                </Row>
-                <Row label="Last Payment Date">{fmtDate(detail.lastPaymentDate)}</Row>
-                <Row label="Latest Mode of Payment">{detail.modeOfPayment ?? '—'}</Row>
-                <Row label="Latest Payment / DP">{peso(detail.latestPaymentDp)}</Row>
-                <Row label="Notes">{detail.notes ?? '—'}</Row>
-                <Row label="Order / Account No.">
-                  <span className="font-mono">{detail.accountNo}</span>
-                </Row>
+                </SummaryItem>
               </div>
+            </SectionCard>
 
-              {/* Per-gram interest (Grams × ₱150). Shown only for accounts on the
-                  new rule — every figure comes from SQL, computed from the real
-                  posted charges, so the modal never adds unposted future months to
-                  the total it displays. */}
-              {detail.perGram ? (
-                <div
-                  className="mt-3 rounded-lg border border-gold/30 bg-gold/5 p-3"
-                  data-testid="layaway-view-pergram"
-                >
-                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gold-strong">
-                    Monthly interest — Grams × ₱150
-                  </p>
-                  <div className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
-                    <Row label="Grams">
-                      {detail.perGram.grams ? `${detail.perGram.grams}g` : '—'}
-                    </Row>
-                    <Row label="Monthly Interest">
-                      {peso(detail.perGram.monthlyInterest)}
-                    </Row>
-                    <Row label="Interest Already Charged">
-                      {peso(detail.perGram.interestCharged)}
-                    </Row>
-                    <Row label="Next Interest Date">
-                      {detail.perGram.nextInterestDate
-                        ? fmtDate(detail.perGram.nextInterestDate)
-                        : '—'}
-                    </Row>
-                    <Row label="Remaining Possible Months">
-                      {detail.perGram.remainingMonths}
-                    </Row>
-                    <Row label="Term">
-                      {detail.perGram.term
-                        ? `${detail.perGram.term} month(s)`
-                        : '—'}
-                    </Row>
-                  </div>
+            {/* Per-gram interest (Grams × ₱150). Shown only for accounts on the new
+                rule — every figure comes from SQL, computed from the real posted
+                charges, so the modal never adds unposted future months to the total. */}
+            {detail.perGram ? (
+              <div
+                className="rounded-xl border border-gold/30 bg-gold/5 p-4"
+                data-testid="layaway-view-pergram"
+              >
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gold-strong">
+                  Monthly interest — Grams × ₱150
+                </p>
+                <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+                  <DetailRow label="Grams">
+                    {detail.perGram.grams ? `${detail.perGram.grams}g` : '—'}
+                  </DetailRow>
+                  <DetailRow label="Monthly Interest">
+                    {peso(detail.perGram.monthlyInterest)}
+                  </DetailRow>
+                  <DetailRow label="Interest Already Charged">
+                    {peso(detail.perGram.interestCharged)}
+                  </DetailRow>
+                  <DetailRow label="Next Interest Date">
+                    {detail.perGram.nextInterestDate
+                      ? fmtDate(detail.perGram.nextInterestDate)
+                      : '—'}
+                  </DetailRow>
+                  <DetailRow label="Remaining Possible Months">
+                    {detail.perGram.remainingMonths}
+                  </DetailRow>
+                  <DetailRow label="Term">
+                    {detail.perGram.term ? `${detail.perGram.term} month(s)` : '—'}
+                  </DetailRow>
                 </div>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
 
-            {/* Payment history */}
-            <div>
-              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Payment History
-              </p>
+            {/* Payment History — stays at the bottom (Owner request). */}
+            <SectionCard icon="₱" title="Payment History">
               {detail.payments.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No payment records parsed.</p>
               ) : (
                 <div className="overflow-x-auto rounded-lg border border-border">
-                  <table className="w-full min-w-[640px] text-left text-xs">
+                  <table className="data-table w-full min-w-[640px] text-left text-xs">
                     <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                       <tr>
                         <th className="px-3 py-1.5">#</th>
                         <th className="px-3 py-1.5">Payment Date</th>
                         <th className="px-3 py-1.5 text-right">Amount</th>
                         <th className="px-3 py-1.5">Mode of Payment</th>
-                        <th className="px-3 py-1.5">Received By</th>
                         <th className="px-3 py-1.5">Reference / Notes</th>
                       </tr>
                     </thead>
@@ -224,7 +398,6 @@ export function LayawayLedgerViewModal({ ledgerId }: { ledgerId: string }) {
                           <td className="px-3 py-1.5">{fmtDate(p.paymentDate)}</td>
                           <td className="px-3 py-1.5 text-right tabular-nums">{peso(p.amount)}</td>
                           <td className="px-3 py-1.5">{p.mop ?? '—'}</td>
-                          <td className="px-3 py-1.5">{p.receivedBy ?? '—'}</td>
                           <td className="px-3 py-1.5">{p.reference ?? '—'}</td>
                         </tr>
                       ))}
@@ -232,7 +405,7 @@ export function LayawayLedgerViewModal({ ledgerId }: { ledgerId: string }) {
                   </table>
                 </div>
               )}
-            </div>
+            </SectionCard>
           </div>
         ) : null}
       </Modal>

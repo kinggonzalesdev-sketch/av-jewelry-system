@@ -14,6 +14,7 @@ export const FULFILLMENT_DESTINATIONS = [
   'keep',
   'cancelled',
   'completed',
+  'ship_confirm',
 ] as const;
 
 export type FulfillmentDestination = (typeof FULFILLMENT_DESTINATIONS)[number];
@@ -21,13 +22,16 @@ export type FulfillmentDestination = (typeof FULFILLMENT_DESTINATIONS)[number];
 /**
  * The destinations offered by Transfer to Destination (§6).
  *
- * `completed` is offered ONLY when the order is actually eligible — the caller
- * filters it out otherwise, and `transfer_order_destination` routes it through the
- * same completion gate regardless, so choosing it can never skip the fully-paid
- * and fulfilled checks.
+ * `completed` (labelled "Complete Order") is offered ONLY when the order is
+ * actually eligible — the caller filters it out otherwise, and
+ * `transfer_order_destination` routes it through the same completion gate
+ * regardless, so choosing it can never skip the fully-paid / fulfilled / waybill
+ * checks. `ship_confirm` ("Ship Confirmed") advances a shipping order to the Ship
+ * Confirm bucket (release approved).
  */
 export const OFFERED_DESTINATIONS: FulfillmentDestination[] = [
   'shipping',
+  'ship_confirm',
   'delivery',
   'pickup',
   'layaway',
@@ -38,19 +42,21 @@ export const OFFERED_DESTINATIONS: FulfillmentDestination[] = [
 
 export const DESTINATION_LABEL: Record<FulfillmentDestination, string> = {
   shipping: 'For Shipping',
-  delivery: 'Delivery',
+  ship_confirm: 'Ship Confirmed',
+  delivery: 'For Delivery',
   layaway: 'Layaway',
   pickup: 'Pickup',
   keep: 'Keep',
   cancelled: 'For Cancel',
-  completed: 'Completed',
+  completed: 'Complete Order',
 };
 
 /** Which Orders status card each destination routes the order to. */
 export const DESTINATION_CARD: Record<FulfillmentDestination, string> = {
   // For Shipping is its own card now; Ship Confirm means release approved.
   shipping: 'For Shipping',
-  delivery: 'Delivery',
+  ship_confirm: 'Ship Confirm',
+  delivery: 'For Delivery',
   layaway: 'For Layaway',
   pickup: 'Pickup',
   keep: 'Keep',

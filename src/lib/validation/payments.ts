@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { ACCEPTED_PAYMENT_METHODS, isCashMethod } from '@/lib/payments/methods';
+
 /**
  * Phase 6 validation — Payment & Layaway (Bible §16, §17).
  * Encodes docs/PHASE-6-APPROVED-DECISIONS.md §3, §5, §6.
@@ -25,13 +27,13 @@ export const money = z
   .regex(/^\d{1,12}(\.\d{1,2})?$/, 'Enter an amount like 1500 or 1500.50')
   .refine((v) => Number(v) > 0, 'The amount must be greater than zero');
 
-export const PAYMENT_METHODS = [
-  'bank_transfer',
-  'e_wallet',
-  'cash',
-  'card',
-  'other',
-] as const;
+/**
+ * The methods the data layer accepts: the five canonical Mode-of-Payment values
+ * (Cash / GCash / BPI / BDO / Credit Card) plus the legacy machine keys retained
+ * so historical records still validate. The single source of truth lives in
+ * `@/lib/payments/methods`.
+ */
+export const PAYMENT_METHODS = ACCEPTED_PAYMENT_METHODS;
 
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
@@ -68,15 +70,9 @@ export const recordPaymentSchema = z
     evidence: z.array(paymentEvidenceSchema).max(10).optional(),
   })
   .superRefine((value, ctx) => {
-    const needsReference: PaymentMethod[] = [
-      'bank_transfer',
-      'e_wallet',
-      'cash',
-      'card',
-      'other',
-    ];
-
-    if (needsReference.includes(value.paymentMethod) && !value.referenceNumber) {
+    // Every method carries a transaction/reference number — the audit trail for the
+    // money. (Cash defaults one server-side, but the operator may still type theirs.)
+    if (!value.referenceNumber) {
       ctx.addIssue({
         code: 'custom',
         path: ['referenceNumber'],
@@ -84,27 +80,11 @@ export const recordPaymentSchema = z
       });
     }
 
-    // Bank transfer, e-wallet, and card name their provider/channel (§3).
-    if (
-      (['bank_transfer', 'e_wallet', 'card'] as PaymentMethod[]).includes(
-        value.paymentMethod,
-      ) &&
-      !value.provider
-    ) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['provider'],
-        message: 'The bank, wallet provider, or payment channel is required.',
-      });
-    }
-
-    // Evidence reference is no longer required (Owner request 2026-07-22 — the
-    // field was removed from Record Payment). The `evidence` array stays optional
-    // and is still accepted if ever provided; nothing here forces it. The transaction
-    // reference number + provider remain the required attribution for non-cash
-    // methods (checked above).
-
-    if (value.paymentMethod === 'cash' && !value.collectionLocation) {
+    // Cash (canonical "Cash" or legacy "cash") names WHERE it was collected. The
+    // channel for GCash / BPI / BDO / Credit Card is the method itself, so no
+    // separate provider field is required. Evidence stays optional (Owner request
+    // 2026-07-22). Historical "other" records still require a note.
+    if (isCashMethod(value.paymentMethod) && !value.collectionLocation) {
       ctx.addIssue({
         code: 'custom',
         path: ['collectionLocation'],

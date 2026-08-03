@@ -56,6 +56,17 @@ async function runCompletion(
 ): Promise<CompletionResult> {
   if (!orderId) return { ok: false, error: 'An order is required.' };
   const supabase = await createClient();
+
+  // Capture the status BEFORE completion so the audit trail records what the order
+  // moved from (the DB overwrites it to 'completed' atomically). Best-effort — a
+  // read failure never blocks the completion itself.
+  const { data: prior } = await supabase
+    .from('official_orders')
+    .select('status')
+    .eq('id', orderId)
+    .maybeSingle();
+  const previousStatus = (prior?.status as string | null) ?? null;
+
   const res = (await supabase.rpc(fn, { p_order_id: orderId })) as {
     error: { message: string } | null;
   };
@@ -76,7 +87,8 @@ async function runCompletion(
     action,
     entityType: 'official_order',
     entityId: orderId,
-    context: { completed: true },
+    // Previous → completed, plus who/when (the DB stamps completed_by / completed_at).
+    context: { completed: true, previous_status: previousStatus, new_status: 'completed' },
   });
   return { ok: true };
 }

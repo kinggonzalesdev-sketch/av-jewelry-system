@@ -56,6 +56,8 @@ function detail(over: Partial<OrderDetail> = {}): OrderDetail {
     destinationSetByName: null,
     // Not completable by default — the fixture order is not fully paid.
     completionBlock: 'This order is not fully paid yet.',
+    waybillNumber: null,
+    convertedToLayaway: false,
     adminName: 'UAT Owner',
     completedAt: null,
     completedByName: null,
@@ -65,6 +67,7 @@ function detail(over: Partial<OrderDetail> = {}): OrderDetail {
       contactNumber: '0917',
       address: 'Cebu',
       facebookConversationUrl: null,
+      pancakeConversationId: null,
     },
     items: [
       {
@@ -129,6 +132,7 @@ describe('OrderDetailsModal', () => {
           contactNumber: '0917',
           address: 'Cebu',
           facebookConversationUrl: 'https://m.me/example',
+          pancakeConversationId: null,
         },
         permissions: {
           isOwner: true,
@@ -193,7 +197,7 @@ describe('OrderDetailsModal', () => {
     expect(verifyForInvoiceAction).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByTestId('order-send-invoice-confirm'));
-    expect(verifyForInvoiceAction).toHaveBeenCalledWith('o1');
+    expect(verifyForInvoiceAction).toHaveBeenCalledWith('o1', null);
   });
 
   it('Open FB Chat reports when no chat link is on file (and never changes status)', async () => {
@@ -238,10 +242,10 @@ describe('OrderDetailsModal', () => {
     expect(fields).toHaveTextContent('₱0'); // required 3,200 − verified 6,000 → 0
     expect(screen.queryByTestId('order-customer-response')).not.toBeInTheDocument();
 
-    // Reminder 1 enabled; 2 and 3 locked until the prior is sent.
+    // A single Reminder button (Owner request — Reminder 2 & 3 removed).
     expect(await screen.findByTestId('order-send-reminder-1')).not.toBeDisabled();
-    expect(screen.getByTestId('order-send-reminder-2')).toBeDisabled();
-    expect(screen.getByTestId('order-send-reminder-3')).toBeDisabled();
+    expect(screen.queryByTestId('order-send-reminder-2')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('order-send-reminder-3')).not.toBeInTheDocument();
 
     // Sending a reminder never moves the order; it records after confirmation.
     fireEvent.click(screen.getByTestId('order-send-reminder-1'));

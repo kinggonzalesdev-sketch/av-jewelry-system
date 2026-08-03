@@ -340,13 +340,18 @@ export function analyzeLayawayCsv(text: string): LayawayCsvAnalysis {
 
     const status = classifyStatus(statusRaw);
 
-    // needsReview is a HARD block: ERROR-status rows are excluded from import and
-    // from every financial total until manually corrected. Other issues (balance
-    // mismatch, 0% contradiction) are SOFT flags — imported, but marked.
-    const needsReview = status === 'needs_review';
+    // needsReview is a HARD block: ERROR-status rows AND rows without a layaway code
+    // are excluded from import and from every financial total until corrected. Every
+    // account must carry a code (Owner request) — a blank one can't be uploaded.
+    // Other issues (balance mismatch, 0% contradiction) are SOFT flags — imported,
+    // but marked.
+    const noCode = !code || code.trim() === '';
+    const needsReview = status === 'needs_review' || noCode;
     let reviewReason: string | null = null;
-    if (needsReview) {
+    if (status === 'needs_review') {
       reviewReason = 'ERROR status — correct before import';
+    } else if (noCode) {
+      reviewReason = 'Missing layaway code — a code is required to upload.';
     } else if (interestType === 'zero' && centavos(interest) !== null && centavos(interest) !== 0n) {
       reviewReason = '0% interest but a non-zero interest value';
     } else if (interestType !== 'zero' && layawayTerm === null && centavos(interest) !== 0n && interest !== null) {

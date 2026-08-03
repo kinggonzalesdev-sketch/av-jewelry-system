@@ -263,7 +263,7 @@ export function LayawayImportButton({ existingKeys }: { existingKeys: string[] }
         }}
         title="Import layaway accounts from Excel / CSV"
         description="Upload a .csv — MineFlow finds the header row and maps the columns automatically. Nothing is saved until you confirm."
-        size="lg"
+        size="xl"
         critical
         footer={footer}
       >
@@ -273,7 +273,7 @@ export function LayawayImportButton({ existingKeys }: { existingKeys: string[] }
             <p className="text-sm text-muted-foreground">
               <span className="text-green-600">{result.inserted} accounts imported</span> ·{' '}
               <span className="text-amber-600">{result.duplicates} duplicate</span> ·{' '}
-              <span className="text-amber-600">{result.review} flagged</span>. Parsed{' '}
+              <span className="text-destructive">{result.review} error(s) excluded</span>. Parsed{' '}
               {result.installments} installment + {result.payments} payment history records.
               They now appear in Layaway Accounts — no refresh needed.
             </p>
@@ -341,7 +341,9 @@ export function LayawayImportButton({ existingKeys }: { existingKeys: string[] }
               <span className="text-green-600">{importable.length} valid new</span>
               <span className="text-muted-foreground">({activeCount} active · {completedCount} completed)</span>
               <span className="text-amber-600">{duplicates} duplicate</span>
-              <span className="text-destructive">{review} needs review (excluded)</span>
+              <span className="text-destructive">
+                {review} error(s) — excluded (missing code / ERROR status)
+              </span>
               <span className="text-muted-foreground">
                 {totalInstallments} installments · {totalPayments} payments parsed
               </span>
@@ -393,7 +395,7 @@ export function LayawayImportButton({ existingKeys }: { existingKeys: string[] }
 
             {/* Preview */}
             <div className="max-h-[42vh] overflow-auto rounded-lg border border-border">
-              <table className="w-full min-w-[900px] text-left text-[11px]">
+              <table className="data-table w-full min-w-[900px] text-left text-[11px]">
                 <thead className="sticky top-0 bg-muted/80 text-[10px] uppercase text-muted-foreground">
                   <tr>
                     <th className="px-3 py-1.5">Code</th>
@@ -410,42 +412,60 @@ export function LayawayImportButton({ existingKeys }: { existingKeys: string[] }
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {visible.map((r) => (
-                    <tr
-                      key={r.sourceRow}
-                      className={r.dup ? 'bg-amber-500/5' : r.needsReview ? 'bg-amber-500/5' : ''}
-                    >
-                      <td className="px-3 py-1 font-mono">{r.code ?? '—'}</td>
-                      <td className="px-3 py-1">{r.name}</td>
-                      <td className="px-3 py-1 capitalize">{r.status}</td>
-                      <td className="px-3 py-1">
-                        {r.interestType === 'zero' ? (
-                          <span className="rounded-full border border-green-600/40 bg-green-600/10 px-1.5 py-0.5 text-green-700">
-                            0% Interest
-                          </span>
-                        ) : (
-                          <span className="capitalize">{r.interestType}</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-1 text-right">{r.layawayTerm ?? '—'}</td>
-                      <td className="px-3 py-1 text-right tabular-nums">{r.grandTotal ?? '—'}</td>
-                      <td className="px-3 py-1 text-right tabular-nums">{r.payment ?? '—'}</td>
-                      <td className="px-3 py-1 text-right tabular-nums">{r.balance ?? '—'}</td>
-                      <td className="px-3 py-1 text-right tabular-nums">{r.installments.length}</td>
-                      <td className="px-3 py-1 text-right tabular-nums">{r.payments.length}</td>
-                      <td className="px-3 py-1">
-                        {r.dup ? (
-                          <span className="text-amber-600">Duplicate</span>
-                        ) : r.needsReview ? (
-                          <span className="text-amber-600" title={r.reviewReason ?? ''}>
-                            Review
-                          </span>
-                        ) : (
-                          <span className="text-green-600">OK</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {visible.map((r) => {
+                    // Completed accounts are fully paid — their money columns are
+                    // shown blank (Owner request). Error rows (e.g. missing code) are
+                    // highlighted RED and excluded from the import.
+                    const done = r.status === 'completed';
+                    return (
+                      <tr
+                        key={r.sourceRow}
+                        className={
+                          r.needsReview
+                            ? 'bg-destructive/10'
+                            : r.dup
+                              ? 'bg-amber-500/5'
+                              : ''
+                        }
+                      >
+                        <td className="px-3 py-1 font-mono">{r.code ?? '—'}</td>
+                        <td className="px-3 py-1">{r.name}</td>
+                        <td className="px-3 py-1 capitalize">{r.status}</td>
+                        <td className="px-3 py-1">
+                          {r.interestType === 'zero' ? (
+                            <span className="rounded-full border border-green-600/40 bg-green-600/10 px-1.5 py-0.5 text-green-700">
+                              0% Interest
+                            </span>
+                          ) : (
+                            <span className="capitalize">{r.interestType}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-1 text-right">{r.layawayTerm ?? '—'}</td>
+                        <td className="px-3 py-1 text-right tabular-nums">
+                          {done ? '—' : (r.grandTotal ?? '—')}
+                        </td>
+                        <td className="px-3 py-1 text-right tabular-nums">
+                          {done ? '—' : (r.payment ?? '—')}
+                        </td>
+                        <td className="px-3 py-1 text-right tabular-nums">
+                          {done ? '—' : (r.balance ?? '—')}
+                        </td>
+                        <td className="px-3 py-1 text-right tabular-nums">{r.installments.length}</td>
+                        <td className="px-3 py-1 text-right tabular-nums">{r.payments.length}</td>
+                        <td className="px-3 py-1">
+                          {r.needsReview ? (
+                            <span className="font-medium text-destructive" title={r.reviewReason ?? ''}>
+                              Error
+                            </span>
+                          ) : r.dup ? (
+                            <span className="text-amber-600">Duplicate</span>
+                          ) : (
+                            <span className="text-green-600">OK</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

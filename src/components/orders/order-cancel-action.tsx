@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 
 import {
   finalizeOrderCancellationAction,
+  rejectOrderCancellationAction,
   requestOrderCancellationAction,
 } from '@/lib/orders/actions';
 import { canCancelOrderStatus } from '@/lib/orders/cancellation-status';
@@ -59,6 +60,9 @@ export function OrderCancelAction({
   const submittingRef = useRef(false);
 
   const awaitingReview = status === 'for_cancel';
+  // For an order awaiting review, the Super Admin's choice: accept (finalize) or
+  // reject (undo). Null until they pick one and open the confirm modal.
+  const [reviewDecision, setReviewDecision] = useState<'accept' | 'reject' | null>(null);
   // The shared stage table decides whether cancelling is offered at all; the
   // cancellable-status list stays the transition rule the server enforces. Both
   // must agree, so a stage marked read-only can never surface a Cancel button.
@@ -75,13 +79,24 @@ export function OrderCancelAction({
     setError(null);
     try {
       if (awaitingReview) {
-        const res = await finalizeOrderCancellationAction(orderId);
-        if (!res.ok) {
-          setError(res.error);
-          return;
+        // Super Admin decision: Accept finalizes in one step; Reject undoes it.
+        if (reviewDecision === 'reject') {
+          const res = await rejectOrderCancellationAction(orderId);
+          if (!res.ok) {
+            setError(res.error);
+            return;
+          }
+          setOpen(false);
+          onDone();
+        } else {
+          const res = await finalizeOrderCancellationAction(orderId);
+          if (!res.ok) {
+            setError(res.error);
+            return;
+          }
+          setFinalized({ returned: res.returned, kept: res.kept });
+          onDone();
         }
-        setFinalized({ returned: res.returned, kept: res.kept });
-        onDone();
       } else {
         const res = await requestOrderCancellationAction(orderId, reason);
         if (!res.ok) {
@@ -97,27 +112,53 @@ export function OrderCancelAction({
     }
   };
 
-  const cancelButton = (
+  const openWith = (decision: 'accept' | 'reject' | null) => {
+    setReviewDecision(decision);
+    setReason('');
+    setConfirm('');
+    setError(null);
+    setFinalized(null);
+    setOpen(true);
+  };
+
+  // A for-cancel order awaiting a Super Admin: just Accept / Reject, one step each
+  // (Owner request — no "Finalize Cancellation" / "Execute"). Anyone else sees a
+  // note that it is under review.
+  const cancelButton = awaitingReview ? (
+    isOwner ? (
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          data-testid="order-cancel-accept"
+          onClick={() => openWith('accept')}
+        >
+          Accept
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          data-testid="order-cancel-reject"
+          onClick={() => openWith('reject')}
+        >
+          Reject
+        </Button>
+      </div>
+    ) : (
+      <span className="text-xs text-muted-foreground" data-testid="order-cancel-awaiting">
+        Awaiting Super Admin review.
+      </span>
+    )
+  ) : (
     <Button
       type="button"
       size="sm"
       variant="destructive"
       data-testid="order-cancel"
-      disabled={awaitingReview && !isOwner}
-      title={
-        awaitingReview && !isOwner
-          ? 'Only the Owner or a Selected Admin can finalize a cancellation.'
-          : undefined
-      }
-      onClick={() => {
-        setReason('');
-        setConfirm('');
-        setError(null);
-        setFinalized(null);
-        setOpen(true);
-      }}
+      onClick={() => openWith(null)}
     >
-      {awaitingReview ? 'Finalize Cancellation' : 'Cancel Order'}
+      Cancel Order
     </Button>
   );
 
@@ -143,10 +184,18 @@ export function OrderCancelAction({
         onClose={() => setOpen(false)}
         critical
         size="sm"
-        title={awaitingReview ? 'Finalize cancellation' : 'Cancel this order?'}
+        title={
+          awaitingReview
+            ? reviewDecision === 'reject'
+              ? 'Reject cancellation?'
+              : 'Accept cancellation?'
+            : 'Cancel this order?'
+        }
         description={
           awaitingReview
-            ? 'The order becomes Cancelled and eligible stock returns to Active Inventory.'
+            ? reviewDecision === 'reject'
+              ? 'The request is rejected and the order returns to where it was.'
+              : 'The order becomes Cancelled and eligible stock returns to Active Inventory.'
             : 'The order stops and goes up for cancellation review.'
         }
         footer={
@@ -161,7 +210,7 @@ export function OrderCancelAction({
               </Button>
               <Button
                 type="button"
-                variant="destructive"
+                variant={reviewDecision === 'reject' ? 'outline' : 'destructive'}
                 data-testid="order-cancel-confirm"
                 onClick={() => void submit()}
                 disabled={
@@ -171,7 +220,9 @@ export function OrderCancelAction({
                 {pending
                   ? 'Working…'
                   : awaitingReview
-                    ? 'Confirm Cancellation'
+                    ? reviewDecision === 'reject'
+                      ? 'Confirm Reject'
+                      : 'Confirm Accept'
                     : 'Confirm Cancellation'}
               </Button>
             </>
@@ -204,11 +255,18 @@ export function OrderCancelAction({
             </div>
 
             {awaitingReview ? (
-              <p className="text-xs text-muted-foreground">
-                Items only ever reserved to this order return to Active Inventory. Anything
-                delivered, released, sold, or forfeited stays out of stock and keeps its
-                history.
-              </p>
+              reviewDecision === 'reject' ? (
+                <p className="text-xs text-muted-foreground">
+                  Rejecting returns the order to the status it held before the
+                  cancellation was requested. Nothing is deleted.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Items only ever reserved to this order return to Active Inventory.
+                  Anything delivered, released, sold, or forfeited stays out of stock and
+                  keeps its history.
+                </p>
+              )
             ) : (
               <>
                 <div>

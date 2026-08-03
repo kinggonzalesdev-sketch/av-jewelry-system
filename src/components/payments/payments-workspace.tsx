@@ -33,10 +33,7 @@ import { requestDeletionAction } from '@/lib/authz/deletion-actions';
 import type { CaptureItem } from '@/lib/orders/service';
 import type { AdminNameContext } from '@/lib/authz/admin-name';
 import { LayawayLedgerViewModal } from '@/components/payments/layaway-ledger-view-modal';
-import {
-  LedgerAddPayment,
-  LedgerEditAccount,
-} from '@/components/payments/layaway-ledger-actions';
+import { LedgerEditAccount } from '@/components/payments/layaway-ledger-actions';
 import { layawayDedupKey } from '@/lib/import/layaway-csv';
 import { RecordPaymentForm } from '@/components/payments/record-payment-form';
 import { EmptyState } from '@/components/states/empty-state';
@@ -146,6 +143,10 @@ type LayawayAccountRow = {
   payment: string | null;
   balance: string | null;
   accountNo: string;
+  /** Linked inventory Unique Code(s); null → "Not linked". */
+  uniqueCode: string | null;
+  /** Facebook Messenger URL for a quick "Open Chat" button (or null). */
+  facebookUrl: string | null;
   balanceMismatch: boolean;
   officialOrderId: string | null;
   layawayRow: LayawayRow | null;
@@ -170,6 +171,8 @@ function fromDerived(l: LayawayRow): LayawayAccountRow {
     payment: l.verifiedNetPayments,
     balance: l.outstandingBalance,
     accountNo: l.orderNumber,
+    uniqueCode: l.uniqueCode,
+    facebookUrl: l.facebookUrl,
     balanceMismatch: false,
     officialOrderId: l.officialOrderId,
     layawayRow: l,
@@ -194,6 +197,8 @@ function fromLedger(l: LayawayLedgerRow): LayawayAccountRow {
     payment: l.payment,
     balance: l.balance,
     accountNo: l.accountNo,
+    uniqueCode: l.uniqueCode,
+    facebookUrl: l.facebookUrl,
     balanceMismatch: l.balanceMismatch,
     officialOrderId: null,
     layawayRow: null,
@@ -453,7 +458,9 @@ export function PaymentsWorkspace({
       }
 
       if (!q) return true;
-      return `${r.code ?? ''} ${r.accountNo} ${r.customerName} ${r.financer ?? ''} ${r.remarks ?? ''}`
+      // Searchable by Inventory Unique Code, Layaway Code, customer, financer,
+      // remarks, and the internal Order/Account No. fallback.
+      return `${r.uniqueCode ?? ''} ${r.code ?? ''} ${r.accountNo} ${r.customerName} ${r.financer ?? ''} ${r.remarks ?? ''}`
         .toLowerCase()
         .includes(q);
     });
@@ -499,6 +506,7 @@ export function PaymentsWorkspace({
         { header: 'Grand Total', value: (r) => r.grandTotal ?? '' },
         { header: 'Payment', value: (r) => r.payment ?? '' },
         { header: 'Balance', value: (r) => r.balance ?? '' },
+        { header: 'Unique Code', value: (r) => r.uniqueCode ?? 'Not linked' },
         { header: 'Order / Account No.', value: (r) => r.accountNo },
       ],
       accountRows,
@@ -1012,8 +1020,8 @@ export function PaymentsWorkspace({
           <EmptyState title="No payments in this period" />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left text-xs">
-              <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
+            <table className="data-table w-full min-w-[720px] text-left text-xs">
+              <thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2">Order</th>
                   <th className="px-3 py-2">Customer</th>
@@ -1126,50 +1134,61 @@ function LayawayTable({
 
   return (
     <div className="overflow-x-auto rounded-xl border border-border bg-card">
-      <table className="w-full min-w-[1120px] text-left text-xs" data-testid="layaway-table">
-        <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
+      <table className="data-table w-full min-w-[900px] table-fixed text-left text-xs" data-testid="layaway-table">
+        {/* Widths match the column ORDER below. Remarks is trimmed (it was 22% and
+            left a big empty gap) and the space is spread across Total Amount, Date
+            Purchased, Unique Code, and Actions so the columns read as one tidy block. */}
+        <colgroup>
+          <col style={{ width: '17%' }} /> {/* Customer Name */}
+          <col style={{ width: '7%' }} /> {/* Code */}
+          <col style={{ width: '13%' }} /> {/* Remarks / Financer */}
+          <col style={{ width: '12%' }} /> {/* Total Amount */}
+          <col style={{ width: '12%' }} /> {/* Date Purchased */}
+          <col style={{ width: '9%' }} /> {/* Overdue */}
+          <col style={{ width: '12%' }} /> {/* Unique Code */}
+          <col style={{ width: '18%' }} /> {/* Actions */}
+        </colgroup>
+        <thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
           <tr>
-            <th className="px-3 py-2">Code</th>
-            <th className="px-3 py-2">Customer Name</th>
-            <th className="px-3 py-2">Status</th>
-            <th className="px-3 py-2">Remarks / Financer</th>
-            <th className="px-3 py-2">Date Purchased</th>
-            <th className="px-3 py-2">Overdue</th>
-            <th className="px-3 py-2 text-right">Item</th>
-            <th className="px-3 py-2 text-right">Interest</th>
-            <th className="px-3 py-2 text-right">Grand Total</th>
-            <th className="px-3 py-2 text-right">Payment</th>
-            <th className="px-3 py-2 text-right">Balance</th>
-            <th className="px-3 py-2">Order / Account No.</th>
+            <th className="px-3 py-2 text-left">Customer Name</th>
+            <th className="px-3 py-2 text-left">Code</th>
+            <th className="px-3 py-2 text-left">Remarks / Financer</th>
+            <th className="px-3 py-2 text-right">Total Amount</th>
+            <th className="px-3 py-2 text-center">Date Purchased</th>
+            <th className="px-3 py-2 text-center">Overdue</th>
+            <th className="px-3 py-2 text-left">Unique Code</th>
             <th className="px-3 py-2 text-right">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y">
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={13} className="px-2.5 py-6 text-center text-muted-foreground">
+              <td colSpan={8} className="px-2.5 py-6 text-center text-muted-foreground">
                 No layaway accounts found.
               </td>
             </tr>
           ) : (
             rows.map((r) => (
               <tr key={r.key} className="hover:bg-accent/40">
-                <td className="px-3 py-2 font-mono font-semibold">{r.code ?? '—'}</td>
-                <td className="px-3 py-2 font-medium">{r.customerName}</td>
-                <td className="px-3 py-2">
-                  <span
-                    className={`inline-block rounded-full border px-2 py-0.5 capitalize ${layawayStatusClass(
-                      r.status,
-                    )}`}
-                  >
-                    {r.status.replace(/_/g, ' ')}
-                  </span>
+                <td className="truncate px-3 py-2 font-medium" title={r.customerName}>
+                  {r.customerName}
                 </td>
-                <td className="px-3 py-2 text-muted-foreground">
+                <td className="truncate px-3 py-2 font-mono font-semibold">{r.code ?? '—'}</td>
+                <td
+                  className="truncate px-3 py-2 text-muted-foreground"
+                  title={[r.financer, r.remarks].filter(Boolean).join(' · ') || undefined}
+                >
                   {[r.financer, r.remarks].filter(Boolean).join(' · ') || '—'}
                 </td>
-                <td className="px-3 py-2 whitespace-nowrap">{r.datePurchased ?? '—'}</td>
-                <td className="px-3 py-2">
+                {/* A Completed account is fully paid, so its Total Amount shows
+                    nothing (Owner request). Full money detail stays in View. */}
+                <td className="px-3 py-2 text-right tabular-nums">
+                  {isCompletedStatus(r.status) ? '—' : cash(r.item)}
+                </td>
+                <td className="whitespace-nowrap px-3 py-2 text-center">
+                  {r.datePurchased ?? '—'}
+                </td>
+                <td className="px-3 py-2 text-center">
                   {(() => {
                     const o = overdueLabel(r);
                     return o === 'Yes' ? (
@@ -1179,40 +1198,30 @@ function LayawayTable({
                     );
                   })()}
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums">{cash(r.item)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{cash(r.interest)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{cash(r.grandTotal)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{cash(r.payment)}</td>
-                <td className="px-3 py-2 text-right font-semibold tabular-nums">
-                  {cash(r.balance)}
-                  {r.balanceMismatch ? (
-                    <span
-                      className="ml-1 text-amber-600"
-                      title="Balance ≠ Grand Total − Payment (flagged for review)"
-                    >
-                      ⚠
-                    </span>
-                  ) : null}
-                </td>
-                <td className="px-3 py-2 font-mono text-[11px]">
+                <td
+                  className="truncate px-3 py-2 font-mono text-[11px]"
+                  title={`Unique Code${r.uniqueCode ? `: ${r.uniqueCode}` : ' — not linked'} · Order/Account No. ${r.accountNo}`}
+                >
                   {r.officialOrderId ? (
                     <OrderNumberButton
                       orderId={r.officialOrderId}
-                      label={r.accountNo}
+                      label={r.uniqueCode ?? 'Not linked'}
                       onOpen={onOpenOrder}
                     />
+                  ) : r.uniqueCode ? (
+                    r.uniqueCode
                   ) : (
-                    r.accountNo
+                    <span className="text-muted-foreground">Not linked</span>
                   )}
                 </td>
                 <td className="px-3 py-2 text-right">
                   {r.officialOrderId && r.layawayRow ? (
-                    <div className="flex justify-end gap-1">
+                    <div className="flex flex-wrap justify-end gap-1">
                       <button
                         type="button"
                         onClick={() => onOpenOrder(r.officialOrderId as string)}
                         data-testid={`layaway-view-${r.layawayRow.layawayId}`}
-                        className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+                        className="rounded-md border border-border px-1.5 py-0.5 text-[11px] hover:bg-accent"
                       >
                         View
                       </button>
@@ -1221,19 +1230,19 @@ function LayawayTable({
                       ) : null}
                     </div>
                   ) : r.ledgerId ? (
-                    <div className="flex flex-wrap justify-end gap-1">
-                      <LayawayLedgerViewModal ledgerId={r.ledgerId} />
+                    <div className="flex flex-nowrap items-center justify-end gap-1">
+                      {/* Actions are View · Edit · Delete only, on ONE line. "Add
+                          Payment" now
+                          lives INSIDE the View modal (Owner request) — passed here so
+                          only a manager on a non-terminal account sees it there. */}
+                      <LayawayLedgerViewModal
+                        ledgerId={r.ledgerId}
+                        canAddPayment={
+                          canDeleteLedger && !TERMINAL_STATUSES.has(normStatus(r.status))
+                        }
+                      />
                       {canDeleteLedger ? (
                         <>
-                          {!TERMINAL_STATUSES.has(normStatus(r.status)) ? (
-                            <LedgerAddPayment
-                              id={r.ledgerId}
-                              accountNo={r.accountNo}
-                              customerName={r.customerName}
-                              grandTotal={r.grandTotal}
-                              paidToDate={r.payment}
-                            />
-                          ) : null}
                           <LedgerEditAccount id={r.ledgerId} accountNo={r.accountNo} />
                           <LedgerRowDelete isSuperAdmin={isSuperAdmin}
                             id={r.ledgerId}
@@ -1275,16 +1284,13 @@ function CompletedLayawayTable({
   /** Super Admin deletes directly; an Admin only requests (§2). */
   isSuperAdmin: boolean;
 }) {
-  const money = usePrivacyMoney();
-  const cash = (v: string | null) => (v ? money(v) : '—');
-
   return (
     <div className="overflow-x-auto rounded-xl border border-border bg-card">
       <table
-        className="w-full min-w-[1000px] text-left text-xs"
+        className="data-table w-full min-w-[1000px] text-left text-xs"
         data-testid="layaway-completed-table"
       >
-        <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
+        <thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
           <tr>
             <th className="px-3 py-2">Code</th>
             <th className="px-3 py-2">Customer Name</th>
@@ -1315,22 +1321,27 @@ function CompletedLayawayTable({
                   {[r.financer, r.remarks].filter(Boolean).join(' · ') || '—'}
                 </td>
                 <td className="px-3 py-2 whitespace-nowrap">{r.datePurchased ?? '—'}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{cash(r.item)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{cash(r.interest)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{cash(r.grandTotal)}</td>
-                <td className="px-3 py-2 text-right font-semibold tabular-nums">
-                  {cash(r.payment)}
-                </td>
+                {/* Completed = fully paid: money columns are intentionally blank
+                    (Owner request). */}
+                <td className="px-3 py-2 text-right tabular-nums">—</td>
+                <td className="px-3 py-2 text-right tabular-nums">—</td>
+                <td className="px-3 py-2 text-right tabular-nums">—</td>
+                <td className="px-3 py-2 text-right font-semibold tabular-nums">—</td>
                 <td className="px-3 py-2 whitespace-nowrap">{r.completionDate ?? '—'}</td>
-                <td className="px-3 py-2 font-mono text-[11px]">
+                <td
+                  className="px-3 py-2 font-mono text-[11px]"
+                  title={`Unique Code${r.uniqueCode ? `: ${r.uniqueCode}` : ' — not linked'} · Order/Account No. ${r.accountNo}`}
+                >
                   {r.officialOrderId ? (
                     <OrderNumberButton
                       orderId={r.officialOrderId}
-                      label={r.accountNo}
+                      label={r.uniqueCode ?? 'Not linked'}
                       onOpen={onOpenOrder}
                     />
+                  ) : r.uniqueCode ? (
+                    r.uniqueCode
                   ) : (
-                    r.accountNo
+                    <span className="text-muted-foreground">Not linked</span>
                   )}
                 </td>
                 <td className="px-3 py-2 text-right">
@@ -1338,7 +1349,7 @@ function CompletedLayawayTable({
                     <button
                       type="button"
                       onClick={() => onOpenOrder(r.officialOrderId as string)}
-                      className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+                      className="rounded-md border border-border px-1.5 py-0.5 text-[11px] hover:bg-accent"
                     >
                       View
                     </button>
@@ -1432,7 +1443,7 @@ function LedgerRowDelete({
           setOpen(true);
         }}
         data-testid={`ledger-delete-${id}`}
-        className="rounded-md border border-border px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
+        className="rounded-md border border-border px-1.5 py-0.5 text-[11px] text-destructive hover:bg-destructive/10"
       >
         Delete
       </button>
@@ -1743,7 +1754,7 @@ function LedgerRowRequestDeletion({
   if (requested) {
     return (
       <span
-        className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-700"
+        className="rounded-md border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-700"
         data-testid={`ledger-delete-requested-${id}`}
       >
         Deletion requested
@@ -1761,7 +1772,7 @@ function LedgerRowRequestDeletion({
           setOpen(true);
         }}
         data-testid={`ledger-request-delete-${id}`}
-        className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-accent"
+        className="rounded-md border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-accent"
       >
         Request Deletion
       </button>

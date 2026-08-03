@@ -19,6 +19,11 @@ export const metadata: Metadata = {
  * Availability is derived by the database on every read — never a stored counter
  * this page could show stale.
  */
+// Always render fresh from Supabase (never a cached route) so every device sees
+// the same official data on load. The page already reads auth cookies (dynamic);
+// this makes the intent explicit and guards against future caching.
+export const dynamic = 'force-dynamic';
+
 export default async function InventoryPage() {
   // Page access (Portal & Access). A member without this permission cannot open
   // the page — by link OR by typing the URL. A Super Admin holds it implicitly.

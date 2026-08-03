@@ -7,6 +7,8 @@ import type { ApprovalRow } from '@/lib/fulfillment/service';
 vi.mock('@/lib/fulfillment/actions', () => ({
   decideApprovalAction: vi.fn(),
   executeApprovalAction: vi.fn(),
+  acceptCancellationApprovalAction: vi.fn(),
+  rejectCancellationApprovalAction: vi.fn(),
 }));
 
 function approval(over: Partial<ApprovalRow> = {}): ApprovalRow {
@@ -25,21 +27,31 @@ function approval(over: Partial<ApprovalRow> = {}): ApprovalRow {
 }
 
 describe('Owner Approval Center — relocated onto the Orders page', () => {
-  it('lists a pending approval with Approve / Reject for the Owner', () => {
+  it('lists a pending CANCELLATION with one-step Accept / Reject (no Execute)', () => {
     render(<OwnerApprovalsPanel approvals={[approval()]} isOwner />);
     expect(screen.getByTestId('owner-approvals')).toBeInTheDocument();
     expect(screen.getByText(/official order cancellation/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Accept' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
   });
 
-  it('offers Execute only once an approval is approved but not yet executed', () => {
-    render(<OwnerApprovalsPanel approvals={[approval({ status: 'approved' })]} isOwner />);
+  it('keeps Approve then Execute for NON-cancellation approvals', () => {
+    const other = approval({ actionKind: 'exceptional_release' });
+    render(<OwnerApprovalsPanel approvals={[other]} isOwner />);
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
+    render(
+      <OwnerApprovalsPanel
+        approvals={[approval({ actionKind: 'exceptional_release', status: 'approved' })]}
+        isOwner
+      />,
+    );
     expect(screen.getByRole('button', { name: 'Execute' })).toBeInTheDocument();
   });
 
   it('never offers the decision controls to a non-Owner', () => {
     render(<OwnerApprovalsPanel approvals={[approval()]} isOwner={false} />);
+    expect(screen.queryByRole('button', { name: 'Accept' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
     expect(screen.getByText(/non-delegable/i)).toBeInTheDocument();
   });

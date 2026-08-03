@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Talk to the MineFlow backend (HTTPS only). -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Floating "Capture Mine" button drawn over other apps (incl. Facebook). -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- Foreground service that keeps the overlay + capture alive. The always-on
+         floating button runs as a SPECIAL_USE FGS; the service is promoted to the
+         MEDIA_PROJECTION type only while a capture is in progress (Android 14 rule:
+         a mediaProjection FGS may not start before projection consent is granted). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!-- The persistent capture notification (runtime-requested on Android 13+). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:name=".App"
+        android:allowBackup="false"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.MineFlowCapture">
+
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity android:name=".ui.LoginActivity" android:exported="false" />
+        <activity android:name=".ui.SetupActivity" android:exported="false" />
+
+        <!-- Phase 1 capture: screenshot preview (Retake / Save Draft / Discard) and
+             the local Capture History of drafts. -->
+        <activity android:name=".ui.PreviewActivity" android:exported="false" />
+        <activity android:name=".ui.CaptureHistoryActivity" android:exported="false" />
+
+        <!-- Reserved for a later phase (order creation + send); not in the capture
+             flow yet. Kept registered so it still builds. -->
+        <activity android:name=".ui.ReviewActivity" android:exported="false" />
+
+        <!-- Transparent activity used ONLY to obtain MediaProjection consent; it
+             hands the grant to the service and finishes immediately. -->
+        <activity
+            android:name=".capture.CapturePermissionActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.Transparent" />
+
+        <!-- The overlay + capture foreground service. It hosts the floating button
+             as a specialUse FGS and is promoted to mediaProjection only during an
+             actual capture (see OverlayCaptureService). Both types are declared. -->
+        <service
+            android:name=".capture.OverlayCaptureService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse|mediaProjection">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Floating on-demand screen-capture button for MineFlow order encoding over the Facebook app." />
+        </service>
+
+    </application>
+</manifest>

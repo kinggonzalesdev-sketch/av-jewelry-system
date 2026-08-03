@@ -5,10 +5,14 @@ import { useRef, useState } from 'react';
 
 import {
   addLayawayLedgerPaymentAction,
+  addLayawayPaymentAndTransferAction,
+  cancelLayawayLedgerAction,
   loadLayawayLedgerDetailAction,
+  transferLayawayToDestinationAction,
   updateLayawayLedgerAccountAction,
 } from '@/lib/payments/actions';
 import { formatPeso } from '@/lib/payments/format';
+import { DEFAULT_PAYMENT_METHOD, PAYMENT_METHOD_OPTIONS } from '@/lib/payments/methods';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -55,22 +59,36 @@ export function LedgerAddPayment({
   customerName,
   grandTotal,
   paidToDate,
+  nextDueDate = null,
+  code = null,
+  canTransfer = true,
 }: {
   id: string;
   accountNo: string;
   customerName: string;
   grandTotal: string | null;
   paidToDate: string | null;
+  /** Next installment due date, shown in the computation panel. */
+  nextDueDate?: string | null;
+  /** Layaway Code — shown in the transfer confirmation. */
+  code?: string | null;
+  /** Whether this user may transfer to a destination (else only "No transfer"). */
+  canTransfer?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(today());
-  const [mop, setMop] = useState('cash');
+  const [mop, setMop] = useState<string>(DEFAULT_PAYMENT_METHOD);
   const [reference, setReference] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ balance: string; status: string } | null>(null);
+  // Transfer to Destination (optional, combined with the payment as one action).
+  const [dest, setDest] = useState('');
+  const [confirming, setConfirming] = useState(false);
+  // true = the confirm popup is a TRANSFER-ONLY (Save) action, no payment recorded.
+  const [transferOnly, setTransferOnly] = useState(false);
   // Guards a double-tap / double-submit even before React re-renders the disabled
   // button — a repeat click must never record the payment twice.
   const submittingRef = useRef(false);
@@ -97,6 +115,16 @@ export function LedgerAddPayment({
     setError(null);
     setDone(null);
     setPending(false);
+    setDest('');
+    setConfirming(false);
+    setTransferOnly(false);
+  };
+
+  const DEST_LABELS: Record<string, string> = {
+    pickup: 'For Pickup',
+    delivery: 'For Delivery',
+    shipping: 'For Shipping',
+    keep: 'Keep',
   };
 
   const run = async () => {
@@ -125,21 +153,79 @@ export function LedgerAddPayment({
     }
   };
 
+  // Combined action: record the payment AND transfer, atomically (one RPC).
+  const runCombined = async () => {
+    if (!canSubmit || !dest || submittingRef.current) return;
+    submittingRef.current = true;
+    setPending(true);
+    setError(null);
+    try {
+      const res = await addLayawayPaymentAndTransferAction(
+        {
+          ledgerId: id,
+          amount: amount.trim(),
+          paymentDate: date || null,
+          mop: mop || null,
+          reference: reference.trim() || null,
+        },
+        dest,
+      );
+      if (!res.ok) {
+        setError(res.error);
+        setConfirming(false);
+        return;
+      }
+      // The account left active layaway; close and let the lists refresh it away.
+      setConfirming(false);
+      setOpen(false);
+      router.refresh();
+    } finally {
+      setPending(false);
+      submittingRef.current = false;
+    }
+  };
+
+  // "Save" = transfer ONLY (no payment). Uses the standalone transfer RPC.
+  const runTransferOnly = async () => {
+    if (!dest || submittingRef.current) return;
+    submittingRef.current = true;
+    setPending(true);
+    setError(null);
+    try {
+      const res = await transferLayawayToDestinationAction(id, dest);
+      if (!res.ok) {
+        setError(res.error);
+        setConfirming(false);
+        return;
+      }
+      setConfirming(false);
+      setOpen(false);
+      router.refresh();
+    } finally {
+      setPending(false);
+      submittingRef.current = false;
+    }
+  };
+
+  // "Pending balance after" this payment, for the transfer confirmation.
+  const remainingAfterCents = remainingCents - amountCents < 0n ? 0n : remainingCents - amountCents;
+
   return (
     <>
-      <button
+      <Button
         type="button"
+        size="sm"
         onClick={() => {
           reset();
           setOpen(true);
         }}
-        disabled={fullyPaid}
-        title={fullyPaid ? 'This layaway account is already fully paid.' : undefined}
         data-testid={`ledger-add-payment-${id}`}
-        className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+        {...(fullyPaid
+          ? { title: 'Fully paid — open to transfer it to a destination.' }
+          : {})}
       >
-        Add Payment
-      </button>
+        {fullyPaid ? 'Transfer' : 'Add Payment'}
+      </Button>
 
       <Modal
         open={open}
@@ -157,9 +243,45 @@ export function LedgerAddPayment({
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                 Cancel
               </Button>
-              <Button type="button" onClick={() => void run()} disabled={!canSubmit}>
-                {pending ? 'Recording…' : 'Record payment'}
+              {/* Save = transfer ONLY (no payment). Enabled once a destination is
+                  picked, so an account can be moved without recording a payment. */}
+              {dest ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setError(null);
+                    setTransferOnly(true);
+                    setConfirming(true);
+                  }}
+                  disabled={pending}
+                  data-testid={`ledger-pay-save-${id}`}
+                >
+                  Save
+                </Button>
+              ) : null}
+              {/* No "Record payment" for a fully-paid account — only Save (transfer). */}
+              {fullyPaid ? null : (
+              <Button
+                type="button"
+                onClick={() => {
+                  if (dest) {
+                    setTransferOnly(false);
+                    setConfirming(true);
+                  } else {
+                    void run();
+                  }
+                }}
+                disabled={!canSubmit}
+                data-testid={`ledger-pay-submit-${id}`}
+              >
+                {pending
+                  ? 'Recording…'
+                  : dest
+                    ? 'Record Payment & Transfer'
+                    : 'Record payment'}
               </Button>
+              )}
             </>
           )
         }
@@ -170,30 +292,50 @@ export function LedgerAddPayment({
               Payment recorded. New balance{' '}
               <strong>{formatPeso(done.balance)}</strong>.
             </p>
-            {done.status === 'completed' ? (
-              <p className="rounded-md border border-green-600/40 bg-green-600/10 px-2 py-1.5 text-xs text-green-700">
-                Fully paid — the account is now <strong>Completed</strong> and its code
-                was released.
+            {Number(done.balance) <= 0 ? (
+              <p className="flex items-center gap-1.5 rounded-md border border-green-600/40 bg-green-600/10 px-2 py-1.5 text-xs text-green-700">
+                <span aria-hidden="true">✓</span> This account is now fully paid. It stays
+                here — transfer it to a destination when you&apos;re ready.
               </p>
             ) : null}
           </div>
         ) : fullyPaid ? (
-          <p
-            role="alert"
-            className="rounded-md border border-green-600/40 bg-green-600/10 px-3 py-2 text-sm text-green-700"
-            data-testid="ledger-payment-fully-paid"
-          >
-            This layaway account is already fully paid.
-          </p>
+          <div className="space-y-3">
+            <p
+              className="flex items-center gap-1.5 rounded-md border border-green-600/40 bg-green-600/10 px-3 py-2 text-sm text-green-700"
+              data-testid="ledger-payment-fully-paid"
+            >
+              <span aria-hidden="true">✓</span> This account is already fully paid. It stays
+              here — transfer it to a destination when you&apos;re ready.
+            </p>
+            {canTransfer ? (
+              <div>
+                <Label htmlFor={`ledger-pay-dest-${id}`} className="text-xs">
+                  Transfer to Destination
+                </Label>
+                <select
+                  id={`ledger-pay-dest-${id}`}
+                  value={dest}
+                  onChange={(e) => setDest(e.target.value)}
+                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+                  data-testid={`ledger-pay-dest-${id}`}
+                >
+                  <option value="">Choose destination…</option>
+                  <option value="pickup">For Pickup</option>
+                  <option value="delivery">For Delivery</option>
+                  <option value="shipping">For Shipping</option>
+                  <option value="keep">Keep</option>
+                </select>
+              </div>
+            ) : null}
+            {error ? (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            ) : null}
+          </div>
         ) : (
           <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">
-              Remaining balance:{' '}
-              <strong data-testid="ledger-payment-remaining">
-                {formatPeso(pesoString(remainingCents))}
-              </strong>{' '}
-              <span className="text-[10px]">(Grand Total − Total Payments)</span>
-            </p>
             <div>
               <Label className="text-xs">Amount</Label>
               <MoneyInput
@@ -203,6 +345,57 @@ export function LedgerAddPayment({
                 onValueChange={setAmount}
               />
             </div>
+
+            {/* Live computation — paid so far, this payment, and what's left. */}
+            <dl
+              className="space-y-0.5 rounded-md border border-border bg-muted/30 p-2.5 text-xs"
+              data-testid="ledger-pay-computation"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted-foreground">Grand total</dt>
+                <dd className="tabular-nums">{formatPeso(grandTotal ?? '0')}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted-foreground">Paid so far</dt>
+                <dd className="tabular-nums">{formatPeso(paidToDate ?? '0')}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted-foreground">Pending balance</dt>
+                <dd className="tabular-nums" data-testid="ledger-payment-remaining">
+                  {formatPeso(pesoString(remainingCents))}
+                </dd>
+              </div>
+              {amount.trim() ? (
+                <>
+                  <div className="flex items-center justify-between gap-2">
+                    <dt className="text-muted-foreground">This payment</dt>
+                    <dd className="tabular-nums">{formatPeso(amount.trim())}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <dt className="text-muted-foreground">Total paid after</dt>
+                    <dd className="font-semibold tabular-nums">
+                      {formatPeso(pesoString(centavos(paidToDate) + amountCents))}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <dt className="text-muted-foreground">Pending after</dt>
+                    <dd className="font-semibold tabular-nums">
+                      {formatPeso(
+                        pesoString(
+                          remainingCents - amountCents < 0n ? 0n : remainingCents - amountCents,
+                        ),
+                      )}
+                    </dd>
+                  </div>
+                </>
+              ) : null}
+              {nextDueDate ? (
+                <div className="flex items-center justify-between gap-2">
+                  <dt className="text-muted-foreground">Next due date</dt>
+                  <dd className="tabular-nums">{nextDueDate}</dd>
+                </div>
+              ) : null}
+            </dl>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label htmlFor={`ledger-pay-date-${id}`} className="text-xs">
@@ -226,12 +419,11 @@ export function LedgerAddPayment({
                   onChange={(e) => setMop(e.target.value)}
                   className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
                 >
-                  <option value="cash">Cash</option>
-                  <option value="gcash">GCash</option>
-                  <option value="maya">Maya</option>
-                  <option value="bank_transfer">Bank Transfer</option>
-                  <option value="card">Card</option>
-                  <option value="other">Other</option>
+                  {PAYMENT_METHOD_OPTIONS.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -247,6 +439,30 @@ export function LedgerAddPayment({
                 className="mt-1 h-9"
               />
             </div>
+
+            {/* Transfer to Destination — OPTIONAL. Selecting a destination turns the
+                one footer action into "Record Payment & Transfer" (one atomic step). */}
+            {canTransfer ? (
+              <div>
+                <Label htmlFor={`ledger-pay-dest-${id}`} className="text-xs">
+                  Transfer to Destination
+                </Label>
+                <select
+                  id={`ledger-pay-dest-${id}`}
+                  value={dest}
+                  onChange={(e) => setDest(e.target.value)}
+                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+                  data-testid={`ledger-pay-dest-${id}`}
+                >
+                  <option value="">No transfer</option>
+                  <option value="pickup">For Pickup</option>
+                  <option value="delivery">For Delivery</option>
+                  <option value="shipping">For Shipping</option>
+                  <option value="keep">Keep</option>
+                </select>
+              </div>
+            ) : null}
+
             {validationError ?? error ? (
               <p role="alert" className="text-sm text-destructive">
                 {validationError ?? error}
@@ -254,6 +470,68 @@ export function LedgerAddPayment({
             ) : null}
           </div>
         )}
+      </Modal>
+
+      {/* Payment+Transfer OR transfer-only (Save) confirmation — double-click-protected. */}
+      <Modal
+        open={confirming}
+        onClose={() => (pending ? undefined : setConfirming(false))}
+        title={
+          transferOnly
+            ? `Transfer this Layaway account to ${DEST_LABELS[dest] ?? dest}?`
+            : `Record this payment and transfer the Layaway account to ${DEST_LABELS[dest] ?? dest}?`
+        }
+        size="sm"
+        critical
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirming(false)}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void (transferOnly ? runTransferOnly() : runCombined())}
+              disabled={pending}
+              data-testid={`ledger-pay-transfer-confirm-${id}`}
+            >
+              {pending
+                ? 'Processing…'
+                : transferOnly
+                  ? 'Confirm Transfer'
+                  : 'Confirm Payment & Transfer'}
+            </Button>
+          </>
+        }
+      >
+        <dl className="space-y-1.5 text-sm" data-testid="ledger-pay-transfer-review">
+          <ConfirmLine label="Customer" value={customerName || '—'} />
+          <ConfirmLine label="Layaway Code" value={code ?? '—'} />
+          {transferOnly ? null : (
+            <>
+              <ConfirmLine
+                label="Payment Amount"
+                value={amount.trim() ? formatPeso(amount.trim()) : '—'}
+              />
+              <ConfirmLine label="Mode of Payment" value={mop} />
+            </>
+          )}
+          <ConfirmLine
+            label="Remaining Balance"
+            value={formatPeso(pesoString(transferOnly ? remainingCents : remainingAfterCents))}
+            strong
+          />
+          <ConfirmLine label="Destination" value={DEST_LABELS[dest] ?? dest} strong />
+        </dl>
+        {error ? (
+          <p role="alert" className="mt-2 text-sm text-destructive">
+            {error}
+          </p>
+        ) : null}
       </Modal>
     </>
   );
@@ -267,9 +545,12 @@ export function LedgerAddPayment({
 export function LedgerEditAccount({
   id,
   accountNo,
+  canTransfer = true,
 }: {
   id: string;
   accountNo: string;
+  /** Whether this user may transfer to a destination (else the control is hidden). */
+  canTransfer?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -284,10 +565,13 @@ export function LedgerEditAccount({
   const [interest, setInterest] = useState('');
   const [nextDueDate, setNextDueDate] = useState('');
   const [notes, setNotes] = useState('');
+  // Optional Transfer to Destination — applied on Save, after the field edits.
+  const [dest, setDest] = useState('');
 
   const openModal = async () => {
     setOpen(true);
     setError(null);
+    setDest('');
     setLoading(true);
     try {
       const d = await loadLayawayLedgerDetailAction(id);
@@ -328,6 +612,17 @@ export function LedgerEditAccount({
       setError(res.error);
       return;
     }
+    // If a destination was chosen, transfer AFTER the edits are saved. A transfer
+    // failure (e.g. an imported account with no linked order) surfaces its own
+    // message but the field edits above are already persisted.
+    if (dest) {
+      const t = await transferLayawayToDestinationAction(id, dest);
+      if (!t.ok) {
+        setPending(false);
+        setError(t.error);
+        return;
+      }
+    }
     setOpen(false);
     setPending(false);
     router.refresh();
@@ -339,7 +634,7 @@ export function LedgerEditAccount({
         type="button"
         onClick={() => void openModal()}
         data-testid={`ledger-edit-${id}`}
-        className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+        className="rounded-md border border-border px-1.5 py-0.5 text-[11px] hover:bg-accent"
       >
         Edit
       </button>
@@ -360,7 +655,7 @@ export function LedgerEditAccount({
               onClick={() => void run()}
               disabled={pending || loading || !customerName.trim()}
             >
-              {pending ? 'Saving…' : 'Save changes'}
+              {pending ? 'Saving…' : dest ? 'Save & Transfer' : 'Save changes'}
             </Button>
           </>
         }
@@ -451,6 +746,30 @@ export function LedgerEditAccount({
                 className="mt-1 h-9"
               />
             </div>
+
+            {/* Transfer to Destination — OPTIONAL. Choosing one moves the account to
+                that Orders destination when you Save (after the field edits). */}
+            {canTransfer ? (
+              <div>
+                <Label htmlFor={`ledger-edit-dest-${id}`} className="text-xs">
+                  Transfer to Destination
+                </Label>
+                <select
+                  id={`ledger-edit-dest-${id}`}
+                  value={dest}
+                  onChange={(e) => setDest(e.target.value)}
+                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+                  data-testid={`ledger-edit-dest-${id}`}
+                >
+                  <option value="">No transfer</option>
+                  <option value="pickup">For Pickup</option>
+                  <option value="delivery">For Delivery</option>
+                  <option value="shipping">For Shipping</option>
+                  <option value="keep">Keep</option>
+                </select>
+              </div>
+            ) : null}
+
             {error ? (
               <p role="alert" className="text-sm text-destructive">
                 {error}
@@ -460,5 +779,122 @@ export function LedgerEditAccount({
         )}
       </Modal>
     </>
+  );
+}
+
+/**
+ * "Cancel Order" for a layaway ledger account (Owner/Admin) — shown beside Add
+ * Payment inside the View modal. Sets the account to Cancelled and releases its
+ * code (payment history is kept). Confirm step; the DB is the real gate. `onDone`
+ * lets the parent View modal close itself after a successful cancel.
+ */
+export function LedgerCancelAccount({
+  id,
+  accountNo,
+  customerName,
+  code = null,
+  onDone,
+}: {
+  id: string;
+  accountNo: string;
+  customerName: string;
+  code?: string | null;
+  /** Called after a successful cancel — e.g. to close the View modal. */
+  onDone?: () => void;
+}) {
+  const router = useRouter();
+  const [confirming, setConfirming] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submittingRef = useRef(false);
+
+  const run = async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setPending(true);
+    setError(null);
+    try {
+      const res = await cancelLayawayLedgerAction(id);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setConfirming(false);
+      router.refresh();
+      onDone?.();
+    } finally {
+      setPending(false);
+      submittingRef.current = false;
+    }
+  };
+
+  return (
+    <>
+      <Button
+        type="button"
+        size="sm"
+        variant="destructive"
+        onClick={() => {
+          setError(null);
+          setConfirming(true);
+        }}
+        data-testid={`ledger-cancel-${id}`}
+      >
+        Cancel Order
+      </Button>
+
+      <Modal
+        open={confirming}
+        onClose={() => (pending ? undefined : setConfirming(false))}
+        title="Cancel this Layaway account?"
+        size="sm"
+        critical
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirming(false)}
+              disabled={pending}
+            >
+              Keep account
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void run()}
+              disabled={pending}
+              data-testid={`ledger-cancel-confirm-${id}`}
+            >
+              {pending ? 'Cancelling…' : 'Yes, Cancel Order'}
+            </Button>
+          </>
+        }
+      >
+        <dl className="space-y-1.5 text-sm">
+          <ConfirmLine label="Customer" value={customerName || '—'} />
+          <ConfirmLine label="Layaway Code" value={code ?? '—'} />
+          <ConfirmLine label="Account No." value={accountNo} />
+        </dl>
+        <p className="mt-2 text-xs text-muted-foreground">
+          The account is marked <strong>Cancelled</strong> and its code is released. Payment
+          history is kept. This can&apos;t be undone.
+        </p>
+        {error ? (
+          <p role="alert" className="mt-2 text-sm text-destructive">
+            {error}
+          </p>
+        ) : null}
+      </Modal>
+    </>
+  );
+}
+
+function ConfirmLine({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className={strong ? 'font-bold tabular-nums' : 'font-medium tabular-nums'}>{value}</dd>
+    </div>
   );
 }

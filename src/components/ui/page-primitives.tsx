@@ -76,7 +76,7 @@ export function MetricCard({
   );
 }
 
-export type BadgeTone = 'gold' | 'neutral' | 'strong' | 'warning' | 'danger';
+export type BadgeTone = 'gold' | 'neutral' | 'strong' | 'warning' | 'danger' | 'success';
 
 const TONE: Record<BadgeTone, string> = {
   // Gold — active / selected / positive-in-progress (the brand accent).
@@ -89,9 +89,11 @@ const TONE: Record<BadgeTone, string> = {
   warning: 'bg-amber-100 text-amber-900 border-amber-200',
   // Restrained red — a problem the operator must see.
   danger: 'bg-destructive/10 text-destructive border-destructive/25',
+  // Green — a settled, fully-done positive (Paid in Full). Owner request.
+  success: 'bg-green-600/10 text-green-700 border-green-600/30',
 };
 
-/** A brand status pill. Tone conveys meaning; never green. */
+/** A brand status pill. Tone conveys meaning. */
 export function StatusBadge({
   label,
   tone = 'neutral',
@@ -104,7 +106,7 @@ export function StatusBadge({
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium',
+        'inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium',
         TONE[tone],
         className,
       )}

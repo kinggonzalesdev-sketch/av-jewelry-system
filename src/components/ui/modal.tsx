@@ -10,8 +10,10 @@ import { useEffect, useId } from 'react';
  *
  * It is the Orders → View modal's shell, generalised (same centered card, dark
  * overlay, portal, scroll-lock). Behaviour matches the standard:
- *   - Width 720–900px by `size`; 95% width on mobile; max-height 90vh with the
- *     body scrolling internally only when it overflows.
+ *   - Width by `size` (compact system — sm 460 · md 640 · lg 780 · xl 1040), never
+ *     wider than the viewport minus a 32px gutter; max-height 90vh with the body
+ *     scrolling internally only when it overflows. Regular forms stay compact and
+ *     never stretch across the desktop; xl is reserved for wide tables / previews.
  *   - The overlay dims the page; clicking it closes a normal dialog but is
  *     DISABLED for a `critical` form (so a half-filled entry is never lost to a
  *     stray click). Escape likewise closes a normal dialog, not a critical one.
@@ -21,10 +23,11 @@ import { useEffect, useId } from 'react';
  * behind stays mounted — opening a dialog never navigates or loses list state.
  */
 
-const WIDTH: Record<'sm' | 'md' | 'lg', string> = {
-  sm: 'sm:max-w-[720px]', // simple forms (few fields)
-  md: 'sm:max-w-[820px]', // typical forms
-  lg: 'sm:max-w-[900px]', // complex / two-column forms
+const WIDTH: Record<'sm' | 'md' | 'lg' | 'xl', string> = {
+  sm: 'sm:max-w-[460px]', // small — confirmations / few fields
+  md: 'sm:max-w-[640px]', // standard form (default)
+  lg: 'sm:max-w-[780px]', // large / dense two-column form
+  xl: 'sm:max-w-[1040px]', // wide tables / previews only
 };
 
 export function Modal({
@@ -34,7 +37,9 @@ export function Modal({
   description,
   ariaLabel,
   size = 'md',
+  maxWidthClass,
   critical = false,
+  headerActions,
   footer,
   children,
 }: {
@@ -42,12 +47,19 @@ export function Modal({
   onClose: () => void;
   title?: React.ReactNode;
   description?: React.ReactNode;
+  /** Optional action buttons seated in the header, to the LEFT of the ✕ — the same
+   *  placement the Orders View modal uses for Add Payment / Cancel Order. */
+  headerActions?: React.ReactNode;
   /** Accessible name for a modal shown WITHOUT a visible title. Keeps the dialog
    *  named for screen readers and keeps the header (and its ✕) rendered, without
    *  printing any heading text. */
   ariaLabel?: string;
-  /** 'sm' 720 · 'md' 820 · 'lg' 900 — pick by form complexity. */
-  size?: 'sm' | 'md' | 'lg';
+  /** 'sm' 460 · 'md' 640 · 'lg' 780 · 'xl' 1040 — pick by form complexity; xl only
+   *  for wide tables/previews. */
+  size?: 'sm' | 'md' | 'lg' | 'xl';
+  /** Rare: a one-off max-width Tailwind class (e.g. `sm:max-w-[680px]`) that
+   *  overrides `size` for a single modal that doesn't fit a standard token. */
+  maxWidthClass?: string;
   /** Critical forms ignore Escape and click-outside (only ✕ / Cancel close). */
   critical?: boolean;
   /** Bottom bar — primary action aligned bottom-right by convention. */
@@ -98,10 +110,10 @@ export function Modal({
       )}
 
       <div
-        className={`relative z-10 flex max-h-[90vh] w-[95vw] flex-col overflow-hidden border border-border bg-card shadow-xl sm:w-full sm:rounded-xl ${WIDTH[size]}`}
+        className={`relative z-10 flex max-h-[90vh] w-[calc(100vw-32px)] flex-col overflow-hidden border border-border bg-card shadow-xl sm:w-full sm:rounded-xl ${maxWidthClass ?? WIDTH[size]}`}
         data-testid="modal"
       >
-        {title || description || ariaLabel ? (
+        {title || description || ariaLabel || headerActions ? (
           <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-3.5">
             <div className="min-w-0">
               {title ? (
@@ -113,15 +125,18 @@ export function Modal({
                 <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
               ) : null}
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              data-testid="modal-close"
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border text-sm text-muted-foreground hover:bg-accent"
-            >
-              ✕
-            </button>
+            <div className="no-print flex shrink-0 items-center gap-2">
+              {headerActions}
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close"
+                data-testid="modal-close"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border text-sm text-muted-foreground hover:bg-accent"
+              >
+                ✕
+              </button>
+            </div>
           </div>
         ) : null}
 

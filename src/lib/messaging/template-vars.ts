@@ -6,7 +6,9 @@
  * the real message, so the two cannot drift.
  */
 
-export const TEMPLATE_KEYS = ['invoice', 'reminder_1', 'reminder_2', 'reminder_3'] as const;
+// Owner request: the For Reminder flow now sends a SINGLE reminder, so reminder_2
+// and reminder_3 were retired (removed from Settings and the database).
+export const TEMPLATE_KEYS = ['invoice', 'reminder_1'] as const;
 export type TemplateKey = (typeof TEMPLATE_KEYS)[number];
 
 /** Every variable a template may use, with what it means and a sample value. */

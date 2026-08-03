@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 
 import { PrinterProvider } from '@/components/print/printer-context';
 import { AppSidebar } from '@/components/shell/app-sidebar';
+import { DashboardSyncProvider } from '@/components/shell/dashboard-sync';
 import { IdleLogout } from '@/components/shell/idle-logout';
 import { PrivacyProvider } from '@/components/shell/privacy';
 
@@ -32,14 +33,19 @@ export function AppShell({
       <PrivacyProvider>
         {/* Auto sign-out after 30 min idle; session-only cookies handle browser close. */}
         <IdleLogout minutes={30} />
-        <AppSidebar
-          fullName={fullName}
-          roleKey={roleKey}
-          userEmail={userEmail}
-          allowedPages={allowedPages}
-        >
-          {children}
-        </AppSidebar>
+        {/* Live reflection: Realtime nudges re-render the current page from the
+            official server records (no full reload, no duplicate client totals).
+            Wraps the app so any page can read the sync status for its indicator. */}
+        <DashboardSyncProvider>
+          <AppSidebar
+            fullName={fullName}
+            roleKey={roleKey}
+            userEmail={userEmail}
+            allowedPages={allowedPages}
+          >
+            {children}
+          </AppSidebar>
+        </DashboardSyncProvider>
       </PrivacyProvider>
     </PrinterProvider>
   );

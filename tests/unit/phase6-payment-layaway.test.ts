@@ -160,14 +160,17 @@ describe('payment recording (approved decision §3)', () => {
     expect(withoutLocation.success).toBe(false);
   });
 
-  it('requires a provider for bank, wallet, and card', () => {
-    for (const method of ['bank_transfer', 'e_wallet', 'card'] as const) {
+  it('accepts GCash / BPI / BDO / Credit Card without a separate provider', () => {
+    // Standardized Mode of Payment (Owner request 2026-07-31): the method name IS
+    // the channel, so no separate provider field is required — a reference number is
+    // the attribution. Only Cash additionally needs a collection location.
+    for (const method of ['GCash', 'BPI', 'BDO', 'Credit Card'] as const) {
       const result = recordPaymentSchema.safeParse({
         ...validBankTransfer,
         paymentMethod: method,
         provider: undefined,
       });
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
     }
   });
 

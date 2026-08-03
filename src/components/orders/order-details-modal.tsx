@@ -11,22 +11,27 @@ import {
   readyForPreparationAction,
   saveOrderInvoiceMessageAction,
   sendOrderReminderAction,
+  setCustomerFacebookUrlAction,
   setCustomerResponseAction,
   verifyForInvoiceAction,
 } from '@/lib/orders/actions';
 import { renderOrderMessageAction } from '@/lib/messaging/actions';
 import { formatPeso } from '@/lib/payments/format';
+import { parseInventoryCode } from '@/lib/inventory/code-parser';
 import type { OrderDetail, OrderDetailResult } from '@/lib/orders/detail-types';
 import type { PaymentStatus } from '@/lib/orders/service';
 import { OrderDestinationTransfer } from '@/components/orders/order-destination-transfer';
+import { FbChatButton } from '@/components/orders/fb-chat-button';
 import { OrderCancelAction } from '@/components/orders/order-cancel-action';
 import { OrderPaymentActions } from '@/components/orders/order-payment-actions';
 import { OrderVerifyPayment } from '@/components/orders/order-verify-payment';
 import { OrderCompletionActions } from '@/components/orders/order-completion-actions';
+import { OrderWaybillField } from '@/components/orders/order-waybill-field';
+import { LayawaySetupForOrder } from '@/components/orders/layaway-setup-order';
 import {
   canOfferCancel,
   canOfferPayment,
-  stageLabel,
+  resolveStageLabel,
   stageOffers,
 } from '@/lib/orders/stage-actions';
 import { Money, SensitivePhone, Sensitive } from '@/components/shell/privacy';
@@ -100,6 +105,23 @@ function tabsFor(section: string): ReadonlyArray<readonly [TabKey, string]> {
 
 function humanize(value: string): string {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/**
+ * The status label shown in the modal header — it must match the Orders card the
+ * order was opened from. Workflow / destination cards already agree via
+ * `resolveStageLabel`; the only cross-cutting card is **Unverified Payment**
+ * (a payment-status filter, not a workflow stage), so when the modal is opened
+ * from there we show "Unverified Payment" rather than the underlying stage
+ * (Owner request). 'all' (Total) always shows the true status.
+ */
+function headerStageLabel(
+  section: string,
+  status: string,
+  fulfillmentDestination: string | null,
+): string {
+  if (section === 'unverified_pay') return 'Pending Payment';
+  return resolveStageLabel(status, fulfillmentDestination);
 }
 
 /** Total grams for a line = per-piece grams × quantity (weight, not money). */
@@ -265,38 +287,200 @@ function TabPanel({ active, children }: { active: boolean; children: React.React
 }
 
 
+/**
+ * The ONE shared modal header, used by every stage. Order number + status badge on
+ * the left; the stage's header actions (Add Payment · Cancel Order) then the X on
+ * the right — `Add Payment | Cancel Order | X` on desktop. The actions wrap below
+ * the header row on narrow screens and never overlap the close button. Which
+ * actions appear is decided by the caller from stage + permission, so the header
+ * never shows a control the stage disallows.
+ */
 function ModalHeader({
   detail,
+  section = 'all',
+  actions,
   onClose,
 }: {
   detail: OrderDetail;
+  /** The Orders card the modal was opened from — so the badge matches it. */
+  section?: string;
+  actions?: React.ReactNode;
   onClose: () => void;
 }) {
   return (
     <div className="shrink-0 border-b border-border bg-card px-4 py-3">
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-sm font-semibold">{detail.orderNumber}</span>
-            <StatusBadge label={stageLabel(detail.status)} tone="neutral" />
+            <StatusBadge
+              label={headerStageLabel(section, detail.status, detail.fulfillmentDestination)}
+              tone="neutral"
+              className="px-3.5 py-1 text-sm font-semibold"
+            />
           </div>
-          {/* The customer · invoice sub-line was removed from the header (Owner
-              request) — the Summary card carries the customer, and the order
-              number above is enough up top. */}
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          data-testid="order-modal-close"
-          className="no-print flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border text-sm text-muted-foreground hover:bg-accent"
-        >
-          ✕
-        </button>
+        <div className="no-print flex flex-wrap items-center justify-end gap-2">
+          {actions}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            data-testid="order-modal-close"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-sm text-muted-foreground hover:bg-accent"
+          >
+            ✕
+          </button>
+        </div>
       </div>
-      {/* The Total / Verified / Remaining chips were removed from the header (Owner
-          request) — the Summary card below already carries those figures, so the
-          header stays compact with just the order, customer, and status. */}
+    </div>
+  );
+}
+
+/**
+ * The header actions shared by every stage: Add Payment then Cancel Order, sized
+ * to sit beside the X. Visibility is the same stage + permission logic used
+ * everywhere — Add Payment only while a balance remains and payment is allowed,
+ * Cancel only while the order is cancellable — so a fully-paid or closed order
+ * simply shows fewer buttons.
+ */
+function HeaderActions({
+  detail,
+  section = 'all',
+  onRefresh,
+}: {
+  detail: OrderDetail;
+  /** The Orders card the modal was opened from. */
+  section?: string;
+  onRefresh: () => void;
+}) {
+  const a = detail.amounts;
+  // The Unverified Payment card exists to collect the awaited payment, so Add
+  // Payment is always offered there (given a real remaining balance + permission),
+  // even for a stage whose own workflow would not surface it (Owner request).
+  const unverifiedContext =
+    section === 'unverified_pay' &&
+    !a.paidInFull &&
+    a.unavailable === null &&
+    detail.permissions.canRecordPayment;
+  const showPayment =
+    unverifiedContext ||
+    canOfferPayment({
+      status: detail.status,
+      paidInFull: a.paidInFull,
+      balanceUnavailable: a.unavailable !== null,
+      canRecordPayment: detail.permissions.canRecordPayment,
+    });
+  const showCancel = canOfferCancel(detail.status) || detail.status === 'for_cancel';
+
+  return (
+    <>
+      {showPayment ? (
+        <OrderPaymentActions
+          orderId={detail.officialOrderId}
+          remaining={a.outstandingBalance}
+          paidInFull={a.paidInFull}
+          canRecord={detail.permissions.canRecordPayment}
+          onRefresh={onRefresh}
+          asButton
+          total={a.unavailable ? undefined : a.totalAmountPayable}
+          paid={a.unavailable ? undefined : a.verifiedNetPayments}
+        />
+      ) : null}
+      {showCancel ? (
+        <OrderCancelAction
+          orderId={detail.officialOrderId}
+          orderNumber={detail.orderNumber}
+          customerName={detail.customer.displayName}
+          status={detail.status}
+          isOwner={detail.permissions.isOwner}
+          compact
+          onDone={onRefresh}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * Small inline editor for a per-customer link/id (the Facebook Messenger URL that
+ * powers "Open FB Chat", or the Pancake conversation id that powers auto-delivery
+ * of Send Invoice / Send Reminder). Saved once on the customer, reused by every
+ * future order for them.
+ */
+function CustomerLinkEditor({
+  label,
+  hasValue,
+  placeholder,
+  onSave,
+  onSaved,
+  testid,
+}: {
+  label: string;
+  hasValue: boolean;
+  placeholder: string;
+  onSave: (value: string) => Promise<{ ok: boolean; error?: string }>;
+  onSaved: () => void;
+  testid?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await onSave(value.trim());
+      if (res.ok) {
+        setOpen(false);
+        setValue('');
+        onSaved();
+      } else {
+        setError(res.error ?? 'Could not save.');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        data-testid={testid}
+        className="text-xs font-medium text-gold-strong underline"
+      >
+        {hasValue ? `Update ${label}` : `🔗 Link ${label}`}
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+      <input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder={placeholder}
+        className="h-8 min-w-[220px] flex-1 rounded-md border border-border bg-background px-2 text-xs outline-none focus:border-gold"
+      />
+      <button
+        type="button"
+        onClick={() => void save()}
+        disabled={saving}
+        className="rounded-md border border-border px-2 py-1 font-medium hover:bg-accent disabled:opacity-60"
+      >
+        {saving ? 'Saving…' : 'Save'}
+      </button>
+      <button
+        type="button"
+        onClick={() => setOpen(false)}
+        className="text-muted-foreground hover:underline"
+      >
+        Cancel
+      </button>
+      {error ? <span className="text-destructive">{error}</span> : null}
     </div>
   );
 }
@@ -321,10 +505,12 @@ function ModalHeader({
  */
 function ForInvoiceView({
   detail,
+  section = 'all',
   onDone,
   onClose,
 }: {
   detail: OrderDetail;
+  section?: string;
   onDone: () => void;
   onClose: () => void;
 }) {
@@ -426,7 +612,9 @@ function ForInvoiceView({
     if (sending) return;
     setSending(true);
     setSendError(null);
-    const res = await verifyForInvoiceAction(orderId);
+    // Pass the invoice message so it is also auto-delivered via Pancake (best-effort)
+    // when the customer has a Pancake conversation id linked.
+    const res = await verifyForInvoiceAction(orderId, msgBody.trim() || null);
     if (!res.ok) {
       setSending(false);
       setSendError(res.error);
@@ -440,22 +628,29 @@ function ForInvoiceView({
 
   return (
     <>
-      {/* Minimal header — order number + the workflow status, nothing financial. */}
+      {/* Minimal header — order number + the workflow status, with the Add Payment
+          / Cancel Order actions seated on the right beside the X (§ header rule). */}
       <div className="shrink-0 border-b border-border bg-card px-4 py-3">
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-sm font-semibold">{detail.orderNumber}</span>
-            <StatusBadge label="For Invoice" tone="gold" />
+            <StatusBadge
+              label={headerStageLabel(section, detail.status, detail.fulfillmentDestination)}
+              tone="gold"
+              className="px-3.5 py-1 text-sm font-semibold"
+            />
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            data-testid="order-modal-close"
-            className="no-print flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border text-sm text-muted-foreground hover:bg-accent"
-          >
-            ✕
-          </button>
+          <div className="no-print flex flex-wrap items-center justify-end gap-2">
+            <HeaderActions detail={detail} section={section} onRefresh={onDone} />
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              data-testid="order-modal-close"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-sm text-muted-foreground hover:bg-accent"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       </div>
 
@@ -469,8 +664,21 @@ function ForInvoiceView({
               label: 'Order Number',
               value: <span className="font-mono">{detail.orderNumber}</span>,
             },
-            { icon: '◔', label: 'Status', value: 'For Invoice' },
-            { icon: '☺', label: 'Customer Name', value: detail.customer.displayName },
+            {
+              icon: '◔',
+              label: 'Status',
+              value: headerStageLabel(section, detail.status, detail.fulfillmentDestination),
+            },
+            {
+              icon: '☺',
+              label: 'Customer Name',
+              value: (
+                <span className="inline-flex items-center gap-1.5">
+                  {detail.customer.displayName}
+                  <FbChatButton url={detail.customer.facebookConversationUrl} />
+                </span>
+              ),
+            },
             { icon: '🗓', label: 'Date Created', value: fmtDateTime(detail.createdAt) },
             {
               icon: '₱',
@@ -527,6 +735,19 @@ function ForInvoiceView({
               {fbNotice}
             </p>
           ) : null}
+
+          {/* Link the Messenger URL (Open FB Chat) and the Pancake conversation id
+              (auto-deliver Send Invoice / Reminder). */}
+          <div className="flex flex-col gap-1">
+            <CustomerLinkEditor
+              label="Facebook chat"
+              hasValue={Boolean(fbUrl)}
+              placeholder="https://m.me/… or a Messenger conversation link"
+              onSave={(v) => setCustomerFacebookUrlAction(detail.customer.id, v)}
+              onSaved={onDone}
+              testid="order-fb-link"
+            />
+          </div>
 
           {/* Editable message. */}
           {msgState === 'loading' ? (
@@ -617,17 +838,26 @@ function ForInvoiceView({
               ) : null}
             </div>
           ) : null}
-
-          {/* Cancel Order — destructive, separated from the invoice actions. */}
-          <OrderCancelAction
-            orderId={orderId}
-            orderNumber={detail.orderNumber}
-            customerName={detail.customer.displayName}
-            status={detail.status}
-            isOwner={detail.permissions.isOwner}
-            onDone={onDone}
-          />
         </div>
+
+        {/* Transfer to Destination is available from every live stage (Owner
+            request) — including For Invoice — so an order can be routed early. */}
+        {detail.permissions.canPrepareFulfillment ? (
+          <div className="no-print rounded-lg border border-border p-3">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Transfer to Destination
+            </p>
+            <OrderDestinationTransfer
+              orderId={detail.officialOrderId}
+              destination={detail.fulfillmentDestination}
+              destinationSetByName={detail.destinationSetByName}
+              destinationSetAt={detail.destinationSetAt}
+              canTransfer={detail.permissions.canPrepareFulfillment}
+              completionBlock={detail.completionBlock}
+              onTransferred={onDone}
+            />
+          </div>
+        ) : null}
       </div>
     </>
   );
@@ -660,10 +890,12 @@ function remainingRequired(required: string, verified: string): string {
  */
 function ForReminderView({
   detail,
+  section = 'all',
   onDone,
   onClose,
 }: {
   detail: OrderDetail;
+  section?: string;
   onDone: () => void;
   onClose: () => void;
 }) {
@@ -704,6 +936,7 @@ function ForReminderView({
   const [composing, setComposing] = useState<number | null>(null);
   const [sendingReminder, setSendingReminder] = useState(false);
   const [reminderError, setReminderError] = useState<string | null>(null);
+  const [reminderNote, setReminderNote] = useState<string | null>(null);
 
   /**
    * The wording actually sent comes from Settings → Message Templates
@@ -715,24 +948,23 @@ function ForReminderView({
    */
   const [reminderBodies, setReminderBodies] = useState<Record<number, string>>({});
 
-  const fallbackBody = (n: number): string => {
+  const fallbackBody = (): string => {
     const amt = remaining ? formatPeso(remaining) : 'your remaining balance';
     return (
-      `Hi ${detail.customer.displayName}! Friendly reminder (${n}/3) for order ` +
+      `Hi ${detail.customer.displayName}! Friendly reminder for order ` +
       `${detail.orderNumber}. Your remaining required payment is ${amt}. ` +
       `Please settle it to keep your items reserved. Maraming salamat po! 🙏`
     );
   };
 
-  const reminderBody = (n: number): string => reminderBodies[n] ?? fallbackBody(n);
+  const reminderBody = (n: number): string => reminderBodies[n] ?? fallbackBody();
 
   const startReminder = (n: number) => {
     setReminderError(null);
     setComposing(n);
     if (fbUrl) window.open(fbUrl, '_blank', 'noopener,noreferrer');
-    // Render the template for THIS reminder number; the composer shows the exact
-    // text that will be recorded as sent.
-    const key = n === 1 ? 'reminder_1' : n === 2 ? 'reminder_2' : 'reminder_3';
+    // A single reminder now (reminder_2/3 retired) — always the reminder_1 template.
+    const key = 'reminder_1';
     void renderOrderMessageAction(orderId, key).then((res) => {
       if (res.ok) setReminderBodies((prev) => ({ ...prev, [n]: res.message }));
     });
@@ -747,6 +979,19 @@ function ForReminderView({
     if (!res.ok) {
       setReminderError(res.error);
       return;
+    }
+    // Surface whether it was actually delivered to Facebook via Pancake.
+    if (res.pancake?.attempted) {
+      const detail = res.pancake.debug ? `\n\nPancake response: ${res.pancake.debug}` : '';
+      setReminderNote(
+        res.pancake.delivered
+          ? '✅ Reminder sent to the customer through Pancake.'
+          : `Reminder recorded, but Pancake delivery failed: ${res.pancake.error ?? 'unknown error'}. Send it manually via Open FB Chat.${detail}`,
+      );
+    } else {
+      setReminderNote(
+        'Reminder recorded. No Pancake conversation is linked, so send it manually via Open FB Chat (or add the Pancake conversation id).',
+      );
     }
     setSent((prev) => (prev.includes(n) ? prev : [...prev, n]));
     setComposing(null);
@@ -778,20 +1023,26 @@ function ForReminderView({
   return (
     <>
       <div className="shrink-0 border-b border-border bg-card px-4 py-3">
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-sm font-semibold">{detail.orderNumber}</span>
-            <StatusBadge label="For Reminder" tone="warning" />
+            <StatusBadge
+              label={headerStageLabel(section, detail.status, detail.fulfillmentDestination)}
+              tone="warning"
+              className="px-3.5 py-1 text-sm font-semibold"
+            />
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            data-testid="order-modal-close"
-            className="no-print flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border text-sm text-muted-foreground hover:bg-accent"
-          >
-            ✕
-          </button>
+          <div className="no-print flex flex-wrap items-center justify-end gap-2">
+            <HeaderActions detail={detail} section={section} onRefresh={onDone} />
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              data-testid="order-modal-close"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-sm text-muted-foreground hover:bg-accent"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       </div>
 
@@ -801,7 +1052,16 @@ function ForReminderView({
         <SummaryCard
           testId="for-reminder-fields"
           rows={[
-            { icon: '☺', label: 'Customer Name', value: detail.customer.displayName },
+            {
+              icon: '☺',
+              label: 'Customer Name',
+              value: (
+                <span className="inline-flex items-center gap-1.5">
+                  {detail.customer.displayName}
+                  <FbChatButton url={detail.customer.facebookConversationUrl} />
+                </span>
+              ),
+            },
             {
               icon: '▤',
               label: 'Order Number',
@@ -822,42 +1082,31 @@ function ForReminderView({
               label: 'Remaining Required Payment',
               value: remaining === null ? '—' : <Money amount={remaining} />,
             },
+            {
+              // Remaining Balance = Total Order Amount − Total Verified Payments.
+              // outstandingBalance is exactly max(payable − verified, 0), so it
+              // reads ₱0 when fully paid. Kept distinct from Remaining Required
+              // Payment (which is the down-payment gate, not the full balance).
+              icon: '◉',
+              label: 'Remaining Balance',
+              value: a.unavailable ? '—' : <Money amount={a.outstandingBalance} />,
+            },
           ]}
         />
 
-        {/* Add Payment (Owner request §4). A reminder chases money, so the money
-            can be taken here rather than closing and reopening the order in
-            another view. Offered only while a balance remains — the shared stage
-            table decides, exactly as it does in the full modal. */}
-        {canOfferPayment({
-          status: detail.status,
-          paidInFull: a.paidInFull,
-          balanceUnavailable: a.unavailable !== null,
-          canRecordPayment: detail.permissions.canRecordPayment,
-        }) ? (
-          <OrderPaymentActions
-            orderId={orderId}
-            remaining={a.outstandingBalance}
-            paidInFull={a.paidInFull}
-            canRecord={detail.permissions.canRecordPayment}
-            onRefresh={onDone}
-          />
-        ) : null}
-
-        {/* Reminders 1 · 2 · 3 — sequential, single-send each. */}
+        {/* A single Reminder (Owner request — removed Reminder 2 & 3). */}
         <div className="no-print space-y-2 rounded-lg border border-gold/40 bg-gold/5 p-3">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-gold-strong">
             Reminder Actions
           </p>
           <div className="flex flex-wrap items-center gap-2">
-            {[1, 2, 3].map((n) => {
+            {[1].map((n) => {
               const isSent = sent.includes(n);
-              const unlocked = n === 1 || sent.includes(n - 1);
               return (
                 <button
                   key={n}
                   type="button"
-                  disabled={!loaded || isSent || !unlocked || composing !== null}
+                  disabled={!loaded || isSent || composing !== null}
                   onClick={() => startReminder(n)}
                   data-testid={`order-send-reminder-${n}`}
                   className={
@@ -866,7 +1115,7 @@ function ForReminderView({
                       : actionBtn
                   }
                 >
-                  {isSent ? `Reminder ${n} ✓` : `Send Reminder ${n}`}
+                  {isSent ? 'Reminder ✓' : 'Send Reminder'}
                 </button>
               );
             })}
@@ -894,13 +1143,24 @@ function ForReminderView({
             </p>
           ) : null}
 
+          <div className="flex flex-col gap-1">
+            <CustomerLinkEditor
+              label="Facebook chat"
+              hasValue={Boolean(fbUrl)}
+              placeholder="https://m.me/… or a Messenger conversation link"
+              onSave={(v) => setCustomerFacebookUrlAction(detail.customer.id, v)}
+              onSaved={onDone}
+              testid="order-fb-link"
+            />
+          </div>
+
           {composing !== null ? (
             <div
               className="space-y-2 rounded-md border border-border bg-background p-2.5"
               data-testid="order-reminder-compose"
             >
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                Reminder {composing} message — {fbUrl ? 'the FB chat was opened; ' : ''}copy this,
+                Reminder message — {fbUrl ? 'the FB chat was opened; ' : ''}copy this,
                 send it, then confirm.
               </p>
               <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded border border-border bg-muted p-2 text-[11px]">
@@ -922,7 +1182,7 @@ function ForReminderView({
                   data-testid="order-reminder-confirm"
                   className="rounded-md bg-gold px-2.5 py-1 text-xs font-semibold text-black hover:bg-gold/90 disabled:opacity-60"
                 >
-                  {sendingReminder ? 'Recording…' : `Confirm Reminder ${composing} sent`}
+                  {sendingReminder ? 'Recording…' : 'Confirm Reminder sent'}
                 </button>
               </div>
               {reminderError ? (
@@ -934,6 +1194,14 @@ function ForReminderView({
           ) : reminderError ? (
             <p role="alert" className="text-xs text-destructive">
               {reminderError}
+            </p>
+          ) : null}
+          {reminderNote ? (
+            <p
+              className="mt-1 whitespace-pre-wrap break-words text-xs text-muted-foreground"
+              data-testid="order-reminder-note"
+            >
+              {reminderNote}
             </p>
           ) : null}
         </div>
@@ -979,18 +1247,163 @@ function ForReminderView({
             </div>
           ) : null}
 
-          {/* Cancel Order — just the button, aligned right (no Danger Zone). */}
-          <div className="flex justify-end pt-1">
-            <OrderCancelAction
-              orderId={detail.officialOrderId}
-              orderNumber={detail.orderNumber}
-              customerName={detail.customer.displayName}
-              status={detail.status}
-              isOwner={detail.permissions.isOwner}
-              compact
-              onDone={onDone}
+          {/* Transfer to Destination is available from every live stage (Owner
+              request) — including For Reminder — so an order can be routed early. */}
+          {detail.permissions.canPrepareFulfillment ? (
+            <div className="no-print rounded-lg border border-border p-3">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Transfer to Destination
+              </p>
+              <OrderDestinationTransfer
+                orderId={detail.officialOrderId}
+                destination={detail.fulfillmentDestination}
+                destinationSetByName={detail.destinationSetByName}
+                destinationSetAt={detail.destinationSetAt}
+                canTransfer={detail.permissions.canPrepareFulfillment}
+                completionBlock={detail.completionBlock}
+                onTransferred={onDone}
+              />
+            </div>
+          ) : null}
+        </div>
+    </>
+  );
+}
+
+/**
+ * Keep view (Owner request 2026-07-30, revised) — the WHOLE modal body for a Keep
+ * order ('keep'). A Keep order is an item set aside for the customer. Deliberately
+ * minimal: the order summary and exactly two actions —
+ *   - Cancel Order in the header beside the X (red/destructive), shown only while
+ *     the order is still in Keep and the user may cancel or request cancellation.
+ *   - Transfer to Completed as the ONE main action (shared OrderCompletionActions):
+ *     it appears only when the order is completion-eligible (`order_completion_block`
+ *     in SQL is the authority), confirms first, records previous → completed status +
+ *     completed by / date / time, and refreshes the row + counts without a reload.
+ *
+ * Everything else the generic modal offers is removed here: Add Payment, the Save /
+ * Keep-note editor, the payment section, other destinations, reminders, and any
+ * extra action cards or empty containers.
+ */
+function KeepView({
+  detail,
+  section = 'all',
+  onDone,
+  onClose,
+}: {
+  detail: OrderDetail;
+  section?: string;
+  onDone: () => void;
+  onClose: () => void;
+}) {
+  const a = detail.amounts;
+  const balanceUnavailable = a.unavailable !== null;
+  // Cancel Order shows only while the order is still in Keep (canOfferCancel is
+  // false for Cancelled / Completed / For Cancel). Permission is enforced inside
+  // OrderCancelAction and the database.
+  const canCancel = canOfferCancel(detail.status);
+
+  return (
+    <>
+      <div className="shrink-0 border-b border-border bg-card px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge
+              label={headerStageLabel(section, detail.status, detail.fulfillmentDestination)}
+              tone="neutral"
+              className="px-3.5 py-1 text-sm font-semibold"
             />
           </div>
+          {/* Header actions: Cancel Order | X. */}
+          <div className="no-print flex flex-wrap items-center justify-end gap-2">
+            {canCancel ? (
+              <OrderCancelAction
+                orderId={detail.officialOrderId}
+                orderNumber={detail.orderNumber}
+                customerName={detail.customer.displayName}
+                status={detail.status}
+                isOwner={detail.permissions.isOwner}
+                compact
+                onDone={onDone}
+              />
+            ) : null}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              data-testid="order-modal-close"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-sm text-muted-foreground hover:bg-accent"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="modal-scroll flex-1 space-y-3 overflow-y-auto px-4 py-3">
+        {/* Necessary order summary only. */}
+        <SummaryCard
+          testId="keep-summary"
+          rows={[
+            {
+              icon: '☺',
+              label: 'Customer Name',
+              value: (
+                <span className="inline-flex items-center gap-1.5">
+                  {detail.customer.displayName}
+                  <FbChatButton url={detail.customer.facebookConversationUrl} />
+                </span>
+              ),
+            },
+            {
+              icon: '▤',
+              label: 'Order Number',
+              value: <span className="font-mono">{detail.orderNumber}</span>,
+            },
+            {
+              icon: '₱',
+              label: 'Total Amount',
+              value: a.unavailable ? '—' : <Money amount={a.totalAmountPayable} />,
+            },
+            {
+              icon: '✓',
+              label: 'Verified Paid',
+              value: a.unavailable ? '—' : <Money amount={a.verifiedNetPayments} />,
+            },
+            {
+              icon: '▦',
+              label: 'Remaining Balance',
+              value: a.unavailable ? (
+                <span className="text-destructive">Unavailable</span>
+              ) : (
+                <Money amount={a.outstandingBalance} />
+              ),
+            },
+            {
+              icon: '◔',
+              label: 'Payment Status',
+              value: (
+                <StatusBadge
+                  label={PAYMENT_LABEL[detail.paymentStatus]}
+                  tone={PAYMENT_TONE[detail.paymentStatus]}
+                />
+              ),
+            },
+          ]}
+        />
+
+        {/* The ONE main action: Transfer to Completed (confirm + eligibility gate). */}
+        <div data-testid="keep-actions">
+          <OrderCompletionActions
+            orderId={detail.officialOrderId}
+            status={detail.status}
+            paidInFull={a.paidInFull}
+            balanceUnavailable={balanceUnavailable}
+            canRelease={detail.permissions.canReleaseFulfillment}
+            completionBlock={detail.completionBlock}
+            onDone={onDone}
+          />
+        </div>
       </div>
     </>
   );
@@ -1125,10 +1538,20 @@ function DetailBody({
   // tabbed modal below. (The hook above is always called, so this early return
   // never changes hook order.)
   if (detail.status === 'invoiced') {
-    return <ForInvoiceView detail={detail} onDone={onRefresh} onClose={onClose} />;
+    return (
+      <ForInvoiceView detail={detail} section={section} onDone={onRefresh} onClose={onClose} />
+    );
   }
   if (detail.status === 'awaiting_required_payment') {
-    return <ForReminderView detail={detail} onDone={onRefresh} onClose={onClose} />;
+    return (
+      <ForReminderView detail={detail} section={section} onDone={onRefresh} onClose={onClose} />
+    );
+  }
+  // Keep orders get the dedicated, stripped-down Keep view (Owner request
+  // 2026-07-30): summary + Add Payment / Cancel (header) + Transfer to Completed +
+  // Save, and nothing else.
+  if (detail.status === 'keep') {
+    return <KeepView detail={detail} section={section} onDone={onRefresh} onClose={onClose} />;
   }
 
   const a = detail.amounts;
@@ -1136,7 +1559,12 @@ function DetailBody({
 
   return (
     <>
-      <ModalHeader detail={detail} onClose={onClose} />
+      <ModalHeader
+        detail={detail}
+        section={section}
+        actions={<HeaderActions detail={detail} section={section} onRefresh={onRefresh} />}
+        onClose={onClose}
+      />
 
       {/* One vertical flow: Summary card → stage action cards → Payment (+ Cancel
           on the right) → the tabs. Same order and card style for every stage. */}
@@ -1156,7 +1584,16 @@ function DetailBody({
         {/* ---- Order Summary card (the reference layout) ------------------ */}
         <SummaryCard
           rows={[
-            { icon: '☺', label: 'Customer Name', value: detail.customer.displayName },
+            {
+              icon: '☺',
+              label: 'Customer Name',
+              value: (
+                <span className="inline-flex items-center gap-1.5">
+                  {detail.customer.displayName}
+                  <FbChatButton url={detail.customer.facebookConversationUrl} />
+                </span>
+              ),
+            },
             {
               icon: '▤',
               label: 'Order Number',
@@ -1195,7 +1632,7 @@ function DetailBody({
         />
 
         {/* ---- Stage actions + Payment + Cancel (standardized cards) ------ */}
-        <OrderActionsBar detail={detail} onRefresh={onRefresh} />
+        <OrderActionsBar detail={detail} section={section} onRefresh={onRefresh} />
 
         {/* Tab bar — horizontally scrollable on mobile; never navigates. Hidden
             entirely when a section has only one tab: a single tab is a label, not
@@ -1275,7 +1712,7 @@ function DetailBody({
                 </p>
                 <div className="overflow-x-auto">
                   <table
-                    className="w-full min-w-[420px] text-left text-xs"
+                    className="data-table w-full min-w-[420px] text-left text-xs"
                     data-testid="order-payment-history"
                   >
                     <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
@@ -1323,7 +1760,7 @@ function DetailBody({
           ) : (
             <div className="overflow-x-auto">
               <table
-                className="w-full min-w-[540px] text-left text-xs"
+                className="data-table w-full min-w-[540px] text-left text-xs"
                 data-testid="order-modal-items"
               >
                 <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
@@ -1456,25 +1893,29 @@ function DetailBody({
  */
 function OrderActionsBar({
   detail,
+  section,
   onRefresh,
 }: {
   detail: OrderDetail;
+  section: string;
   onRefresh: () => void;
 }) {
   const a = detail.amounts;
   const balanceUnavailable = a.unavailable !== null;
 
-  const showPayment = canOfferPayment({
-    status: detail.status,
-    paidInFull: a.paidInFull,
-    balanceUnavailable,
-    canRecordPayment: detail.permissions.canRecordPayment,
-  });
+  // Transfer to Destination is offered when the stage allows it, AND always in the
+  // Pending Payment view so the operator can MANUALLY set the destination there
+  // (Owner request) — adding a payment only updates the money, never the routing.
   const showTransfer =
-    stageOffers(detail.status, 'transfer_destination') &&
+    (stageOffers(detail.status, 'transfer_destination') || section === 'unverified_pay') &&
     detail.permissions.canPrepareFulfillment;
 
-  const canCancel = canOfferCancel(detail.status) || detail.status === 'for_cancel';
+  // Ship Confirm (release approved): shows a Waybill Number field first, and now
+  // also the Transfer to Destination dropdown (Owner request), plus Transfer to
+  // Completed and Cancel Order.
+  const isShipConfirm =
+    detail.status === 'approved_for_release' ||
+    detail.status === 'exceptional_release_pending';
 
   // Unverified, still-live payment records — these are what Verify Payment acts on.
   // A payment added through Add Payment is auto-verified, so this is usually empty
@@ -1496,6 +1937,17 @@ function OrderActionsBar({
         subtitle="Move this order forward in its workflow."
       >
         <div className="space-y-2">
+          {/* Ship Confirm shows the Waybill Number first — a shipping order can't
+              complete without it. */}
+          {isShipConfirm ? (
+            <OrderWaybillField
+              orderId={detail.officialOrderId}
+              waybill={detail.waybillNumber}
+              canEdit={detail.permissions.canReleaseFulfillment}
+              onSaved={onRefresh}
+            />
+          ) : null}
+
           <WorkflowActions
             orderId={detail.officialOrderId}
             status={detail.status}
@@ -1505,6 +1957,35 @@ function OrderActionsBar({
             verified={a.verifiedNetPayments}
             onDone={onRefresh}
           />
+
+          {/* For Layaway — "Set Up Layaway": a fill-up popup that creates a layaway
+              account from this order's customer + total + grams (Owner request). On
+              Save the order leaves the For Layaway card and is tracked in the Layaway
+              ledger, so the button is hidden once it has been converted. */}
+          {detail.convertedToLayaway ? (
+            <p className="rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground">
+              This order was set up as a Layaway — it now lives in Payments & Layaway.
+            </p>
+          ) : detail.status === 'for_layaway' && detail.permissions.canPrepareFulfillment ? (
+            <LayawaySetupForOrder
+              orderId={detail.officialOrderId}
+              customerName={detail.customer.displayName}
+              adminName={detail.adminName}
+              itemAmount={a.unavailable ? '0' : a.totalAmountPayable}
+              grams={String(
+                detail.items.reduce((s, it) => {
+                  // Reflect each item's grams; when the stored weight is blank, fall
+                  // back to the grams encoded in the item code (e.g. "…2367 0.55g").
+                  const per =
+                    Number(it.gramsPerPiece) ||
+                    Number(parseInventoryCode(it.itemCode ?? '').grams) ||
+                    0;
+                  return s + per * (it.quantity || 0);
+                }, 0) || '',
+              )}
+              onDone={onRefresh}
+            />
+          ) : null}
 
           {/* Done / Transfer to Completed (§5). Renders nothing unless the stage
               offers completion at all. */}
@@ -1518,7 +1999,9 @@ function OrderActionsBar({
             onDone={onRefresh}
           />
 
-          {/* Transfer to Destination (§6). */}
+          {/* Transfer to Destination (§6). Also shown on Ship Confirm (Owner request)
+              alongside the Waybill Number, so a shipping order can be routed to a
+              destination from the same stage. */}
           {showTransfer ? (
             <OrderDestinationTransfer
               orderId={detail.officialOrderId}
@@ -1537,59 +2020,27 @@ function OrderActionsBar({
         </div>
       </SectionCard>
 
-      {/* Payment card — Add Payment on the left, Cancel Order seated on the RIGHT
-          of the same lower section (no separate Danger Zone). Add Payment shows
-          only while a balance remains and the user may record one. */}
-      <SectionCard
-        icon="▭"
-        title="Payment"
-        subtitle="Record a payment made by the customer."
-        {...(canCancel
-          ? {
-              right: (
-                <OrderCancelAction
-                  orderId={detail.officialOrderId}
-                  orderNumber={detail.orderNumber}
-                  customerName={detail.customer.displayName}
-                  status={detail.status}
-                  isOwner={detail.permissions.isOwner}
-                  compact
-                  onDone={onRefresh}
-                />
-              ),
-            }
-          : {})}
-      >
-        {showPayment || showVerify ? (
-          // Add Payment then Verify Payment, aligned in one compact row.
+      {/* Payment card — now Verify Payment ONLY. Add Payment and Cancel Order
+          moved to the modal header (beside the X), so there is no duplicate
+          placement here. Rendered only when there is an unverified payment to act
+          on; otherwise the card is omitted entirely (no empty container). */}
+      {showVerify ? (
+        <SectionCard
+          icon="▭"
+          title="Payment"
+          subtitle="Verify a payment recorded against this order."
+        >
           <div className="flex flex-wrap items-center gap-2">
-            {showPayment ? (
-              <OrderPaymentActions
-                orderId={detail.officialOrderId}
-                remaining={a.outstandingBalance}
-                paidInFull={a.paidInFull}
-                canRecord={detail.permissions.canRecordPayment}
-                onRefresh={onRefresh}
-              />
-            ) : null}
-            {showVerify ? (
-              <OrderVerifyPayment
-                customerName={detail.customer.displayName}
-                orderNumber={detail.orderNumber}
-                unverified={unverifiedPayments}
-                canVerify={detail.permissions.canRecordPayment}
-                onRefresh={onRefresh}
-              />
-            ) : null}
+            <OrderVerifyPayment
+              customerName={detail.customer.displayName}
+              orderNumber={detail.orderNumber}
+              unverified={unverifiedPayments}
+              canVerify={detail.permissions.canRecordPayment}
+              onRefresh={onRefresh}
+            />
           </div>
-        ) : (
-          // The fully-paid notice now lives as a banner at the top of the modal,
-          // so the card just states there is nothing to collect.
-          <p className="text-xs text-muted-foreground">
-            No payment is due on this order right now.
-          </p>
-        )}
-      </SectionCard>
+        </SectionCard>
+      ) : null}
     </div>
   );
 }

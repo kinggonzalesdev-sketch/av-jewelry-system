@@ -85,7 +85,7 @@ export function LayawayDetailsModal({
         type="button"
         onClick={() => setOpen(true)}
         data-testid={`layaway-details-${row.layawayId}`}
-        className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+        className="rounded-md border border-border px-1.5 py-0.5 text-[11px] hover:bg-accent"
       >
         Edit details
       </button>

@@ -33,6 +33,8 @@ type BluetoothLike = {
     acceptAllDevices?: boolean;
     optionalServices?: (string | number)[];
   }): Promise<BtDevice>;
+  /** Chromium: true when the device has a powered-on Bluetooth adapter. */
+  getAvailability?(): Promise<boolean>;
 };
 
 // Well-known BLE serial/printer services (16-bit and 128-bit forms). These must
@@ -80,6 +82,23 @@ export function bluetoothPrintingSupported(): boolean {
 }
 
 /**
+ * Whether this device has a powered-on Bluetooth ADAPTER (Chromium `getAvailability`).
+ *   - true  → an adapter is present and on (a printer can be chosen).
+ *   - false → no adapter, or Bluetooth is turned OFF in the OS.
+ *   - null  → the browser can't tell (older Chromium) — treat as "try it".
+ * Distinct from `bluetoothPrintingSupported()`, which only checks the API exists.
+ */
+export async function bluetoothAdapterAvailable(): Promise<boolean | null> {
+  const bt = getBluetooth();
+  if (!bt || typeof bt.getAvailability !== 'function') return null;
+  try {
+    return await bt.getAvailability();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Opens the chooser, connects GATT, and enumerates every writable characteristic.
  * Must be called from a user gesture (the browser requires it for requestDevice).
  */
@@ -89,13 +108,37 @@ export async function connectThermalPrinter(): Promise<PrinterHandle> {
     throw new Error('Open the app over HTTPS to use Bluetooth printing.');
   }
   if (!bt) {
-    throw new Error('This browser has no Web Bluetooth (e.g. iOS). Use manual print.');
+    throw new Error(
+      'This browser has no Web Bluetooth. Use Chrome or Edge on a computer, or Chrome on Android — not iPhone/Safari/Firefox.',
+    );
   }
 
-  const device = await bt.requestDevice({
-    acceptAllDevices: true,
-    optionalServices: KNOWN_SERVICES,
-  });
+  // A quick adapter check (when the browser supports it) gives a clear message
+  // instead of Chrome's raw "Bluetooth adapter not available." error.
+  if ((await bluetoothAdapterAvailable()) === false) {
+    throw new Error(
+      "This device's Bluetooth is off or missing. Turn Bluetooth ON in the OS settings (or use a device that has Bluetooth), then try again.",
+    );
+  }
+
+  let device: BtDevice;
+  try {
+    device = await bt.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: KNOWN_SERVICES,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : '';
+    if (/adapter/i.test(msg) || /not available/i.test(msg)) {
+      throw new Error(
+        "This device's Bluetooth is off or missing. Turn Bluetooth ON, then try again.",
+      );
+    }
+    if (/cancel/i.test(msg) || /No device selected/i.test(msg)) {
+      throw new Error('No printer selected. Tap connect again and pick your printer.');
+    }
+    throw err instanceof Error ? err : new Error('Could not open the printer chooser.');
+  }
   const server = await device.gatt?.connect();
   if (!server) throw new Error('Could not open a GATT connection to the printer.');
 

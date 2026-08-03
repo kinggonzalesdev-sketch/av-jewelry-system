@@ -8,9 +8,11 @@ import {
   previewLayawayCodeAction,
 } from '@/lib/payments/actions';
 import type { CaptureItem } from '@/lib/orders/service';
+import { parseInventoryCode } from '@/lib/inventory/code-parser';
 import type { AdminNameContext } from '@/lib/authz/admin-name';
 import { AdminNameField } from '@/components/orders/admin-name-field';
 import { formatPeso } from '@/lib/payments/format';
+import { DEFAULT_PAYMENT_METHOD, PAYMENT_METHOD_OPTIONS } from '@/lib/payments/methods';
 import { Button } from '@/components/ui/button';
 import { Combobox } from '@/components/ui/combobox';
 import { Modal } from '@/components/ui/modal';
@@ -137,7 +139,9 @@ function EntryForm({
         id: i.id,
         code: i.itemCode,
         name: i.itemName,
-        grams: i.gramsPerPiece,
+        // Reflect the item's declared grams; when the stored weight is blank, fall
+        // back to the grams encoded in the item code (e.g. "SBA-P-2367 0.55g").
+        grams: i.gramsPerPiece ?? parseInventoryCode(i.itemCode).grams,
       })),
     [items],
   );
@@ -165,7 +169,7 @@ function EntryForm({
   const [datePurchased, setDatePurchased] = useState(today);
   const [remarks, setRemarks] = useState('');
   const [payment, setPayment] = useState('');
-  const [mop, setMop] = useState('cash');
+  const [mop, setMop] = useState<string>(DEFAULT_PAYMENT_METHOD);
 
   // ---- Automatic Layaway Code ---------------------------------------------
   // The LETTER is derived synchronously from the name (no state needed). The free
@@ -405,51 +409,53 @@ function EntryForm({
           </label>
         </div>
 
-        {/* ---- Assigned Layaway Code: automatic, read-only ---------------- */}
-        <label className="block">
-          <L>Assigned Layaway Code</L>
-          <input
-            className={fieldClass}
-            value={assigned.code ?? ''}
-            readOnly
-            placeholder={
-              customer.trim()
-                ? assigned.letter
-                  ? 'Finding a code…'
-                  : 'Enter a customer name'
-                : 'Enter a customer name'
-            }
-            data-testid="layaway-code"
-          />
-          {assigned.code ? (
-            <span
-              className="mt-1 block text-[11px] text-muted-foreground"
-              data-testid="layaway-code-note"
-            >
-              Code assigned automatically
-            </span>
-          ) : assigned.letter ? (
-            <span
-              className="mt-1 block text-[11px] text-destructive"
-              data-testid="layaway-code-none"
-            >
-              No available code under letter {assigned.letter}
-            </span>
-          ) : null}
-        </label>
-
-        <label className="block">
-          <L>Item</L>
-          <Combobox
-            className={fieldClass}
-            placeholder="Search Active Inventory by code or name"
-            value={itemInput}
-            onChange={setItemInput}
-            options={rows.map(label)}
-          />
-        </label>
-
+        {/* ---- Assigned Layaway Code + Item (one line) ------------------- */}
         <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
+          <label className="block">
+            <L>Assigned Layaway Code</L>
+            <input
+              className={fieldClass}
+              value={assigned.code ?? ''}
+              readOnly
+              placeholder={
+                customer.trim()
+                  ? assigned.letter
+                    ? 'Finding a code…'
+                    : 'Enter a customer name'
+                  : 'Enter a customer name'
+              }
+              data-testid="layaway-code"
+            />
+            {assigned.code ? (
+              <span
+                className="mt-1 block text-[11px] text-muted-foreground"
+                data-testid="layaway-code-note"
+              >
+                Code assigned automatically
+              </span>
+            ) : assigned.letter ? (
+              <span
+                className="mt-1 block text-[11px] text-destructive"
+                data-testid="layaway-code-none"
+              >
+                No available code under letter {assigned.letter}
+              </span>
+            ) : null}
+          </label>
+          <label className="block">
+            <L>Item</L>
+            <Combobox
+              className={fieldClass}
+              placeholder="Search Active Inventory by code or name"
+              value={itemInput}
+              onChange={setItemInput}
+              options={rows.map(label)}
+            />
+          </label>
+        </div>
+
+        {/* ---- Grams + Pricing Type + Term (one line) -------------------- */}
+        <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-3">
           <label className="block">
             <L>Grams</L>
             <input
@@ -474,7 +480,7 @@ function EntryForm({
                   onClick={() => setPricingType(k)}
                   data-testid={`layaway-pricing-${k}`}
                   className={cn(
-                    'rounded-md px-2 py-1 text-[11px] font-semibold',
+                    'flex-1 rounded-md px-2 py-1 text-[11px] font-semibold',
                     pricingType === k
                       ? 'bg-gold text-black'
                       : 'text-muted-foreground hover:bg-accent',
@@ -485,30 +491,6 @@ function EntryForm({
               ))}
             </div>
           </div>
-        </div>
-
-        <label className="block">
-          <L>{pricingType === 'per_gram' ? 'Price Per Gram' : 'Price'}</L>
-          <MoneyInput
-            className={fieldClass}
-            placeholder="0.00"
-            value={pricingType === 'per_gram' ? perGram : price}
-            onValueChange={pricingType === 'per_gram' ? setPerGram : setPrice}
-            data-testid="layaway-price"
-          />
-        </label>
-
-        {/* ---- Interest + Term ------------------------------------------- */}
-        <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
-          <label className="block">
-            <L>Monthly Interest (Grams × ₱150)</L>
-            <input
-              className={cn(fieldClass, noInterest && 'opacity-60')}
-              value={noInterest ? '0% Interest' : formatPeso(toStr(monthlyInterest))}
-              readOnly
-              data-testid="layaway-interest"
-            />
-          </label>
           <div>
             <L>Term</L>
             <div className="flex h-10 items-center gap-1 rounded-lg border border-border px-1">
@@ -523,14 +505,34 @@ function EntryForm({
                     term === t ? 'bg-gold text-black' : 'text-muted-foreground hover:bg-accent',
                   )}
                 >
-                  {t} {t === 1 ? 'month' : 'months'}
+                  {t} {t === 1 ? 'mo' : 'mos'}
                 </button>
               ))}
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
+        {/* ---- Price + Monthly Interest + Date Purchased (one line) ------ */}
+        <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-3">
+          <label className="block">
+            <L>{pricingType === 'per_gram' ? 'Price Per Gram' : 'Price'}</L>
+            <MoneyInput
+              className={fieldClass}
+              placeholder="0.00"
+              value={pricingType === 'per_gram' ? perGram : price}
+              onValueChange={pricingType === 'per_gram' ? setPerGram : setPrice}
+              data-testid="layaway-price"
+            />
+          </label>
+          <label className="block">
+            <L>Monthly Interest (Grams × ₱150)</L>
+            <input
+              className={cn(fieldClass, noInterest && 'opacity-60')}
+              value={noInterest ? '0% Interest' : formatPeso(toStr(monthlyInterest))}
+              readOnly
+              data-testid="layaway-interest"
+            />
+          </label>
           <label className="block">
             <L>Date Purchased</L>
             <input
@@ -541,6 +543,10 @@ function EntryForm({
               data-testid="layaway-date"
             />
           </label>
+        </div>
+
+        {/* ---- Remarks / Financer + Payment + Mode of Payment (one line) - */}
+        <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-3">
           <label className="block">
             <L>Remarks / Financer</L>
             <Combobox
@@ -551,9 +557,6 @@ function EntryForm({
               options={financers}
             />
           </label>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
           <label className="block">
             <L>Payment</L>
             <MoneyInput
@@ -572,11 +575,11 @@ function EntryForm({
               onChange={(e) => setMop(e.target.value)}
               data-testid="layaway-mop"
             >
-              <option value="cash">Cash</option>
-              <option value="e_wallet">E-Wallet (GCash / Maya)</option>
-              <option value="bank_transfer">Bank Transfer</option>
-              <option value="card">Card</option>
-              <option value="other">Other</option>
+              {PAYMENT_METHOD_OPTIONS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
             </select>
           </label>
         </div>

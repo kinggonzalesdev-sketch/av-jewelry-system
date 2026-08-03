@@ -185,7 +185,7 @@ export function MemberAccessControls({
                 disabled={pending || loading}
                 data-testid="member-access-save"
               >
-                {pending ? 'Saving…' : 'Save Access'}
+                {pending ? 'Saving…' : saved ? '✓ Saved' : 'Save Access'}
               </Button>
             </>
           ) : (
@@ -302,8 +302,12 @@ export function MemberAccessControls({
             <p className="text-[11px] text-muted-foreground">{MAX_SUPER_ADMINS_MESSAGE}</p>
           ) : null}
           {saved ? (
-            <p className="text-sm text-green-700" role="status">
-              Access saved.
+            <p
+              className="flex items-center gap-2 rounded-md border border-green-600/40 bg-green-600/10 px-3 py-2 text-sm font-medium text-green-700"
+              role="status"
+              data-testid="member-access-saved"
+            >
+              <span aria-hidden="true">✓</span> Access saved.
             </p>
           ) : null}
           {error ? (

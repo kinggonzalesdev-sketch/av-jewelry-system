@@ -21,18 +21,28 @@ import {
 import { recordPayment, verifyPayment } from '@/lib/payments/verification';
 import { recordDirectDeletion } from '@/lib/authz/deletion-requests';
 import {
+  addLayawayInfo,
   createLayawayAccount,
+  createLayawayFromOrder,
+  listLayawaySources,
   previewLayawayCode,
+  type AddLayawayInfoInput,
+  type CreateLayawayFromOrderInput,
   type CreateLayawayInput,
   type CreateLayawayResult,
+  type LayawaySourceRow,
 } from '@/lib/payments/layaway-entry';
 import { completeOrderForPaymentIfPaidInFull } from '@/lib/orders/complete-on-payment';
 import {
   addLayawayLedgerPayment,
+  addLayawayPaymentAndTransfer,
+  cancelLayawayLedger,
+  completeLayawayLedger,
   deleteAllLayawayLedger,
   deleteLayawayLedgerRow,
   getLayawayLedgerDetail,
   importLayawayLedger,
+  transferLayawayToDestination,
   updateLayawayLedgerAccount,
   type AddLedgerPaymentInput,
   type LayawayLedgerDetail,
@@ -186,6 +196,69 @@ export async function addLayawayLedgerPaymentAction(
   const result = await addLayawayLedgerPayment(input);
   if (result.ok) {
     revalidatePath('/orders/payments');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+/** Record a layaway payment AND transfer to an Orders destination — one atomic action. */
+export async function addLayawayPaymentAndTransferAction(
+  input: AddLedgerPaymentInput,
+  destination: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const result = await addLayawayPaymentAndTransfer(input, destination);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/payments');
+    revalidatePath('/orders/inventory');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+/** Transfer a layaway ledger account to Completed (Keep account view, Owner/Admin).
+ *  It leaves the Keep card and shows under Completed Layaways. Revalidates Orders,
+ *  Payments and the Dashboard so the counts refresh without a reload. */
+export async function completeLayawayLedgerAction(
+  ledgerId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const result = await completeLayawayLedger(ledgerId);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/payments');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+/** Cancel a layaway ledger account (Owner/Admin). Sets it to Cancelled and releases
+ *  the code; the account leaves the active/overdue lists. Revalidates Payments and
+ *  the Dashboard so the counts refresh without a reload. */
+export async function cancelLayawayLedgerAction(
+  ledgerId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const result = await cancelLayawayLedger(ledgerId);
+  if (result.ok) {
+    revalidatePath('/orders/payments');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+/**
+ * Transfer an ACTIVE layaway account into an Orders Flow destination (Pickup /
+ * For Delivery / For Shipping / Keep). Atomic in the RPC; on success the account
+ * leaves active layaway and the linked order appears in the destination section.
+ */
+export async function transferLayawayToDestinationAction(
+  ledgerId: string,
+  destination: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const result = await transferLayawayToDestination(ledgerId, destination);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/payments');
+    revalidatePath('/orders/inventory');
     revalidatePath('/dashboard');
   }
   return result;
@@ -413,6 +486,48 @@ export async function createLayawayAccountAction(
   if (result.ok) {
     revalidatePath('/orders/payments');
     revalidatePath('/orders/inventory');
+    revalidatePath('/orders');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+/** Existing layaway records that can seed an Add Info entry. Read-only. */
+export async function listLayawaySourcesAction(): Promise<LayawaySourceRow[]> {
+  return listLayawaySources();
+}
+
+/**
+ * Layaway "Add Info" — create an additional layaway record from an existing source
+ * record, editing only its financial details. Transport only; `add_layaway_info`
+ * and the guarded SQL do the work atomically (automatic code, interest, payment,
+ * audit). No inventory is re-consumed. On success the same screens revalidate as a
+ * New Entry so the list, summaries and counts agree without a full reload.
+ */
+export async function addLayawayInfoAction(
+  input: AddLayawayInfoInput,
+): Promise<CreateLayawayResult> {
+  const result = await addLayawayInfo(input);
+  if (result.ok) {
+    revalidatePath('/orders/payments');
+    revalidatePath('/orders/inventory');
+    revalidatePath('/orders');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+/**
+ * Set Up Layaway from a For-Layaway order — create a layaway ledger account from the
+ * order's customer + total + grams. Transport only; the guarded SQL does the work
+ * and never modifies the order or inventory. Revalidates the same screens.
+ */
+export async function createLayawayFromOrderAction(
+  input: CreateLayawayFromOrderInput,
+): Promise<CreateLayawayResult> {
+  const result = await createLayawayFromOrder(input);
+  if (result.ok) {
+    revalidatePath('/orders/payments');
     revalidatePath('/orders');
     revalidatePath('/dashboard');
   }

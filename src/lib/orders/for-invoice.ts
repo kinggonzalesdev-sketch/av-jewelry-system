@@ -2,7 +2,56 @@ import 'server-only';
 
 import { recordAuditEvent } from '@/lib/audit/log';
 import { AuthorizationError, requireOwnerOrAdmin } from '@/lib/authz/guard';
+import { sendPancakeConversationMessage } from '@/lib/integrations/pancake';
 import { createClient } from '@/lib/supabase/server';
+
+/** Outcome of trying to auto-deliver a message through Pancake (best-effort). */
+export type PancakeDelivery = {
+  /** true when the customer had a Pancake conversation id and a send was attempted. */
+  attempted: boolean;
+  delivered: boolean;
+  error: string | null;
+  /** Raw Pancake response snippet (token stripped) for diagnosing a rejection. */
+  debug?: string | null;
+};
+
+/**
+ * Best-effort deliver a message to the order's customer via Pancake. NEVER throws
+ * and never blocks the workflow: if the customer has no Pancake conversation id it
+ * is simply skipped; a send failure is reported so the UI can offer a manual send.
+ */
+async function deliverOrderMessageViaPancake(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  officialOrderId: string,
+  message: string,
+): Promise<PancakeDelivery> {
+  try {
+    const response = (await supabase
+      .from('official_orders')
+      .select('customers ( pancake_conversation_id )')
+      .eq('id', officialOrderId)
+      .maybeSingle()) as { data: { customers?: unknown } | null };
+    type Cust = { pancake_conversation_id?: string | null };
+    const customer = response.data?.customers as Cust | Cust[] | null | undefined;
+    const one = Array.isArray(customer) ? customer[0] : customer;
+    const conversationId = one?.pancake_conversation_id;
+    if (!conversationId || !conversationId.trim()) {
+      return { attempted: false, delivered: false, error: null };
+    }
+    const res = await sendPancakeConversationMessage({
+      conversationId: conversationId.trim(),
+      message,
+    });
+    return {
+      attempted: true,
+      delivered: res.ok,
+      error: res.ok ? null : res.message,
+      debug: res.debug ?? null,
+    };
+  } catch {
+    return { attempted: true, delivered: false, error: 'Pancake delivery failed.', debug: null };
+  }
+}
 
 /**
  * For-Invoice flow (Owner request). Two small, guarded operations:
@@ -14,7 +63,9 @@ import { createClient } from '@/lib/supabase/server';
  * gate. Neither touches money.
  */
 
-export type ForInvoiceResult = { ok: true } | { ok: false; error: string };
+export type ForInvoiceResult =
+  | { ok: true; pancake?: PancakeDelivery }
+  | { ok: false; error: string };
 
 export type OrderInvoiceMessage = {
   body: string;
@@ -203,13 +254,20 @@ export async function sendOrderReminder(
     return { ok: false, error: response.error.message.replace(/^ERROR:\s*/i, '').trim() };
   }
 
+  // Best-effort auto-delivery through Pancake (never blocks the reminder record).
+  const pancake = await deliverOrderMessageViaPancake(supabase, officialOrderId, trimmed);
+
   await recordAuditEvent({
     action: 'order.reminder_sent',
     entityType: 'official_order',
     entityId: officialOrderId,
-    context: { reminder_number: reminderNumber, channel: 'facebook_manual' },
+    context: {
+      reminder_number: reminderNumber,
+      channel: pancake.delivered ? 'pancake' : 'facebook_manual',
+      pancake_delivered: pancake.delivered,
+    },
   });
-  return { ok: true };
+  return { ok: true, pancake };
 }
 
 /** Confirm the customer response and route the order per the mapping. */
@@ -235,8 +293,12 @@ export async function setOrderCustomerResponse(
   return { ok: true };
 }
 
-/** Advance a For-Invoice order to For Reminder (invoiced → awaiting_required_payment). */
-export async function advanceOrderToReminder(orderId: string): Promise<ForInvoiceResult> {
+/** Advance a For-Invoice order to For Reminder (invoiced → awaiting_required_payment).
+ *  When an invoice `message` is given, it is also best-effort delivered via Pancake. */
+export async function advanceOrderToReminder(
+  orderId: string,
+  message?: string | null,
+): Promise<ForInvoiceResult> {
   const supabase = await createClient();
   const response = await supabase.rpc('advance_order_to_reminder', { p_order_id: orderId });
 
@@ -251,14 +313,24 @@ export async function advanceOrderToReminder(orderId: string): Promise<ForInvoic
     return { ok: false, error: response.error.message.replace(/^ERROR:\s*/i, '').trim() };
   }
 
+  // Best-effort auto-delivery of the invoice message through Pancake.
+  const body = (message ?? '').trim();
+  const pancake = body
+    ? await deliverOrderMessageViaPancake(supabase, orderId, body)
+    : undefined;
+
   // true = this call transitioned it; false = it was already advanced (no-op).
   await recordAuditEvent({
     action: 'order.for_invoice_verified',
     entityType: 'official_order',
     entityId: orderId,
-    context: { moved_to: 'for_reminder', transitioned: response.data === true },
+    context: {
+      moved_to: 'for_reminder',
+      transitioned: response.data === true,
+      pancake_delivered: pancake?.delivered ?? false,
+    },
   });
-  return { ok: true };
+  return pancake ? { ok: true, pancake } : { ok: true };
 }
 
 /**
@@ -352,6 +424,40 @@ export async function setCustomerFacebookUrl(
 
   await recordAuditEvent({
     action: 'customer.set_facebook_url',
+    entityType: 'customer',
+    entityId: customerId,
+    context: { set: trimmed.length > 0 },
+  });
+  return { ok: true };
+}
+
+/** Set (or clear) a customer's Pancake conversation id — Owner/Admin only. This is
+ *  what lets Send Invoice / Send Reminder auto-deliver through Pancake. */
+export async function setCustomerPancakeConversation(
+  customerId: string,
+  conversationId: string | null,
+): Promise<ForInvoiceResult> {
+  const trimmed = (conversationId ?? '').trim();
+  if (trimmed.length > 200) return { ok: false, error: 'That conversation id is too long.' };
+
+  try {
+    await requireOwnerOrAdmin();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
+    throw cause;
+  }
+
+  const supabase = await createClient();
+  const response = await supabase.rpc('set_customer_pancake_conversation', {
+    p_customer_id: customerId,
+    p_conversation_id: trimmed,
+  });
+  if (response.error) {
+    return { ok: false, error: response.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+
+  await recordAuditEvent({
+    action: 'customer.set_pancake_conversation',
     entityType: 'customer',
     entityId: customerId,
     context: { set: trimmed.length > 0 },

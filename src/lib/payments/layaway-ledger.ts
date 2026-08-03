@@ -1,7 +1,12 @@
 import 'server-only';
 
 import { recordAuditEvent } from '@/lib/audit/log';
-import { AuthorizationError, requireOwner, requireOwnerOrAdmin } from '@/lib/authz/guard';
+import {
+  AuthorizationError,
+  requireOwner,
+  requireOwnerOrAdmin,
+  requirePermission,
+} from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 
 /**
@@ -17,6 +22,11 @@ export type LayawayLedgerRow = {
   id: string;
   /** Reusable short code (A1–Z200) for active accounts; null once released. */
   code: string | null;
+  /** The linked inventory item's Unique Code (item_code). Null for historical /
+   *  imported rows with no inventory link — the UI shows "Not linked". */
+  uniqueCode: string | null;
+  /** Stored Facebook Messenger URL for a quick "Open Chat" button (or null). */
+  facebookUrl: string | null;
   accountNo: string;
   customerName: string;
   status: string; // 'active' | 'completed'
@@ -37,6 +47,8 @@ export type LayawayLedgerRow = {
 export type LayawayLedgerDetail = {
   id: string;
   code: string | null;
+  /** Linked inventory Unique Code (item_code); null → "Not linked". */
+  uniqueCode: string | null;
   accountNo: string;
   customerName: string;
   status: string;
@@ -180,8 +192,11 @@ export async function listLayawayLedger(): Promise<LayawayLedgerRow[]> {
   const { data, error } = await supabase
     .from('layaway_ledger')
     .select(
-      'id, layaway_code, account_no, customer_name, status, remarks, date_purchased, item_amount, interest, grand_total, payment, balance, balance_mismatch, next_due_date, last_payment_date, created_at',
+      'id, layaway_code, account_no, customer_name, status, remarks, date_purchased, item_amount, interest, grand_total, payment, balance, balance_mismatch, next_due_date, last_payment_date, created_at, inventory:inventory_items!layaway_ledger_inventory_item_id_fkey ( item_code ), customer:customers ( facebook_conversation_url )',
     )
+    // A 'transferred' account has moved into the Orders workflow — it leaves ACTIVE
+    // layaway (and all its filters/counts) but stays in the DB + audit for history.
+    .neq('status', 'transferred')
     .order('created_at', { ascending: false });
 
   if (error || !data) return [];
@@ -189,6 +204,10 @@ export async function listLayawayLedger(): Promise<LayawayLedgerRow[]> {
   return (data as Array<Record<string, unknown>>).map((r) => ({
     id: r.id as string,
     code: (r.layaway_code as string | null) ?? null,
+    uniqueCode: (r.inventory as { item_code?: string } | null)?.item_code ?? null,
+    facebookUrl:
+      (r.customer as { facebook_conversation_url?: string | null } | null)
+        ?.facebook_conversation_url ?? null,
     nextDueDate: (r.next_due_date as string | null) ?? null,
     lastPaymentDate: (r.last_payment_date as string | null) ?? null,
     accountNo: (r.account_no as string) ?? '—',
@@ -233,8 +252,15 @@ export async function listKeepLayawayAccounts(): Promise<KeepLayawayRow[]> {
 
   if (error || !data) return [];
 
+  // Only OPEN KEEP accounts belong on the Keep card. Once completed (or otherwise
+  // closed) an account leaves Keep and shows under Completed Layaways instead.
   return (data as Array<Record<string, unknown>>)
-    .filter((r) => (r.status as string) !== 'needs_review')
+    .filter(
+      (r) =>
+        !['needs_review', 'completed', 'cancelled', 'forfeited'].includes(
+          (r.status as string) ?? '',
+        ),
+    )
     .map((r) => ({
       id: r.id as string,
       accountNo: (r.account_no as string) ?? '—',
@@ -245,6 +271,125 @@ export async function listKeepLayawayAccounts(): Promise<KeepLayawayRow[]> {
       grandTotal: toStr(r.grand_total),
       balance: toStr(r.balance),
     }));
+}
+
+/**
+ * Transfer a layaway ledger account to Completed (Keep account view). Owner/Admin
+ * only (the DB re-checks). Closes the account so it leaves the Keep card and shows
+ * under Completed Layaways; the code is released. Leaves the balance untouched.
+ */
+/** Layaway → Orders destination options (the only four offered from Layaway). */
+export const LAYAWAY_TRANSFER_DESTINATIONS = ['pickup', 'delivery', 'shipping', 'keep'] as const;
+export type LayawayTransferDestination = (typeof LAYAWAY_TRANSFER_DESTINATIONS)[number];
+
+/**
+ * Transfer an ACTIVE layaway account into an Orders Flow destination — reuses the
+ * linked order (never duplicates), routes it via the SAME order transfer, and marks
+ * the account 'transferred' so it leaves active layaway. Guarded here (permission +
+ * denied audit) AND in the SECURITY DEFINER RPC (the real, transactional gate).
+ */
+export async function transferLayawayToDestination(
+  ledgerId: string,
+  destination: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!ledgerId) return { ok: false, error: 'A layaway account is required.' };
+  if (!LAYAWAY_TRANSFER_DESTINATIONS.includes(destination as LayawayTransferDestination)) {
+    return { ok: false, error: 'Select a valid destination.' };
+  }
+  try {
+    await requirePermission('fulfillment_preparation');
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) {
+      await recordAuditEvent({
+        action: 'layaway.transfer_to_destination',
+        entityType: 'layaway_ledger',
+        entityId: ledgerId,
+        outcome: 'denied',
+        reason: cause.message,
+      });
+      return { ok: false, error: cause.message };
+    }
+    throw cause;
+  }
+  const supabase = await createClient();
+  const res = (await supabase.rpc('transfer_layaway_to_destination', {
+    p_ledger_id: ledgerId,
+    p_destination: destination,
+  })) as { error: { message: string } | null };
+  if (res.error) {
+    await recordAuditEvent({
+      action: 'layaway.transfer_to_destination',
+      entityType: 'layaway_ledger',
+      entityId: ledgerId,
+      outcome: 'failed',
+      reason: res.error.message,
+    });
+    return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+  await recordAuditEvent({
+    action: 'layaway.transfer_to_destination',
+    entityType: 'layaway_ledger',
+    entityId: ledgerId,
+    context: { destination, source: 'layaway' },
+  });
+  return { ok: true };
+}
+
+export async function completeLayawayLedger(
+  ledgerId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!ledgerId) return { ok: false, error: 'A layaway account is required.' };
+  try {
+    await requireOwnerOrAdmin();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
+    throw cause;
+  }
+  const supabase = await createClient();
+  const res = (await supabase.rpc('complete_layaway_ledger', { p_ledger_id: ledgerId })) as {
+    error: { message: string } | null;
+  };
+  if (res.error) {
+    return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+  await recordAuditEvent({
+    action: 'layaway.complete',
+    entityType: 'layaway_ledger',
+    entityId: ledgerId,
+    context: { status: 'completed', source_action: 'keep_transfer_completed' },
+  });
+  return { ok: true };
+}
+
+/**
+ * Cancel a layaway ledger account (Owner/Admin). Sets status='cancelled' and
+ * releases the code back to the pool — the DB refuses an already-cancelled,
+ * completed, or forfeited account. Payment history is never touched.
+ */
+export async function cancelLayawayLedger(
+  ledgerId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!ledgerId) return { ok: false, error: 'A layaway account is required.' };
+  try {
+    await requireOwnerOrAdmin();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
+    throw cause;
+  }
+  const supabase = await createClient();
+  const res = (await supabase.rpc('cancel_layaway_ledger', { p_ledger_id: ledgerId })) as {
+    error: { message: string } | null;
+  };
+  if (res.error) {
+    return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+  await recordAuditEvent({
+    action: 'layaway.cancel',
+    entityType: 'layaway_ledger',
+    entityId: ledgerId,
+    context: { status: 'cancelled' },
+  });
+  return { ok: true };
 }
 
 export type LayawayDashboard = {
@@ -309,7 +454,7 @@ export async function getLayawayLedgerDetail(
     supabase
       .from('layaway_ledger')
       .select(
-        'id, layaway_code, account_no, customer_name, status, remarks, date_purchased, item_amount, interest, grand_total, payment, balance, balance_mismatch, next_due_date, monthly_interest, total_installment_interest, last_payment_date, mode_of_payment, latest_payment_dp, resize, screw, notes, interest_type, layaway_term, interest_rate, fixed_interest',
+        'id, layaway_code, account_no, customer_name, status, remarks, date_purchased, item_amount, interest, grand_total, payment, balance, balance_mismatch, next_due_date, monthly_interest, total_installment_interest, last_payment_date, mode_of_payment, latest_payment_dp, resize, screw, notes, interest_type, layaway_term, interest_rate, fixed_interest, inventory:inventory_items!layaway_ledger_inventory_item_id_fkey ( item_code )',
       )
       .eq('id', id)
       .maybeSingle(),
@@ -367,6 +512,7 @@ export async function getLayawayLedgerDetail(
   return {
     id: r.id as string,
     code: (r.layaway_code as string | null) ?? null,
+    uniqueCode: (r.inventory as { item_code?: string } | null)?.item_code ?? null,
     accountNo: (r.account_no as string) ?? '—',
     customerName: (r.customer_name as string) ?? 'Unknown',
     status: (r.status as string) ?? 'active',
@@ -550,6 +696,59 @@ export async function deleteLayawayLedgerRow(id: string): Promise<LedgerDeleteRe
  * the account's Payment + Balance authoritatively, auto-completes it when fully paid,
  * and releases its reusable A1–Z200 code back to the pool on completion.
  */
+/**
+ * Record a layaway payment AND transfer the account to an Orders destination in one
+ * atomic RPC (either both happen or neither). Same validation and permissions as the
+ * separate payment + transfer. Destination must be one of the four routing options.
+ */
+export async function addLayawayPaymentAndTransfer(
+  input: AddLedgerPaymentInput,
+  destination: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!input.ledgerId) return { ok: false, error: 'A layaway account is required.' };
+  const amount = (input.amount ?? '').trim();
+  if (!/^\d{1,12}(\.\d{1,2})?$/.test(amount) || Number(amount) <= 0) {
+    return { ok: false, error: 'Enter a payment amount greater than zero.' };
+  }
+  if (!LAYAWAY_TRANSFER_DESTINATIONS.includes(destination as LayawayTransferDestination)) {
+    return { ok: false, error: 'Select a valid destination.' };
+  }
+  // Both capabilities are required for the combined action.
+  try {
+    await requireOwnerOrAdmin();
+    await requirePermission('fulfillment_preparation');
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
+    throw cause;
+  }
+  const supabase = await createClient();
+  const res = (await supabase.rpc('add_layaway_payment_and_transfer', {
+    p_ledger_id: input.ledgerId,
+    p_amount: amount,
+    p_payment_date: input.paymentDate,
+    p_mop: input.mop,
+    p_reference: input.reference,
+    p_destination: destination,
+  })) as { error: { message: string } | null };
+  if (res.error) {
+    await recordAuditEvent({
+      action: 'layaway_ledger.payment_and_transfer',
+      entityType: 'layaway_ledger',
+      entityId: input.ledgerId,
+      outcome: 'failed',
+      reason: res.error.message,
+    });
+    return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+  await recordAuditEvent({
+    action: 'layaway_ledger.payment_and_transfer',
+    entityType: 'layaway_ledger',
+    entityId: input.ledgerId,
+    context: { amount, destination, source: 'layaway_payment' },
+  });
+  return { ok: true };
+}
+
 export async function addLayawayLedgerPayment(
   input: AddLedgerPaymentInput,
 ): Promise<LedgerPaymentResult> {
