@@ -13,6 +13,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -85,7 +86,26 @@ class SetupActivity : AppCompatActivity() {
             refreshStatus()
         }
         val showBtn = outlineButton("Show floating button") {
-            if (OverlayCaptureService.isRunning) OverlayCaptureService.showButton(this)
+            // The floating button is drawn BY the capture service, so it can only
+            // appear while the service runs. Previously this did nothing when the
+            // service was stopped (silent no-op). Now it starts the service if
+            // needed — which draws the button — or re-shows it if it was hidden.
+            if (!Settings.canDrawOverlays(this)) {
+                overlayStatus.text = "Overlay Permission: Permission Denied — grant it first (step 1)."
+                Toast.makeText(this, "Grant overlay permission first (step 1).", Toast.LENGTH_LONG).show()
+                return@outlineButton
+            }
+            if (OverlayCaptureService.isRunning) {
+                OverlayCaptureService.showButton(this)
+            } else {
+                OverlayCaptureService.start(this)
+            }
+            refreshStatus()
+            Toast.makeText(
+                this,
+                "Floating button shown. Switch to Facebook and tap ◉ Capture Mine.",
+                Toast.LENGTH_LONG,
+            ).show()
         }
         val historyBtn = outlineButton("Capture History") { CaptureHistoryActivity.open(this) }
         val stopBtn = outlineButton("Stop capture service") {
