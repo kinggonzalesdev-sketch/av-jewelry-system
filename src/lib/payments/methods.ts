@@ -2,12 +2,12 @@
  * Mode of Payment — the ONE shared source of truth (Owner request 2026-07-31).
  *
  * Every "Mode of Payment" dropdown across the whole system offers exactly these
- * five choices, with this exact capitalization. New records store the canonical
- * value verbatim; historical records that still hold the legacy machine keys
+ * choices, with this exact capitalization. New records store the canonical value
+ * verbatim; historical records that still hold the legacy machine keys
  * (bank_transfer / e_wallet / cash / card / other) remain valid and readable —
  * the database CHECK constraint accepts BOTH sets so no past transaction breaks.
  */
-export const PAYMENT_METHODS = ['Cash', 'GCash', 'BPI', 'BDO', 'Credit Card'] as const;
+export const PAYMENT_METHODS = ['Cash', 'GCash', 'BPI', 'BDO', 'BDO NEW', 'Credit Card'] as const;
 
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 

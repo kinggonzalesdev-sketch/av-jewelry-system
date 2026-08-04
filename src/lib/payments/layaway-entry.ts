@@ -23,16 +23,24 @@ export type LayawayPricingType = 'fixed' | 'per_gram';
 /** 'none' = No Interest; 'per_gram' = Grams × ₱150 per active month. */
 export type LayawayInterestType = 'none' | 'per_gram';
 
-export type CreateLayawayInput = {
-  customerName: string;
+/** One item on a layaway account (a layaway may hold several — like an Order). */
+export type LayawayItemInput = {
   inventoryItemId: string;
   pricingType: LayawayPricingType;
   /** Fixed amount, or the per-gram PRICE (not the interest rate). String money. */
   price: string;
+};
+
+export type CreateLayawayInput = {
+  customerName: string;
+  /** One or more items. Their amounts and grams are summed server-side. */
+  items: LayawayItemInput[];
   interestType: LayawayInterestType;
   /** 1, 2 or 3 months. */
   term: number;
   datePurchased: string | null;
+  /** Date of the opening payment (defaults to Date Purchased). */
+  paymentDate: string | null;
   /** Remarks / Financer. */
   remarks: string | null;
   /** Opening payment; '' or '0' means none. */
@@ -91,12 +99,18 @@ export async function createLayawayAccount(
       error: 'The customer name has no letter to derive a layaway code from.',
     };
   }
-  if (!input.inventoryItemId) {
-    return { ok: false, error: 'Select an item from Active Inventory.' };
+  const items = input.items ?? [];
+  if (items.length === 0) {
+    return { ok: false, error: 'Add at least one item to the layaway.' };
   }
-  const price = (input.price ?? '').trim();
-  if (!PRICE_RE.test(price) || Number(price) <= 0) {
-    return { ok: false, error: 'Enter a price greater than zero.' };
+  for (const it of items) {
+    if (!it.inventoryItemId) {
+      return { ok: false, error: 'Select an item from Active Inventory.' };
+    }
+    const p = (it.price ?? '').trim();
+    if (!PRICE_RE.test(p) || Number(p) <= 0) {
+      return { ok: false, error: 'Enter a price greater than zero for each item.' };
+    }
   }
   if (![1, 2, 3].includes(input.term)) {
     return { ok: false, error: 'Choose a term of 1, 2 or 3 months.' };
@@ -109,12 +123,15 @@ export async function createLayawayAccount(
   const supabase = await createClient();
   const res = (await supabase.rpc('create_layaway_account', {
     p_customer_name: name,
-    p_inventory_item_id: input.inventoryItemId,
-    p_pricing_type: input.pricingType,
-    p_price: price,
+    p_items: items.map((it) => ({
+      inventory_item_id: it.inventoryItemId,
+      pricing_type: it.pricingType,
+      price: (it.price ?? '').trim(),
+    })),
     p_interest_type: input.interestType,
     p_term: input.term,
     p_date_purchased: input.datePurchased || null,
+    p_payment_date: input.paymentDate || null,
     p_remarks: input.remarks?.trim() || null,
     p_payment: payment || '0',
     p_mode_of_payment: input.modeOfPayment?.trim() || null,

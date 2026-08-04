@@ -154,7 +154,9 @@ describe('Phase 1 migration boundary', () => {
       // legitimately insert business rows at runtime). A top-level INSERT is a
       // seed, and that is what this guard exists to catch, so only top-level
       // statements are scanned.
-      const topLevel = sql.replace(/\$\$[\s\S]*?\$\$/g, '');
+      // PostgreSQL dollar-quoting allows NAMED tags ($function$…$function$), not
+      // only $$…$$ — strip either so a function body never trips the seed guard.
+      const topLevel = sql.replace(/\$([A-Za-z_]\w*)?\$[\s\S]*?\$\1\$/g, '');
 
       return businessTables
         .filter((table) =>
@@ -170,7 +172,7 @@ describe('Phase 1 migration boundary', () => {
     // Proves the exemption above did not gut the guard. A guard that cannot
     // fail is not a guard, so this asserts the detection itself: a top-level
     // seed is caught, while the same statement inside a function body is not.
-    const strip = (sql: string) => sql.replace(/\$\$[\s\S]*?\$\$/g, '');
+    const strip = (sql: string) => sql.replace(/\$([A-Za-z_]\w*)?\$[\s\S]*?\$\1\$/g, '');
     const detects = (sql: string) => /insert into public\.customers\b/i.test(strip(sql));
 
     expect(detects("insert into public.customers (display_name) values ('Real');")).toBe(
@@ -181,6 +183,14 @@ describe('Phase 1 migration boundary', () => {
         `create function f() returns void language plpgsql as $$
          begin insert into public.customers (display_name) values ('Runtime'); end;
          $$;`,
+      ),
+    ).toBe(false);
+    // A NAMED dollar-quote tag ($function$) is stripped just the same.
+    expect(
+      detects(
+        `create function f() returns void language plpgsql as $function$
+         begin insert into public.customers (display_name) values ('Runtime'); end;
+         $function$;`,
       ),
     ).toBe(false);
   });

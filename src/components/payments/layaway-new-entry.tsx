@@ -20,28 +20,29 @@ import { MoneyInput } from '@/components/ui/money-input';
 import { cn } from '@/lib/utils';
 
 /**
- * Layaway New Entry (§1) — full manual encoding.
+ * Layaway New Entry — full manual encoding, now MULTI-ITEM (like Orders → New
+ * Order). A layaway can hold several items; their amounts and grams are summed.
  *
- * Laid out like Orders → New Order Entry, deliberately WITHOUT Take Photo,
- * Choose File, or any item-photo control: a layaway is encoded from the ledger,
- * not photographed at the counter.
+ * Interest = (TOTAL grams × ₱150) per month × the chosen term (1/2/3) — the whole
+ * term is reflected in the Grand Total. "No Interest" pins it to ₱0. Grams come
+ * from the item's stored weight, or are read from the item code when blank.
  *
- * The layaway code is AUTOMATIC: it comes from the customer's first letter and is
- * shown read-only as "Assigned Layaway Code". Nothing is reserved while typing —
- * the code is only claimed when the record saves, and the server re-derives a free
- * one if another save took it first.
- *
- * Interest is Grams × ₱150 per ACTIVE month. The Grand Total shown here charges
- * MONTH 1 ONLY; later months are posted one at a time on their due dates, and only
- * while the account is still unpaid — so the total never implies money the customer
- * does not yet owe. "No Interest" pins the monthly interest to ₱0.
- *
- * Every figure previewed here is recomputed by the database on save, and what the
- * receipt shows afterwards is what SQL actually stored — the preview is a
- * courtesy, never the source of truth.
+ * Every figure previewed here is recomputed by the database on save; the preview
+ * is a courtesy, never the source of truth.
  */
 
 type Row = { id: string; code: string; name: string | null; grams: string | null };
+type ItemRow = { key: string; input: string; pricingType: 'fixed' | 'per_gram'; price: string };
+
+/** Monotonic key source for item rows — module scope so it is never read from a
+ *  ref during render (React keys only need to be unique, not meaningful). */
+let itemKeySeq = 0;
+const newItemRow = (): ItemRow => ({
+  key: `it-${(itemKeySeq += 1)}`,
+  input: '',
+  pricingType: 'fixed',
+  price: '',
+});
 
 const L = ({ children }: { children: React.ReactNode }) => (
   <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -139,8 +140,8 @@ function EntryForm({
         id: i.id,
         code: i.itemCode,
         name: i.itemName,
-        // Reflect the item's declared grams; when the stored weight is blank, fall
-        // back to the grams encoded in the item code (e.g. "SBA-P-2367 0.55g").
+        // Reflect the item's declared grams; when blank, fall back to the grams
+        // encoded in the item code (e.g. "SBA-P-2367 0.55g").
         grams: i.gramsPerPiece ?? parseInventoryCode(i.itemCode).grams,
       })),
     [items],
@@ -151,16 +152,18 @@ function EntryForm({
     for (const r of rows) m.set(label(r), r);
     return m;
   }, [rows]);
+  const itemOptions = useMemo(() => rows.map(label), [rows]);
 
-  // Admin Name is always the signed-in account (read-only, no picker).
   const adminId = admins.selfId;
   const [customer, setCustomer] = useState('');
-  const [itemInput, setItemInput] = useState('');
-  const item = byLabel.get(itemInput.trim()) ?? null;
 
-  const [pricingType, setPricingType] = useState<'fixed' | 'per_gram'>('fixed');
-  const [price, setPrice] = useState('');
-  const [perGram, setPerGram] = useState('');
+  // ---- Multiple items ------------------------------------------------------
+  const [itemRows, setItemRows] = useState<ItemRow[]>(() => [newItemRow()]);
+  const patchRow = (key: string, patch: Partial<ItemRow>) =>
+    setItemRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  const addRow = () => setItemRows((rs) => [...rs, newItemRow()]);
+  const removeRow = (key: string) =>
+    setItemRows((rs) => (rs.length > 1 ? rs.filter((r) => r.key !== key) : rs));
 
   // No Interest is sticky: it stays on until the operator turns it off.
   const [noInterest, setNoInterest] = useState(false);
@@ -169,13 +172,10 @@ function EntryForm({
   const [datePurchased, setDatePurchased] = useState(today);
   const [remarks, setRemarks] = useState('');
   const [payment, setPayment] = useState('');
+  const [paymentDate, setPaymentDate] = useState(today);
   const [mop, setMop] = useState<string>(DEFAULT_PAYMENT_METHOD);
 
-  // ---- Automatic Layaway Code ---------------------------------------------
-  // The LETTER is derived synchronously from the name (no state needed). The free
-  // CODE for that letter is fetched from the server; it reserves nothing, and is
-  // only claimed when the record actually saves. Keying the code by the letter it
-  // was fetched for means a name change to a different letter drops the stale one.
+  // ---- Automatic Layaway Code (unchanged) ---------------------------------
   const letterOf = (name: string): string | null => {
     const m = (name ?? '').toUpperCase().match(/[A-Z]/);
     return m ? m[0] : null;
@@ -196,9 +196,6 @@ function EntryForm({
       cancelled = true;
     };
   }, [customer]);
-
-  // The code to show: only when it was fetched for the CURRENT letter, so a stale
-  // fetch for a previous name never leaks through.
   const assigned = {
     letter,
     code: fetchedCode && fetchedCode.letter === letter ? fetchedCode.code : null,
@@ -210,7 +207,6 @@ function EntryForm({
     accountNo: string;
     layawayCode: string | null;
     itemCode: string;
-    grams: string;
     itemAmount: string;
     monthlyInterest: string;
     interest: string;
@@ -222,42 +218,43 @@ function EntryForm({
   }>(null);
 
   // ---- Live preview, in exact centavos (the DB recomputes on save) ---------
-  const itemCentavos =
-    pricingType === 'per_gram'
-      ? perGramCentavos(item?.grams ?? '', perGram)
-      : centavos(price);
-
-  // Monthly interest = Grams × ₱150. The GRAND TOTAL charges MONTH 1 ONLY — the
-  // later months are posted month by month, and only while still unpaid, so an
-  // early payoff never owes them.
-  // Grams × ₱150, in exact centavos. perGramCentavos(grams, rate) is grams × rate
-  // to the centavo — here the "rate" is the ₱150 interest per gram.
-  const monthlyInterest =
-    noInterest || !item?.grams ? 0n : perGramCentavos(item.grams, '150');
-  const grandTotal = itemCentavos + monthlyInterest; // item + month 1 only
-  const paidCentavos = centavos(payment);
-  const balance = grandTotal - paidCentavos;
-  const remainingMonths = noInterest ? 0 : term - 1;
+  const derived = itemRows.map((r) => {
+    const row = byLabel.get(r.input.trim()) ?? null;
+    const grams = row?.grams ?? null;
+    const amountC =
+      r.pricingType === 'per_gram' ? perGramCentavos(grams ?? '', r.price) : centavos(r.price);
+    return { r, row, grams, amountC };
+  });
+  const totalItemC = derived.reduce((s, d) => s + d.amountC, 0n);
+  // Grams are summed for interest only (a preview; the DB recomputes exactly).
+  const totalGrams = derived.reduce((s, d) => s + (d.grams ? Number(d.grams) : 0), 0);
+  const monthlyC = noInterest || totalGrams <= 0 ? 0n : perGramCentavos(String(totalGrams), '150');
+  const totalInterestC = monthlyC * BigInt(term); // full term reflected
+  const grandTotalC = totalItemC + totalInterestC;
+  const paidC = centavos(payment);
+  const balanceC = grandTotalC - paidC;
 
   const validate = (): string | null => {
     if (!customer.trim()) return 'Enter the customer name.';
     if (!letterOf(customer)) {
       return 'The customer name has no letter to derive a layaway code from.';
     }
-    if (!item) return 'Select an item from Active Inventory.';
-    if (itemCentavos <= 0n) {
-      return pricingType === 'per_gram'
-        ? 'Enter a price per gram greater than zero.'
-        : 'Enter a price greater than zero.';
+    for (const d of derived) {
+      if (!d.row) return 'Select an item from Active Inventory for every row.';
+      if (d.amountC <= 0n) {
+        return d.r.pricingType === 'per_gram'
+          ? 'Enter a price per gram greater than zero for each item.'
+          : 'Enter a price greater than zero for each item.';
+      }
+      if (d.r.pricingType === 'per_gram' && !d.grams) {
+        return `Item ${d.row.code} has no grams recorded, so it cannot be priced per gram.`;
+      }
     }
-    if (pricingType === 'per_gram' && !item.grams) {
-      return 'That item has no grams recorded, so it cannot be priced per gram.';
+    if (!noInterest && totalGrams <= 0) {
+      return 'No grams recorded on these items, so per-gram interest cannot be charged. Use No Interest.';
     }
-    if (!noInterest && !item.grams) {
-      return 'That item has no grams recorded, so per-gram interest cannot be charged. Use No Interest.';
-    }
-    if (paidCentavos > grandTotal) {
-      return `Payment exceeds the remaining balance of ${formatPeso(toStr(grandTotal))}.`;
+    if (paidC > grandTotalC) {
+      return `Payment exceeds the remaining balance of ${formatPeso(toStr(grandTotalC))}.`;
     }
     return null;
   };
@@ -274,12 +271,15 @@ function EntryForm({
     try {
       const res = await createLayawayAccountAction({
         customerName: customer.trim(),
-        inventoryItemId: item!.id,
-        pricingType,
-        price: pricingType === 'per_gram' ? perGram.trim() : price.trim(),
+        items: derived.map((d) => ({
+          inventoryItemId: d.row!.id,
+          pricingType: d.r.pricingType,
+          price: d.r.price.trim(),
+        })),
         interestType: noInterest ? 'none' : 'per_gram',
         term,
         datePurchased: datePurchased || null,
+        paymentDate: paymentDate || null,
         remarks: remarks.trim() || null,
         payment: payment.trim() || '0',
         modeOfPayment: mop,
@@ -293,7 +293,6 @@ function EntryForm({
         accountNo: res.accountNo,
         layawayCode: res.layawayCode,
         itemCode: res.itemCode,
-        grams: res.grams,
         itemAmount: res.itemAmount,
         monthlyInterest: res.monthlyInterest,
         interest: res.interest,
@@ -303,7 +302,6 @@ function EntryForm({
         term,
         interestType: noInterest ? 'none' : 'per_gram',
       });
-      // Layaway, Inventory, Orders and Dashboard all refresh in place.
       router.refresh();
     } catch {
       setError('The layaway account could not be saved. Please try again.');
@@ -346,23 +344,20 @@ function EntryForm({
               label="Monthly interest"
               value={saved.interestType === 'none' ? '0' : saved.monthlyInterest}
             />
-            <Fig label="Interest charged (Month 1)" value={saved.interest} />
             <div className="flex items-center justify-between gap-2 py-0.5">
               <dt className="text-xs text-muted-foreground">Term</dt>
               <dd className="font-medium tabular-nums">
                 {saved.term} {saved.term === 1 ? 'month' : 'months'}
               </dd>
             </div>
-            <Fig label="Grand total (now)" value={saved.grandTotal} strong />
+            <Fig
+              label={`Total interest (${saved.term} ${saved.term === 1 ? 'mo' : 'mos'})`}
+              value={saved.interest}
+            />
+            <Fig label="Grand total" value={saved.grandTotal} strong />
             <Fig label="Payment" value={saved.payment} />
             <Fig label="Current balance" value={saved.balance} strong />
           </dl>
-          {saved.interestType === 'per_gram' && saved.term > 1 ? (
-            <p className="text-[11px] text-muted-foreground">
-              Later months ({saved.term - 1} more) are charged one at a time on each
-              due date, and only while the account is still unpaid.
-            </p>
-          ) : null}
         </div>
       </Modal>
     );
@@ -409,7 +404,7 @@ function EntryForm({
           </label>
         </div>
 
-        {/* ---- Assigned Layaway Code + Item (one line) ------------------- */}
+        {/* ---- Assigned Layaway Code + Term (one line) ------------------- */}
         <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
           <label className="block">
             <L>Assigned Layaway Code</L>
@@ -417,13 +412,7 @@ function EntryForm({
               className={fieldClass}
               value={assigned.code ?? ''}
               readOnly
-              placeholder={
-                customer.trim()
-                  ? assigned.letter
-                    ? 'Finding a code…'
-                    : 'Enter a customer name'
-                  : 'Enter a customer name'
-              }
+              placeholder={customer.trim() ? 'Finding a code…' : 'Enter a customer name'}
               data-testid="layaway-code"
             />
             {assigned.code ? (
@@ -442,55 +431,6 @@ function EntryForm({
               </span>
             ) : null}
           </label>
-          <label className="block">
-            <L>Item</L>
-            <Combobox
-              className={fieldClass}
-              placeholder="Search Active Inventory by code or name"
-              value={itemInput}
-              onChange={setItemInput}
-              options={rows.map(label)}
-            />
-          </label>
-        </div>
-
-        {/* ---- Grams + Pricing Type + Term (one line) -------------------- */}
-        <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-3">
-          <label className="block">
-            <L>Grams</L>
-            <input
-              className={fieldClass}
-              value={item?.grams ? `${item.grams}g` : ''}
-              readOnly
-              data-testid="layaway-grams"
-            />
-          </label>
-          <div>
-            <L>Pricing Type</L>
-            <div className="flex h-10 items-center gap-1 rounded-lg border border-border px-1">
-              {(
-                [
-                  ['fixed', 'Fixed Price'],
-                  ['per_gram', 'Price Per Gram'],
-                ] as const
-              ).map(([k, t]) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => setPricingType(k)}
-                  data-testid={`layaway-pricing-${k}`}
-                  className={cn(
-                    'flex-1 rounded-md px-2 py-1 text-[11px] font-semibold',
-                    pricingType === k
-                      ? 'bg-gold text-black'
-                      : 'text-muted-foreground hover:bg-accent',
-                  )}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-          </div>
           <div>
             <L>Term</L>
             <div className="flex h-10 items-center gap-1 rounded-lg border border-border px-1">
@@ -512,23 +452,104 @@ function EntryForm({
           </div>
         </div>
 
-        {/* ---- Price + Monthly Interest + Date Purchased (one line) ------ */}
-        <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-3">
+        {/* ---- Items (multi) --------------------------------------------- */}
+        <div className="space-y-2" data-testid="layaway-items">
+          <div className="flex items-center justify-between">
+            <L>Items</L>
+            <button
+              type="button"
+              onClick={addRow}
+              data-testid="layaway-add-item"
+              className="rounded-md border border-border px-2 py-1 text-[11px] font-semibold hover:bg-accent"
+            >
+              ＋ Add item
+            </button>
+          </div>
+          {derived.map((d, idx) => (
+            <div
+              key={d.r.key}
+              className="space-y-2 rounded-lg border border-border p-3"
+              data-testid="layaway-item-row"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Item {idx + 1}
+                </span>
+                {itemRows.length > 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => removeRow(d.r.key)}
+                    className="text-[11px] text-destructive hover:underline"
+                    data-testid="layaway-remove-item"
+                  >
+                    Remove
+                  </button>
+                ) : null}
+              </div>
+              <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-3">
+                <label className="block">
+                  <L>Item</L>
+                  <Combobox
+                    className={fieldClass}
+                    placeholder="Search Active Inventory by code or name"
+                    value={d.r.input}
+                    onChange={(v) => patchRow(d.r.key, { input: v })}
+                    options={itemOptions}
+                  />
+                </label>
+                <div>
+                  <L>Pricing Type</L>
+                  <div className="flex h-10 items-center gap-1 rounded-lg border border-border px-1">
+                    {(
+                      [
+                        ['fixed', 'Fixed Price'],
+                        ['per_gram', 'Price Per Gram'],
+                      ] as const
+                    ).map(([k, t]) => (
+                      <button
+                        key={k}
+                        type="button"
+                        onClick={() => patchRow(d.r.key, { pricingType: k })}
+                        className={cn(
+                          'flex-1 rounded-md px-2 py-1 text-[11px] font-semibold',
+                          d.r.pricingType === k
+                            ? 'bg-gold text-black'
+                            : 'text-muted-foreground hover:bg-accent',
+                        )}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <label className="block">
+                  <L>{d.r.pricingType === 'per_gram' ? 'Price Per Gram' : 'Price'}</L>
+                  <MoneyInput
+                    className={fieldClass}
+                    placeholder="0.00"
+                    value={d.r.price}
+                    onValueChange={(v) => patchRow(d.r.key, { price: v })}
+                    data-testid="layaway-item-price"
+                  />
+                </label>
+              </div>
+              <div className="flex flex-wrap gap-x-6 gap-y-1 text-[11px] text-muted-foreground">
+                <span>Grams: {d.grams ? `${d.grams}g` : '—'}</span>
+                <span>
+                  Item amount: <span className="tabular-nums">{formatPeso(toStr(d.amountC))}</span>
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* ---- Monthly Interest + Date Purchased (one line) ------------- */}
+        <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
           <label className="block">
-            <L>{pricingType === 'per_gram' ? 'Price Per Gram' : 'Price'}</L>
-            <MoneyInput
-              className={fieldClass}
-              placeholder="0.00"
-              value={pricingType === 'per_gram' ? perGram : price}
-              onValueChange={pricingType === 'per_gram' ? setPerGram : setPrice}
-              data-testid="layaway-price"
-            />
-          </label>
-          <label className="block">
-            <L>Monthly Interest (Grams × ₱150)</L>
+            <L>Monthly Interest (Total Grams × ₱150)</L>
             <input
               className={cn(fieldClass, noInterest && 'opacity-60')}
-              value={noInterest ? '0% Interest' : formatPeso(toStr(monthlyInterest))}
+              value={noInterest ? '0% Interest' : formatPeso(toStr(monthlyC))}
               readOnly
               data-testid="layaway-interest"
             />
@@ -545,18 +566,20 @@ function EntryForm({
           </label>
         </div>
 
-        {/* ---- Remarks / Financer + Payment + Mode of Payment (one line) - */}
+        {/* ---- Remarks / Financer (full width) --------------------------- */}
+        <label className="block">
+          <L>Remarks / Financer</L>
+          <Combobox
+            className={fieldClass}
+            placeholder="Select or type a financer"
+            value={remarks}
+            onChange={setRemarks}
+            options={financers}
+          />
+        </label>
+
+        {/* ---- Payment + Date Payment + Mode of Payment (one line) ------- */}
         <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-3">
-          <label className="block">
-            <L>Remarks / Financer</L>
-            <Combobox
-              className={fieldClass}
-              placeholder="Select or type a financer"
-              value={remarks}
-              onChange={setRemarks}
-              options={financers}
-            />
-          </label>
           <label className="block">
             <L>Payment</L>
             <MoneyInput
@@ -565,6 +588,16 @@ function EntryForm({
               value={payment}
               onValueChange={setPayment}
               data-testid="layaway-payment"
+            />
+          </label>
+          <label className="block">
+            <L>Date Payment</L>
+            <input
+              type="date"
+              className={fieldClass}
+              value={paymentDate}
+              onChange={(e) => setPaymentDate(e.target.value)}
+              data-testid="layaway-payment-date"
             />
           </label>
           <label className="block">
@@ -584,29 +617,19 @@ function EntryForm({
           </label>
         </div>
 
-        {/* ---- Totals preview --------------------------------------------
-            Grand Total includes MONTH 1 interest only. Future months are not
-            shown here — they are charged month by month, so the total never
-            implies money the customer does not yet owe. */}
+        {/* ---- Totals preview -------------------------------------------- */}
         <dl
           className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-lg border border-border p-3 text-sm"
           data-testid="layaway-totals"
         >
-          <Fig label="Item amount" value={toStr(itemCentavos)} />
+          <Fig label="Item amount" value={toStr(totalItemC)} />
+          <Fig label="Monthly interest" value={noInterest ? '0' : toStr(monthlyC)} />
           <Fig
-            label="Monthly interest"
-            value={noInterest ? '0' : toStr(monthlyInterest)}
+            label={`Total interest (${term} ${term === 1 ? 'mo' : 'mos'})`}
+            value={noInterest ? '0' : toStr(totalInterestC)}
           />
-          <Fig
-            label="Interest charged now (Month 1)"
-            value={noInterest ? '0' : toStr(monthlyInterest)}
-          />
-          <div className="flex items-center justify-between gap-2 py-0.5">
-            <dt className="text-xs text-muted-foreground">Remaining possible months</dt>
-            <dd className="font-medium tabular-nums">{remainingMonths}</dd>
-          </div>
-          <Fig label="Grand total (now)" value={toStr(grandTotal)} strong />
-          <Fig label="Current balance" value={toStr(balance)} strong />
+          <Fig label="Grand total" value={toStr(grandTotalC)} strong />
+          <Fig label="Current balance" value={toStr(balanceC)} strong />
         </dl>
 
         {error ? (
