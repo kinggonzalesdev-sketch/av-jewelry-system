@@ -37,12 +37,23 @@ const items: CaptureItem[] = [
     availabilityStatus: 'available',
   },
   {
-    // An HK ITEM — always fixed-price at its catalogue price, never per-gram.
+    // An HK ITEM with NO catalogue price — falls back to the DB price when there is
+    // no number written after "HK ITEM".
     id: 'i3',
     itemCode: 'BNA-B-2533 K18 HK ITEM',
     itemName: null,
     unitPrice: '37500.00',
     gramsPerPiece: '10.2',
+    availabilityStatus: 'available',
+  },
+  {
+    // An HK ITEM whose price is written in the name (9,600); the quoted "16" is the
+    // size, and total_price_per_piece is empty.
+    id: 'i4',
+    itemCode: 'BNA-B-2536 K18 HK ITEM 9,600 "16"',
+    itemName: null,
+    unitPrice: null,
+    gramsPerPiece: null,
     availabilityStatus: 'available',
   },
 ];
@@ -151,6 +162,22 @@ describe('NewOrderWorkflow — multi-item form', () => {
     expect(price).toHaveAttribute('readonly');
     expect(price).toHaveDisplayValue('₱37,500');
     expect(screen.getByTestId('order-summary-total')).toHaveTextContent('₱37,500');
+  });
+
+  it('HK ITEM: uses the price written after "HK ITEM" (the quoted size is ignored)', () => {
+    renderWorkflow();
+    openForm();
+
+    const row0 = screen.getByTestId('order-item-row-0');
+    fireEvent.change(within(row0).getByPlaceholderText(/search active inventory/i), {
+      target: { value: 'BNA-B-2536 K18 HK ITEM 9,600 "16"' },
+    });
+
+    const price = within(row0).getByTestId('order-item-price-0');
+    expect(price).toHaveAttribute('readonly');
+    // ₱9,600 from the name — NOT the "16" size, and not the empty catalogue price.
+    expect(price).toHaveDisplayValue('₱9,600');
+    expect(screen.getByTestId('order-summary-total')).toHaveTextContent('₱9,600');
   });
 
   it('Price Per Gram: total = grams × rate, read-only', () => {

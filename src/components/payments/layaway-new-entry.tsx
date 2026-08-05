@@ -9,6 +9,7 @@ import {
 } from '@/lib/payments/actions';
 import type { CaptureItem } from '@/lib/orders/service';
 import { parseInventoryCode } from '@/lib/inventory/code-parser';
+import { hkFixedPrice, isHKItem } from '@/lib/inventory/hk-item';
 import type { AdminNameContext } from '@/lib/authz/admin-name';
 import { AdminNameField } from '@/components/orders/admin-name-field';
 import { formatPeso } from '@/lib/payments/format';
@@ -164,6 +165,18 @@ function EntryForm({
   const addRow = () => setItemRows((rs) => [...rs, newItemRow()]);
   const removeRow = (key: string) =>
     setItemRows((rs) => (rs.length > 1 ? rs.filter((r) => r.key !== key) : rs));
+  // Selecting an item. An HK ITEM is always Fixed Price at the price written after
+  // "HK ITEM" in its code/name (the quoted number is the size, not the price).
+  const onItem = (key: string, value: string) => {
+    const picked = byLabel.get(value.trim()) ?? null;
+    const patch: Partial<ItemRow> = { input: value };
+    if (picked && isHKItem(picked)) {
+      patch.pricingType = 'fixed';
+      const p = hkFixedPrice(picked);
+      if (p) patch.price = p;
+    }
+    patchRow(key, patch);
+  };
 
   // No Interest is sticky: it stays on until the operator turns it off.
   const [noInterest, setNoInterest] = useState(false);
@@ -465,7 +478,11 @@ function EntryForm({
               ＋ Add item
             </button>
           </div>
-          {derived.map((d, idx) => (
+          {derived.map((d, idx) => {
+            const hk = d.row ? isHKItem(d.row) : false;
+            const hkPrice = hk && d.row ? hkFixedPrice(d.row) : null;
+            const hkLocked = hk && Boolean(hkPrice);
+            return (
             <div
               key={d.r.key}
               className="space-y-2 rounded-lg border border-border p-3"
@@ -493,44 +510,64 @@ function EntryForm({
                     className={fieldClass}
                     placeholder="Search Active Inventory by code or name"
                     value={d.r.input}
-                    onChange={(v) => patchRow(d.r.key, { input: v })}
+                    onChange={(v) => onItem(d.r.key, v)}
                     options={itemOptions}
                   />
                 </label>
                 <div>
                   <L>Pricing Type</L>
                   <div className="flex h-10 items-center gap-1 rounded-lg border border-border px-1">
-                    {(
-                      [
-                        ['fixed', 'Fixed Price'],
-                        ['per_gram', 'Price Per Gram'],
-                      ] as const
-                    ).map(([k, t]) => (
-                      <button
-                        key={k}
-                        type="button"
-                        onClick={() => patchRow(d.r.key, { pricingType: k })}
-                        className={cn(
-                          'flex-1 rounded-md px-2 py-1 text-[11px] font-semibold',
-                          d.r.pricingType === k
-                            ? 'bg-gold text-black'
-                            : 'text-muted-foreground hover:bg-accent',
-                        )}
+                    {hk ? (
+                      // HK ITEM is fixed-price only — no per-gram option.
+                      <span
+                        className="flex-1 rounded-md bg-gold px-2 py-1 text-center text-[11px] font-semibold text-black"
+                        data-testid="layaway-item-hk"
                       >
-                        {t}
-                      </button>
-                    ))}
+                        Fixed Price · HK Item
+                      </span>
+                    ) : (
+                      (
+                        [
+                          ['fixed', 'Fixed Price'],
+                          ['per_gram', 'Price Per Gram'],
+                        ] as const
+                      ).map(([k, t]) => (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => patchRow(d.r.key, { pricingType: k })}
+                          className={cn(
+                            'flex-1 rounded-md px-2 py-1 text-[11px] font-semibold',
+                            d.r.pricingType === k
+                              ? 'bg-gold text-black'
+                              : 'text-muted-foreground hover:bg-accent',
+                          )}
+                        >
+                          {t}
+                        </button>
+                      ))
+                    )}
                   </div>
                 </div>
                 <label className="block">
                   <L>{d.r.pricingType === 'per_gram' ? 'Price Per Gram' : 'Price'}</L>
-                  <MoneyInput
-                    className={fieldClass}
-                    placeholder="0.00"
-                    value={d.r.price}
-                    onValueChange={(v) => patchRow(d.r.key, { price: v })}
-                    data-testid="layaway-item-price"
-                  />
+                  {hkLocked ? (
+                    // HK ITEM price comes from the code/name — read-only.
+                    <input
+                      className={cn(fieldClass, 'bg-muted/40 text-right tabular-nums')}
+                      readOnly
+                      value={formatPeso(d.r.price || hkPrice || '0')}
+                      data-testid="layaway-item-price"
+                    />
+                  ) : (
+                    <MoneyInput
+                      className={fieldClass}
+                      placeholder="0.00"
+                      value={d.r.price}
+                      onValueChange={(v) => patchRow(d.r.key, { price: v })}
+                      data-testid="layaway-item-price"
+                    />
+                  )}
                 </label>
               </div>
               <div className="flex flex-wrap gap-x-6 gap-y-1 text-[11px] text-muted-foreground">
@@ -540,7 +577,8 @@ function EntryForm({
                 </span>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* ---- Monthly Interest + Date Purchased (one line) ------------- */}

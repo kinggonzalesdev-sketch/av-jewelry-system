@@ -5,7 +5,7 @@ import { useMemo, useRef, useState } from 'react';
 
 import type { CaptureItem, WalkInItem } from '@/lib/orders/service';
 import { parseInventoryCode } from '@/lib/inventory/code-parser';
-import { isHKItem } from '@/lib/inventory/hk-item';
+import { hkFixedPrice, isHKItem } from '@/lib/inventory/hk-item';
 import { DEFAULT_PAYMENT_METHOD, PAYMENT_METHOD_OPTIONS } from '@/lib/payments/methods';
 import type { AdminNameContext } from '@/lib/authz/admin-name';
 import { AdminNameField } from '@/components/orders/admin-name-field';
@@ -197,11 +197,11 @@ function ItemRows({
     const picked = byLabel.get(value.trim()) ?? null;
     const next: Partial<Row> = { itemInput: value };
     if (picked && isHKItem(picked)) {
-      // HK ITEM is ALWAYS Fixed Price at the saved catalogue price — never per-gram,
-      // and never the price written in the name. Force the mode and load the official
-      // price from the inventory record (overriding any earlier value/mode).
+      // HK ITEM is ALWAYS Fixed Price. The price is the number written after
+      // "HK ITEM" in the code/name (the quoted number is the size, not the price);
+      // if none is written, fall back to the inventory catalogue price.
       next.priceMode = 'fixed';
-      next.price = picked.unitPrice ?? '';
+      next.price = hkFixedPrice(picked) ?? picked.unitPrice ?? '';
     } else if (picked && catalogPrefill && r.priceMode === 'fixed' && !r.price) {
       // Non-HK: prefill the FIXED price from the catalogue (New Entry), editable.
       next.price = picked.unitPrice ?? '';
@@ -236,7 +236,8 @@ function ItemRows({
         // inventory record). `hkLocked` is true only when a catalogue price exists,
         // so an HK item missing a saved price stays manually enterable.
         const hk = matched ? isHKItem(matched) : false;
-        const hkLocked = hk && Boolean(matched?.unitPrice);
+        const hkPrice = hk && matched ? (hkFixedPrice(matched) ?? matched.unitPrice) : null;
+        const hkLocked = hk && Boolean(hkPrice);
         const taken = chosenElsewhere(r.key);
         const options = items
           .filter((i) => !taken.has(i.label))
@@ -355,7 +356,7 @@ function ItemRows({
                     <input
                       className={cn(fieldClass, 'h-9 bg-muted/40 text-right tabular-nums')}
                       readOnly
-                      value={formatPeso(r.price || matched?.unitPrice || '0')}
+                      value={formatPeso(r.price || hkPrice || '0')}
                       data-testid={`order-item-price-${idx}`}
                     />
                   ) : (

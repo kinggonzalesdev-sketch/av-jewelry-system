@@ -36,6 +36,15 @@ const items: CaptureItem[] = [
     gramsPerPiece: '1',
     availabilityStatus: 'available',
   },
+  {
+    // HK ITEM — price written after "HK ITEM" (9,600); the quoted "16" is the size.
+    id: 'i3',
+    itemCode: 'BNA-B-2536 K18 HK ITEM 9,600 "16"',
+    itemName: null,
+    unitPrice: null,
+    gramsPerPiece: null,
+    availabilityStatus: 'available',
+  },
 ];
 
 const admins: AdminNameContext = {
@@ -155,6 +164,30 @@ describe('Layaway New Entry — multiple items', () => {
 
     // Item amount total = 30,000 + 5,000 = ₱35,000 (also the grand total, no interest).
     expect(within(totals()).getAllByText('₱35,000').length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('Layaway New Entry — HK ITEM fixed price', () => {
+  it('forces Fixed Price, hides Price Per Gram, and locks the price from the name', () => {
+    open();
+    fireEvent.change(screen.getAllByPlaceholderText(/search active inventory/i)[0]!, {
+      target: { value: 'BNA-B-2536 K18 HK ITEM 9,600 "16"' },
+    });
+
+    // HK badge replaces the pricing-type toggle.
+    expect(screen.getByTestId('layaway-item-hk')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Price Per Gram' }),
+    ).not.toBeInTheDocument();
+
+    // Price is read-only and equals the number after "HK ITEM" (₱9,600).
+    const price = screen.getAllByTestId('layaway-item-price')[0]!;
+    expect(price).toHaveAttribute('readonly');
+    expect(price).toHaveDisplayValue('₱9,600');
+
+    // Its item amount flows into the totals (No Interest to isolate it).
+    fireEvent.click(screen.getByTestId('layaway-no-interest'));
+    expect(within(totals()).getAllByText('₱9,600').length).toBeGreaterThanOrEqual(1);
   });
 });
 
