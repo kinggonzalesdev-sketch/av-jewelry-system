@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  EDITABLE_TEMPLATE_KEYS,
   renderTemplate,
   SAMPLE_VALUES,
   SUPPORTED_TOKENS,
@@ -29,6 +30,15 @@ describe('message template variables', () => {
 
   it('covers the invoice and (single) reminder template', () => {
     expect(TEMPLATE_KEYS).toEqual(['invoice', 'reminder_1']);
+  });
+
+  it('offers only Invoice in the Settings editor — the Reminder card was removed', () => {
+    // Owner request 2026-08-05: no Reminder editor card. reminder_1 stays a valid
+    // template key (the For Reminder order flow still renders + sends it), but it is
+    // no longer editable from Settings.
+    expect(EDITABLE_TEMPLATE_KEYS).toEqual(['invoice']);
+    expect(EDITABLE_TEMPLATE_KEYS).not.toContain('reminder_1');
+    expect(TEMPLATE_KEYS).toContain('reminder_1');
   });
 
   it('gives every variable a sample value for the live preview', () => {

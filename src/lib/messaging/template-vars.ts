@@ -7,9 +7,16 @@
  */
 
 // Owner request: the For Reminder flow now sends a SINGLE reminder, so reminder_2
-// and reminder_3 were retired (removed from Settings and the database).
+// and reminder_3 were retired (removed from Settings and the database). reminder_1
+// stays a valid key because the For Reminder order flow still renders + sends it.
 export const TEMPLATE_KEYS = ['invoice', 'reminder_1'] as const;
 export type TemplateKey = (typeof TEMPLATE_KEYS)[number];
+
+// Owner request 2026-08-05: the Reminder template EDITOR was removed from
+// Settings → Message Templates. Only these keys get a card there. The reminder is
+// still composed and sent from the Orders → For Reminder flow (its own inline
+// editor), which reads reminder_1's body straight from the database.
+export const EDITABLE_TEMPLATE_KEYS = ['invoice'] as const;
 
 /** Every variable a template may use, with what it means and a sample value. */
 export const TEMPLATE_VARIABLES: ReadonlyArray<{

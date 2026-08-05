@@ -4,8 +4,8 @@ import { recordAuditEvent } from '@/lib/audit/log';
 import { AuthorizationError, requireOwner } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 import {
+  EDITABLE_TEMPLATE_KEYS,
   renderTemplate,
-  TEMPLATE_KEYS,
   tokensUsed,
   unsupportedTokens,
   type TemplateKey,
@@ -69,7 +69,7 @@ async function namesFor(
   return names;
 }
 
-/** All four templates for the editor. Super Admin only — this is the RAW wording. */
+/** The editable templates. Super Admin only — this is the RAW wording. */
 export async function listMessageTemplates(): Promise<MessageTemplate[]> {
   await requireOwner();
 
@@ -77,9 +77,10 @@ export async function listMessageTemplates(): Promise<MessageTemplate[]> {
   const { data, error } = await supabase
     .from('message_templates')
     .select('key, label, body, default_body, updated_at, updated_by')
-    // Only the current template keys — so a retired row (e.g. reminder_2/3) never
+    // Only the EDITABLE keys — so a retired row (reminder_2/3) or a key that is no
+    // longer editable from Settings (reminder_1, Owner request 2026-08-05) never
     // resurfaces in the editor even if it lingers in the table.
-    .in('key', [...TEMPLATE_KEYS])
+    .in('key', [...EDITABLE_TEMPLATE_KEYS])
     .order('key');
   if (error || !data) return [];
 
