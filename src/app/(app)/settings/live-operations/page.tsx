@@ -7,10 +7,12 @@ import { TestModeControls } from '@/components/live/test-mode-controls';
 import { LiveSessionControls } from '@/components/live/live-session-controls';
 import { ErrorRecoveryPanel } from '@/components/live/error-recovery-panel';
 import { RecentActivityPanel } from '@/components/live/recent-activity-panel';
+import { PrintersPanel } from '@/components/printers/printers-panel';
 import { PageHeader } from '@/components/ui/page-primitives';
 import { canOpenPage, requireActiveStaff } from '@/lib/authz/guard';
 import { getTestMode } from '@/lib/live/test-mode';
 import { getLiveSessionFormData } from '@/lib/live/live-session';
+import { getPrintQueueStatus, listPrinters } from '@/lib/printers/service';
 
 export const metadata: Metadata = {};
 
@@ -31,9 +33,11 @@ export default async function LiveOperationsPage() {
   // Super Admin = the owner role. Nobody else reaches the live-readiness controls.
   if (staff.roleKey !== 'owner') notFound();
 
-  const [testMode, liveSessionData] = await Promise.all([
+  const [testMode, liveSessionData, printers, printQueue] = await Promise.all([
     getTestMode(),
     getLiveSessionFormData(),
+    listPrinters(),
+    getPrintQueueStatus(),
   ]);
 
   return (
@@ -127,6 +131,22 @@ export default async function LiveOperationsPage() {
           during a live to watch it update.
         </p>
         <RecentActivityPanel />
+      </section>
+
+      {/* Printers — register named printers, pick a default, and watch the
+          single-claim print queue (each label claimed by one device). */}
+      <section
+        className="rounded-xl border border-border bg-card p-4"
+        aria-labelledby="printers-h"
+      >
+        <h2 id="printers-h" className="mb-1 text-sm font-semibold text-foreground">
+          Printers &amp; Print Queue
+        </h2>
+        <p className="mb-3 text-xs text-muted-foreground">
+          Register the label printers and choose a default. Each label job is claimed by
+          exactly one device, so two phones never print the same sticker.
+        </p>
+        <PrintersPanel printers={printers} queue={printQueue} />
       </section>
     </div>
   );
