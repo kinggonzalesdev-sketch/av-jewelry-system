@@ -547,7 +547,9 @@ function NewOrderModal({
         id: i.id,
         code: i.itemCode,
         name: i.facebookName,
-        grams: i.grams,
+        // Auto-detect grams from the item's stored weight, or read them from the
+        // code when blank (e.g. "SBA-R-5110 1.20g 7\"") — same as New Entry.
+        grams: i.grams ?? parseInventoryCode(i.itemCode).grams,
         unitPrice: null,
         label: `${i.itemCode}${i.facebookName ? ` — ${i.facebookName}` : ''}`,
       })),

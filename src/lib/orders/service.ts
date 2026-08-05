@@ -177,7 +177,7 @@ export type CaptureItem = {
  * unit price. Read directly (RLS scopes it to active staff); the price comes
  * from the item catalogue, not entered per order. Read-only; creates nothing.
  */
-export async function listCaptureItems(limit = 300): Promise<CaptureItem[]> {
+export async function listCaptureItems(limit = 2000): Promise<CaptureItem[]> {
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -188,6 +188,12 @@ export async function listCaptureItems(limit = 300): Promise<CaptureItem[]> {
     // Archived (incorrect/duplicate/test) items are out of circulation — never
     // offered for a new order (Inventory Safe-Delete spec §4).
     .eq('is_archived', false)
+    // Only truly-available items (same rule the Walk-In selector uses) — a
+    // committed/sold item can't be picked for a new order or layaway.
+    .in('availability_status', ['available', 'returned_to_available'])
+    // The New Order and Layaway pickers must show EVERY available item, not a
+    // truncated page — the old cap of 300 hid items past the first 300 (the shop
+    // has 700+), while Walk-In showed them all. Raised so all appear.
     .order('item_code', { ascending: true })
     .limit(limit);
 

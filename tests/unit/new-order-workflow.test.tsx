@@ -60,6 +60,10 @@ const items: CaptureItem[] = [
 
 const walkInItems: WalkInItem[] = [
   { id: 'w1', itemCode: 'SBA-R-2276', facebookName: 'Ring', grams: '1.65' },
+  // No stored grams — the weight is in the code (1.20g).
+  { id: 'w2', itemCode: 'SBA-R-5110 1.20g 7"', facebookName: null, grams: null },
+  // Walk-In HK ITEM: price written after "HK ITEM", no stored grams/price.
+  { id: 'w3', itemCode: 'BNA-B-2536 K18 HK ITEM 9,600 "16"', facebookName: null, grams: null },
 ];
 
 // Admin Name context as a NON-Super-Admin receives it: exactly one option, so the
@@ -260,6 +264,34 @@ describe('NewOrderWorkflow — multi-item form', () => {
     expect(screen.getByText('Mode of Payment')).toBeInTheDocument();
     expect(screen.getByText('Amount Paid')).toBeInTheDocument();
     expect(screen.getByTestId('walkin-balance')).toBeInTheDocument();
+  });
+
+  it('Walk In: auto-detects grams from the code when the stored weight is blank', () => {
+    renderWorkflow();
+    openForm();
+    fireEvent.click(screen.getByTestId('mode-walkin'));
+
+    const row0 = screen.getByTestId('order-item-row-0');
+    fireEvent.change(within(row0).getByPlaceholderText(/search active inventory/i), {
+      target: { value: 'SBA-R-5110 1.20g 7"' },
+    });
+    // The editable Walk-In grams field is pre-filled with 1.20 read from the code.
+    expect(within(row0).getByTestId('order-item-grams-0')).toHaveValue('1.20');
+  });
+
+  it('Walk In: HK ITEM is fixed-price at the number after "HK ITEM"', () => {
+    renderWorkflow();
+    openForm();
+    fireEvent.click(screen.getByTestId('mode-walkin'));
+
+    const row0 = screen.getByTestId('order-item-row-0');
+    fireEvent.change(within(row0).getByPlaceholderText(/search active inventory/i), {
+      target: { value: 'BNA-B-2536 K18 HK ITEM 9,600 "16"' },
+    });
+    expect(within(row0).getByTestId('order-item-hk-0')).toBeInTheDocument();
+    const price = within(row0).getByTestId('order-item-price-0');
+    expect(price).toHaveDisplayValue('₱9,600');
+    expect(screen.getByTestId('order-summary-total')).toHaveTextContent('₱9,600');
   });
 
   it('closes the form on Close', () => {
