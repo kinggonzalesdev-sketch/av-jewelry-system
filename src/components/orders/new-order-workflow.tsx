@@ -18,12 +18,12 @@ import {
   updateInventoryGramsAction,
 } from '@/lib/orders/actions';
 import {
-  printOrderSlip,
-  slipDateTime,
-  type OrderSlipData,
+  printOrderStickers,
+  stickerDate,
+  type OrderReceiptData,
 } from '@/lib/print/order-receipt';
 import { writeToChannel } from '@/lib/print/bluetooth-printer';
-import { encodeSlip } from '@/lib/print/receipt-encoders';
+import { encodeReceipt } from '@/lib/print/receipt-encoders';
 import { usePrinter } from '@/components/print/printer-context';
 import { PhotoCapture } from '@/components/attachments/photo-capture';
 import { Button } from '@/components/ui/button';
@@ -580,7 +580,7 @@ function NewOrderModal({
     orderNumber: string;
     itemCount: number;
     total: string;
-    slip: OrderSlipData;
+    stickers: OrderReceiptData[];
     walkIn: boolean;
     /** Walk-In only: where the saved sale was transferred. */
     destination?: 'reminder' | 'completed';
@@ -654,35 +654,32 @@ function NewOrderModal({
     return null;
   };
 
-  const buildSlip = (orderNumber: string): OrderSlipData => ({
-    orderNumber,
-    customerName: matchedCustomer?.displayName ?? customerInput.trim(),
-    // The slip still carries one name; it is now the Admin Name.
-    salesperson: adminName,
-    dateTime: slipDateTime(),
-    items: resolvedRows().map(({ row, item }) => {
-      const total = centavosToStr(rowTotalCentavos(row, item));
-      return {
-        code: item?.code ?? '—',
-        name: item?.name ?? '',
-        grams: item?.grams ?? null,
-        unitPrice: total,
-        quantity: 1,
-        lineTotal: total,
-      };
-    }),
-    grandTotal: centavosToStr(totalCentavos),
-  });
+  // One centered sticker per item (the approved format): Customer Name · Item · Price
+  // · Date. A multi-item order prints one sticker per piece.
+  const buildStickers = (): OrderReceiptData[] => {
+    const customerName = matchedCustomer?.displayName ?? customerInput.trim();
+    const date = stickerDate();
+    return resolvedRows().map(({ row, item }) => ({
+      customerName,
+      itemName: item?.name?.trim() || item?.code || '—',
+      grams: item?.grams ?? null,
+      quantity: 1,
+      unitPrice: centavosToStr(rowTotalCentavos(row, item)),
+      date,
+    }));
+  };
 
-  // Print the combined slip. Returns true when transmitted (or the browser dialog
+  // Print one sticker per item. Returns true when transmitted (or the browser dialog
   // was used because no BLE printer is connected), false on a real write failure.
-  const printSlip = async (slip: OrderSlipData): Promise<boolean> => {
+  const printStickers = async (stickers: OrderReceiptData[]): Promise<boolean> => {
     if (!activeChannel) {
-      printOrderSlip(slip);
+      printOrderStickers(stickers);
       return true;
     }
     try {
-      await writeToChannel(activeChannel, encodeSlip(slip, printLang));
+      for (const sticker of stickers) {
+        await writeToChannel(activeChannel, encodeReceipt(sticker, printLang));
+      }
       return true;
     } catch {
       return false;
@@ -690,12 +687,12 @@ function NewOrderModal({
   };
 
   const runPrint = async (
-    slip: OrderSlipData,
+    stickers: OrderReceiptData[],
     orderId: string,
     kind: 'print' | 'reprint',
   ) => {
     setPrintState('sending');
-    const ok = await printSlip(slip);
+    const ok = await printStickers(stickers);
     setPrintState(ok ? 'printed' : 'failed');
     if (orderId) {
       void recordOrderPrintAction(
@@ -737,17 +734,17 @@ function NewOrderModal({
         setError(res.error);
         return;
       }
-      const slip = buildSlip(res.orderNumber);
+      const stickers = buildStickers();
       setSaved({
         officialOrderId: res.officialOrderId,
         orderNumber: res.orderNumber,
         itemCount: res.itemCount,
         total: centavosToStr(totalCentavos),
-        slip,
+        stickers,
         walkIn: false,
       });
       router.refresh();
-      void runPrint(slip, res.officialOrderId, 'print');
+      void runPrint(stickers, res.officialOrderId, 'print');
     } finally {
       setPending(false);
       submittingRef.current = false;
@@ -838,7 +835,7 @@ function NewOrderModal({
         orderNumber: res.orderNumber,
         itemCount: res.itemCount,
         total: res.total,
-        slip: buildSlip(res.orderNumber),
+        stickers: buildStickers(),
         walkIn: true,
         destination,
         balance: res.balance,
@@ -851,7 +848,7 @@ function NewOrderModal({
   };
 
   const handleReprint = () => {
-    if (saved) void runPrint(saved.slip, saved.officialOrderId, 'reprint');
+    if (saved) void runPrint(saved.stickers, saved.officialOrderId, 'reprint');
   };
   const handleDone = () => {
     router.refresh();
@@ -928,11 +925,11 @@ function NewOrderModal({
             </div>
           ) : printState === 'sending' ? (
             <p className="text-xs text-muted-foreground" data-testid="print-sending">
-              Sending the combined slip to the printer…
+              Sending the sticker{saved.itemCount === 1 ? '' : 's'} to the printer…
             </p>
           ) : printState === 'printed' ? (
             <p className="text-xs text-muted-foreground">
-              Combined slip printed.{' '}
+              Sticker{saved.itemCount === 1 ? '' : 's'} printed.{' '}
               <button
                 type="button"
                 onClick={handleReprint}

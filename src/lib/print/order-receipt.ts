@@ -52,12 +52,12 @@ export function stickerLines(d: OrderReceiptData): string[] {
   ];
 }
 
-/** Today's date as "June 15, 2026". */
+/** Today's date as "08/06/2026" (compact numeric, the approved sticker format). */
 export function stickerDate(now: Date = new Date()): string {
   return now.toLocaleDateString('en-US', {
     year: 'numeric',
-    month: 'long',
-    day: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
   });
 }
 
@@ -158,6 +158,9 @@ const RECEIPT_STYLE = `
   .item { font-size: 26px; font-weight: 700; }
   .price { font-size: 28px; font-weight: 800; }
   .date { font-size: 22px; font-weight: 500; }
+  /* One sticker per label: break to a new page BETWEEN stickers (never a trailing
+     blank page). */
+  .stk + .stk { break-before: page; page-break-before: always; }
   @media print { @page { size: 40mm 30mm; margin: 0; } }
 `;
 
@@ -183,6 +186,53 @@ export function printOrderReceipt(data: OrderReceiptData): void {
     )}</title><style>${RECEIPT_STYLE}</style></head><body>${receiptHtml(
       data,
     )}</body></html>`,
+  );
+  doc.close();
+
+  const cleanup = () => {
+    setTimeout(() => {
+      if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+    }, 1000);
+  };
+
+  iframe.contentWindow?.focus();
+  setTimeout(() => {
+    try {
+      iframe.contentWindow?.print();
+    } finally {
+      cleanup();
+    }
+  }, 50);
+}
+
+/**
+ * Browser-print fallback for one-sticker-per-item: prints every item's sticker, each
+ * on its own 40×30 mm page (page break between), in a single print dialog. Used by New
+ * Entry so a multi-item order yields one centered sticker per piece — the same format
+ * as the direct-to-printer path.
+ */
+export function printOrderStickers(items: OrderReceiptData[]): void {
+  if (typeof window === 'undefined' || items.length === 0) return;
+
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.style.cssText =
+    'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentWindow?.document;
+  if (!doc) {
+    document.body.removeChild(iframe);
+    return;
+  }
+
+  const body = items.map((d) => receiptHtml(d)).join('');
+  const title = items[0]?.customerName ?? 'Stickers';
+  doc.open();
+  doc.write(
+    `<!doctype html><html><head><title>${escapeHtml(
+      title,
+    )}</title><style>${RECEIPT_STYLE}</style></head><body>${body}</body></html>`,
   );
   doc.close();
 
