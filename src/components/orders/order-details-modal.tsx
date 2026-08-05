@@ -14,6 +14,7 @@ import {
   saveOrderInvoiceMessageAction,
   sendOrderReminderAction,
   setCustomerFacebookUrlAction,
+  setCustomerPancakeConversationAction,
   setCustomerResponseAction,
   verifyForInvoiceAction,
 } from '@/lib/orders/actions';
@@ -715,7 +716,10 @@ function ForInvoiceView({
               value: (
                 <span className="inline-flex items-center gap-1.5">
                   {detail.customer.displayName}
-                  <FbChatButton url={detail.customer.facebookConversationUrl} />
+                  <FbChatButton
+                    url={detail.customer.facebookConversationUrl}
+                    linked={Boolean(detail.customer.pancakeConversationId)}
+                  />
                 </span>
               ),
             },
@@ -776,16 +780,27 @@ function ForInvoiceView({
             </p>
           ) : null}
 
-          {/* Link the Messenger URL (Open FB Chat) and the Pancake conversation id
-              (auto-deliver Send Invoice / Reminder). */}
+          {/* Two links, two jobs (they are different things):
+                • Facebook chat link (Messenger URL) → powers "Open FB Chat".
+                • Pancake conversation → powers Send Invoice ACTUAL DELIVERY to the
+                  customer's chat. Without it, Send Invoice only advances the order and
+                  nothing reaches the customer — which is why "nothing happened". */}
           <div className="flex flex-col gap-1">
             <CustomerLinkEditor
-              label="Facebook chat"
+              label="Facebook chat link"
               hasValue={Boolean(fbUrl)}
-              placeholder="https://m.me/… or a Messenger conversation link"
+              placeholder="https://m.me/… (opens the chat)"
               onSave={(v) => setCustomerFacebookUrlAction(detail.customer.id, v)}
               onSaved={onDone}
               testid="order-fb-link"
+            />
+            <CustomerLinkEditor
+              label="Pancake chat — required to send the invoice"
+              hasValue={Boolean(detail.customer.pancakeConversationId)}
+              placeholder="Pancake conversation id (Integrations → Load conversations → Copy ID)"
+              onSave={(v) => setCustomerPancakeConversationAction(detail.customer.id, v)}
+              onSaved={onDone}
+              testid="order-pancake-link"
             />
           </div>
 
@@ -968,6 +983,27 @@ function ForInvoiceView({
               <p className="text-sm font-medium">
                 Confirm that the invoice details were sent?
               </p>
+              {/* Honest delivery status: Send Invoice can only reach the customer's chat
+                  when a Pancake conversation is linked. If not, say so plainly so the
+                  operator isn't left wondering why "nothing happened". */}
+              {detail.customer.pancakeConversationId ? (
+                <p
+                  className="rounded-md border border-green-600/40 bg-green-600/10 px-2 py-1 text-[11px] text-green-700"
+                  data-testid="order-send-will-deliver"
+                >
+                  ✓ The invoice will be sent to {detail.customer.displayName}&apos;s Facebook
+                  chat through Pancake.
+                </p>
+              ) : (
+                <p
+                  className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-800"
+                  data-testid="order-send-no-chat"
+                >
+                  ⚠ No Pancake chat is linked, so this will <strong>not</strong> reach the
+                  customer&apos;s chat — it only advances the order. Link a Pancake chat above
+                  (Integrations → Load conversations → Copy ID) to actually deliver it.
+                </p>
+              )}
               <p className="text-[11px] text-muted-foreground">
                 This moves the order from <strong>For Invoice</strong> to{' '}
                 <strong>For Reminder</strong> and records the date, time, and who did it.
@@ -1219,7 +1255,10 @@ function ForReminderView({
               value: (
                 <span className="inline-flex items-center gap-1.5">
                   {detail.customer.displayName}
-                  <FbChatButton url={detail.customer.facebookConversationUrl} />
+                  <FbChatButton
+                    url={detail.customer.facebookConversationUrl}
+                    linked={Boolean(detail.customer.pancakeConversationId)}
+                  />
                 </span>
               ),
             },
@@ -1518,7 +1557,10 @@ function KeepView({
               value: (
                 <span className="inline-flex items-center gap-1.5">
                   {detail.customer.displayName}
-                  <FbChatButton url={detail.customer.facebookConversationUrl} />
+                  <FbChatButton
+                    url={detail.customer.facebookConversationUrl}
+                    linked={Boolean(detail.customer.pancakeConversationId)}
+                  />
                 </span>
               ),
             },
@@ -1757,7 +1799,10 @@ function DetailBody({
               value: (
                 <span className="inline-flex items-center gap-1.5">
                   {detail.customer.displayName}
-                  <FbChatButton url={detail.customer.facebookConversationUrl} />
+                  <FbChatButton
+                    url={detail.customer.facebookConversationUrl}
+                    linked={Boolean(detail.customer.pancakeConversationId)}
+                  />
                 </span>
               ),
             },
