@@ -233,7 +233,9 @@ function EntryForm({
   // ---- Live preview, in exact centavos (the DB recomputes on save) ---------
   const derived = itemRows.map((r) => {
     const row = byLabel.get(r.input.trim()) ?? null;
-    const grams = row?.grams ?? null;
+    // HK ITEM is fixed-price — grams do not apply (no interest contribution; the
+    // grams line shows —).
+    const grams = row && isHKItem(row) ? null : (row?.grams ?? null);
     const amountC =
       r.pricingType === 'per_gram' ? perGramCentavos(grams ?? '', r.price) : centavos(r.price);
     return { r, row, grams, amountC };

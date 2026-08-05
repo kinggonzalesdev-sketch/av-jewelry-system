@@ -166,6 +166,10 @@ describe('NewOrderWorkflow — multi-item form', () => {
     expect(price).toHaveAttribute('readonly');
     expect(price).toHaveDisplayValue('₱37,500');
     expect(screen.getByTestId('order-summary-total')).toHaveTextContent('₱37,500');
+    // Grams do not apply to an HK item — the field is disabled and blank.
+    const grams = within(row0).getByTestId('order-item-grams-0');
+    expect(grams).toBeDisabled();
+    expect(grams).toHaveValue('—');
   });
 
   it('HK ITEM: uses the price written after "HK ITEM" (the quoted size is ignored)', () => {
@@ -292,6 +296,8 @@ describe('NewOrderWorkflow — multi-item form', () => {
     const price = within(row0).getByTestId('order-item-price-0');
     expect(price).toHaveDisplayValue('₱9,600');
     expect(screen.getByTestId('order-summary-total')).toHaveTextContent('₱9,600');
+    // Even in Walk In, an HK item's grams field is disabled and blank.
+    expect(within(row0).getByTestId('order-item-grams-0')).toBeDisabled();
   });
 
   it('closes the form on Close', () => {

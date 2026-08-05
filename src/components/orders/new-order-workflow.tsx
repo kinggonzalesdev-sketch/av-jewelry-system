@@ -199,17 +199,18 @@ function ItemRows({
     if (picked && isHKItem(picked)) {
       // HK ITEM is ALWAYS Fixed Price. The price is the number written after
       // "HK ITEM" in the code/name (the quoted number is the size, not the price);
-      // if none is written, fall back to the inventory catalogue price.
+      // if none is written, fall back to the inventory catalogue price. Grams do
+      // NOT apply to a fixed-price HK item, so the grams field is cleared/disabled.
       next.priceMode = 'fixed';
       next.price = hkFixedPrice(picked) ?? picked.unitPrice ?? '';
+      next.grams = '';
     } else if (picked && catalogPrefill && r.priceMode === 'fixed' && !r.price) {
       // Non-HK: prefill the FIXED price from the catalogue (New Entry), editable.
       next.price = picked.unitPrice ?? '';
     }
-    // Reflect the item's declared grams into the field. In New Entry the grams box
-    // is read-only (shows the inventory weight); in Walk-In it stays editable but
-    // starts pre-filled with that same weight so the operator sees it automatically.
-    if (picked && !r.grams.trim() && picked.grams) {
+    // Reflect the item's declared grams into the field (non-HK only). In New Entry
+    // the grams box is read-only; in Walk-In it stays editable but starts pre-filled.
+    if (picked && !isHKItem(picked) && !r.grams.trim() && picked.grams) {
       next.grams = picked.grams;
     }
     patch(r.key, next);
@@ -311,7 +312,16 @@ function ItemRows({
             <div className="mt-2 grid grid-cols-2 gap-2">
               <label className="block">
                 <L>Grams</L>
-                {editableGrams && matched ? (
+                {hk ? (
+                  // HK ITEM is fixed-price — grams do not apply, so the field is
+                  // disabled and blank.
+                  <input
+                    className={cn(fieldClass, 'h-9 bg-muted/40 text-right tabular-nums')}
+                    disabled
+                    value="—"
+                    data-testid={`order-item-grams-${idx}`}
+                  />
+                ) : editableGrams && matched ? (
                   <input
                     className={cn(fieldClass, 'h-9 text-right tabular-nums')}
                     inputMode="decimal"
@@ -331,7 +341,7 @@ function ItemRows({
                     placeholder="—"
                   />
                 )}
-                {editableGrams && matched && gramsChanged ? (
+                {editableGrams && matched && gramsChanged && !hk ? (
                   <span className="mt-1 block text-[10px] text-muted-foreground">
                     Original: {matched.grams ? `${matched.grams}g` : '—'} · inventory will
                     be updated
