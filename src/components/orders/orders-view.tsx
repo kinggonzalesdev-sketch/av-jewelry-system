@@ -441,9 +441,12 @@ export function OrdersView({
 
       {/* Status cards — real counts of the loaded orders; each is a quick filter
           with a coloured icon badge. Active card is ringed in the brand accent.
-          Kept on ONE line: a single horizontally-scrollable row (Owner request),
-          so every stage stays visible in order without wrapping. */}
-      <div className="flex gap-2 overflow-x-auto pb-1">
+          Responsive grid (Owner request 2026-08-05, replaces the old single
+          horizontally-scrolling row): auto-fit equal-width columns that STRETCH to
+          fill the full width — no fixed card width, no horizontal scroll, no empty
+          space on the right. It reflows on its own as statuses are added/removed
+          (~2–3 per row on a phone, more as the screen widens). */}
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-2">
         {CARD_DEFS.map((def) => {
           const active = card === def.key;
           return (
@@ -454,7 +457,9 @@ export function OrdersView({
               aria-pressed={active}
               data-testid={`orders-card-${def.key}`}
               className={cn(
-                'flex min-h-[92px] min-w-[100px] flex-1 flex-col items-start gap-1.5 rounded-xl border bg-card p-2.5 text-left transition-colors',
+                // Width comes from the responsive grid; the card just fills its
+                // cell and keeps a fixed min-height so every card is equal height.
+                'flex min-h-[92px] w-full flex-col items-start gap-1.5 rounded-xl border bg-card p-2.5 text-left transition-colors',
                 active
                   ? 'border-gold ring-1 ring-gold'
                   : 'border-border hover:border-gold/40',
