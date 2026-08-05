@@ -532,6 +532,15 @@ function ForInvoiceView({
     ? `${Math.round(gramsTotal * 1000) / 1000}g`
     : '—';
 
+  // Deadline shown in the invoice summary — the layaway final due date, if this is a
+  // layaway order (a full-payment order has none). Formatted in the viewer's locale.
+  const invoiceDeadline = ((): string | null => {
+    const iso = detail.layaway?.finalDueDate;
+    if (!iso) return null;
+    const dt = new Date(iso);
+    return Number.isNaN(dt.getTime()) ? iso : dt.toLocaleDateString();
+  })();
+
   // Price per gram = Total Price ÷ Total Grams (display only). Money stays exact
   // in centavos; grams (a weight, not money) scales the divisor.
   const gramsMilli = Math.round(gramsTotal * 1000);
@@ -789,6 +798,60 @@ function ForInvoiceView({
               <label className="block text-[10px] uppercase tracking-wide text-muted-foreground">
                 Invoice message (editable)
               </label>
+              {/* Structured invoice summary (Owner live-readiness): the exact money
+                  terms the operator must confirm before sending during a live sale —
+                  Total, the required 20% down payment, the remaining balance, and the
+                  deadline. Honest — shows the read-failure reason, never a fabricated
+                  ₱0, when the balance can't be read; privacy-masked like every figure. */}
+              <dl
+                data-testid="order-invoice-summary"
+                className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-md border border-border bg-muted/30 p-2.5 text-[11px] sm:grid-cols-4"
+              >
+                {a.unavailable ? (
+                  <div className="col-span-2 text-muted-foreground sm:col-span-4">
+                    {a.unavailable}
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <dt className="text-muted-foreground">Total</dt>
+                      <dd
+                        className="font-semibold tabular-nums"
+                        data-testid="order-invoice-summary-total"
+                      >
+                        <Money amount={a.totalAmountPayable} />
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground">Down (20%)</dt>
+                      <dd
+                        className="font-semibold tabular-nums"
+                        data-testid="order-invoice-summary-down"
+                      >
+                        <Money amount={a.requiredDownPayment} />
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground">Balance</dt>
+                      <dd
+                        className="font-semibold tabular-nums"
+                        data-testid="order-invoice-summary-balance"
+                      >
+                        <Money amount={a.outstandingBalance} />
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground">Deadline</dt>
+                      <dd
+                        className="font-semibold tabular-nums"
+                        data-testid="order-invoice-summary-deadline"
+                      >
+                        {invoiceDeadline ?? '—'}
+                      </dd>
+                    </div>
+                  </>
+                )}
+              </dl>
               {matchInfo && (matchInfo.sameNameCount > 0 || !matchInfo.hasConversation) ? (
                 <div
                   role="status"
