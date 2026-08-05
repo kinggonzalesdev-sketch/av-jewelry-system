@@ -75,6 +75,29 @@ function one<T>(value: unknown): T | undefined {
   return (value as T) ?? undefined;
 }
 
+/** One active team member the kiosk can clock in/out (name + role only). */
+export type ClockStaff = { id: string; fullName: string; roleKey: string };
+
+/**
+ * The active-staff roster for the kiosk "Select who is signing in" dropdown.
+ * Available to any hr_attendance holder (not just the Owner) via a permission-scoped
+ * SECURITY DEFINER function — the page's owner-only listTeamMembers read used to hide
+ * the kiosk from a granted staff/admin. Returns name + role only (no PII).
+ */
+export async function listClockStaff(): Promise<ClockStaff[]> {
+  const supabase = await createClient();
+  const res = (await supabase.rpc('list_clock_staff')) as {
+    data: Array<{ id: string; full_name: string; role_key: string }> | null;
+    error: { message: string } | null;
+  };
+  if (res.error || !res.data) return [];
+  return res.data.map((r) => ({
+    id: r.id,
+    fullName: r.full_name,
+    roleKey: r.role_key,
+  }));
+}
+
 /** Staff id → the ISO time of their current OPEN session (clocked in, not out). */
 export async function listOpenSessions(): Promise<Record<string, string>> {
   const supabase = await createClient();

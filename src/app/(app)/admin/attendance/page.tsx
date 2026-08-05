@@ -4,9 +4,8 @@ import { notFound } from 'next/navigation';
 import { AttendanceView } from '@/components/hr/attendance-view';
 import { DeviceManager } from '@/components/hr/device-manager';
 import { canOpenPage, requireActiveStaff } from '@/lib/authz/guard';
-import { listTeamMembers } from '@/lib/authz/team-accounts';
 import { PageHeader } from '@/components/ui/page-primitives';
-import { listAttendance, listOpenSessions } from '@/lib/hr/attendance';
+import { listAttendance, listClockStaff, listOpenSessions } from '@/lib/hr/attendance';
 import {
   isAttendanceGatingActive,
   isThisDeviceApproved,
@@ -35,11 +34,13 @@ export default async function AttendancePage() {
   const staff = await requireActiveStaff();
   const isOwner = staff.roleKey === 'owner';
 
-  const [records, openSessions, team, gatingActive, thisApproved] = await Promise.all([
+  const [records, openSessions, clockStaff, gatingActive, thisApproved] = await Promise.all([
     listAttendance(),
     listOpenSessions(),
-    // The kiosk clock is Owner-operated; the roster read is Owner-only.
-    isOwner ? listTeamMembers() : Promise.resolve([]),
+    // The kiosk roster is available to ANY hr_attendance holder (Owner request):
+    // reaching this page already requires that permission, so a granted staff/admin
+    // can operate the clock, not just the Owner. Returns active staff name + role.
+    listClockStaff(),
     isAttendanceGatingActive(),
     isThisDeviceApproved(),
   ]);
@@ -48,11 +49,6 @@ export default async function AttendancePage() {
   const canManage = isOwner || staff.roleKey === 'selected_admin';
   const devices = isOwner ? await listDevices() : [];
   const blockedHere = gatingActive && !thisApproved;
-  // Kiosk selector: only ACTIVE team members can be clocked (no photo column yet,
-  // so initials are shown).
-  const clockStaff = team
-    .filter((m) => m.isActive)
-    .map((m) => ({ id: m.staffProfileId, fullName: m.fullName, roleKey: m.roleKey }));
 
   return (
     <div>
@@ -87,7 +83,10 @@ export default async function AttendancePage() {
           isOwner={isOwner}
           clockStaff={clockStaff}
           openSessions={openSessions}
-          showClock={isOwner}
+          // Everyone who can open this page holds hr_attendance, so the clock is
+          // shown to all of them — a granted staff/admin can sign the team in/out on
+          // the approved shop phone, not just the Owner.
+          showClock
           showPayroll={false}
           canManage={canManage}
         />
