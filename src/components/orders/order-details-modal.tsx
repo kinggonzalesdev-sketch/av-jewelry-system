@@ -16,6 +16,7 @@ import {
   verifyForInvoiceAction,
 } from '@/lib/orders/actions';
 import { renderOrderMessageAction } from '@/lib/messaging/actions';
+import { CopyButton } from '@/components/ui/copy-button';
 import { formatPeso } from '@/lib/payments/format';
 import { parseInventoryCode } from '@/lib/inventory/code-parser';
 import type { OrderDetail, OrderDetailResult } from '@/lib/orders/detail-types';
@@ -770,26 +771,34 @@ function ForInvoiceView({
                 placeholder="Type the invoice message to copy or send on Facebook…"
                 className="block w-full resize-y rounded-md border border-border bg-background p-2 text-xs outline-none focus:border-gold disabled:opacity-70"
               />
-              {canManage ? (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void saveMessage()}
-                    disabled={savingMsg}
-                    data-testid="order-message-save"
-                    className="rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent disabled:opacity-60"
-                  >
-                    {savingMsg ? 'Saving…' : 'Save Message'}
-                  </button>
-                  {savedMsg ? (
-                    <span className="text-xs text-gold-strong">Saved.</span>
-                  ) : null}
-                </div>
-              ) : (
-                <p className="text-[10px] text-muted-foreground">
-                  You can view this message; editing needs message-preparation permission.
-                </p>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <CopyButton
+                  text={msgBody}
+                  label="Copy Message"
+                  testId="order-message-copy"
+                  className="rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent disabled:opacity-50"
+                />
+                {canManage ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void saveMessage()}
+                      disabled={savingMsg}
+                      data-testid="order-message-save"
+                      className="rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent disabled:opacity-60"
+                    >
+                      {savingMsg ? 'Saving…' : 'Save Message'}
+                    </button>
+                    {savedMsg ? (
+                      <span className="text-xs text-gold-strong">Saved.</span>
+                    ) : null}
+                  </>
+                ) : (
+                  <span className="text-[10px] text-muted-foreground">
+                    View only — editing needs message-preparation permission.
+                  </span>
+                )}
+              </div>
               {msgError ? (
                 <p role="alert" className="text-xs text-destructive">
                   {msgError}
@@ -1166,7 +1175,13 @@ function ForReminderView({
               <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded border border-border bg-muted p-2 text-[11px]">
                 {reminderBody(composing)}
               </pre>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <CopyButton
+                  text={reminderBody(composing)}
+                  label="Copy Message"
+                  testId="order-reminder-copy"
+                  className="rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent disabled:opacity-50"
+                />
                 <button
                   type="button"
                   onClick={() => setComposing(null)}

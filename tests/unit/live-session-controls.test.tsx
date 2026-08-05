@@ -4,9 +4,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { LiveSessionControls } from '@/components/live/live-session-controls';
 import type { LiveSessionFormData } from '@/lib/live/live-session-types';
 
-const startAction = vi.fn(() => Promise.resolve({ ok: true, session: null }));
+const startAction = vi.fn((_input?: unknown) => Promise.resolve({ ok: true, session: null }));
 vi.mock('@/lib/live/live-ops-actions', () => ({
-  startLiveSessionAction: (...a: unknown[]) => startAction(...a),
+  startLiveSessionAction: (input: unknown) => startAction(input),
   endLiveSessionAction: vi.fn(() => Promise.resolve({ ok: true, session: null })),
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
