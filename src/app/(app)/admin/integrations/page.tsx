@@ -5,7 +5,11 @@ import { notFound } from 'next/navigation';
 import { IntegrationsView } from '@/components/integrations/integrations-view';
 import { PageHeader } from '@/components/ui/page-primitives';
 import { isPrimarySuperAdmin, requireActiveStaff } from '@/lib/authz/guard';
-import { getPancakeLinkStatus, getSelectedPancakePage } from '@/lib/integrations/pancake';
+import {
+  getPancakeLinkStatus,
+  getSelectedPancakePage,
+  listLinkedPancakeCustomers,
+} from '@/lib/integrations/pancake';
 
 export const metadata: Metadata = {
 };
@@ -25,9 +29,10 @@ export default async function IntegrationsPage() {
   if (!(await isPrimarySuperAdmin())) notFound();
   // Reaching this page already proves Primary Super Admin — Lalyn De Dios and any
   // Admin/Staff are stopped by the guard above, in both the UI and the backend.
-  const [selectedPage, linkStatus] = await Promise.all([
+  const [selectedPage, linkStatus, linkedCustomers] = await Promise.all([
     getSelectedPancakePage(),
     getPancakeLinkStatus(),
+    listLinkedPancakeCustomers(),
   ]);
 
   return (
@@ -36,7 +41,12 @@ export default async function IntegrationsPage() {
         title="Integrations"
         description="Pancake / Facebook — load and select the Page this system posts as."
       />
-      <IntegrationsView canManagePages selectedPage={selectedPage} linkStatus={linkStatus} />
+      <IntegrationsView
+        canManagePages
+        selectedPage={selectedPage}
+        linkStatus={linkStatus}
+        linkedCustomers={linkedCustomers}
+      />
     </div>
   );
 }

@@ -282,6 +282,34 @@ export async function getPancakeLinkStatus(): Promise<PancakeLinkStatus> {
   return { linked: linked ?? 0, total: total ?? 0 };
 }
 
+/** One active customer already linked to a Pancake conversation. */
+export type LinkedPancakeCustomer = {
+  id: string;
+  displayName: string;
+  conversationId: string;
+};
+
+/**
+ * The active customers already linked to a Pancake conversation — so the operator can
+ * SEE who is linked, not just the count. Ordered by name. Read-only; the conversation
+ * id is not sensitive (it is only meaningful with the server-held Page token).
+ */
+export async function listLinkedPancakeCustomers(): Promise<LinkedPancakeCustomer[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('customers')
+    .select('id, display_name, pancake_conversation_id')
+    .eq('is_active', true)
+    .not('pancake_conversation_id', 'is', null)
+    .order('display_name', { ascending: true })
+    .limit(2000);
+  return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    id: r.id as string,
+    displayName: (r.display_name as string | null) ?? 'Unknown',
+    conversationId: (r.pancake_conversation_id as string | null) ?? '',
+  }));
+}
+
 export type SavePancakePageResult =
   | { ok: true; message: string; pageId: string }
   | { ok: false; error: string };

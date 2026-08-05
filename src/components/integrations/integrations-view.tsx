@@ -12,6 +12,7 @@ import {
   type IntegrationActionState,
 } from '@/lib/integrations/action-state';
 import type {
+  LinkedPancakeCustomer,
   PancakePageInfo,
   SelectedPancakePage,
 } from '@/lib/integrations/pancake';
@@ -39,6 +40,7 @@ export function IntegrationsView({
   canManagePages = false,
   selectedPage = null,
   linkStatus = null,
+  linkedCustomers = [],
 }: {
   /** Primary Super Admin — the only one who may load/select Pages. */
   canManagePages?: boolean;
@@ -46,13 +48,15 @@ export function IntegrationsView({
   selectedPage?: SelectedPancakePage | null;
   /** Persistent count of customers already linked to Pancake conversations. */
   linkStatus?: { linked: number; total: number } | null;
+  /** The actual customers already linked — so the operator can see WHO is linked. */
+  linkedCustomers?: LinkedPancakeCustomer[];
 }) {
   return (
     <div className="space-y-4">
       {canManagePages ? (
         <>
           <ManagedPagesCard selectedPage={selectedPage} />
-          <ConversationsCard linkStatus={linkStatus} />
+          <ConversationsCard linkStatus={linkStatus} linkedCustomers={linkedCustomers} />
           <TestSendCard />
         </>
       ) : (
@@ -78,8 +82,10 @@ type Conversation = {
  */
 function ConversationsCard({
   linkStatus,
+  linkedCustomers = [],
 }: {
   linkStatus?: { linked: number; total: number } | null;
+  linkedCustomers?: LinkedPancakeCustomer[];
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +94,20 @@ function ConversationsCard({
   const [copied, setCopied] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
+  // "Who is linked" — a collapsible, searchable list of the customers already tied to
+  // a Pancake conversation, so the operator sees exactly WHO is linked, not just a
+  // count, and can copy a valid (page-scoped) conversation id to test a send.
+  const [linkedOpen, setLinkedOpen] = useState(false);
+  const [linkedQuery, setLinkedQuery] = useState('');
+  const filteredLinked = useMemo(() => {
+    const q = linkedQuery.trim().toLowerCase();
+    if (!q) return linkedCustomers;
+    return linkedCustomers.filter(
+      (c) =>
+        c.displayName.toLowerCase().includes(q) ||
+        c.conversationId.toLowerCase().includes(q),
+    );
+  }, [linkedCustomers, linkedQuery]);
   const pickerRef = useRef<HTMLDivElement | null>(null);
   const [syncState, sync, syncing] = useActionState<IntegrationActionState, FormData>(
     syncPancakeConversationsAction,
@@ -187,6 +207,68 @@ function ConversationsCard({
             )}
           </p>
         ) : null}
+
+        {/* WHO is linked — the actual customers, not just the count (Owner request).
+            Collapsed by default; each row shows the name and its page-scoped
+            conversation id with Copy, so it doubles as the list of valid ids to
+            test-send against. */}
+        {linkedCustomers.length > 0 ? (
+          <div>
+            <button
+              type="button"
+              onClick={() => setLinkedOpen((o) => !o)}
+              aria-expanded={linkedOpen}
+              className="flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-left text-sm outline-none focus:border-gold"
+              data-testid="pancake-linked-toggle"
+            >
+              <span className="text-muted-foreground">
+                View linked customers ({linkedCustomers.length})
+              </span>
+              <span className="text-muted-foreground">{linkedOpen ? '▴' : '▾'}</span>
+            </button>
+            {linkedOpen ? (
+              <div className="mt-1 overflow-hidden rounded-md border border-border bg-card">
+                <div className="border-b border-border p-2">
+                  <input
+                    value={linkedQuery}
+                    onChange={(e) => setLinkedQuery(e.target.value)}
+                    placeholder="Search linked customers…"
+                    className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+                    data-testid="pancake-linked-search"
+                  />
+                </div>
+                <ul
+                  className="max-h-64 divide-y divide-border overflow-auto"
+                  data-testid="pancake-linked-list"
+                >
+                  {filteredLinked.length === 0 ? (
+                    <li className="px-3 py-3 text-sm text-muted-foreground">No matches.</li>
+                  ) : (
+                    filteredLinked.map((c) => (
+                      <li key={c.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-medium">{c.displayName}</p>
+                          <p className="truncate font-mono text-[10px] text-muted-foreground">
+                            {c.conversationId}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void copy(c.conversationId)}
+                          className="shrink-0 rounded-md border border-border px-2 py-0.5 text-[11px] hover:bg-accent"
+                          data-testid={`pancake-linked-copy-${c.id}`}
+                        >
+                          {copied === c.conversationId ? 'Copied' : 'Copy ID'}
+                        </button>
+                      </li>
+                    ))
+                  )}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="flex flex-wrap items-center gap-2">
           <form action={sync}>
             <Button type="submit" disabled={syncing} data-testid="pancake-sync-customers">
