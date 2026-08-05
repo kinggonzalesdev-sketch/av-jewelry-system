@@ -4,10 +4,12 @@ import { notFound } from 'next/navigation';
 import { NewOrderWorkflow } from '@/components/orders/new-order-workflow';
 import { OrdersView } from '@/components/orders/orders-view';
 import { OwnerApprovalsPanel } from '@/components/orders/owner-approvals-panel';
+import { CaptureReviewPanel } from '@/components/capture/capture-review-panel';
 import { canOpenPage, getCurrentStaffProfile, getGrantedPermissions } from '@/lib/authz/guard';
 import { getAdminNameContext } from '@/lib/authz/admin-name';
 import { listOwnerApprovals } from '@/lib/fulfillment/service';
 import { listCaptureCustomers } from '@/lib/live/batches';
+import { listPendingCaptureReviews } from '@/lib/capture/review';
 import { listCaptureItems, listOrders, listWalkInItems } from '@/lib/orders/service';
 import { listKeepLayawayAccounts } from '@/lib/payments/layaway-ledger';
 import { PageHeader } from '@/components/ui/page-primitives';
@@ -53,6 +55,7 @@ export default async function OrdersPage({
     keepLayaways,
     approvals,
     admins,
+    pendingReviews,
   ] = await Promise.all([
     listOrders(),
     getGrantedPermissions(),
@@ -63,6 +66,7 @@ export default async function OrdersPage({
     listKeepLayawayAccounts(),
     listOwnerApprovals(),
     getAdminNameContext(),
+    listPendingCaptureReviews(),
   ]);
 
   return (
@@ -74,6 +78,12 @@ export default async function OrdersPage({
             /orders/fulfillment page; this panel is why that page could not simply be
             deleted. It renders only when something is actually waiting. */}
         <OwnerApprovalsPanel approvals={approvals} isOwner={profile.roleKey === 'owner'} />
+        {/* Review Mode queue — captures awaiting approval before they become orders.
+            Only a capture-permitted member sees the approve/reject controls; the
+            panel self-hides when the queue is empty. */}
+        {permissions.has('claim_capture') ? (
+          <CaptureReviewPanel rows={pendingReviews} />
+        ) : null}
         <OrdersView
           result={result}
           openForInvoice={openForInvoice}

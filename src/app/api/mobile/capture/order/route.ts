@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 
-import { createCaptureOrder } from '@/lib/capture/service';
+import {
+  activeLiveModeIsReview,
+  createCaptureOrder,
+  enqueueCaptureReview,
+} from '@/lib/capture/service';
 import { authenticateMobile } from '@/lib/mobile/auth';
 
 export const dynamic = 'force-dynamic';
@@ -35,7 +39,7 @@ export async function POST(request: Request): Promise<Response> {
     return typeof v === 'string' && v.trim() ? v : null;
   };
 
-  const result = await createCaptureOrder(staff.supabase, {
+  const input = {
     deviceInstallationId: str('deviceInstallationId'),
     captureId: str('captureId'),
     customerName: str('customerName'),
@@ -46,7 +50,19 @@ export async function POST(request: Request): Promise<Response> {
     ocr: body.ocr ?? null,
     pancakeConversationId: optStr('pancakeConversationId'),
     pancakeCustomerId: optStr('pancakeCustomerId'),
-  });
+  };
+
+  // In Review Mode the capture is QUEUED for a reviewer instead of creating the order
+  // directly. Automatic Mode (or no live session) keeps the direct-create behaviour.
+  if (await activeLiveModeIsReview(staff.supabase)) {
+    const queued = await enqueueCaptureReview(staff.supabase, input);
+    if (!queued.ok) {
+      return NextResponse.json({ ok: false, error: queued.error }, { status: 422 });
+    }
+    return NextResponse.json(queued);
+  }
+
+  const result = await createCaptureOrder(staff.supabase, input);
 
   if (!result.ok) {
     return NextResponse.json({ ok: false, error: result.error }, { status: 422 });

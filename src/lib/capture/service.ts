@@ -143,6 +143,66 @@ export async function createCaptureOrder(
   };
 }
 
+export type EnqueueReviewResult =
+  | { ok: true; review: true; reviewId: string; status: string; idempotent: boolean }
+  | { ok: false; error: string };
+
+/**
+ * Whether the active live session is in Review Mode. In Review Mode a capture is
+ * queued for a reviewer instead of directly creating an order (Automatic Mode keeps
+ * the direct-create behaviour).
+ */
+export async function activeLiveModeIsReview(supabase: SupabaseClient): Promise<boolean> {
+  const { data } = (await supabase
+    .from('live_sessions')
+    .select('mode')
+    .eq('active', true)
+    .maybeSingle()) as { data: { mode?: string } | null };
+  return (data?.mode ?? '') === 'review';
+}
+
+/**
+ * Enqueue a capture for review (Review Mode) instead of creating the order. Idempotent
+ * on device+capture in the database, so a retried tap returns the same queue entry.
+ */
+export async function enqueueCaptureReview(
+  supabase: SupabaseClient,
+  input: CreateCaptureOrderInput,
+): Promise<EnqueueReviewResult> {
+  const price = (input.price ?? '').trim();
+  if (!/^\d{1,12}(\.\d{1,2})?$/.test(price) || Number(price) <= 0) {
+    return { ok: false, error: 'A unit price greater than zero is required.' };
+  }
+  if (!input.inventoryItemId) return { ok: false, error: 'An inventory item is required.' };
+  if (!input.customerName?.trim()) return { ok: false, error: 'A customer name is required.' };
+  if (!input.deviceInstallationId?.trim() || !input.captureId?.trim()) {
+    return { ok: false, error: 'A device id and capture id are required.' };
+  }
+
+  const { data, error } = (await supabase.rpc('enqueue_capture_review', {
+    p_device: input.deviceInstallationId.trim(),
+    p_capture_id: input.captureId.trim(),
+    p_customer_name: input.customerName.trim(),
+    p_inventory_item_id: input.inventoryItemId,
+    p_price: price,
+    p_grams: input.grams?.trim() ? input.grams.trim() : null,
+    p_screenshot_path: input.screenshotPath ?? null,
+    p_ocr: input.ocr ?? null,
+    p_pancake_conversation_id: input.pancakeConversationId ?? null,
+    p_pancake_customer_id: input.pancakeCustomerId ?? null,
+  })) as { data: Record<string, unknown> | null; error: { message: string } | null };
+
+  if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  const d = data ?? {};
+  return {
+    ok: true,
+    review: true,
+    reviewId: (d.review_id as string) ?? '',
+    status: (d.status as string) ?? 'pending_review',
+    idempotent: d.idempotent === true,
+  };
+}
+
 const CAPTURE_BUCKET = 'attachments';
 const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 /** 12 MB — a generous cap for a high-quality still, blocking abuse. */
