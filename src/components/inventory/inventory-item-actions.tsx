@@ -40,10 +40,14 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
 
 export function InventoryItemActions({
   row,
-  canMonitor,
+  canEdit,
+  canDelete,
 }: {
   row: InventoryRow;
-  canMonitor: boolean;
+  /** Holds `inventory_edit` — shows the Edit action. */
+  canEdit: boolean;
+  /** Holds `inventory_delete` — shows the Delete action. */
+  canDelete: boolean;
 }) {
   const router = useRouter();
   const parsed = parseInventoryCode(row.itemCode);
@@ -95,28 +99,28 @@ export function InventoryItemActions({
       >
         View
       </button>
-      {canMonitor ? (
-        <>
-          <button
-            type="button"
-            onClick={() => setEdit(true)}
-            data-testid={`inventory-edit-${row.inventoryItemId}`}
-            className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
-          >
-            Edit
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setConfirm('');
-              setDel(true);
-            }}
-            data-testid={`inventory-delete-${row.inventoryItemId}`}
-            className="rounded-md border border-destructive/40 px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
-          >
-            Delete
-          </button>
-        </>
+      {canEdit ? (
+        <button
+          type="button"
+          onClick={() => setEdit(true)}
+          data-testid={`inventory-edit-${row.inventoryItemId}`}
+          className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+        >
+          Edit
+        </button>
+      ) : null}
+      {canDelete ? (
+        <button
+          type="button"
+          onClick={() => {
+            setConfirm('');
+            setDel(true);
+          }}
+          data-testid={`inventory-delete-${row.inventoryItemId}`}
+          className="rounded-md border border-destructive/40 px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
+        >
+          Delete
+        </button>
       ) : null}
 
       {/* View — compact read-only detail. */}

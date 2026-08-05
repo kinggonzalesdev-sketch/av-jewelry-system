@@ -88,6 +88,8 @@ export function InventoryWorkspace({
   completed = [],
   canMonitor,
   canCreate = false,
+  canEdit = false,
+  canDelete = false,
   canDeleteAll = false,
   canImportExport = false,
 }: {
@@ -97,6 +99,10 @@ export function InventoryWorkspace({
   /** Holds `post_live_item_entry` — shows the "New Entry" (Add Item) control. When
    *  false the button is hidden (the server also blocks the action). */
   canCreate?: boolean;
+  /** Holds `inventory_edit` — shows the per-row Edit action. */
+  canEdit?: boolean;
+  /** Holds `inventory_delete` — shows the per-row Delete action. */
+  canDelete?: boolean;
   /** Owner / Selected Admin — shows the bulk "Delete All" control. */
   canDeleteAll?: boolean;
   /** SUPER ADMIN only — Excel/CSV import and export (Owner request). */
@@ -455,7 +461,7 @@ export function InventoryWorkspace({
                       {i.isForfeited ? ' · forfeited (excluded from auto-return)' : ''}
                     </td>
                     <td className="px-3 py-2.5 text-right">
-                      <InventoryItemActions row={i} canMonitor={canMonitor} />
+                      <InventoryItemActions row={i} canEdit={canEdit} canDelete={canDelete} />
                     </td>
                   </tr>
                   ))

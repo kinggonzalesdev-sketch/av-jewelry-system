@@ -46,9 +46,11 @@ export default async function InventoryPage() {
         inventory={inventory}
         completed={completed}
         canMonitor={permissions.has('inventory_monitoring')}
-        // Add Item is shown only to a member holding post_live_item_entry (the
-        // Owner holds it implicitly); the server re-checks the same key on save.
+        // Each per-row action follows its OWN permission (the Owner holds all
+        // implicitly); the server re-checks the same key on every write.
         canCreate={permissions.has('post_live_item_entry')}
+        canEdit={permissions.has('inventory_edit')}
+        canDelete={permissions.has('inventory_delete')}
         canDeleteAll={canDeleteAll}
         canImportExport={profile.roleKey === 'owner'}
       />

@@ -47,23 +47,29 @@ function row(over: Partial<InventoryRow>): InventoryRow {
   };
 }
 
-describe('InventoryItemActions — type-DELETE confirmation', () => {
-  it('shows View/Edit/Delete for a monitor', () => {
-    render(<InventoryItemActions row={row({})} canMonitor={true} />);
+describe('InventoryItemActions — per-permission Edit / Delete', () => {
+  it('shows View always, and Edit + Delete when both are granted', () => {
+    render(<InventoryItemActions row={row({})} canEdit={true} canDelete={true} />);
     expect(screen.getByTestId('inventory-view-item-1')).toBeInTheDocument();
     expect(screen.getByTestId('inventory-edit-item-1')).toBeInTheDocument();
     expect(screen.getByTestId('inventory-delete-item-1')).toBeInTheDocument();
   });
 
-  it('hides Edit/Delete when the caller cannot monitor inventory', () => {
-    render(<InventoryItemActions row={row({})} canMonitor={false} />);
+  it('hides Edit and Delete when neither permission is granted', () => {
+    render(<InventoryItemActions row={row({})} canEdit={false} canDelete={false} />);
     expect(screen.getByTestId('inventory-view-item-1')).toBeInTheDocument();
     expect(screen.queryByTestId('inventory-edit-item-1')).not.toBeInTheDocument();
     expect(screen.queryByTestId('inventory-delete-item-1')).not.toBeInTheDocument();
   });
 
+  it('gates Edit and Delete INDEPENDENTLY (edit granted, delete not)', () => {
+    render(<InventoryItemActions row={row({})} canEdit={true} canDelete={false} />);
+    expect(screen.getByTestId('inventory-edit-item-1')).toBeInTheDocument();
+    expect(screen.queryByTestId('inventory-delete-item-1')).not.toBeInTheDocument();
+  });
+
   it('View shows the compact Code / Status / Grams / Date fields', () => {
-    render(<InventoryItemActions row={row({})} canMonitor={true} />);
+    render(<InventoryItemActions row={row({})} canEdit={true} canDelete={true} />);
     fireEvent.click(screen.getByTestId('inventory-view-item-1'));
     expect(screen.getByText('Inventory Code')).toBeInTheDocument();
     expect(screen.getByText('Status')).toBeInTheDocument();
@@ -72,7 +78,7 @@ describe('InventoryItemActions — type-DELETE confirmation', () => {
   });
 
   it('Delete requires typing DELETE before the button enables', () => {
-    render(<InventoryItemActions row={row({})} canMonitor={true} />);
+    render(<InventoryItemActions row={row({})} canEdit={true} canDelete={true} />);
     fireEvent.click(screen.getByTestId('inventory-delete-item-1'));
 
     expect(screen.getByPlaceholderText('DELETE')).toBeInTheDocument();
