@@ -3,8 +3,10 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 
 import { SystemCheckPanel } from '@/components/live/system-check-panel';
+import { TestModeControls } from '@/components/live/test-mode-controls';
 import { PageHeader } from '@/components/ui/page-primitives';
 import { canOpenPage, requireActiveStaff } from '@/lib/authz/guard';
+import { getTestMode } from '@/lib/live/test-mode';
 
 export const metadata: Metadata = {};
 
@@ -25,6 +27,8 @@ export default async function LiveOperationsPage() {
   // Super Admin = the owner role. Nobody else reaches the live-readiness controls.
   if (staff.roleKey !== 'owner') notFound();
 
+  const testMode = await getTestMode();
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -37,6 +41,22 @@ export default async function LiveOperationsPage() {
       >
         ← Back to Settings
       </Link>
+
+      {/* Test Mode — Super Admin marks a private test session; a banner shows on
+          every device while it is active. */}
+      <section
+        className="rounded-xl border border-border bg-card p-4"
+        aria-labelledby="testmode-h"
+      >
+        <h2 id="testmode-h" className="mb-1 text-sm font-semibold text-foreground">
+          Test Mode
+        </h2>
+        <p className="mb-3 text-xs text-muted-foreground">
+          Start a test session before a private live so a persistent TEST MODE banner
+          shows on every device. Only the Super Admin can change it.
+        </p>
+        <TestModeControls initial={testMode} />
+      </section>
 
       <section
         className="rounded-xl border border-border bg-card p-4"

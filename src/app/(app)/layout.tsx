@@ -1,12 +1,14 @@
 import type { ReactNode } from 'react';
 
 import { AppShell } from '@/components/shell/app-shell';
+import { TestModeBanner } from '@/components/live/test-mode-banner';
 import {
   getCurrentStaffProfile,
   getGrantedPermissions,
   requireActiveStaff,
   requireUser,
 } from '@/lib/authz/guard';
+import { getTestMode } from '@/lib/live/test-mode';
 
 /**
  * Protected application route boundary.
@@ -35,10 +37,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // request. A deactivated account is redirected to /account-disabled: its
   // credentials are valid, but the account is not (Bible §30.6).
   await requireActiveStaff();
-  const [profile, user, permissions] = await Promise.all([
+  const [profile, user, permissions, testMode] = await Promise.all([
     getCurrentStaffProfile(),
     requireUser(),
     getGrantedPermissions(),
+    getTestMode(),
   ]);
 
   return (
@@ -50,6 +53,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       // same key, so hiding is convenience — never the authorization control.
       allowedPages={[...permissions]}
     >
+      {/* Persistent TEST MODE banner when a test session is active (Owner request). */}
+      {testMode.active ? <TestModeBanner startedByName={testMode.startedByName} /> : null}
       {children}
     </AppShell>
   );
