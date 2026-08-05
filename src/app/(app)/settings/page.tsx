@@ -74,6 +74,29 @@ export default async function SettingsPage() {
         </section>
       ) : null}
 
+      {/* Live Operations — SUPER ADMIN only. The pre-live system check (and, in
+          later phases, Test Mode + live-session controls). */}
+      {isOwner ? (
+        <section
+          className="rounded-xl border border-border bg-card p-4"
+          aria-labelledby="live-ops-h"
+        >
+          <h2 id="live-ops-h" className="text-sm font-semibold text-foreground">
+            Live Operations
+          </h2>
+          <Link
+            href="/settings/live-operations"
+            className="mt-2 flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium text-foreground hover:bg-accent"
+            data-testid="settings-live-operations"
+          >
+            <span aria-hidden="true" className="w-4 text-center text-xs">
+              ✓
+            </span>
+            Run System Check
+          </Link>
+        </section>
+      ) : null}
+
       {/* Portal & Access — Team Members (Owner-only). */}
       {isOwner ? (
         <section
