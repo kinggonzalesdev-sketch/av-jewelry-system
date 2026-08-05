@@ -6,6 +6,7 @@ import { SystemCheckPanel } from '@/components/live/system-check-panel';
 import { TestModeControls } from '@/components/live/test-mode-controls';
 import { LiveSessionControls } from '@/components/live/live-session-controls';
 import { ErrorRecoveryPanel } from '@/components/live/error-recovery-panel';
+import { RecentActivityPanel } from '@/components/live/recent-activity-panel';
 import { PageHeader } from '@/components/ui/page-primitives';
 import { canOpenPage, requireActiveStaff } from '@/lib/authz/guard';
 import { getTestMode } from '@/lib/live/test-mode';
@@ -110,6 +111,22 @@ export default async function LiveOperationsPage() {
           on the capturing device.
         </p>
         <ErrorRecoveryPanel />
+      </section>
+
+      {/* Recent Activity — a read-only window on the audit trail so the Super Admin
+          can watch what is happening during a live and spot anything unexpected. */}
+      <section
+        className="rounded-xl border border-border bg-card p-4"
+        aria-labelledby="activity-h"
+      >
+        <h2 id="activity-h" className="mb-1 text-sm font-semibold text-foreground">
+          Recent Activity
+        </h2>
+        <p className="mb-3 text-xs text-muted-foreground">
+          The latest recorded actions — who did what, on what, and the outcome. Refresh
+          during a live to watch it update.
+        </p>
+        <RecentActivityPanel />
       </section>
     </div>
   );
