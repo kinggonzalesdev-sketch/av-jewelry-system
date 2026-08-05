@@ -5,6 +5,7 @@ import { AuthorizationError, requireActiveStaff, requireOwnerOrAdmin } from '@/l
 import { sendPancakeConversationMessage } from '@/lib/integrations/pancake';
 import { renderOrderMessage } from '@/lib/messaging/templates';
 import { createClient } from '@/lib/supabase/server';
+import type { CustomerMatchInfo } from '@/lib/orders/customer-match-types';
 
 /** Outcome of trying to auto-deliver a message through Pancake (best-effort). */
 export type PancakeDelivery = {
@@ -256,6 +257,48 @@ export async function resendOrderInvoice(orderId: string): Promise<ForInvoiceRes
     context: { via: 'pancake' },
   });
   return { ok: true, pancake };
+}
+
+/**
+ * Ambiguity check before sending (§6): how many OTHER active customers share this
+ * customer's exact name, and whether this one has a linked Pancake conversation.
+ * The UI warns the operator to verify the right person when a name is shared or no
+ * conversation is linked, instead of trusting the Facebook name blindly.
+ */
+export async function getCustomerMatchInfo(
+  customerId: string,
+): Promise<CustomerMatchInfo> {
+  const empty: CustomerMatchInfo = { sameNameCount: 0, hasConversation: false, examples: [] };
+  if (!customerId) return empty;
+
+  const supabase = await createClient();
+  const { data: me } = await supabase
+    .from('customers')
+    .select('display_name, pancake_conversation_id')
+    .eq('id', customerId)
+    .maybeSingle();
+  if (!me) return empty;
+
+  const name = ((me.display_name as string | null) ?? '').trim();
+  const hasConversation = Boolean(me.pancake_conversation_id);
+  if (!name) return { sameNameCount: 0, hasConversation, examples: [] };
+
+  // ilike with no wildcards is a case-insensitive EXACT match — same name, different
+  // record. Never trust the display name alone; this surfaces the collision.
+  const { data: others } = await supabase
+    .from('customers')
+    .select('display_name')
+    .eq('is_active', true)
+    .neq('id', customerId)
+    .ilike('display_name', name)
+    .limit(10);
+
+  const list = (others ?? []) as Array<{ display_name: string | null }>;
+  return {
+    sameNameCount: list.length,
+    hasConversation,
+    examples: list.slice(0, 3).map((o) => o.display_name ?? '—'),
+  };
 }
 
 export type BulkInvoiceOrder = {

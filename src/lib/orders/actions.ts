@@ -19,6 +19,7 @@ import {
   advanceOrderToReminder,
   getForInvoiceOrders,
   getOrderInvoiceMessage,
+  getCustomerMatchInfo,
   getOrderReminders,
   resendOrderInvoice,
   saveOrderInvoiceMessage,
@@ -254,6 +255,11 @@ export async function saveOrderInvoiceMessageAction(
 export async function resendInvoiceAction(orderId: string): Promise<ForInvoiceResult> {
   if (!orderId) return { ok: false, error: 'An order is required.' };
   return resendOrderInvoice(orderId);
+}
+
+/** Customer-match ambiguity for the invoice send warning (same name / no conversation). */
+export async function getCustomerMatchInfoAction(customerId: string) {
+  return getCustomerMatchInfo(customerId);
 }
 
 /** Load the For-Invoice orders + their chat eligibility for "Send All Invoices". */

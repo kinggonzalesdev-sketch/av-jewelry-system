@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import {
   confirmRequiredPaymentAction,
+  getCustomerMatchInfoAction,
   loadOrderDetailAction,
   loadOrderInvoiceMessageAction,
   loadOrderRemindersAction,
@@ -21,6 +22,7 @@ import { CopyButton } from '@/components/ui/copy-button';
 import { formatPeso } from '@/lib/payments/format';
 import { parseInventoryCode } from '@/lib/inventory/code-parser';
 import type { OrderDetail, OrderDetailResult } from '@/lib/orders/detail-types';
+import type { CustomerMatchInfo } from '@/lib/orders/customer-match-types';
 import type { PaymentStatus } from '@/lib/orders/service';
 import { OrderDestinationTransfer } from '@/components/orders/order-destination-transfer';
 import { FbChatButton } from '@/components/orders/fb-chat-button';
@@ -565,6 +567,9 @@ function ForInvoiceView({
   const [msgStatus, setMsgStatus] = useState<string | null>(null);
   const [resending, setResending] = useState(false);
   const [resendNote, setResendNote] = useState<string | null>(null);
+  // Customer-match ambiguity (§6): warn before sending when the name is shared by
+  // other customers, or no Pancake conversation is linked. Never trust the FB name.
+  const [matchInfo, setMatchInfo] = useState<CustomerMatchInfo | null>(null);
 
   const resendInvoice = async () => {
     if (resending) return;
@@ -610,6 +615,8 @@ function ForInvoiceView({
     setMsgStatus(res.message?.status ?? null);
     setSavedMsg(false);
     setMsgState('open');
+    // Best-effort ambiguity check for the send warning.
+    void getCustomerMatchInfoAction(detail.customer.id).then(setMatchInfo);
   };
 
   const saveMessage = async () => {
@@ -782,6 +789,28 @@ function ForInvoiceView({
               <label className="block text-[10px] uppercase tracking-wide text-muted-foreground">
                 Invoice message (editable)
               </label>
+              {matchInfo && (matchInfo.sameNameCount > 0 || !matchInfo.hasConversation) ? (
+                <div
+                  role="status"
+                  data-testid="order-match-warning"
+                  className="space-y-0.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-800"
+                >
+                  {matchInfo.sameNameCount > 0 ? (
+                    <p>
+                      ⚠ {matchInfo.sameNameCount} other customer(s) share this exact name
+                      {matchInfo.examples.length ? ` (${matchInfo.examples.join(', ')})` : ''}.
+                      Verify this is the right person before sending.
+                    </p>
+                  ) : null}
+                  {!matchInfo.hasConversation ? (
+                    <p>
+                      No Pancake conversation is linked — Send Invoice will not
+                      auto-deliver. Link a conversation, or copy the message and send it
+                      manually.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               <textarea
                 value={msgBody}
                 onChange={(e) => {
