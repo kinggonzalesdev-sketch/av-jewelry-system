@@ -7,3 +7,7 @@ export type TestMode = {
 };
 
 export type TestModeResult = { ok: true; active: boolean } | { ok: false; error: string };
+
+export type ResetTestResult =
+  | { ok: true; counts: Record<string, number> }
+  | { ok: false; error: string };

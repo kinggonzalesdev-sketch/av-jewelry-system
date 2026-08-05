@@ -6,6 +6,9 @@ import { TestModeControls } from '@/components/live/test-mode-controls';
 
 vi.mock('@/lib/live/live-ops-actions', () => ({
   setTestModeAction: vi.fn((active: boolean) => Promise.resolve({ ok: true, active })),
+  resetTestDataAction: vi.fn(() =>
+    Promise.resolve({ ok: true, counts: { orders: 2, payments: 1 } }),
+  ),
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
@@ -37,5 +40,20 @@ describe('TestModeControls', () => {
     );
     fireEvent.click(screen.getByTestId('end-test-session'));
     expect(await screen.findByTestId('start-test-session')).toBeInTheDocument();
+  });
+
+  it('reset requires typing DELETE, then reports the deleted counts', async () => {
+    render(
+      <TestModeControls initial={{ active: false, startedAt: null, startedByName: null }} />,
+    );
+    fireEvent.click(screen.getByTestId('reset-test-data'));
+    // Confirm is disabled until DELETE is typed.
+    expect(screen.getByTestId('reset-test-confirm')).toBeDisabled();
+    fireEvent.change(screen.getByTestId('reset-test-confirm-input'), {
+      target: { value: 'DELETE' },
+    });
+    expect(screen.getByTestId('reset-test-confirm')).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId('reset-test-confirm'));
+    expect(await screen.findByTestId('reset-result')).toHaveTextContent(/2 order/i);
   });
 });

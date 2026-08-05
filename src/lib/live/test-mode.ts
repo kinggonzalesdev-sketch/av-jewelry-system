@@ -2,7 +2,11 @@ import 'server-only';
 
 import { requireActiveStaff } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
-import type { TestMode, TestModeResult } from '@/lib/live/test-mode-types';
+import type {
+  ResetTestResult,
+  TestMode,
+  TestModeResult,
+} from '@/lib/live/test-mode-types';
 
 /**
  * Test Mode (Owner request, live-readiness). A single Super-Admin-controlled flag
@@ -52,4 +56,25 @@ export async function setTestMode(active: boolean): Promise<TestModeResult> {
     return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
   }
   return { ok: true, active: data === true };
+}
+
+/**
+ * Delete every TEST-tagged record (orders, payments, invoices, labels, captures,
+ * reminders + their children), children-first in one transaction. Super Admin only.
+ * Does not touch inventory or production (is_test = false) rows.
+ */
+export async function resetTestData(): Promise<ResetTestResult> {
+  const staff = await requireActiveStaff();
+  if (staff.roleKey !== 'owner') {
+    return { ok: false, error: 'Only the Super Admin can reset test data.' };
+  }
+  const supabase = await createClient();
+  const { data, error } = (await supabase.rpc('reset_test_data')) as {
+    data: Record<string, number> | null;
+    error: { message: string } | null;
+  };
+  if (error) {
+    return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+  return { ok: true, counts: data ?? {} };
 }

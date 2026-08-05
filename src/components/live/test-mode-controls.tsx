@@ -3,20 +3,25 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
-import { setTestModeAction } from '@/lib/live/live-ops-actions';
+import { resetTestDataAction, setTestModeAction } from '@/lib/live/live-ops-actions';
 import type { TestMode } from '@/lib/live/test-mode-types';
 import { Button } from '@/components/ui/button';
+import { Modal } from '@/components/ui/modal';
 
 /**
- * Start / End Test Session (Super Admin). Reads the current state from the server
- * page and toggles it; the banner and every device update via realtime. "Reset Test
- * Data" is shown as the next increment (it needs the per-transaction test tagging).
+ * Start / End Test Session + Reset Test Data (Super Admin). The banner and every
+ * device update via realtime. Reset permanently deletes only TEST-tagged records
+ * (never production) — it is gated behind a type-DELETE confirmation.
  */
 export function TestModeControls({ initial }: { initial: TestMode }) {
   const router = useRouter();
   const [active, setActive] = useState(initial.active);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [confirm, setConfirm] = useState('');
+  const [resetting, setResetting] = useState(false);
+  const [resetMsg, setResetMsg] = useState<string | null>(null);
 
   const toggle = async (next: boolean) => {
     if (pending) return;
@@ -32,6 +37,37 @@ export function TestModeControls({ initial }: { initial: TestMode }) {
       router.refresh();
     } finally {
       setPending(false);
+    }
+  };
+
+  const runReset = async () => {
+    if (resetting || confirm !== 'DELETE') return;
+    setResetting(true);
+    setError(null);
+    try {
+      const res = await resetTestDataAction();
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      const c = res.counts;
+      const total =
+        (c.orders ?? 0) +
+        (c.payments ?? 0) +
+        (c.messages ?? 0) +
+        (c.labels ?? 0) +
+        (c.captures ?? 0) +
+        (c.reminders ?? 0);
+      setResetMsg(
+        total === 0
+          ? 'No test records to delete.'
+          : `Deleted ${c.orders ?? 0} order(s), ${c.payments ?? 0} payment(s), ${c.messages ?? 0} message(s), ${c.labels ?? 0} label(s), ${c.captures ?? 0} capture(s), ${c.reminders ?? 0} reminder(s).`,
+      );
+      setResetOpen(false);
+      setConfirm('');
+      router.refresh();
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -72,16 +108,79 @@ export function TestModeControls({ initial }: { initial: TestMode }) {
             {pending ? 'Starting…' : 'Start Test Session'}
           </Button>
         )}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setConfirm('');
+            setError(null);
+            setResetOpen(true);
+          }}
+          data-testid="reset-test-data"
+          className="text-destructive"
+        >
+          Reset Test Data
+        </Button>
       </div>
+
       <p className="text-xs text-muted-foreground">
-        Reset Test Data (deleting only test-tagged records) arrives with the next
-        increment — the transaction tagging it depends on.
+        Reset permanently deletes only records created while Test Mode was on — never
+        production data. (Inventory a test order committed is released in the next
+        increment.)
       </p>
+
+      {resetMsg ? (
+        <p role="status" className="text-xs font-medium text-green-700" data-testid="reset-result">
+          {resetMsg}
+        </p>
+      ) : null}
       {error ? (
         <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       ) : null}
+
+      <Modal
+        open={resetOpen}
+        onClose={() => setResetOpen(false)}
+        title="Reset all test data?"
+        description="This permanently deletes every TEST-tagged record."
+        size="sm"
+        critical
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setResetOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void runReset()}
+              disabled={resetting || confirm !== 'DELETE'}
+              data-testid="reset-test-confirm"
+            >
+              {resetting ? 'Deleting…' : 'Delete test data'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-2">
+          <p className="text-sm">
+            Production records (orders, payments, invoices not created in a test
+            session) are <strong>not</strong> touched. Type{' '}
+            <span className="font-mono font-semibold">DELETE</span> to confirm.
+          </p>
+          <input
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            autoComplete="off"
+            placeholder="DELETE"
+            data-testid="reset-test-confirm-input"
+            className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+          />
+        </div>
+      </Modal>
     </div>
   );
 }
