@@ -120,6 +120,15 @@ describe('permission catalog (approved 23 + Portal & Access)', () => {
         ),
         'utf8',
       ),
+      readFileSync(
+        join(
+          projectRoot,
+          'supabase',
+          'migrations',
+          '20260805140000_manage_access_redesign.sql',
+        ),
+        'utf8',
+      ),
     ].join('\n');
 
     for (const key of ALL_PERMISSION_KEYS) {

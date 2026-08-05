@@ -6,8 +6,12 @@ import type { TeamMemberRow } from '@/lib/authz/team-accounts';
 
 const setRole = vi.fn(() => Promise.resolve({ ok: true as const }));
 const setPerms = vi.fn(() => Promise.resolve({ ok: true as const }));
+// Controllable so a test can seed the member's currently-granted keys.
+const loadAccess = vi.fn<() => Promise<{ permissionKeys: string[] } | null>>(() =>
+  Promise.resolve(null),
+);
 vi.mock('@/lib/authz/team-actions', () => ({
-  loadTeamMemberAccessAction: () => Promise.resolve(null),
+  loadTeamMemberAccessAction: () => loadAccess(),
   setTeamMemberRoleAction: () => setRole(),
   setTeamMemberPermissionsAction: () => setPerms(),
 }));
@@ -86,7 +90,7 @@ describe('Change Role — Super Admin authority', () => {
   });
 });
 
-describe('Manage Access — permission toggles', () => {
+describe('Manage Access — module-based permission toggles', () => {
   it('refuses to edit a Super Admin — they hold every permission', async () => {
     renderControls({ roleKey: 'owner' });
     fireEvent.click(screen.getByTestId('member-access-sp1'));
@@ -104,31 +108,98 @@ describe('Manage Access — permission toggles', () => {
     );
   });
 
-  it('shows the seven permission groups (incl. Inventory + Layaway) with Save / Cancel for a staff member', async () => {
+  it('shows every module header + Enable/Disable All + Save/Cancel', async () => {
+    loadAccess.mockResolvedValueOnce(null);
     renderControls();
     fireEvent.click(screen.getByTestId('member-access-sp1'));
     expect(await screen.findByTestId('member-access-save')).toBeInTheDocument();
-    for (const group of [
-      'Main System',
+
+    // Every module heading is present (parent page-access toggles are in the header,
+    // always visible even while the module is collapsed).
+    for (const title of [
+      'Dashboard & Profile',
+      'Orders',
       'Inventory',
-      'Orders and Fulfillment',
-      'Layaway',
       'Customers',
+      'Payments',
+      'Layaway',
+      'Scrap',
+      'Reports',
+      'Settings',
       'Team Management',
-      'System',
     ]) {
-      // 'Inventory'/'Layaway'/'Customers' also appear as toggle labels, so allow >= 1.
-      expect(screen.getAllByText(group).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText(title).length).toBeGreaterThanOrEqual(1);
     }
-    // The assignable "Add Inventory Item" toggle (post_live_item_entry) is present.
-    expect(screen.getByTestId('access-toggle-post_live_item_entry')).toBeInTheDocument();
-    expect(screen.getByText('Add Inventory Item')).toBeInTheDocument();
-    // The new Layaway Edit / Delete toggles are assignable (Owner request).
-    expect(screen.getByTestId('access-toggle-layaway_edit')).toBeInTheDocument();
-    expect(screen.getByTestId('access-toggle-layaway_delete')).toBeInTheDocument();
+    // Parent toggles render without expanding.
+    expect(screen.getByTestId('access-toggle-nav_inventory')).toBeInTheDocument();
+    expect(screen.getByTestId('access-toggle-nav_layaway')).toBeInTheDocument();
+
     expect(screen.getByRole('button', { name: 'Enable All' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Disable All' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+  });
+
+  it('Enable All reveals the child actions, incl. the new Create Layaway toggle', async () => {
+    renderControls();
+    fireEvent.click(screen.getByTestId('member-access-sp1'));
+    await screen.findByTestId('member-access-save');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Enable All' }));
+    for (const key of [
+      'post_live_item_entry',
+      'inventory_edit',
+      'inventory_delete',
+      'layaway_create',
+      'layaway_edit',
+      'layaway_delete',
+      'payment_verification',
+      'hr_review_attendance',
+      'hr_payroll',
+    ]) {
+      expect(screen.getByTestId(`access-toggle-${key}`)).toBeChecked();
+    }
+  });
+
+  it('cascades: turning a module parent OFF disables and clears its children', async () => {
+    renderControls();
+    fireEvent.click(screen.getByTestId('member-access-sp1'));
+    await screen.findByTestId('member-access-save');
+
+    // Enable the Inventory parent (also expands the module) and one child.
+    fireEvent.click(screen.getByTestId('access-toggle-nav_inventory'));
+    fireEvent.click(screen.getByTestId('access-toggle-inventory_edit'));
+    expect(screen.getByTestId('access-toggle-inventory_edit')).toBeChecked();
+
+    // Turn the parent OFF → the child clears and can no longer be edited.
+    fireEvent.click(screen.getByTestId('access-toggle-nav_inventory'));
+    const child = screen.getByTestId('access-toggle-inventory_edit');
+    expect(child).not.toBeChecked();
+    expect(child).toBeDisabled();
+  });
+
+  it('keeps Team Management toggles independent (no parent cascade)', async () => {
+    renderControls();
+    fireEvent.click(screen.getByTestId('member-access-sp1'));
+    await screen.findByTestId('member-access-save');
+
+    // Team Management has no parent — expand it and toggle Payroll directly.
+    fireEvent.click(screen.getByTestId('access-module-team-management'));
+    const payroll = screen.getByTestId('access-toggle-hr_payroll');
+    expect(payroll).not.toBeDisabled();
+    fireEvent.click(payroll);
+    expect(payroll).toBeChecked();
+  });
+
+  it('auto-enables a module parent when a child is already granted (no silent strip)', async () => {
+    loadAccess.mockResolvedValueOnce({ permissionKeys: ['inventory_edit'] });
+    renderControls();
+    fireEvent.click(screen.getByTestId('member-access-sp1'));
+    await screen.findByTestId('member-access-save');
+
+    // The module is normalised: parent shows ON and the module auto-expands so the
+    // already-granted child is visible and checked (it will not be stripped on save).
+    expect(screen.getByTestId('access-toggle-nav_inventory')).toBeChecked();
+    expect(screen.getByTestId('access-toggle-inventory_edit')).toBeChecked();
   });
 
   it('stages toggles locally — nothing saves until Save Access', async () => {

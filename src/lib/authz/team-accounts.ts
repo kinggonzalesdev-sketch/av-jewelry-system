@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { recordAuditEvent } from '@/lib/audit/log';
-import { ALL_ACCESS_KEYS } from '@/lib/authz/access-catalogue';
+import { ALL_ACCESS_KEYS, applyModuleCascade } from '@/lib/authz/access-catalogue';
 import {
   AuthorizationError,
   PRIMARY_SUPER_ADMIN_EMAIL,
@@ -234,9 +234,24 @@ export async function setTeamMemberPermissions(
     throw cause;
   }
 
-  // Only keys the access catalogue actually offers — never arbitrary input.
-  const keys = [...new Set(permissionKeys)].filter((k) => ALL_ACCESS_KEYS.includes(k));
   const before = await getTeamMemberAccess(staffProfileId);
+
+  // The modal only manages the catalogue keys. Take the member's selection for
+  // those (never arbitrary input) and apply the parent→child cascade so a child
+  // action can never be granted without its module's page-access parent (the modal
+  // enforces this too; this is the server floor against a crafted request).
+  const managedSelection = applyModuleCascade(
+    new Set([...new Set(permissionKeys)].filter((k) => ALL_ACCESS_KEYS.includes(k))),
+  );
+  // PRESERVE every existing grant the catalogue does NOT manage (operational keys
+  // like invoice_preparation / message_sending / fulfillment_release). Editing a
+  // member's modules must never silently revoke a permission this screen doesn't
+  // show (Owner rule: do not overwrite current permissions). Disable All therefore
+  // clears only what the modules manage, leaving these untouched.
+  const preserved = (before?.permissionKeys ?? []).filter(
+    (k) => !ALL_ACCESS_KEYS.includes(k),
+  );
+  const keys = [...new Set([...preserved, ...managedSelection])];
 
   const supabase = await createClient();
   const res = (await supabase.rpc('set_team_member_permissions', {

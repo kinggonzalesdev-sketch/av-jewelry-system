@@ -1,14 +1,16 @@
 /**
- * The permission catalogue the Manage Access modal shows, grouped as the Owner
- * specified. Deliberately NOT a `server-only` module: the modal is a client
- * component and must render the same groups the server saves, so both sides share
- * ONE definition instead of drifting apart.
+ * The permission catalogue the Manage Access modal shows, organised as the Owner
+ * specified: collapsible MODULES, each with a parent "page access" toggle and the
+ * child actions that live inside it. Deliberately NOT a `server-only` module — the
+ * modal is a client component and the server save re-uses the SAME structure, so
+ * both sides share ONE definition (and the same parent→child cascade) instead of
+ * drifting apart.
  *
- * Every entry maps to a REAL permission key that actually gates something. Where a
- * capability already existed under an operational name (claim_capture gates order
- * creation, payment_verification gates recording a payment) the toggle reuses that
- * key rather than inventing a parallel one — otherwise a toggle would look
- * authoritative while gating nothing.
+ * Every entry maps to a REAL permission key that actually gates something (a page,
+ * a button, a server action, an RLS policy). Redundant "view X" items are folded
+ * into the module's parent, and actions that gate nothing (or are Super-Admin-only)
+ * are intentionally absent — a toggle must never look authoritative while
+ * controlling nothing. The Owner (Super Admin) holds every key implicitly.
  */
 
 export type AccessToggle = {
@@ -18,87 +20,152 @@ export type AccessToggle = {
   label: string;
 };
 
-export type AccessGroup = {
+export type AccessModule = {
+  /** Collapsible module heading (e.g. "Inventory"). */
   title: string;
-  toggles: AccessToggle[];
+  /**
+   * The module enabler — its page-access key. Turning the parent OFF disables and
+   * strips every child (see {@link applyModuleCascade}). `null` means a flat group
+   * of INDEPENDENT toggles with no cascade (Team Management, whose Review
+   * Attendance / Payroll rules are fixed and must not be reset by a parent).
+   */
+  parent: AccessToggle | null;
+  /** The actions inside the module. */
+  children: AccessToggle[];
 };
 
-export const ACCESS_GROUPS: AccessGroup[] = [
+export const ACCESS_MODULES: AccessModule[] = [
   {
-    title: 'Main System',
-    toggles: [
-      { key: 'nav_dashboard', label: 'Dashboard' },
-      { key: 'nav_orders', label: 'Orders' },
-      { key: 'nav_customers', label: 'Customers' },
-      { key: 'nav_payments', label: 'Payments' },
-      { key: 'nav_layaway', label: 'Layaway' },
-      { key: 'nav_scrap', label: 'Scrap' },
-    ],
+    title: 'Dashboard & Profile',
+    parent: { key: 'nav_dashboard', label: 'Dashboard' },
+    // Viewing the dashboard IS the parent. Editing own profile and changing own
+    // password are available to every signed-in user, so they are not permissions.
+    children: [],
   },
   {
-    // Inventory access + actions in one place. "Add Inventory Item" is INDEPENDENT
-    // from opening/editing/deleting inventory: a member can have Inventory + Edit
-    // but NOT Add, and then cannot create new items.
-    title: 'Inventory',
-    toggles: [
-      { key: 'nav_inventory', label: 'Inventory' },
-      { key: 'post_live_item_entry', label: 'Add Inventory Item' },
-      { key: 'inventory_edit', label: 'Edit Inventory' },
-      { key: 'inventory_delete', label: 'Delete Inventory' },
-      { key: 'export_data_reports', label: 'Export Data' },
-    ],
-  },
-  {
-    title: 'Orders and Fulfillment',
-    toggles: [
+    title: 'Orders',
+    parent: { key: 'nav_orders', label: 'Orders' },
+    children: [
       { key: 'claim_capture', label: 'Create Order' },
-      { key: 'payment_verification', label: 'Add Payment' },
       { key: 'order_add_deposit', label: 'Add Down Payment / Deposit' },
       { key: 'order_cancel', label: 'Cancel Order' },
       { key: 'fulfillment_preparation', label: 'Fulfillment' },
-      { key: 'fulfillment_delivery', label: 'Delivery' },
-      { key: 'fulfillment_shipping', label: 'Shipping' },
-      { key: 'fulfillment_pickup', label: 'Pickup' },
+      { key: 'fulfillment_delivery', label: 'Fulfillment · Delivery' },
+      { key: 'fulfillment_shipping', label: 'Fulfillment · Shipping' },
+      { key: 'fulfillment_pickup', label: 'Fulfillment · Pickup' },
     ],
   },
   {
-    // Layaway record actions. Opening the Layaway workspace is `nav_layaway`
-    // (Main System); these two gate the row-level Edit and Delete of a layaway
-    // account — independent of each other and of viewing/adding a payment.
-    title: 'Layaway',
-    toggles: [
-      { key: 'layaway_edit', label: 'Edit Layaway' },
-      { key: 'layaway_delete', label: 'Delete Layaway' },
+    title: 'Inventory',
+    parent: { key: 'nav_inventory', label: 'Inventory' },
+    children: [
+      { key: 'post_live_item_entry', label: 'Add Inventory Item' },
+      { key: 'inventory_edit', label: 'Edit Inventory' },
+      { key: 'inventory_delete', label: 'Delete Inventory' },
     ],
   },
   {
     title: 'Customers',
-    toggles: [
+    parent: { key: 'nav_customers', label: 'Customers' },
+    // Adding a customer reuses `claim_capture` (= Create Order), so there is no
+    // separate "Add Customer" toggle — it would gate the same capability twice.
+    children: [
       { key: 'customer_edit', label: 'Edit Customer' },
       { key: 'customer_delete', label: 'Delete Customer' },
     ],
   },
   {
+    title: 'Payments',
+    parent: { key: 'nav_payments', label: 'Payments' },
+    // One key gates BOTH recording and verifying a payment (across Orders and
+    // Layaway). Refunds have no feature, so there is no toggle for them.
+    children: [{ key: 'payment_verification', label: 'Record / Verify Payment' }],
+  },
+  {
+    title: 'Layaway',
+    parent: { key: 'nav_layaway', label: 'Layaway' },
+    children: [
+      { key: 'layaway_create', label: 'Create Layaway' },
+      { key: 'layaway_edit', label: 'Edit Layaway' },
+      { key: 'layaway_delete', label: 'Delete Layaway' },
+    ],
+  },
+  {
+    title: 'Scrap',
+    parent: { key: 'nav_scrap', label: 'Scrap' },
+    // Scrap has only page-level access today; there are no per-action scrap keys.
+    children: [],
+  },
+  {
+    title: 'Reports',
+    parent: { key: 'view_reports', label: 'Reports' },
+    // The single export key covers data/report exports system-wide.
+    children: [{ key: 'export_data_reports', label: 'Export Data' }],
+  },
+  {
+    title: 'Settings',
+    parent: { key: 'view_settings', label: 'Settings' },
+    // Manage Users / Manage Access / Company Settings are Super-Admin-only and not
+    // delegable, so the Settings module is a single page-access toggle.
+    children: [],
+  },
+  {
+    // Fixed rules (Owner): these three are INDEPENDENT toggles with no parent
+    // cascade, so enabling/disabling one never disturbs another. Review Attendance
+    // and Payroll keep their existing working grants — this redesign must not
+    // rename, reset, or migrate them.
     title: 'Team Management',
-    toggles: [
+    parent: null,
+    children: [
       { key: 'hr_attendance', label: 'Attendance' },
       { key: 'hr_review_attendance', label: 'Review Attendance' },
       { key: 'hr_payroll', label: 'Payroll' },
     ],
   },
-  {
-    title: 'System',
-    toggles: [
-      { key: 'view_reports', label: 'Reports' },
-      { key: 'view_settings', label: 'Settings' },
-    ],
-  },
 ];
 
+/** Every toggle key a module can offer (parents + children) — flat. */
+function moduleKeys(m: AccessModule): string[] {
+  return [...(m.parent ? [m.parent.key] : []), ...m.children.map((c) => c.key)];
+}
+
 /** Every key the modal can toggle — the whitelist a save is filtered against. */
-export const ALL_ACCESS_KEYS: string[] = ACCESS_GROUPS.flatMap((g) =>
-  g.toggles.map((t) => t.key),
-);
+export const ALL_ACCESS_KEYS: string[] = ACCESS_MODULES.flatMap(moduleKeys);
+
+/**
+ * Normalise a granted set into the module state the modal shows: a parent counts as
+ * ON when it is granted OR any of its children is granted. This keeps a member who
+ * holds a child action but not the page-access key from having that child stripped
+ * on the next save (parent-off would cascade it away), and presents each module in a
+ * coherent state. Only affects parented modules; independent toggles pass through.
+ */
+export function deriveModuleState(granted: ReadonlySet<string>): Set<string> {
+  const next = new Set<string>();
+  for (const m of ACCESS_MODULES) {
+    const childOn = m.children.filter((c) => granted.has(c.key));
+    for (const c of childOn) next.add(c.key);
+    if (m.parent) {
+      if (granted.has(m.parent.key) || childOn.length > 0) next.add(m.parent.key);
+    }
+  }
+  return next;
+}
+
+/**
+ * Parent→child cascade: for every module WITH a parent, if the parent is OFF, drop
+ * all of its children (an action inside a disabled module cannot be granted).
+ * Independent modules (parent === null) are untouched. Applied in the modal on save
+ * AND server-side, so a crafted request can never grant a child without its parent.
+ */
+export function applyModuleCascade(keys: ReadonlySet<string>): Set<string> {
+  const next = new Set(keys);
+  for (const m of ACCESS_MODULES) {
+    if (m.parent && !next.has(m.parent.key)) {
+      for (const c of m.children) next.delete(c.key);
+    }
+  }
+  return next;
+}
 
 /** Role vocabulary. Super Admin IS the `owner` role (confirmed with the Owner). */
 export const ROLE_OPTIONS = [

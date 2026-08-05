@@ -112,6 +112,10 @@ export default async function PaymentsPage({
   // hidden button is never the control (Bible §30.3 r2).
   const canEditLayaway = permissions.has('layaway_edit');
   const canDeleteLayaway = permissions.has('layaway_delete');
+  // Creating a new layaway account (New Entry) is now assignable too. Existing
+  // Admins were backfilled this grant, so nothing breaks; the create RPC re-checks
+  // the same key. The Owner holds it implicitly.
+  const canCreateLayaway = permissions.has('layaway_create');
 
   // Deep-link from a dashboard layaway card (?layaway=active|completed|all|…) to
   // preselect the matching section.
@@ -150,7 +154,7 @@ export default async function PaymentsPage({
         captureCustomers={captureCustomers.map((c) => c.displayName)}
         admins={admins}
         detectedFinancers={detectedFinancers}
-        canCreateLayaway={canImportLayaway}
+        canCreateLayaway={canCreateLayaway}
       />
     </div>
   );

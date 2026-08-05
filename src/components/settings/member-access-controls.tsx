@@ -9,20 +9,44 @@ import {
   setTeamMemberRoleAction,
 } from '@/lib/authz/team-actions';
 import {
-  ACCESS_GROUPS,
+  ACCESS_MODULES,
+  ALL_ACCESS_KEYS,
+  applyModuleCascade,
+  deriveModuleState,
   MAX_SUPER_ADMINS_MESSAGE,
   ROLE_OPTIONS,
   roleLabel,
+  type AccessModule,
 } from '@/lib/authz/access-catalogue';
 import type { TeamMemberRow } from '@/lib/authz/team-accounts';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 
+/** Stable slug for a module title (used for test ids and expand state). */
+function moduleSlug(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+/** Titles of modules that currently hold at least one enabled key. */
+function modulesWithEnabled(keys: ReadonlySet<string>): Set<string> {
+  const open = new Set<string>();
+  for (const m of ACCESS_MODULES) {
+    const has =
+      (m.parent && keys.has(m.parent.key)) || m.children.some((c) => keys.has(c.key));
+    if (has) open.add(m.title);
+  }
+  return open;
+}
+
 /**
  * Manage Access + Change Role for one team member.
  *
- * Every rule here is ALSO enforced in the database — this only decides what the
- * screen offers, and the server's refusal is surfaced verbatim when they disagree:
+ * Access is organised as collapsible MODULES (Owner request): each module has a
+ * parent page-access toggle and the child actions inside it. Turning a parent OFF
+ * disables and clears its children (parent→child cascade); Team Management is a
+ * fixed group of INDEPENDENT toggles (Review Attendance / Payroll rules are not
+ * disturbed by any parent). The same cascade runs server-side, and every rule here
+ * is ALSO enforced in the database — this only decides what the screen offers:
  *
  *   - Only the PRIMARY Super Admin sees the Super Admin option, and only while a
  *     slot is free; otherwise it is disabled with the cap message.
@@ -51,6 +75,7 @@ export function MemberAccessControls({
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [keys, setKeys] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [roleBusy, setRoleBusy] = useState(false);
   const submittingRef = useRef(false);
 
@@ -65,7 +90,12 @@ export function MemberAccessControls({
     setLoading(true);
     try {
       const access = await loadTeamMemberAccessAction(member.staffProfileId);
-      setKeys(new Set(access?.permissionKeys ?? []));
+      // Normalise so a child-without-parent member is not stripped on save, and
+      // present each module coherently.
+      const derived = deriveModuleState(new Set(access?.permissionKeys ?? []));
+      setKeys(derived);
+      // Start collapsed for a compact view; open the modules already in use.
+      setExpanded(modulesWithEnabled(derived));
     } catch {
       setError('That team member could not be loaded.');
     } finally {
@@ -73,13 +103,44 @@ export function MemberAccessControls({
     }
   };
 
-  const toggle = (key: string) =>
-    setKeys((prev) => {
+  const toggleExpanded = (title: string) =>
+    setExpanded((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(title)) next.delete(title);
+      else next.add(title);
       return next;
     });
+
+  // Parent on: add the page-access key. Parent off: remove it AND every child
+  // (cascade) so a disabled module never leaves an orphaned action granted.
+  const setParent = (m: AccessModule, on: boolean) => {
+    if (!m.parent) return;
+    setKeys((prev) => {
+      const next = new Set(prev);
+      if (on) {
+        next.add(m.parent!.key);
+      } else {
+        next.delete(m.parent!.key);
+        for (const c of m.children) next.delete(c.key);
+      }
+      return next;
+    });
+    if (on) setExpanded((prev) => new Set(prev).add(m.title));
+  };
+
+  const setKey = (key: string, on: boolean) =>
+    setKeys((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+
+  const enableAll = () => {
+    setKeys(new Set(ALL_ACCESS_KEYS));
+    setExpanded(new Set(ACCESS_MODULES.map((m) => m.title)));
+  };
+  const disableAll = () => setKeys(new Set());
 
   const save = async () => {
     if (pending || submittingRef.current || !accessEditable) return;
@@ -87,7 +148,9 @@ export function MemberAccessControls({
     setPending(true);
     setError(null);
     try {
-      const res = await setTeamMemberPermissionsAction(member.staffProfileId, [...keys]);
+      // Defensive cascade before submit (the DB re-applies it too).
+      const effective = [...applyModuleCascade(keys)];
+      const res = await setTeamMemberPermissionsAction(member.staffProfileId, effective);
       if (!res.ok) {
         setError(res.error);
         return;
@@ -129,6 +192,42 @@ export function MemberAccessControls({
   };
 
   const roleLocked = member.isPrimarySuperAdmin || member.isSelf;
+
+  /** One checkbox row (parent or child). */
+  const toggleRow = (
+    label: string,
+    key: string,
+    checked: boolean,
+    disabled: boolean,
+    onChange: (on: boolean) => void,
+    emphasis = false,
+  ) => (
+    <label
+      key={key}
+      className={`flex items-center justify-between gap-2 rounded-md border border-border px-2.5 py-1.5 text-sm ${
+        emphasis ? 'bg-accent/30 font-medium' : ''
+      } ${disabled ? 'opacity-60' : ''}`}
+    >
+      <span>{label}</span>
+      <span className="flex items-center gap-2">
+        <span
+          className={`text-[10px] font-semibold uppercase ${
+            checked ? 'text-green-700' : 'text-muted-foreground'
+          }`}
+        >
+          {checked ? 'Enabled' : 'Disabled'}
+        </span>
+        <input
+          type="checkbox"
+          checked={checked}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.checked)}
+          data-testid={`access-toggle-${key}`}
+          className="h-4 w-4 accent-gold"
+        />
+      </span>
+    </label>
+  );
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-1">
@@ -230,22 +329,10 @@ export function MemberAccessControls({
             </p>
           ) : (
             <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  setKeys(new Set(ACCESS_GROUPS.flatMap((g) => g.toggles.map((t) => t.key))))
-                }
-              >
+              <Button type="button" size="sm" variant="outline" onClick={enableAll}>
                 Enable All
               </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setKeys(new Set())}
-              >
+              <Button type="button" size="sm" variant="outline" onClick={disableAll}>
                 Disable All
               </Button>
               <span className="text-xs text-muted-foreground">
@@ -257,44 +344,87 @@ export function MemberAccessControls({
           {loading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : (
-            <div className="space-y-3">
-              {ACCESS_GROUPS.map((group) => (
-                <div key={group.title}>
-                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    {group.title}
-                  </p>
-                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                    {group.toggles.map((t) => {
-                      const on = keys.has(t.key);
-                      return (
-                        <label
-                          key={t.key}
-                          className="flex items-center justify-between gap-2 rounded-md border border-border px-2.5 py-1.5 text-sm"
-                        >
-                          <span>{t.label}</span>
-                          <span className="flex items-center gap-2">
-                            <span
-                              className={`text-[10px] font-semibold uppercase ${
-                                on ? 'text-green-700' : 'text-muted-foreground'
-                              }`}
-                            >
-                              {on ? 'Enabled' : 'Disabled'}
-                            </span>
-                            <input
-                              type="checkbox"
-                              checked={on}
-                              disabled={!accessEditable}
-                              onChange={() => toggle(t.key)}
-                              data-testid={`access-toggle-${t.key}`}
-                              className="h-4 w-4 accent-gold"
-                            />
+            <div className="space-y-2">
+              {ACCESS_MODULES.map((m) => {
+                const slug = moduleSlug(m.title);
+                const isOpen = expanded.has(m.title);
+                const parentOn = m.parent ? keys.has(m.parent.key) : true;
+                const enabledCount = [
+                  ...(m.parent && keys.has(m.parent.key) ? [1] : []),
+                  ...m.children.filter((c) => keys.has(c.key)),
+                ].length;
+                const collapsible = m.children.length > 0;
+                return (
+                  <div key={m.title} className="rounded-lg border border-border">
+                    {/* Module header: chevron + title + parent toggle */}
+                    <div className="flex items-center justify-between gap-2 px-2.5 py-2">
+                      <button
+                        type="button"
+                        onClick={() => (collapsible ? toggleExpanded(m.title) : undefined)}
+                        data-testid={`access-module-${slug}`}
+                        aria-expanded={collapsible ? isOpen : undefined}
+                        className={`flex items-center gap-2 text-sm font-semibold ${
+                          collapsible ? 'hover:text-gold' : 'cursor-default'
+                        }`}
+                      >
+                        {collapsible ? (
+                          <span aria-hidden="true" className="text-xs text-muted-foreground">
+                            {isOpen ? '▼' : '▶'}
                           </span>
+                        ) : null}
+                        {m.title}
+                        {m.children.length > 0 ? (
+                          <span className="text-[10px] font-normal text-muted-foreground">
+                            {enabledCount}/{m.children.length + (m.parent ? 1 : 0)}
+                          </span>
+                        ) : null}
+                      </button>
+
+                      {m.parent ? (
+                        <label className="flex items-center gap-2 text-xs">
+                          <span
+                            className={`font-semibold uppercase ${
+                              keys.has(m.parent.key) ? 'text-green-700' : 'text-muted-foreground'
+                            }`}
+                          >
+                            {keys.has(m.parent.key) ? 'Enabled' : 'Disabled'}
+                          </span>
+                          <input
+                            type="checkbox"
+                            checked={keys.has(m.parent.key)}
+                            disabled={!accessEditable}
+                            onChange={(e) => setParent(m, e.target.checked)}
+                            data-testid={`access-toggle-${m.parent.key}`}
+                            className="h-4 w-4 accent-gold"
+                          />
                         </label>
-                      );
-                    })}
+                      ) : null}
+                    </div>
+
+                    {/* Children (independent for the parentless Team Management module) */}
+                    {collapsible && isOpen ? (
+                      <div className="border-t border-border p-2.5">
+                        {m.parent && !parentOn ? (
+                          <p className="mb-2 text-[11px] text-muted-foreground">
+                            Enable {m.parent.label} to manage these actions.
+                          </p>
+                        ) : null}
+                        <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                          {m.children.map((c) =>
+                            toggleRow(
+                              c.label,
+                              c.key,
+                              keys.has(c.key),
+                              !accessEditable || (m.parent ? !parentOn : false),
+                              (on) => setKey(c.key, on),
+                            ),
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 

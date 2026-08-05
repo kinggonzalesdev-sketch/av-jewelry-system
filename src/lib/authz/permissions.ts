@@ -62,6 +62,7 @@ export const PERMISSIONS = {
   CUSTOMER_DELETE: 'customer_delete',
   INVENTORY_EDIT: 'inventory_edit',
   INVENTORY_DELETE: 'inventory_delete',
+  LAYAWAY_CREATE: 'layaway_create',
   LAYAWAY_EDIT: 'layaway_edit',
   LAYAWAY_DELETE: 'layaway_delete',
   // Team management.
