@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 
 import { AppShell } from '@/components/shell/app-shell';
 import { TestModeBanner } from '@/components/live/test-mode-banner';
+import { LivePausedBanner } from '@/components/live/live-paused-banner';
 import {
   getCurrentStaffProfile,
   getGrantedPermissions,
@@ -9,6 +10,7 @@ import {
   requireUser,
 } from '@/lib/authz/guard';
 import { getTestMode } from '@/lib/live/test-mode';
+import { getLivePausedState } from '@/lib/live/live-session';
 
 /**
  * Protected application route boundary.
@@ -37,11 +39,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // request. A deactivated account is redirected to /account-disabled: its
   // credentials are valid, but the account is not (Bible §30.6).
   await requireActiveStaff();
-  const [profile, user, permissions, testMode] = await Promise.all([
+  const [profile, user, permissions, testMode, livePaused] = await Promise.all([
     getCurrentStaffProfile(),
     requireUser(),
     getGrantedPermissions(),
     getTestMode(),
+    getLivePausedState(),
   ]);
 
   return (
@@ -55,6 +58,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     >
       {/* Persistent TEST MODE banner when a test session is active (Owner request). */}
       {testMode.active ? <TestModeBanner startedByName={testMode.startedByName} /> : null}
+      {/* Emergency PAUSED banner — new order/capture intake is refused while paused. */}
+      {livePaused.paused ? <LivePausedBanner sessionName={livePaused.sessionName} /> : null}
       {children}
     </AppShell>
   );

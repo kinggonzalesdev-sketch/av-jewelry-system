@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getSelectedPancakePage } from '@/lib/integrations/pancake';
 import type {
   LiveMode,
+  LivePausedState,
   LiveSession,
   LiveSessionFormData,
   LiveSessionResult,
@@ -29,7 +30,7 @@ export async function getActiveLiveSession(): Promise<LiveSession | null> {
   const supabase = await createClient();
   const { data } = await supabase
     .from('live_sessions')
-    .select('id, name, mode, is_test, started_at, operator_staff_id')
+    .select('id, name, mode, is_test, started_at, operator_staff_id, paused_at')
     .eq('active', true)
     .maybeSingle();
   if (!data) return null;
@@ -51,7 +52,22 @@ export async function getActiveLiveSession(): Promise<LiveSession | null> {
     mode: mode(data.mode),
     isTest: data.is_test === true,
     startedAt: (data.started_at as string | null) ?? null,
+    paused: (data.paused_at as string | null) != null,
   };
+}
+
+/** A cheap paused check for the app-wide banner — one indexed read, no joins. */
+export async function getLivePausedState(): Promise<LivePausedState> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('live_sessions')
+    .select('name, paused_at')
+    .eq('active', true)
+    .maybeSingle();
+  if (!data || (data.paused_at as string | null) == null) {
+    return { paused: false, sessionName: null };
+  }
+  return { paused: true, sessionName: (data.name as string | null) ?? null };
 }
 
 /** Active staff to choose the operator from (Super Admin reads all via RLS). */
@@ -124,4 +140,27 @@ export async function endLiveSession(): Promise<LiveSessionResult> {
     return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
   }
   return { ok: true, session: null };
+}
+
+/**
+ * Emergency pause / resume of the active live session (Super Admin only). While
+ * paused, the database refuses all new order/capture intake — the operator can stop
+ * taking orders instantly, then resume. Existing orders keep working throughout.
+ */
+export async function setLivePaused(paused: boolean): Promise<LiveSessionResult> {
+  const staff = await requireActiveStaff();
+  if (staff.roleKey !== 'owner') {
+    return {
+      ok: false,
+      error: `Only the Super Admin can ${paused ? 'pause' : 'resume'} live selling.`,
+    };
+  }
+  const supabase = await createClient();
+  const { error } = (await supabase.rpc(
+    paused ? 'pause_live_session' : 'resume_live_session',
+  )) as { data: unknown; error: { message: string } | null };
+  if (error) {
+    return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+  return { ok: true, session: await getActiveLiveSession() };
 }

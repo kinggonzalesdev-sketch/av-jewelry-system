@@ -9,6 +9,14 @@ export type LiveSession = {
   mode: LiveMode;
   isTest: boolean;
   startedAt: string | null;
+  /** Emergency pause — while true the DB refuses all new order/capture intake. */
+  paused: boolean;
+};
+
+/** The app-wide paused indicator (read cheaply in the layout). */
+export type LivePausedState = {
+  paused: boolean;
+  sessionName: string | null;
 };
 
 export type Operator = { id: string; name: string };

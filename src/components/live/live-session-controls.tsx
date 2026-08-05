@@ -5,6 +5,7 @@ import { useState } from 'react';
 
 import {
   endLiveSessionAction,
+  setLivePausedAction,
   startLiveSessionAction,
 } from '@/lib/live/live-ops-actions';
 import type {
@@ -65,6 +66,22 @@ export function LiveSessionControls({ data }: { data: LiveSessionFormData }) {
     }
   };
 
+  const togglePause = async (next: boolean) => {
+    if (pending) return;
+    setPending(true);
+    setError(null);
+    try {
+      const res = await setLivePausedAction(next);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      router.refresh();
+    } finally {
+      setPending(false);
+    }
+  };
+
   if (active) {
     return (
       <div className="space-y-2" data-testid="live-session-active">
@@ -76,16 +93,55 @@ export function LiveSessionControls({ data }: { data: LiveSessionFormData }) {
             {active.operatorName ? ` · operator ${active.operatorName}` : ''}
           </p>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => void end()}
-          disabled={pending}
-          data-testid="end-live-session"
-        >
-          {pending ? 'Ending…' : 'End Live Session'}
-        </Button>
+
+        {/* Emergency pause — while paused the DB refuses ALL new order/capture intake.
+            Existing orders keep working. */}
+        {active.paused ? (
+          <div
+            className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm"
+            data-testid="live-session-paused"
+          >
+            <p className="font-semibold text-destructive">⏸ Live selling is PAUSED</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              New orders, walk-ins, and captures are refused until you resume.
+            </p>
+          </div>
+        ) : null}
+
+        <div className="flex flex-wrap items-center gap-2">
+          {active.paused ? (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => void togglePause(false)}
+              disabled={pending}
+              data-testid="resume-live-selling"
+            >
+              {pending ? 'Resuming…' : '▶ Resume Live Selling'}
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={() => void togglePause(true)}
+              disabled={pending}
+              data-testid="pause-live-selling"
+            >
+              {pending ? 'Pausing…' : '⏸ Pause Live Selling'}
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void end()}
+            disabled={pending}
+            data-testid="end-live-session"
+          >
+            {pending ? 'Ending…' : 'End Live Session'}
+          </Button>
+        </div>
         {error ? (
           <p role="alert" className="text-sm text-destructive">
             {error}

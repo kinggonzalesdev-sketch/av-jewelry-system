@@ -4,7 +4,7 @@ import { runSystemCheck } from '@/lib/live/system-check';
 import type { SystemCheckResult } from '@/lib/live/system-check-types';
 import { resetTestData, setTestMode } from '@/lib/live/test-mode';
 import type { ResetTestResult, TestModeResult } from '@/lib/live/test-mode-types';
-import { endLiveSession, startLiveSession } from '@/lib/live/live-session';
+import { endLiveSession, setLivePaused, startLiveSession } from '@/lib/live/live-session';
 import type {
   LiveSessionResult,
   StartLiveSessionInput,
@@ -36,6 +36,10 @@ export async function startLiveSessionAction(
 
 export async function endLiveSessionAction(): Promise<LiveSessionResult> {
   return endLiveSession();
+}
+
+export async function setLivePausedAction(paused: boolean): Promise<LiveSessionResult> {
+  return setLivePaused(paused);
 }
 
 export async function listLiveErrorsAction(): Promise<LiveErrorReport> {
