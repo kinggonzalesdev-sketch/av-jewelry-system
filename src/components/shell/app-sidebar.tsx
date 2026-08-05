@@ -389,8 +389,8 @@ export function AppSidebar({
               {/* Role-filtered so a non-Owner is not offered an Owner-only page.
                   Settings is appended (it lives in the desktop footer, not the nav). */}
               {[
-                ...mobileMoreItems().filter((item) => canSeeNavItem(item, roleKey)),
-                SETTINGS_ITEM,
+                ...mobileMoreItems().filter((item) => canSeeNavItem(item, roleKey, allowed)),
+                ...(canSeeNavItem(SETTINGS_ITEM, roleKey, allowed) ? [SETTINGS_ITEM] : []),
               ].map((item) => (
                 <li key={item.href}>
                   <Link

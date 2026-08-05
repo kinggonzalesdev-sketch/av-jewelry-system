@@ -307,7 +307,8 @@ export function MemberAccessControls({
               role="status"
               data-testid="member-access-saved"
             >
-              <span aria-hidden="true">✓</span> Access saved.
+              <span aria-hidden="true">✓</span> Access permissions updated successfully. They
+              apply on the member&apos;s next page load.
             </p>
           ) : null}
           {error ? (

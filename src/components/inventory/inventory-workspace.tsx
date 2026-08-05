@@ -87,12 +87,16 @@ export function InventoryWorkspace({
   inventory,
   completed = [],
   canMonitor,
+  canCreate = false,
   canDeleteAll = false,
   canImportExport = false,
 }: {
   inventory: InventoryListResult;
   completed?: CompletedInventoryRow[];
   canMonitor: boolean;
+  /** Holds `post_live_item_entry` — shows the "New Entry" (Add Item) control. When
+   *  false the button is hidden (the server also blocks the action). */
+  canCreate?: boolean;
   /** Owner / Selected Admin — shows the bulk "Delete All" control. */
   canDeleteAll?: boolean;
   /** SUPER ADMIN only — Excel/CSV import and export (Owner request). */
@@ -245,15 +249,17 @@ export function InventoryWorkspace({
           Active Inventory
         </Button>
 
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={() => setShowNewEntry(true)}
-          data-testid="inventory-new-entry"
-        >
-          ＋ New Entry
-        </Button>
+        {canCreate ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setShowNewEntry(true)}
+            data-testid="inventory-new-entry"
+          >
+            ＋ New Entry
+          </Button>
+        ) : null}
         {canImportExport ? <InventoryImportButton /> : null}
         {canImportExport && inventory.ok && inventory.rows.length > 0 ? (
           <Button
