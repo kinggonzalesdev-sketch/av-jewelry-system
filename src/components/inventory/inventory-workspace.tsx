@@ -13,6 +13,7 @@ import { EMPTY_INVENTORY_STATE } from '@/lib/inventory/action-state';
 import type { InventoryListResult } from '@/lib/inventory/service';
 import type { CompletedInventoryRow } from '@/lib/inventory/completed';
 import { parseInventoryCode } from '@/lib/inventory/code-parser';
+import { inventoryGroup } from '@/lib/inventory/group';
 import { downloadCsv } from '@/lib/export/csv';
 import { InventoryImportButton } from '@/components/inventory/inventory-import-modal';
 import { InventoryItemActions } from '@/components/inventory/inventory-item-actions';
@@ -145,8 +146,21 @@ export function InventoryWorkspace({
   // --- Inventory search + status filter — client-side over the loaded rows.
   const [invSearch, setInvSearch] = useState('');
   const [invStatus, setInvStatus] = useState('all');
+  const [invGroup, setInvGroup] = useState('all');
 
   const invRows = useMemo(() => (inventory.ok ? inventory.rows : []), [inventory]);
+  // Group counts (§16): BN / SB / HK ITEM / Other over the ACTIVE items, so a new or
+  // edited item appears under the right group with an updated count on refresh.
+  const groupCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const r of invRows) {
+      if (!ACTIVE_INVENTORY_STATUSES.has(r.availabilityStatus)) continue;
+      const g = inventoryGroup(r.itemCode, r.itemName);
+      m[g] = (m[g] ?? 0) + 1;
+    }
+    return m;
+  }, [invRows]);
+  const groupOptions = useMemo(() => Object.keys(groupCounts).sort(), [groupCounts]);
   // Active statuses only in the filter dropdown — completed/released live under
   // the Completed Items tab, never offered as an "available" filter (§4).
   const statusOptions = useMemo(
@@ -167,10 +181,13 @@ export function InventoryWorkspace({
       // transaction lives under Completed Items instead (§4).
       if (!ACTIVE_INVENTORY_STATUSES.has(row.availabilityStatus)) return false;
       if (invStatus !== 'all' && row.availabilityStatus !== invStatus) return false;
+      if (invGroup !== 'all' && inventoryGroup(row.itemCode, row.itemName) !== invGroup) {
+        return false;
+      }
       if (!q) return true;
       return `${row.itemCode} ${row.itemName ?? ''}`.toLowerCase().includes(q);
     });
-  }, [invRows, invSearch, invStatus]);
+  }, [invRows, invSearch, invStatus, invGroup]);
 
   // Completed Items — historical sold/released inventory with order/customer
   // context (§5), searchable + filterable by completion type (§12).
@@ -386,6 +403,20 @@ export function InventoryWorkspace({
                 data-testid="inventory-search"
                 className="h-9 flex-1 min-w-[10rem] rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold"
               />
+              <select
+                value={invGroup}
+                onChange={(e) => setInvGroup(e.target.value)}
+                aria-label="Filter by group"
+                data-testid="inventory-filter-group"
+                className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+              >
+                <option value="all">All groups</option>
+                {groupOptions.map((g) => (
+                  <option key={g} value={g}>
+                    {g} ({groupCounts[g]})
+                  </option>
+                ))}
+              </select>
               <select
                 value={invStatus}
                 onChange={(e) => setInvStatus(e.target.value)}
