@@ -9,6 +9,7 @@ import {
   loadOrderInvoiceMessageAction,
   loadOrderRemindersAction,
   readyForPreparationAction,
+  resendInvoiceAction,
   saveOrderInvoiceMessageAction,
   sendOrderReminderAction,
   setCustomerFacebookUrlAction,
@@ -559,6 +560,27 @@ function ForInvoiceView({
   const [msgError, setMsgError] = useState<string | null>(null);
   const [savingMsg, setSavingMsg] = useState(false);
   const [savedMsg, setSavedMsg] = useState(false);
+  // The saved invoice message status ('direct_sent' / 'direct_send_failed' / …) so
+  // the panel can show a Sent / Failed badge and offer Retry Send.
+  const [msgStatus, setMsgStatus] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
+  const [resendNote, setResendNote] = useState<string | null>(null);
+
+  const resendInvoice = async () => {
+    if (resending) return;
+    setResending(true);
+    setResendNote(null);
+    setMsgError(null);
+    const res = await resendInvoiceAction(orderId);
+    setResending(false);
+    if (!res.ok) {
+      setMsgStatus('direct_send_failed');
+      setMsgError(res.error);
+      return;
+    }
+    setMsgStatus('direct_sent');
+    setResendNote('Sent to the customer through Pancake.');
+  };
 
   const toggleMessage = async () => {
     if (msgState === 'open') {
@@ -585,6 +607,7 @@ function ForInvoiceView({
     }
 
     setMsgBody(body);
+    setMsgStatus(res.message?.status ?? null);
     setSavedMsg(false);
     setMsgState('open');
   };
@@ -789,6 +812,19 @@ function ForInvoiceView({
                     >
                       {savingMsg ? 'Saving…' : 'Save Message'}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => void resendInvoice()}
+                      disabled={resending}
+                      data-testid="order-invoice-resend"
+                      className="rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent disabled:opacity-60"
+                    >
+                      {resending
+                        ? 'Sending…'
+                        : msgStatus === 'direct_send_failed'
+                          ? 'Retry Send'
+                          : 'Resend via Pancake'}
+                    </button>
                     {savedMsg ? (
                       <span className="text-xs text-gold-strong">Saved.</span>
                     ) : null}
@@ -798,7 +834,31 @@ function ForInvoiceView({
                     View only — editing needs message-preparation permission.
                   </span>
                 )}
+                {msgStatus === 'direct_sent' ? (
+                  <span
+                    data-testid="order-invoice-sent-badge"
+                    className="rounded-full bg-green-600/10 px-2 py-0.5 text-[10px] font-semibold text-green-700"
+                  >
+                    Sent via Pancake ✓
+                  </span>
+                ) : msgStatus === 'direct_send_failed' ? (
+                  <span
+                    data-testid="order-invoice-failed-badge"
+                    className="rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-semibold text-destructive"
+                  >
+                    Send failed
+                  </span>
+                ) : null}
               </div>
+              {resendNote ? (
+                <p
+                  role="status"
+                  className="text-xs font-medium text-green-700"
+                  data-testid="order-invoice-resend-note"
+                >
+                  {resendNote}
+                </p>
+              ) : null}
               {msgError ? (
                 <p role="alert" className="text-xs text-destructive">
                   {msgError}

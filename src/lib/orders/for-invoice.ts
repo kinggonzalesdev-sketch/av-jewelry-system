@@ -3,6 +3,7 @@ import 'server-only';
 import { recordAuditEvent } from '@/lib/audit/log';
 import { AuthorizationError, requireActiveStaff, requireOwnerOrAdmin } from '@/lib/authz/guard';
 import { sendPancakeConversationMessage } from '@/lib/integrations/pancake';
+import { renderOrderMessage } from '@/lib/messaging/templates';
 import { createClient } from '@/lib/supabase/server';
 
 /** Outcome of trying to auto-deliver a message through Pancake (best-effort). */
@@ -224,6 +225,37 @@ export async function saveOrderInvoiceMessage(
     context: { length: trimmed.length, created: !existing.data },
   });
   return { ok: true };
+}
+
+/**
+ * Re-deliver the invoice message to the customer's Pancake conversation WITHOUT
+ * advancing the order — a safe Retry Send. Reuses the same delivery path (which
+ * records the message id + Sent/Failed status). Never creates another order.
+ */
+export async function resendOrderInvoice(orderId: string): Promise<ForInvoiceResult> {
+  const rendered = await renderOrderMessage(orderId, 'invoice');
+  if (!rendered.ok) return { ok: false, error: rendered.error };
+
+  const supabase = await createClient();
+  const pancake = await deliverOrderMessageViaPancake(supabase, orderId, rendered.message);
+  if (!pancake.attempted) {
+    return {
+      ok: false,
+      error:
+        'Not sent — the customer has no linked Pancake conversation, or a test session is active.',
+    };
+  }
+  if (!pancake.delivered) {
+    return { ok: false, error: pancake.error ?? 'Pancake could not send the message.' };
+  }
+
+  await recordAuditEvent({
+    action: 'order.invoice_resent',
+    entityType: 'official_order',
+    entityId: orderId,
+    context: { via: 'pancake' },
+  });
+  return { ok: true, pancake };
 }
 
 export type BulkInvoiceOrder = {

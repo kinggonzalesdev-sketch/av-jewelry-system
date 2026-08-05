@@ -20,6 +20,7 @@ import {
   getForInvoiceOrders,
   getOrderInvoiceMessage,
   getOrderReminders,
+  resendOrderInvoice,
   saveOrderInvoiceMessage,
   sendOrderReminder,
   setCustomerFacebookUrl,
@@ -246,6 +247,13 @@ export async function saveOrderInvoiceMessageAction(
   if (!orderId) return { ok: false, error: 'An order is required.' };
   if (!customerId) return { ok: false, error: 'A customer is required.' };
   return saveOrderInvoiceMessage(orderId, customerId, body);
+}
+
+/** Retry Send — re-deliver the invoice via Pancake WITHOUT advancing the order or
+ *  creating anything new. */
+export async function resendInvoiceAction(orderId: string): Promise<ForInvoiceResult> {
+  if (!orderId) return { ok: false, error: 'An order is required.' };
+  return resendOrderInvoice(orderId);
 }
 
 /** Load the For-Invoice orders + their chat eligibility for "Send All Invoices". */
