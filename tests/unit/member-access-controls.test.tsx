@@ -104,19 +104,24 @@ describe('Manage Access — permission toggles', () => {
     );
   });
 
-  it('shows the five permission groups with Save / Cancel for a staff member', async () => {
+  it('shows the six permission groups (incl. Inventory) with Save / Cancel for a staff member', async () => {
     renderControls();
     fireEvent.click(screen.getByTestId('member-access-sp1'));
     expect(await screen.findByTestId('member-access-save')).toBeInTheDocument();
     for (const group of [
       'Main System',
+      'Inventory',
       'Orders and Fulfillment',
-      'Records Management',
+      'Customers',
       'Team Management',
       'System',
     ]) {
-      expect(screen.getByText(group)).toBeInTheDocument();
+      // 'Inventory'/'Customers' also appear as toggle labels, so allow >= 1.
+      expect(screen.getAllByText(group).length).toBeGreaterThanOrEqual(1);
     }
+    // The assignable "Add Inventory Item" toggle (post_live_item_entry) is present.
+    expect(screen.getByTestId('access-toggle-post_live_item_entry')).toBeInTheDocument();
+    expect(screen.getByText('Add Inventory Item')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Enable All' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Disable All' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();

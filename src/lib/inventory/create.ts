@@ -83,9 +83,9 @@ export async function createManualItem(
         action: 'inventory_item.manual_create',
         entityType: 'inventory_item',
         outcome: 'denied',
-        reason: cause.message,
+        reason: cause.message, // raw key logged internally, never shown to the user
       });
-      return { ok: false, error: cause.message };
+      return { ok: false, error: "You don't have permission to add inventory items." };
     }
     throw cause;
   }
@@ -179,9 +179,9 @@ export async function createInventoryEntry(
         action: 'inventory_item.manual_create',
         entityType: 'inventory_item',
         outcome: 'denied',
-        reason: cause.message,
+        reason: cause.message, // raw key logged internally, never shown to the user
       });
-      return { ok: false, error: cause.message };
+      return { ok: false, error: "You don't have permission to add inventory items." };
     }
     throw cause;
   }

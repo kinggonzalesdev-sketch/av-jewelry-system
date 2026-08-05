@@ -30,10 +30,22 @@ export const ACCESS_GROUPS: AccessGroup[] = [
       { key: 'nav_dashboard', label: 'Dashboard' },
       { key: 'nav_orders', label: 'Orders' },
       { key: 'nav_customers', label: 'Customers' },
-      { key: 'nav_inventory', label: 'Inventory' },
       { key: 'nav_payments', label: 'Payments' },
       { key: 'nav_layaway', label: 'Layaway' },
       { key: 'nav_scrap', label: 'Scrap' },
+    ],
+  },
+  {
+    // Inventory access + actions in one place. "Add Inventory Item" is INDEPENDENT
+    // from opening/editing/deleting inventory: a member can have Inventory + Edit
+    // but NOT Add, and then cannot create new items.
+    title: 'Inventory',
+    toggles: [
+      { key: 'nav_inventory', label: 'Inventory' },
+      { key: 'post_live_item_entry', label: 'Add Inventory Item' },
+      { key: 'inventory_edit', label: 'Edit Inventory' },
+      { key: 'inventory_delete', label: 'Delete Inventory' },
+      { key: 'export_data_reports', label: 'Export Data' },
     ],
   },
   {
@@ -50,13 +62,10 @@ export const ACCESS_GROUPS: AccessGroup[] = [
     ],
   },
   {
-    title: 'Records Management',
+    title: 'Customers',
     toggles: [
       { key: 'customer_edit', label: 'Edit Customer' },
       { key: 'customer_delete', label: 'Delete Customer' },
-      { key: 'inventory_edit', label: 'Edit Inventory' },
-      { key: 'inventory_delete', label: 'Delete Inventory' },
-      { key: 'export_data_reports', label: 'Export Data' },
     ],
   },
   {

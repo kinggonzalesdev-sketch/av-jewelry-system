@@ -45,9 +45,9 @@ export async function importInventoryItems(
         action: 'inventory_item.import',
         entityType: 'inventory_item',
         outcome: 'denied',
-        reason: cause.message,
+        reason: cause.message, // logged internally; never shown to the user
       });
-      return { ok: false, error: cause.message };
+      return { ok: false, error: "You don't have permission to import inventory items." };
     }
     throw cause;
   }
