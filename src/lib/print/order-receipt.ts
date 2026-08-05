@@ -37,13 +37,17 @@ export function formatStickerPeso(amount: string): string {
   return formatPeso(amount.trim());
 }
 
-/** The four sticker lines. Pure — the one place the format is defined. */
+/** The four sticker lines. Pure — the one place the format is defined. Order:
+ *  Customer Name · Item (+grams) · Price · Date (the centered stack the Owner asked
+ *  for). Price is its own prominent line; the quantity only shows when more than one
+ *  piece, since a single-piece jewelry sticker shows just the amount. */
 export function stickerLines(d: OrderReceiptData): string[] {
   const price = d.unitPrice ? formatStickerPeso(d.unitPrice) : '—';
+  const priceLine = d.quantity > 1 ? `${d.quantity} x ${price}` : price;
   return [
     d.customerName || '—',
     d.grams ? `${d.itemName} ${d.grams}` : d.itemName,
-    `Qty ${d.quantity}  |  ${price}`,
+    priceLine,
     d.date,
   ];
 }
@@ -126,26 +130,35 @@ function escapeHtml(value: string): string {
 }
 
 function receiptHtml(d: OrderReceiptData): string {
-  const [name, item, qtyPrice, date] = stickerLines(d);
+  const [name, item, price, date] = stickerLines(d);
   return `
     <div class="stk">
       <div class="name">${escapeHtml(name ?? '')}</div>
       <div class="item">${escapeHtml(item ?? '')}</div>
-      <div class="qp">${escapeHtml(qtyPrice ?? '')}</div>
+      <div class="price">${escapeHtml(price ?? '')}</div>
       <div class="date">${escapeHtml(date ?? '')}</div>
     </div>
   `;
 }
 
+// Centered both ways in the middle printable area of the 40×30 mm sticker, with a
+// clear size hierarchy (name/price largest, item slightly smaller, date medium) and
+// long names/items wrapping to two centered lines. No content near the edges.
 const RECEIPT_STYLE = `
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: ui-monospace, Menlo, Consolas, monospace; color: #000; }
-  .stk { width: 260px; padding: 10px 12px; line-height: 1.5; }
-  .name { font-size: 15px; font-weight: 700; }
-  .item { font-size: 13px; }
-  .qp { font-size: 13px; font-weight: 600; }
-  .date { font-size: 12px; }
-  @media print { @page { margin: 4mm; } }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: ui-monospace, Menlo, Consolas, monospace; color: #000; }
+  .stk {
+    width: 40mm; min-height: 30mm; padding: 2mm 2.5mm;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; gap: 1.1mm; line-height: 1.12;
+  }
+  .stk > div { width: 100%; overflow-wrap: break-word; word-break: break-word; }
+  .name { font-size: 30px; font-weight: 800; }
+  .item { font-size: 26px; font-weight: 700; }
+  .price { font-size: 28px; font-weight: 800; }
+  .date { font-size: 22px; font-weight: 500; }
+  @media print { @page { size: 40mm 30mm; margin: 0; } }
 `;
 
 export function printOrderReceipt(data: OrderReceiptData): void {

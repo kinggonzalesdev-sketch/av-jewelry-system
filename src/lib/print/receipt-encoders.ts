@@ -46,41 +46,166 @@ function bytesFromText(s: string): number[] {
   return Array.from(new TextEncoder().encode(asciify(s)));
 }
 
-/** ESC/POS byte stream for the 4-line sticker. */
-export function encodeReceiptEscPos(d: OrderReceiptData): Uint8Array {
-  const [name, item, qtyPrice, date] = stickerLines(d);
-  const out: number[] = [];
-  const line = (s: string) => out.push(...bytesFromText(s), LF);
+/**
+ * Greedy word-wrap `text` to at most `maxLines` lines, each within `maxChars`.
+ * Returns null when it does not fit (a single word longer than a line, or too many
+ * lines) so the caller can step down to a smaller font — never crops.
+ */
+export function wrapWords(text: string, maxChars: number, maxLines: number): string[] | null {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [''];
+  const lines: string[] = [];
+  let cur = '';
+  for (const w of words) {
+    if (w.length > maxChars) return null; // a single word cannot fit at this size
+    const next = cur ? `${cur} ${w}` : w;
+    if (next.length <= maxChars) {
+      cur = next;
+    } else {
+      lines.push(cur);
+      cur = w;
+      if (lines.length >= maxLines) return null;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines.length <= maxLines ? lines : null;
+}
 
-  out.push(ESC, 0x40); // ESC @  — initialise
-  out.push(ESC, 0x45, 0x01); // ESC E 1 — bold on (the name)
-  line(name ?? '');
-  out.push(ESC, 0x45, 0x00); // bold off
-  line(item ?? '');
-  line(qtyPrice ?? '');
-  line(date ?? '');
+/* --------------------------------------------------------------------------- *
+ * TSPL sticker layout — centered, sized, wrapped.
+ *
+ * A 40×30 mm label at the XP-236B's 203 dpi is 320×240 dots (8 dots/mm). We keep a
+ * safe margin, size each line with the TSC internal bitmap fonts (name/price largest,
+ * item slightly smaller, date medium), wrap long name/item to two lines, and center
+ * the whole block both horizontally (per line) and vertically. Reducing a line's font
+ * happens ONLY when it still overflows after wrapping — never for the whole sticker.
+ * --------------------------------------------------------------------------- */
+
+/** TSC internal bitmap font cell sizes (dots): [width, height]. */
+const TSPL_FONT: Record<string, { w: number; h: number }> = {
+  '1': { w: 8, h: 12 },
+  '2': { w: 12, h: 20 },
+  '3': { w: 16, h: 24 },
+  '4': { w: 24, h: 32 },
+};
+
+/** Safe font-cell lookup (falls back to font 2 for an unknown key). */
+function cell(font: string): { w: number; h: number } {
+  return TSPL_FONT[font] ?? { w: 12, h: 20 };
+}
+
+const LABEL_W = 320; // 40 mm @ 203 dpi
+const LABEL_H = 240; // 30 mm @ 203 dpi
+const MARGIN_X = 16; // safe left/right margin (never touch the edge)
+const PRINTABLE_W = LABEL_W - MARGIN_X * 2;
+const LINE_GAP = 10; // vertical gap between physical lines
+
+type SizedLine = { text: string; font: string };
+
+/**
+ * Fit one logical element into 1–2 physical lines at the largest font in `fontOrder`
+ * that fits, wrapping to two lines when needed. Steps down a font only if a single
+ * word still overflows; as a last resort hard-wraps by characters so nothing is lost.
+ */
+function fitElement(text: string, fontOrder: string[]): SizedLine[] {
+  const t = asciify(text).replace(/"/g, '').trim();
+  for (const font of fontOrder) {
+    const maxChars = Math.max(1, Math.floor(PRINTABLE_W / cell(font).w));
+    if (t.length <= maxChars) return [{ text: t, font }];
+    const wrapped = wrapWords(t, maxChars, 2);
+    if (wrapped) return wrapped.map((line) => ({ text: line, font }));
+  }
+  const font = fontOrder[fontOrder.length - 1] ?? '2';
+  const maxChars = Math.max(1, Math.floor(PRINTABLE_W / cell(font).w));
+  const lines: string[] = [];
+  for (let i = 0; i < t.length; i += maxChars) lines.push(t.slice(i, i + maxChars));
+  return (lines.length ? lines : ['']).map((line) => ({ text: line, font }));
+}
+
+/** All physical sticker lines, sized by the hierarchy (name/price large, item a step
+ *  down, date medium). */
+export function tsplStickerLines(d: OrderReceiptData): SizedLine[] {
+  const [name, item, price, date] = stickerLines(d);
+  return [
+    ...fitElement(name ?? '', ['4', '3', '2']), // Customer Name — largest
+    ...fitElement(item ?? '', ['3', '2']), // Item — slightly smaller
+    ...fitElement(price ?? '', ['4', '3', '2']), // Price — large
+    ...fitElement(date ?? '', ['2']), // Date — medium
+  ];
+}
+
+/** Position the sized lines centered both ways and emit the TSPL TEXT commands. */
+function layoutTsplText(lines: SizedLine[]): string[] {
+  const heights = lines.map((l) => cell(l.font).h);
+  const totalH = heights.reduce((a, b) => a + b, 0) + LINE_GAP * Math.max(0, lines.length - 1);
+  let y = Math.max(8, Math.round((LABEL_H - totalH) / 2));
+  const cmds: string[] = [];
+  lines.forEach((l, i) => {
+    const lineW = l.text.length * cell(l.font).w;
+    const x = Math.max(MARGIN_X, Math.round((LABEL_W - lineW) / 2));
+    cmds.push(`TEXT ${x},${y},"${l.font}",0,1,1,"${l.text}"`);
+    y += (heights[i] ?? 0) + LINE_GAP;
+  });
+  return cmds;
+}
+
+/** ESC/POS character size byte for GS ! (width/height magnification 1..8). */
+function gsSize(widthTimes: number, heightTimes: number): number {
+  return ((widthTimes - 1) << 4) | (heightTimes - 1);
+}
+
+/**
+ * ESC/POS byte stream for the 4-line sticker — centered, with the size hierarchy
+ * (name/price double, item slightly smaller, date normal) and long name/item wrapped
+ * to two lines. A leading feed gives balanced top spacing on a continuous receipt.
+ */
+export function encodeReceiptEscPos(d: OrderReceiptData): Uint8Array {
+  const [name, item, price, date] = stickerLines(d);
+  const out: number[] = [];
+  const emit = (
+    text: string,
+    widthTimes: number,
+    heightTimes: number,
+    bold: boolean,
+    maxChars: number | null,
+  ) => {
+    out.push(GS, 0x21, gsSize(widthTimes, heightTimes));
+    out.push(ESC, 0x45, bold ? 0x01 : 0x00);
+    const lines =
+      maxChars !== null ? (wrapWords(asciify(text), maxChars, 2) ?? [text]) : [text];
+    for (const l of lines) out.push(...bytesFromText(l), LF);
+    out.push(ESC, 0x45, 0x00);
+    out.push(GS, 0x21, 0x00);
+  };
+
+  out.push(ESC, 0x40); // initialise
+  out.push(ESC, 0x61, 0x01); // center align
+  out.push(LF); // top spacing for vertical balance
+
+  emit(name ?? '', 2, 2, true, 12); // Customer Name — largest, bold
+  emit(item ?? '', 1, 2, true, 20); // Item — slightly smaller, bold
+  emit(price ?? '', 2, 2, true, null); // Price — large, bold
+  emit(date ?? '', 1, 1, false, null); // Date — medium
+
   out.push(LF, LF, LF); // feed clear of the tear bar
-  out.push(GS, 0x56, 0x42, 0x00); // GS V B 0 — partial cut (no-op on label printers)
+  out.push(ESC, 0x61, 0x00); // back to left align
+  out.push(GS, 0x56, 0x42, 0x00); // partial cut (no-op on label printers)
 
   return new Uint8Array(out);
 }
 
 /**
- * TSPL byte stream for the 4-line sticker on a 40×30 mm label. TSPL is line-based
+ * TSPL byte stream for the 4-line sticker on a 40×30 mm label. Centered both ways,
+ * sized by the hierarchy, long name/item wrapped to two lines. TSPL is line-based
  * ASCII, so the label program is just text.
  */
 export function encodeLabelTspl(d: OrderReceiptData): Uint8Array {
-  const [name, item, qtyPrice, date] = stickerLines(d);
-  const t = (s: string) => asciify(s).replace(/"/g, '').slice(0, 30);
   const program = [
     'SIZE 40 mm,30 mm',
     'GAP 2 mm,0 mm',
     'DIRECTION 1',
     'CLS',
-    `TEXT 12,12,"2",0,1,1,"${t(name ?? '')}"`,
-    `TEXT 12,52,"1",0,1,1,"${t(item ?? '')}"`,
-    `TEXT 12,84,"1",0,1,1,"${t(qtyPrice ?? '')}"`,
-    `TEXT 12,116,"1",0,1,1,"${t(date ?? '')}"`,
+    ...layoutTsplText(tsplStickerLines(d)),
     'PRINT 1,1',
     '',
   ].join('\r\n');

@@ -10,7 +10,7 @@ const registerMock = vi.fn(() => Promise.resolve({ ok: true as const }));
 const updateMock = vi.fn((_id: string, _c: unknown) => Promise.resolve({ ok: true as const }));
 const deleteMock = vi.fn((_id: string) => Promise.resolve({ ok: true as const }));
 vi.mock('@/lib/printers/actions', () => ({
-  registerPrinterAction: (input: unknown) => registerMock(),
+  registerPrinterAction: (_input: unknown) => registerMock(),
   updatePrinterAction: (id: string, c: unknown) => updateMock(id, c),
   deletePrinterAction: (id: string) => deleteMock(id),
 }));
