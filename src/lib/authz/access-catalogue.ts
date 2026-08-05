@@ -158,13 +158,16 @@ export function deriveModuleState(granted: ReadonlySet<string>): Set<string> {
  * AND server-side, so a crafted request can never grant a child without its parent.
  */
 export function applyModuleCascade(keys: ReadonlySet<string>): Set<string> {
-  const next = new Set(keys);
+  // Children of any parented module whose parent is OFF are dropped. Built as a
+  // "blocked" set and filtered out (rather than mutating in place) so this pure data
+  // transform never looks like a database write.
+  const blocked = new Set<string>();
   for (const m of ACCESS_MODULES) {
-    if (m.parent && !next.has(m.parent.key)) {
-      for (const c of m.children) next.delete(c.key);
+    if (m.parent && !keys.has(m.parent.key)) {
+      for (const c of m.children) blocked.add(c.key);
     }
   }
-  return next;
+  return new Set([...keys].filter((k) => !blocked.has(k)));
 }
 
 /** Role vocabulary. Super Admin IS the `owner` role (confirmed with the Owner). */

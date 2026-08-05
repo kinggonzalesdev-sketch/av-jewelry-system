@@ -109,27 +109,29 @@ describe('OrdersView — honest states', () => {
   });
 });
 
-describe('OrdersView — the approved 11 status cards over real data', () => {
-  it('renders all status cards, incl. the For-Prepare destinations', () => {
+describe('OrdersView — the approved status cards over real data', () => {
+  it('renders the remaining status cards', () => {
     render(<OrdersView result={ok(sample)} />);
-    // Delivery, Pickup, and For Layaway were added as For-Prepare transfer
-    // destinations (Orders Workflow — For Prepare).
     for (const key of [
       'all',
       'for_invoice',
-      'for_reminder',
-      'for_prepare',
       'ship_confirm',
       'delivery',
       'pickup',
       'for_layaway',
       'keep',
-      'for_cancel',
       'cancelled',
       'unverified_pay',
       'completed',
     ]) {
       expect(screen.getByTestId(`orders-card-${key}`)).toBeInTheDocument();
+    }
+  });
+
+  it('no longer renders the removed cards (Owner request)', () => {
+    render(<OrdersView result={ok(sample)} />);
+    for (const key of ['for_reminder', 'for_prepare', 'for_shipping', 'for_cancel']) {
+      expect(screen.queryByTestId(`orders-card-${key}`)).not.toBeInTheDocument();
     }
   });
 
@@ -143,9 +145,6 @@ describe('OrdersView — the approved 11 status cards over real data', () => {
       within(screen.getByTestId('orders-card-for_invoice')).getByText('2'),
     ).toBeInTheDocument();
     expect(
-      within(screen.getByTestId('orders-card-for_reminder')).getByText('1'),
-    ).toBeInTheDocument();
-    expect(
       within(screen.getByTestId('orders-card-cancelled')).getByText('1'),
     ).toBeInTheDocument();
     // None of the sample orders are in a completed state → Completed shows 0.
@@ -154,22 +153,20 @@ describe('OrdersView — the approved 11 status cards over real data', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows an honest 0 for cards with no backing yet (Keep / For Cancel)', () => {
+  it('shows an honest 0 for a card with no backing yet (Keep)', () => {
     render(<OrdersView result={ok(sample)} />);
     expect(
       within(screen.getByTestId('orders-card-keep')).getByText('0'),
-    ).toBeInTheDocument();
-    expect(
-      within(screen.getByTestId('orders-card-for_cancel')).getByText('0'),
     ).toBeInTheDocument();
   });
 
   it('filters the table when a status card is clicked', () => {
     render(<OrdersView result={ok(sample)} />);
-    fireEvent.click(screen.getByTestId('orders-card-for_reminder'));
-    // Only ORD-2 (Jose Cruz, awaiting_required_payment) remains.
-    expect(screen.getByText('Jose Cruz')).toBeInTheDocument();
-    expect(screen.queryByText('Maria Santos')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('orders-card-for_invoice'));
+    // Only the invoiced orders (ORD-1 Maria Santos, ORD-5 Lito Uy) remain.
+    expect(screen.getByText('Maria Santos')).toBeInTheDocument();
+    expect(screen.getByText('Lito Uy')).toBeInTheDocument();
+    expect(screen.queryByText('Jose Cruz')).not.toBeInTheDocument();
   });
 });
 
@@ -218,15 +215,11 @@ describe('OrdersView — search and filters (existing, preserved)', () => {
     expect([...select.options].map((o) => o.textContent)).toEqual([
       'Total',
       'For Invoice',
-      'For Reminder',
-      'For Prepare',
-      'For Shipping',
       'Ship Confirm',
       'For Delivery',
       'Pickup',
       'For Layaway',
       'Keep',
-      'For Cancel',
       'Cancelled',
       'Pending Payment',
       'Completed',
@@ -286,24 +279,16 @@ describe('OrdersView — For Shipping is its own flow', () => {
     }),
   ];
 
-  it('offers a For Shipping card and dropdown option', () => {
+  it('no longer offers a For Shipping card or dropdown option (Owner request)', () => {
     render(<OrdersView result={ok(shipping)} />);
-    expect(screen.getByTestId('orders-card-for_shipping')).toBeInTheDocument();
+    expect(screen.queryByTestId('orders-card-for_shipping')).not.toBeInTheDocument();
     const select = screen.getByTestId<HTMLSelectElement>('orders-filter-flow');
     expect(
-      within(select).getByRole('option', { name: 'For Shipping' }),
-    ).toBeInTheDocument();
+      within(select).queryByRole('option', { name: 'For Shipping' }),
+    ).not.toBeInTheDocument();
   });
 
-  it('shows awaiting-release orders under For Shipping, not Ship Confirm', () => {
-    render(<OrdersView result={ok(shipping)} />);
-    fireEvent.click(screen.getByTestId('orders-card-for_shipping'));
-    expect(screen.getByText('Awaiting Release')).toBeInTheDocument();
-    expect(screen.getByText('Routed To Shipping')).toBeInTheDocument();
-    expect(screen.queryByText('Released Already')).not.toBeInTheDocument();
-  });
-
-  it('shows released orders under Ship Confirm, not For Shipping', () => {
+  it('shows released orders under Ship Confirm', () => {
     render(<OrdersView result={ok(shipping)} />);
     fireEvent.click(screen.getByTestId('orders-card-ship_confirm'));
     expect(screen.getByText('Released Already')).toBeInTheDocument();

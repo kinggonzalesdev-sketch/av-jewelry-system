@@ -106,16 +106,16 @@ type CardKey =
 const CARD_DEFS: Array<{ key: CardKey; label: string; icon: string; tone: BadgeTone }> = [
   { key: 'all', label: 'Total', icon: '▤', tone: 'gold' },
   { key: 'for_invoice', label: 'For Invoice', icon: '▦', tone: 'warning' },
-  { key: 'for_reminder', label: 'For Reminder', icon: '⏱', tone: 'neutral' },
-  { key: 'for_prepare', label: 'For Prepare', icon: '◈', tone: 'neutral' },
-  { key: 'for_shipping', label: 'For Shipping', icon: '📦', tone: 'neutral' },
+  // For Reminder / For Prepare / For Shipping / For Cancel were removed as clickable
+  // cards (Owner request 2026-08-05). Their CardKeys + matchesCard rules are kept
+  // (like `for_confirm`, they remain valid for status logic) — they simply no longer
+  // render a card or a flow-dropdown option.
   { key: 'ship_confirm', label: 'Ship Confirm', icon: '➤', tone: 'strong' },
   // For-Prepare transfer destinations (Orders Workflow).
   { key: 'delivery', label: 'For Delivery', icon: '🛵', tone: 'gold' },
   { key: 'pickup', label: 'Pickup', icon: '🏬', tone: 'gold' },
   { key: 'for_layaway', label: 'For Layaway', icon: '❐', tone: 'neutral' },
   { key: 'keep', label: 'Keep', icon: '❏', tone: 'neutral' },
-  { key: 'for_cancel', label: 'For Cancel', icon: '⚠', tone: 'warning' },
   { key: 'cancelled', label: 'Cancelled', icon: '✕', tone: 'danger' },
   { key: 'unverified_pay', label: 'Pending Payment', icon: '⚠', tone: 'warning' },
   { key: 'completed', label: 'Completed', icon: '✓', tone: 'strong' },

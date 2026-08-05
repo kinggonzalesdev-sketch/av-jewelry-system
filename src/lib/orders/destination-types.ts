@@ -29,14 +29,17 @@ export type FulfillmentDestination = (typeof FULFILLMENT_DESTINATIONS)[number];
  * checks. `ship_confirm` ("Ship Confirmed") advances a shipping order to the Ship
  * Confirm bucket (release approved).
  */
+// Owner request 2026-08-05: "For Shipping" (shipping) and "For Cancel" (cancelled)
+// were removed from the Transfer to Destination dropdown. Cancelling still goes
+// through the dedicated Cancel Order flow; shipping-status orders are handled by
+// Ship Confirmed. Both stay valid FulfillmentDestination values for existing data —
+// they are just no longer OFFERED as transfer targets.
 export const OFFERED_DESTINATIONS: FulfillmentDestination[] = [
-  'shipping',
   'ship_confirm',
   'delivery',
   'pickup',
   'layaway',
   'keep',
-  'cancelled',
   'completed',
 ];
 
