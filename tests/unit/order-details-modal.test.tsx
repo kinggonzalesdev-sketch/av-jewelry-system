@@ -15,7 +15,9 @@ const loadOrderDetailAction = vi.fn<(id: string) => Promise<OrderDetailResult>>(
 
 vi.mock('@/lib/orders/actions', () => ({
   loadOrderDetailAction: (id: string) => loadOrderDetailAction(id),
-  verifyForInvoiceAction: vi.fn(() => Promise.resolve({ ok: true })),
+  sendInvoiceMessageAction: vi.fn(() =>
+    Promise.resolve({ ok: true, pancake: { attempted: false, delivered: false, error: null } }),
+  ),
   saveOrderInvoiceMessageAction: vi.fn(() => Promise.resolve({ ok: true })),
   confirmRequiredPaymentAction: vi.fn(() => Promise.resolve({ ok: true })),
   readyForPreparationAction: vi.fn(() => Promise.resolve({ ok: true })),
@@ -23,6 +25,8 @@ vi.mock('@/lib/orders/actions', () => ({
     Promise.resolve({ reminders: [], customerResponse: null }),
   ),
   sendOrderReminderAction: vi.fn(() => Promise.resolve({ ok: true })),
+  setCustomerFacebookUrlAction: vi.fn(() => Promise.resolve({ ok: true })),
+  setCustomerPancakeConversationAction: vi.fn(() => Promise.resolve({ ok: true })),
   setCustomerResponseAction: vi.fn(() => Promise.resolve({ ok: true })),
   loadOrderInvoiceMessageAction: vi.fn(() =>
     Promise.resolve({
@@ -171,8 +175,9 @@ describe('OrderDetailsModal', () => {
     expect(screen.getByTestId('order-message-save')).toBeInTheDocument();
   });
 
-  it('Send Invoice asks for confirmation, then advances For Invoice → For Reminder', async () => {
-    const { verifyForInvoiceAction } = await import('@/lib/orders/actions');
+  it('Send Invoice asks for confirmation, then SENDS without advancing (stays For Invoice)', async () => {
+    const { sendInvoiceMessageAction } = await import('@/lib/orders/actions');
+    (sendInvoiceMessageAction as ReturnType<typeof vi.fn>).mockClear();
     loadOrderDetailAction.mockResolvedValue({
       ok: true,
       detail: detail({
@@ -190,19 +195,20 @@ describe('OrderDetailsModal', () => {
     render(<OrderDetailsModal orderId="o1" onClose={vi.fn()} />);
 
     fireEvent.click(await screen.findByTestId('order-send-invoice'));
-    // A confirmation step appears; the transition only runs after confirming.
+    // A confirmation step appears; nothing is sent until it is confirmed.
     expect(screen.getByTestId('order-send-confirm')).toHaveTextContent(
       /Confirm that the invoice details were sent/i,
     );
-    expect(verifyForInvoiceAction).not.toHaveBeenCalled();
+    expect(sendInvoiceMessageAction).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByTestId('order-send-invoice-confirm'));
-    expect(verifyForInvoiceAction).toHaveBeenCalledWith('o1', null);
+    // Delivers the message but never advances the order (no status change).
+    expect(sendInvoiceMessageAction).toHaveBeenCalledWith('o1', null);
   });
 
-  it('Open FB Chat reports when no chat link is on file (and never changes status)', async () => {
-    const { verifyForInvoiceAction } = await import('@/lib/orders/actions');
-    (verifyForInvoiceAction as ReturnType<typeof vi.fn>).mockClear();
+  it('Open FB Chat reports when no chat link is on file (and never sends anything)', async () => {
+    const { sendInvoiceMessageAction } = await import('@/lib/orders/actions');
+    (sendInvoiceMessageAction as ReturnType<typeof vi.fn>).mockClear();
     loadOrderDetailAction.mockResolvedValue({
       ok: true,
       detail: detail({ status: 'invoiced' }), // facebookConversationUrl: null
@@ -213,7 +219,7 @@ describe('OrderDetailsModal', () => {
     expect(screen.getByTestId('order-fb-notice')).toHaveTextContent(
       'Facebook chat link is not available.',
     );
-    expect(verifyForInvoiceAction).not.toHaveBeenCalled();
+    expect(sendInvoiceMessageAction).not.toHaveBeenCalled();
   });
 
   it('shows the simplified For Reminder view (fields + 3 reminders + Confirm for Preparation)', async () => {

@@ -23,6 +23,7 @@ import {
   getOrderReminders,
   resendOrderInvoice,
   saveOrderInvoiceMessage,
+  sendOrderInvoice,
   sendOrderReminder,
   setCustomerFacebookUrl,
   setCustomerPancakeConversation,
@@ -159,6 +160,21 @@ export async function verifyForInvoiceAction(
 ): Promise<ForInvoiceResult> {
   if (!orderId) return { ok: false, error: 'An order is required.' };
   const result = await advanceOrderToReminder(orderId, message ?? null);
+  if (result.ok) revalidatePath('/orders');
+  return result;
+}
+
+/**
+ * Send Invoice (Owner flow) — deliver the invoice to the customer's Facebook chat
+ * WITHOUT advancing the order. It stays in For Invoice; the Admin transfers it to a
+ * destination afterwards. Revalidates so the Sent status shows.
+ */
+export async function sendInvoiceMessageAction(
+  orderId: string,
+  message?: string | null,
+): Promise<ForInvoiceResult> {
+  if (!orderId) return { ok: false, error: 'An order is required.' };
+  const result = await sendOrderInvoice(orderId, message ?? null);
   if (result.ok) revalidatePath('/orders');
   return result;
 }

@@ -260,6 +260,41 @@ export async function resendOrderInvoice(orderId: string): Promise<ForInvoiceRes
 }
 
 /**
+ * Send the invoice to the customer's Facebook (Pancake) chat WITHOUT advancing the
+ * order (Owner flow: the order stays in For Invoice; the Admin later transfers it to a
+ * destination). Delivers best-effort and records the Sent / Failed outcome + message
+ * id. Never changes status and never throws — it reports whether it actually reached
+ * the customer so the UI can say so plainly.
+ */
+export async function sendOrderInvoice(
+  orderId: string,
+  message?: string | null,
+): Promise<{ ok: true; pancake: PancakeDelivery } | { ok: false; error: string }> {
+  let body = (message ?? '').trim();
+  if (!body) {
+    const rendered = await renderOrderMessage(orderId, 'invoice');
+    if (!rendered.ok) return { ok: false, error: rendered.error };
+    body = rendered.message;
+  }
+
+  const supabase = await createClient();
+  const pancake = await deliverOrderMessageViaPancake(supabase, orderId, body);
+
+  await recordAuditEvent({
+    action: 'order.invoice_sent',
+    entityType: 'official_order',
+    entityId: orderId,
+    context: {
+      via: 'pancake',
+      attempted: pancake.attempted,
+      delivered: pancake.delivered,
+      advanced: false,
+    },
+  });
+  return { ok: true, pancake };
+}
+
+/**
  * Ambiguity check before sending (§6): how many OTHER active customers share this
  * customer's exact name, and whether this one has a linked Pancake conversation.
  * The UI warns the operator to verify the right person when a name is shared or no

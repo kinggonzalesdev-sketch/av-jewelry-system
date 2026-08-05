@@ -12,11 +12,11 @@ import {
   readyForPreparationAction,
   resendInvoiceAction,
   saveOrderInvoiceMessageAction,
+  sendInvoiceMessageAction,
   sendOrderReminderAction,
   setCustomerFacebookUrlAction,
   setCustomerPancakeConversationAction,
   setCustomerResponseAction,
-  verifyForInvoiceAction,
 } from '@/lib/orders/actions';
 import { renderOrderMessageAction } from '@/lib/messaging/actions';
 import { CopyButton } from '@/components/ui/copy-button';
@@ -648,20 +648,33 @@ function ForInvoiceView({
   const [confirming, setConfirming] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [sentNote, setSentNote] = useState<string | null>(null);
 
+  // Send Invoice (Owner flow): deliver the message to the customer's Facebook chat and
+  // record it, but DO NOT advance — the order stays in For Invoice; the Admin transfers
+  // it to a destination afterwards. The result says plainly whether it reached the chat.
   const sendInvoice = async () => {
     if (sending) return;
     setSending(true);
     setSendError(null);
-    // Pass the invoice message so it is also auto-delivered via Pancake (best-effort)
-    // when the customer has a Pancake conversation id linked.
-    const res = await verifyForInvoiceAction(orderId, msgBody.trim() || null);
+    const res = await sendInvoiceMessageAction(orderId, msgBody.trim() || null);
+    setSending(false);
     if (!res.ok) {
-      setSending(false);
       setSendError(res.error);
       return;
     }
-    onDone(); // refreshes; the order is no longer For Invoice, so this view unmounts.
+    setConfirming(false);
+    const delivered = res.pancake?.delivered;
+    setSentNote(
+      delivered
+        ? `✅ Invoice sent to ${detail.customer.displayName}'s Facebook chat. The order stays in For Invoice — transfer it to a destination when ready.`
+        : res.pancake?.attempted
+          ? `Send attempted, but Pancake could not deliver it${
+              res.pancake?.error ? `: ${res.pancake.error}` : ''
+            }. Copy the message and send it manually, or retry.`
+          : 'Recorded, but NOT delivered — no Pancake chat is linked to this customer. Link a Pancake chat above to actually send it to their chat.',
+    );
+    onDone(); // refresh the list (revalidated); the order stays in For Invoice.
   };
 
   const actionBtn =
@@ -1005,9 +1018,9 @@ function ForInvoiceView({
                 </p>
               )}
               <p className="text-[11px] text-muted-foreground">
-                This moves the order from <strong>For Invoice</strong> to{' '}
-                <strong>For Reminder</strong> and records the date, time, and who did it.
-                It cannot be undone here.
+                This sends the invoice to the customer&apos;s chat and records it. The order{' '}
+                <strong>stays in For Invoice</strong> — transfer it to a destination below
+                whenever you&apos;re ready.
               </p>
               <div className="flex items-center gap-2">
                 <button
@@ -1034,6 +1047,15 @@ function ForInvoiceView({
                 </p>
               ) : null}
             </div>
+          ) : null}
+          {sentNote ? (
+            <p
+              role="status"
+              data-testid="order-invoice-sent-note"
+              className="rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-xs"
+            >
+              {sentNote}
+            </p>
           ) : null}
         </div>
 
