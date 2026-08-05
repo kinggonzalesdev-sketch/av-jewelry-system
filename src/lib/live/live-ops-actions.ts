@@ -4,6 +4,11 @@ import { runSystemCheck } from '@/lib/live/system-check';
 import type { SystemCheckResult } from '@/lib/live/system-check-types';
 import { resetTestData, setTestMode } from '@/lib/live/test-mode';
 import type { ResetTestResult, TestModeResult } from '@/lib/live/test-mode-types';
+import { endLiveSession, startLiveSession } from '@/lib/live/live-session';
+import type {
+  LiveSessionResult,
+  StartLiveSessionInput,
+} from '@/lib/live/live-session-types';
 
 /**
  * Live Operations actions (transport only). The authority + all reads live in the
@@ -19,4 +24,14 @@ export async function setTestModeAction(active: boolean): Promise<TestModeResult
 
 export async function resetTestDataAction(): Promise<ResetTestResult> {
   return resetTestData();
+}
+
+export async function startLiveSessionAction(
+  input: StartLiveSessionInput,
+): Promise<LiveSessionResult> {
+  return startLiveSession(input);
+}
+
+export async function endLiveSessionAction(): Promise<LiveSessionResult> {
+  return endLiveSession();
 }

@@ -4,9 +4,11 @@ import Link from 'next/link';
 
 import { SystemCheckPanel } from '@/components/live/system-check-panel';
 import { TestModeControls } from '@/components/live/test-mode-controls';
+import { LiveSessionControls } from '@/components/live/live-session-controls';
 import { PageHeader } from '@/components/ui/page-primitives';
 import { canOpenPage, requireActiveStaff } from '@/lib/authz/guard';
 import { getTestMode } from '@/lib/live/test-mode';
+import { getLiveSessionFormData } from '@/lib/live/live-session';
 
 export const metadata: Metadata = {};
 
@@ -27,7 +29,10 @@ export default async function LiveOperationsPage() {
   // Super Admin = the owner role. Nobody else reaches the live-readiness controls.
   if (staff.roleKey !== 'owner') notFound();
 
-  const testMode = await getTestMode();
+  const [testMode, liveSessionData] = await Promise.all([
+    getTestMode(),
+    getLiveSessionFormData(),
+  ]);
 
   return (
     <div className="space-y-4">
@@ -56,6 +61,22 @@ export default async function LiveOperationsPage() {
           shows on every device. Only the Super Admin can change it.
         </p>
         <TestModeControls initial={testMode} />
+      </section>
+
+      {/* Live Session — start a named session; its id is stamped on everything it
+          creates. One active session at a time. */}
+      <section
+        className="rounded-xl border border-border bg-card p-4"
+        aria-labelledby="livesession-h"
+      >
+        <h2 id="livesession-h" className="mb-1 text-sm font-semibold text-foreground">
+          Live Session
+        </h2>
+        <p className="mb-3 text-xs text-muted-foreground">
+          Start a session before the live so every screenshot, order, invoice, and
+          print job it creates is grouped under one session id.
+        </p>
+        <LiveSessionControls data={liveSessionData} />
       </section>
 
       <section
