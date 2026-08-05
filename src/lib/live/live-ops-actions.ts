@@ -9,6 +9,8 @@ import type {
   LiveSessionResult,
   StartLiveSessionInput,
 } from '@/lib/live/live-session-types';
+import { listLiveErrors } from '@/lib/live/error-recovery';
+import type { LiveErrorReport } from '@/lib/live/error-recovery-types';
 
 /**
  * Live Operations actions (transport only). The authority + all reads live in the
@@ -34,4 +36,8 @@ export async function startLiveSessionAction(
 
 export async function endLiveSessionAction(): Promise<LiveSessionResult> {
   return endLiveSession();
+}
+
+export async function listLiveErrorsAction(): Promise<LiveErrorReport> {
+  return listLiveErrors();
 }

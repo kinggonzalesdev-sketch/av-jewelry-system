@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { SystemCheckPanel } from '@/components/live/system-check-panel';
 import { TestModeControls } from '@/components/live/test-mode-controls';
 import { LiveSessionControls } from '@/components/live/live-session-controls';
+import { ErrorRecoveryPanel } from '@/components/live/error-recovery-panel';
 import { PageHeader } from '@/components/ui/page-primitives';
 import { canOpenPage, requireActiveStaff } from '@/lib/authz/guard';
 import { getTestMode } from '@/lib/live/test-mode';
@@ -91,6 +92,24 @@ export default async function LiveOperationsPage() {
           Failed before starting Automatic Mode.
         </p>
         <SystemCheckPanel />
+      </section>
+
+      {/* Error Recovery Center — the failures a live can hit (a message that failed
+          to auto-send, a label that failed to print), surfaced in one place with a
+          one-click Retry for the sends. */}
+      <section
+        className="rounded-xl border border-border bg-card p-4"
+        aria-labelledby="errrecovery-h"
+      >
+        <h2 id="errrecovery-h" className="mb-1 text-sm font-semibold text-foreground">
+          Error Recovery Center
+        </h2>
+        <p className="mb-3 text-xs text-muted-foreground">
+          Any invoice/reminder that failed to send or label that failed to print shows
+          here. Retry a failed send in one click; reprint a failed label from the order
+          on the capturing device.
+        </p>
+        <ErrorRecoveryPanel />
       </section>
     </div>
   );
