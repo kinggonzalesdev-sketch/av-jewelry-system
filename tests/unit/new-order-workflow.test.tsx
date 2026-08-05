@@ -36,6 +36,15 @@ const items: CaptureItem[] = [
     gramsPerPiece: '2.1',
     availabilityStatus: 'available',
   },
+  {
+    // An HK ITEM — always fixed-price at its catalogue price, never per-gram.
+    id: 'i3',
+    itemCode: 'BNA-B-2533 K18 HK ITEM',
+    itemName: null,
+    unitPrice: '37500.00',
+    gramsPerPiece: '10.2',
+    availabilityStatus: 'available',
+  },
 ];
 
 const walkInItems: WalkInItem[] = [
@@ -119,6 +128,29 @@ describe('NewOrderWorkflow — multi-item form', () => {
     // Line total + order total (₱8,000; formatPeso drops the .00).
     expect(screen.getByTestId('order-item-line-0')).toHaveTextContent('₱8,000');
     expect(screen.getByTestId('order-summary-total')).toHaveTextContent('₱8,000');
+  });
+
+  it('HK ITEM: forces Fixed Price, hides Price Per Gram, and locks the catalogue price into the total', () => {
+    renderWorkflow();
+    openForm();
+
+    const row0 = screen.getByTestId('order-item-row-0');
+    fireEvent.change(within(row0).getByPlaceholderText(/search active inventory/i), {
+      target: { value: 'BNA-B-2533 K18 HK ITEM' },
+    });
+
+    // No per-gram option — the HK badge replaces the mode toggle.
+    expect(
+      within(row0).queryByRole('button', { name: 'Price Per Gram' }),
+    ).not.toBeInTheDocument();
+    expect(within(row0).getByTestId('order-item-hk-0')).toBeInTheDocument();
+
+    // Price is the catalogue price from Inventory, read-only, and drives the total —
+    // grams are NOT multiplied in.
+    const price = within(row0).getByTestId('order-item-price-0');
+    expect(price).toHaveAttribute('readonly');
+    expect(price).toHaveDisplayValue('₱37,500');
+    expect(screen.getByTestId('order-summary-total')).toHaveTextContent('₱37,500');
   });
 
   it('Price Per Gram: total = grams × rate, read-only', () => {

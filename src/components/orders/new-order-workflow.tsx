@@ -5,6 +5,7 @@ import { useMemo, useRef, useState } from 'react';
 
 import type { CaptureItem, WalkInItem } from '@/lib/orders/service';
 import { parseInventoryCode } from '@/lib/inventory/code-parser';
+import { isHKItem } from '@/lib/inventory/hk-item';
 import { DEFAULT_PAYMENT_METHOD, PAYMENT_METHOD_OPTIONS } from '@/lib/payments/methods';
 import type { AdminNameContext } from '@/lib/authz/admin-name';
 import { AdminNameField } from '@/components/orders/admin-name-field';
@@ -195,8 +196,14 @@ function ItemRows({
   const onItem = (r: Row, value: string) => {
     const picked = byLabel.get(value.trim()) ?? null;
     const next: Partial<Row> = { itemInput: value };
-    // Prefill the FIXED price from the item's catalogue price (New Entry), editable.
-    if (picked && catalogPrefill && r.priceMode === 'fixed' && !r.price) {
+    if (picked && isHKItem(picked)) {
+      // HK ITEM is ALWAYS Fixed Price at the saved catalogue price — never per-gram,
+      // and never the price written in the name. Force the mode and load the official
+      // price from the inventory record (overriding any earlier value/mode).
+      next.priceMode = 'fixed';
+      next.price = picked.unitPrice ?? '';
+    } else if (picked && catalogPrefill && r.priceMode === 'fixed' && !r.price) {
+      // Non-HK: prefill the FIXED price from the catalogue (New Entry), editable.
       next.price = picked.unitPrice ?? '';
     }
     // Reflect the item's declared grams into the field. In New Entry the grams box
@@ -225,11 +232,16 @@ function ItemRows({
     <div className="space-y-2">
       {rows.map((r, idx) => {
         const matched = matchOf(r);
+        // HK ITEM → fixed catalogue price only (no per-gram, price locked to the
+        // inventory record). `hkLocked` is true only when a catalogue price exists,
+        // so an HK item missing a saved price stays manually enterable.
+        const hk = matched ? isHKItem(matched) : false;
+        const hkLocked = hk && Boolean(matched?.unitPrice);
         const taken = chosenElsewhere(r.key);
         const options = items
           .filter((i) => !taken.has(i.label))
           .map((i) => i.label);
-        const perGram = r.priceMode === 'per_gram';
+        const perGram = r.priceMode === 'per_gram' && !hk;
         const gramsText = matched ? (matched.grams ? `${matched.grams}g` : '—') : '';
         // Walk-In: has the operator typed grams that differ from the item's own?
         const gramsChanged =
@@ -274,11 +286,23 @@ function ItemRows({
                   Pricing
                 </span>
                 <div
-                  className="inline-flex gap-1 rounded-md border border-border p-0.5"
+                  className="inline-flex items-center gap-1 rounded-md border border-border p-0.5"
                   data-testid={`order-item-pricing-${idx}`}
                 >
-                  {modeBtn(r, 'fixed', 'Fixed Price')}
-                  {modeBtn(r, 'per_gram', 'Price Per Gram')}
+                  {hk ? (
+                    // HK ITEM is fixed-price only — no per-gram option is offered.
+                    <span
+                      className="rounded-md bg-gold px-2 py-1 text-[11px] font-semibold text-black"
+                      data-testid={`order-item-hk-${idx}`}
+                    >
+                      Fixed Price · HK Item
+                    </span>
+                  ) : (
+                    <>
+                      {modeBtn(r, 'fixed', 'Fixed Price')}
+                      {modeBtn(r, 'per_gram', 'Price Per Gram')}
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -326,12 +350,27 @@ function ItemRows({
               ) : (
                 <label className="block">
                   <L>Price</L>
-                  <MoneyInput
-                    className={cn(fieldClass, 'h-9 text-right tabular-nums')}
-                    placeholder={matched?.unitPrice ? formatPeso(matched.unitPrice) : '0.00'}
-                    value={r.price}
-                    onValueChange={(v) => patch(r.key, { price: v })}
-                  />
+                  {hkLocked ? (
+                    // Official catalogue price from the inventory record — read-only.
+                    <input
+                      className={cn(fieldClass, 'h-9 bg-muted/40 text-right tabular-nums')}
+                      readOnly
+                      value={formatPeso(r.price || matched?.unitPrice || '0')}
+                      data-testid={`order-item-price-${idx}`}
+                    />
+                  ) : (
+                    <MoneyInput
+                      className={cn(fieldClass, 'h-9 text-right tabular-nums')}
+                      placeholder={matched?.unitPrice ? formatPeso(matched.unitPrice) : '0.00'}
+                      value={r.price}
+                      onValueChange={(v) => patch(r.key, { price: v })}
+                    />
+                  )}
+                  {hkLocked ? (
+                    <span className="mt-1 block text-[10px] text-muted-foreground">
+                      Catalogue price (HK Item) — from Inventory
+                    </span>
+                  ) : null}
                 </label>
               )}
             </div>
