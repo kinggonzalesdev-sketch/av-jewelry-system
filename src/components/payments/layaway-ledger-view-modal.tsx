@@ -120,15 +120,21 @@ export function LayawayLedgerViewModal({
   ledgerId,
   allowComplete = false,
   canAddPayment = false,
+  canTransfer = false,
 }: {
   ledgerId: string;
   /** Show a "Transfer to Completed" action (used from the Keep account view). The
    *  database still enforces Owner/Admin and the open-status rule. */
   allowComplete?: boolean;
-  /** Show an "Add Payment" action inside this modal. The caller passes true only for
-   *  a manager on a non-terminal account (Owner request: Add Payment moved off the
-   *  table row and into View). The DB re-checks authority and status regardless. */
+  /** Show "Add Payment" and "Cancel Order" inside this modal. Now passed true for
+   *  EVERY active account — Owner, Admin, and Staff (Owner request: all Admin/Staff
+   *  need these on a layaway account). The DB re-checks the caller is active staff
+   *  and re-checks status regardless, so a shown button is never the real gate. */
   canAddPayment?: boolean;
+  /** Whether this user may also transfer the account to an Orders destination from
+   *  inside Add Payment. Kept manager-only (Owner/Admin) — plain Staff record a
+   *  payment or cancel, but do not move accounts into the Orders flow. */
+  canTransfer?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -221,6 +227,7 @@ export function LayawayLedgerViewModal({
                 paidToDate={detail.payment}
                 nextDueDate={detail.nextDueDate}
                 code={detail.code}
+                canTransfer={canTransfer}
               />
               <LedgerCancelAccount
                 id={ledgerId}

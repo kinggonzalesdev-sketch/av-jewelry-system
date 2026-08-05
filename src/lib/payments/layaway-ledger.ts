@@ -3,6 +3,7 @@ import 'server-only';
 import { recordAuditEvent } from '@/lib/audit/log';
 import {
   AuthorizationError,
+  requireActiveStaff,
   requireOwner,
   requireOwnerOrAdmin,
   requirePermission,
@@ -371,7 +372,9 @@ export async function cancelLayawayLedger(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!ledgerId) return { ok: false, error: 'A layaway account is required.' };
   try {
-    await requireOwnerOrAdmin();
+    // Cancelling a layaway account is available to every active staff member —
+    // Owner, Admin, and Staff (Owner request). The RPC re-checks active staff.
+    await requireActiveStaff();
   } catch (cause) {
     if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
     throw cause;
@@ -759,7 +762,9 @@ export async function addLayawayLedgerPayment(
   }
 
   try {
-    await requireOwnerOrAdmin();
+    // Recording a layaway payment is available to every active staff member —
+    // Owner, Admin, and Staff (Owner request). The RPC re-checks active staff.
+    await requireActiveStaff();
   } catch (cause) {
     if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
     throw cause;

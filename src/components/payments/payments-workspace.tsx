@@ -1246,15 +1246,17 @@ function LayawayTable({
                   ) : r.ledgerId ? (
                     <div className="flex flex-nowrap items-center justify-end gap-1">
                       {/* Actions are View · Edit · Delete only, on ONE line. "Add
-                          Payment" now lives INSIDE the View modal (Owner request) —
-                          passed here so only a manager on a non-terminal account
-                          sees it there. Edit and Delete are each gated by their own
-                          Manage Access permission (the Owner holds both implicitly). */}
+                          Payment" and "Cancel Order" live INSIDE the View modal. They
+                          now show for EVERY active account — Owner, Admin, and Staff
+                          (Owner request: all Admin/Staff need them on a layaway
+                          account) — on any non-terminal account. Transfer-to-a-
+                          destination stays manager-only (canDeleteLedger). Edit and
+                          Delete are each gated by their own Manage Access permission
+                          (the Owner holds both implicitly). */}
                       <LayawayLedgerViewModal
                         ledgerId={r.ledgerId}
-                        canAddPayment={
-                          canDeleteLedger && !TERMINAL_STATUSES.has(normStatus(r.status))
-                        }
+                        canAddPayment={!TERMINAL_STATUSES.has(normStatus(r.status))}
+                        canTransfer={canDeleteLedger}
                       />
                       {canEditLayaway ? (
                         <LedgerEditAccount id={r.ledgerId} accountNo={r.accountNo} />
