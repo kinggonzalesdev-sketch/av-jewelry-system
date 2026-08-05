@@ -105,6 +105,13 @@ export default async function PaymentsPage({
   // irreversible, everything-at-once action, so an admin never sees it.
   const isOwner = staff.roleKey === 'owner';
   const canImportLayaway = isOwner || staff.roleKey === 'selected_admin';
+  // Row-level Edit / Delete of a layaway account are now assignable in Manage
+  // Access (Owner request). The Owner holds both implicitly; anyone else needs the
+  // explicit grant. Gating each button by its own key means a member can be given
+  // Edit without Delete (or the reverse). The RPCs re-check the same keys, so a
+  // hidden button is never the control (Bible §30.3 r2).
+  const canEditLayaway = permissions.has('layaway_edit');
+  const canDeleteLayaway = permissions.has('layaway_delete');
 
   // Deep-link from a dashboard layaway card (?layaway=active|completed|all|…) to
   // preselect the matching section.
@@ -135,6 +142,8 @@ export default async function PaymentsPage({
         canMonitorLayaway={permissions.has('layaway_monitoring')}
         canRequestForfeiture={permissions.has('initiate_high_risk_action')}
         canImportLayaway={canImportLayaway}
+        canEditLayaway={canEditLayaway}
+        canDeleteLayaway={canDeleteLayaway}
         canDeleteAllLedger={isOwner}
         canImportExport={isOwner}
         activeItems={activeItems}

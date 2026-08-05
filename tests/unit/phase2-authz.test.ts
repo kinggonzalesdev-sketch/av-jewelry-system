@@ -89,7 +89,9 @@ describe('permission catalog (approved 23 + Portal & Access)', () => {
 
   it('matches the permission catalog seeded in the database migrations', () => {
     // The TypeScript catalog and the SQL seeds must not drift apart. The original
-    // 23 live in the phase-1 migration; the Portal & Access keys were added later.
+    // 23 live in the phase-1 migration; the Portal & Access keys were added later;
+    // Edit/Delete Layaway were added later still (each new migration is immutable,
+    // so a new key seeds in its own file rather than editing an applied one).
     const migration = [
       readFileSync(
         join(
@@ -106,6 +108,15 @@ describe('permission catalog (approved 23 + Portal & Access)', () => {
           'supabase',
           'migrations',
           '20260729120000_portal_access_permissions.sql',
+        ),
+        'utf8',
+      ),
+      readFileSync(
+        join(
+          projectRoot,
+          'supabase',
+          'migrations',
+          '20260805120000_layaway_edit_delete_permissions.sql',
         ),
         'utf8',
       ),

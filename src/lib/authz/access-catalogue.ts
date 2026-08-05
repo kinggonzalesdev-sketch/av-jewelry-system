@@ -62,6 +62,16 @@ export const ACCESS_GROUPS: AccessGroup[] = [
     ],
   },
   {
+    // Layaway record actions. Opening the Layaway workspace is `nav_layaway`
+    // (Main System); these two gate the row-level Edit and Delete of a layaway
+    // account — independent of each other and of viewing/adding a payment.
+    title: 'Layaway',
+    toggles: [
+      { key: 'layaway_edit', label: 'Edit Layaway' },
+      { key: 'layaway_delete', label: 'Delete Layaway' },
+    ],
+  },
+  {
     title: 'Customers',
     toggles: [
       { key: 'customer_edit', label: 'Edit Customer' },

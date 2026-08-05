@@ -62,6 +62,8 @@ export const PERMISSIONS = {
   CUSTOMER_DELETE: 'customer_delete',
   INVENTORY_EDIT: 'inventory_edit',
   INVENTORY_DELETE: 'inventory_delete',
+  LAYAWAY_EDIT: 'layaway_edit',
+  LAYAWAY_DELETE: 'layaway_delete',
   // Team management.
   HR_ATTENDANCE: 'hr_attendance',
   HR_REVIEW_ATTENDANCE: 'hr_review_attendance',

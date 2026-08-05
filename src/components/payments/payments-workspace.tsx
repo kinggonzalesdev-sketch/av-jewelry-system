@@ -321,6 +321,8 @@ export function PaymentsWorkspace({
   canMonitorLayaway,
   canRequestForfeiture,
   canImportLayaway,
+  canEditLayaway,
+  canDeleteLayaway,
   canDeleteAllLedger,
   canImportExport,
   activeItems,
@@ -346,6 +348,10 @@ export function PaymentsWorkspace({
   canMonitorLayaway: boolean;
   canRequestForfeiture: boolean;
   canImportLayaway: boolean;
+  /** Manage Access `layaway_edit` — gates the per-row Edit of a layaway account. */
+  canEditLayaway: boolean;
+  /** Manage Access `layaway_delete` — gates the per-row Delete of a layaway account. */
+  canDeleteLayaway: boolean;
   /** Owner ONLY — clearing the entire imported ledger is not an admin action. */
   canDeleteAllLedger: boolean;
   /** SUPER ADMIN only — Excel/CSV import and export (Owner request). */
@@ -866,7 +872,7 @@ export function PaymentsWorkspace({
             <CompletedLayawayTable
               rows={accountRows}
               onOpenOrder={setDetailOrderId}
-              canDeleteLedger={canImportLayaway}
+              canDeleteLayaway={canDeleteLayaway}
               isSuperAdmin={canDeleteAllLedger}
             />
           ) : (
@@ -876,6 +882,8 @@ export function PaymentsWorkspace({
               financers={financers}
               canManage={canMonitorLayaway}
               canDeleteLedger={canImportLayaway}
+              canEditLayaway={canEditLayaway}
+              canDeleteLayaway={canDeleteLayaway}
               isSuperAdmin={canDeleteAllLedger}
               today={today}
             />
@@ -1108,6 +1116,8 @@ function LayawayTable({
   financers,
   canManage,
   canDeleteLedger,
+  canEditLayaway,
+  canDeleteLayaway,
   isSuperAdmin,
   today,
 }: {
@@ -1115,8 +1125,12 @@ function LayawayTable({
   onOpenOrder: (orderId: string) => void;
   financers: Financer[];
   canManage: boolean;
-  /** Owner/Admin: imported ledger rows get a delete-or-request action. */
+  /** Owner/Admin: whether the View modal offers Add Payment (non-terminal rows). */
   canDeleteLedger: boolean;
+  /** Manage Access `layaway_edit` — shows the per-row Edit action. */
+  canEditLayaway: boolean;
+  /** Manage Access `layaway_delete` — shows the per-row Delete action. */
+  canDeleteLayaway: boolean;
   /** Super Admin deletes directly; an Admin only requests (§2). */
   isSuperAdmin: boolean;
   /** The user's LOCAL date — overdue is judged against it, never a UTC date. */
@@ -1232,24 +1246,25 @@ function LayawayTable({
                   ) : r.ledgerId ? (
                     <div className="flex flex-nowrap items-center justify-end gap-1">
                       {/* Actions are View · Edit · Delete only, on ONE line. "Add
-                          Payment" now
-                          lives INSIDE the View modal (Owner request) — passed here so
-                          only a manager on a non-terminal account sees it there. */}
+                          Payment" now lives INSIDE the View modal (Owner request) —
+                          passed here so only a manager on a non-terminal account
+                          sees it there. Edit and Delete are each gated by their own
+                          Manage Access permission (the Owner holds both implicitly). */}
                       <LayawayLedgerViewModal
                         ledgerId={r.ledgerId}
                         canAddPayment={
                           canDeleteLedger && !TERMINAL_STATUSES.has(normStatus(r.status))
                         }
                       />
-                      {canDeleteLedger ? (
-                        <>
-                          <LedgerEditAccount id={r.ledgerId} accountNo={r.accountNo} />
-                          <LedgerRowDelete isSuperAdmin={isSuperAdmin}
-                            id={r.ledgerId}
-                            accountNo={r.accountNo}
-                            customerName={r.customerName}
-                          />
-                        </>
+                      {canEditLayaway ? (
+                        <LedgerEditAccount id={r.ledgerId} accountNo={r.accountNo} />
+                      ) : null}
+                      {canDeleteLayaway ? (
+                        <LedgerRowDelete isSuperAdmin={isSuperAdmin}
+                          id={r.ledgerId}
+                          accountNo={r.accountNo}
+                          customerName={r.customerName}
+                        />
                       ) : null}
                     </div>
                   ) : (
@@ -1275,12 +1290,13 @@ function LayawayTable({
 function CompletedLayawayTable({
   rows,
   onOpenOrder,
-  canDeleteLedger,
+  canDeleteLayaway,
   isSuperAdmin,
 }: {
   rows: LayawayAccountRow[];
   onOpenOrder: (orderId: string) => void;
-  canDeleteLedger: boolean;
+  /** Manage Access `layaway_delete` — shows the per-row Delete action. */
+  canDeleteLayaway: boolean;
   /** Super Admin deletes directly; an Admin only requests (§2). */
   isSuperAdmin: boolean;
 }) {
@@ -1356,7 +1372,7 @@ function CompletedLayawayTable({
                   ) : r.ledgerId ? (
                     <div className="flex flex-wrap justify-end gap-1">
                       <LayawayLedgerViewModal ledgerId={r.ledgerId} />
-                      {canDeleteLedger ? (
+                      {canDeleteLayaway ? (
                         <LedgerRowDelete isSuperAdmin={isSuperAdmin}
                           id={r.ledgerId}
                           accountNo={r.accountNo}
