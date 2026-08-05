@@ -103,7 +103,7 @@ export function InventoryWorkspace({
   canEdit?: boolean;
   /** Holds `inventory_delete` — shows the per-row Delete action. */
   canDelete?: boolean;
-  /** Owner / Selected Admin — shows the bulk "Delete All" control. */
+  /** SUPER ADMIN (owner) only — shows the bulk "Delete All" control. */
   canDeleteAll?: boolean;
   /** SUPER ADMIN only — Excel/CSV import and export (Owner request). */
   canImportExport?: boolean;

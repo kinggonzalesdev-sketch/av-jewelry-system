@@ -358,14 +358,16 @@ export type DeleteAllInventoryResult =
   | { ok: false; error: string };
 
 /**
- * Bulk permanent delete of Active Inventory — Owner / Selected Admin only. The
- * database function is the real gate: it skips every item linked to a business
- * record (same dependency rule as the single delete), so in-use inventory is never
- * removed; it returns how many were deleted vs skipped. Irreversible.
+ * Bulk permanent delete of Active Inventory — SUPER ADMIN (owner) only (Owner
+ * request: the everything-at-once action is never offered to an Admin or Staff).
+ * The database function is the real gate: it re-checks owner AND skips every item
+ * linked to a business record (same dependency rule as the single delete), so
+ * in-use inventory is never removed; it returns how many were deleted vs skipped.
+ * Irreversible.
  */
 export async function deleteAllInventoryItems(): Promise<DeleteAllInventoryResult> {
   try {
-    await requireOwnerOrAdmin();
+    await requireOwner();
   } catch (cause) {
     if (cause instanceof AuthorizationError) {
       await recordAuditEvent({

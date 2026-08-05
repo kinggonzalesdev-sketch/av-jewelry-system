@@ -34,7 +34,10 @@ export default async function InventoryPage() {
     getGrantedPermissions(),
     getCurrentStaffProfile(),
   ]);
-  const canDeleteAll = profile.roleKey === 'owner' || profile.roleKey === 'selected_admin';
+  // Bulk "Delete All" is the one irreversible, everything-at-once action, so it is
+  // SUPER ADMIN (owner) only — an Admin or Staff never sees it (Owner request). The
+  // same Owner-only rule guards the layaway ledger's Delete All.
+  const canDeleteAll = profile.roleKey === 'owner';
 
   return (
     <div className="space-y-4">
