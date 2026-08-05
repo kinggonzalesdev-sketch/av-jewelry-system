@@ -142,13 +142,14 @@ export const PRIMARY_NAV: readonly NavItem[] = [
     available: true,
   },
   {
+    // Now permission-gated (hr_review_attendance), not owner-only: a granted member
+    // sees it, the page re-checks the key, and RLS lets them read all records.
     href: '/admin/attendance/review',
     label: 'Review Attendance',
     icon: '☑',
     section: 'Team Management',
     mobilePrimary: false,
     available: true,
-    ownerOnly: true,
   },
   {
     href: '/admin/payroll',

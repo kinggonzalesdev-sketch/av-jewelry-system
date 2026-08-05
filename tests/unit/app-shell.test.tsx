@@ -124,17 +124,18 @@ describe('AppSidebar renders the approved shell', () => {
     const teamBtn = within(sidebar).getByRole('button', { name: /team management/i });
     fireEvent.click(teamBtn);
     expect(teamBtn).toHaveAttribute('aria-expanded', 'true');
-    // Staff sees Attendance + Payroll; Review Attendance is Owner-only (hidden).
+    // No allowedPages passed here → the permission filter is skipped, so the group
+    // reveals all three items (Review Attendance is now permission-gated, not
+    // owner-only, so it is no longer hard-hidden by role).
     const nav = within(sidebar).getByRole('navigation', { name: /primary/i });
-    expect(within(nav).getByRole('link', { name: /attendance/i })).toHaveAttribute(
+    expect(within(nav).getByRole('link', { name: /review attendance/i })).toHaveAttribute(
       'href',
-      '/admin/attendance',
+      '/admin/attendance/review',
     );
     expect(within(nav).getByRole('link', { name: /payroll/i })).toHaveAttribute(
       'href',
       '/admin/payroll',
     );
-    expect(within(nav).queryByRole('link', { name: /review attendance/i })).toBeNull();
   });
 
   it('keeps Settings and Logout fixed in the sidebar footer', () => {
