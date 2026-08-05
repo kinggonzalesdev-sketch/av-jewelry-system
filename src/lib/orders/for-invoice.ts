@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { recordAuditEvent } from '@/lib/audit/log';
-import { AuthorizationError, requireOwnerOrAdmin } from '@/lib/authz/guard';
+import { AuthorizationError, requireActiveStaff, requireOwnerOrAdmin } from '@/lib/authz/guard';
 import { sendPancakeConversationMessage } from '@/lib/integrations/pancake';
 import { createClient } from '@/lib/supabase/server';
 
@@ -52,6 +52,14 @@ async function deliverOrderMessageViaPancake(
       conversationId: conversationId.trim(),
       message,
     });
+    // Record the send result on the order's customer_message (message id + a Sent /
+    // Failed status) so the UI can show it and a failure can be retried. Best-effort:
+    // it can never change or mask the send outcome.
+    try {
+      await persistSendOutcome(supabase, officialOrderId, res, message);
+    } catch {
+      /* recording never affects the actual send */
+    }
     return {
       attempted: true,
       delivered: res.ok,
@@ -60,6 +68,47 @@ async function deliverOrderMessageViaPancake(
     };
   } catch {
     return { attempted: true, delivered: false, error: 'Pancake delivery failed.', debug: null };
+  }
+}
+
+/**
+ * Save the Pancake send outcome onto the order's single customer_message: the
+ * returned message id, a 'direct_sent' / 'direct_send_failed' status, and (on
+ * success) who/when. Creates the row if the invoice message was never opened/edited.
+ */
+async function persistSendOutcome(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  officialOrderId: string,
+  res: { ok: boolean; pancakeMessageId: string | null },
+  message: string,
+): Promise<void> {
+  const staff = await requireActiveStaff();
+  const patch = {
+    status: res.ok ? 'direct_sent' : 'direct_send_failed',
+    body: message,
+    pancake_message_id: res.ok ? res.pancakeMessageId : null,
+    auto_sent_at: res.ok ? new Date().toISOString() : null,
+    auto_sent_by: res.ok ? staff.staffProfileId : null,
+  };
+  const { data: existing } = await supabase
+    .from('customer_messages')
+    .select('id')
+    .eq('official_order_id', officialOrderId)
+    .maybeSingle();
+  if (existing) {
+    await supabase.from('customer_messages').update(patch).eq('id', existing.id);
+    return;
+  }
+  const { data: ord } = await supabase
+    .from('official_orders')
+    .select('customer_id')
+    .eq('id', officialOrderId)
+    .maybeSingle();
+  const customerId = (ord as { customer_id?: string } | null)?.customer_id;
+  if (customerId) {
+    await supabase
+      .from('customer_messages')
+      .insert({ official_order_id: officialOrderId, customer_id: customerId, ...patch });
   }
 }
 
