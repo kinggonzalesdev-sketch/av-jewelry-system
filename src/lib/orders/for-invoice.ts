@@ -26,6 +26,16 @@ async function deliverOrderMessageViaPancake(
   message: string,
 ): Promise<PancakeDelivery> {
   try {
+    // In a Test Session, NEVER send a real message to a real customer — the message
+    // is still recorded (is_test), it is just not delivered through Pancake.
+    const { data: tm } = await supabase
+      .from('live_test_state')
+      .select('active')
+      .maybeSingle();
+    if ((tm as { active?: boolean } | null)?.active === true) {
+      return { attempted: false, delivered: false, error: null };
+    }
+
     const response = (await supabase
       .from('official_orders')
       .select('customers ( pancake_conversation_id )')
