@@ -177,29 +177,34 @@ export type CaptureItem = {
  * unit price. Read directly (RLS scopes it to active staff); the price comes
  * from the item catalogue, not entered per order. Read-only; creates nothing.
  */
-export async function listCaptureItems(limit = 2000): Promise<CaptureItem[]> {
+export async function listCaptureItems(): Promise<CaptureItem[]> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
-    .from('inventory_items')
-    .select(
-      'id, item_code, item_name, total_price_per_piece, grams_per_piece, availability_status',
-    )
-    // Archived (incorrect/duplicate/test) items are out of circulation — never
-    // offered for a new order (Inventory Safe-Delete spec §4).
-    .eq('is_archived', false)
-    // Only truly-available items (same rule the Walk-In selector uses) — a
-    // committed/sold item can't be picked for a new order or layaway.
-    .in('availability_status', ['available', 'returned_to_available'])
-    // The New Order and Layaway pickers must show EVERY available item, not a
-    // truncated page — the old cap of 300 hid items past the first 300 (the shop
-    // has 700+), while Walk-In showed them all. Raised so all appear.
-    .order('item_code', { ascending: true })
-    .limit(limit);
+  // The New Order and Layaway pickers must show EVERY available item (Owner: "no
+  // limit"). PostgREST caps each read at db-max-rows (1000), so page through in
+  // stable order until a short page — the shop now has 1000+ active items.
+  const PAGE = 1000;
+  const data: Array<Record<string, unknown>> = [];
+  for (let from = 0; ; from += PAGE) {
+    const res = await supabase
+      .from('inventory_items')
+      .select(
+        'id, item_code, item_name, total_price_per_piece, grams_per_piece, availability_status',
+      )
+      // Archived (incorrect/duplicate/test) items are out of circulation (§4), and
+      // only truly-available items are offered — a committed/sold item can't be sold.
+      .eq('is_archived', false)
+      .in('availability_status', ['available', 'returned_to_available'])
+      .order('item_code', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (res.error) break;
+    const batch = (res.data ?? []) as Array<Record<string, unknown>>;
+    data.push(...batch);
+    if (batch.length < PAGE) break;
+  }
 
-  if (error || !data) return [];
-
-  return (data as Array<Record<string, unknown>>).map((r) => ({
+  return data.map((r) => ({
     id: r.id as string,
     itemCode: (r.item_code as string | null) ?? '—',
     itemName: (r.item_name as string | null) ?? null,

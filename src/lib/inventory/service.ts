@@ -60,20 +60,44 @@ export type InventoryListResult =
  */
 export async function listInventory(): Promise<InventoryListResult> {
   const supabase = await createClient();
-  const response = await supabase.rpc('inventory_monitor');
 
-  if (response.error) {
-    return { ok: false, reason: response.error.message };
+  // PostgREST caps every read at db-max-rows (1000 here), so a single query would
+  // hide items past the first 1000. The inventory list must show ALL items (Owner:
+  // "no limit"), so page through the monitor RPC in stable order until a short page.
+  const PAGE = 1000;
+  const monitorData: Array<Record<string, unknown>> = [];
+  for (let from = 0; ; from += PAGE) {
+    const response = await supabase
+      .rpc('inventory_monitor')
+      .order('item_code', { ascending: true })
+      .order('inventory_item_id', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (response.error) {
+      return { ok: false, reason: response.error.message };
+    }
+    const batch = (response.data ?? []) as Array<Record<string, unknown>>;
+    monitorData.push(...batch);
+    if (batch.length < PAGE) break;
   }
 
   // Custody lives on inventory_items (not the monitor RPC). Read it separately
   // and merge by id — RLS scopes both reads to active staff. A failed custody
   // read must not blank the inventory list, so it degrades to "unknown custody".
-  const custodyResponse = await supabase
-    .from('inventory_items')
-    .select(
-      'id, custody_holder, storage_location, grams_per_piece, size, supplier_name, facebook_name, created_at, custody_handler:staff_profiles!custody_handler_id ( full_name )',
-    );
+  // Paged the same way so custody is present for every item beyond 1000.
+  const custodyData: Array<Record<string, unknown>> = [];
+  for (let from = 0; ; from += PAGE) {
+    const custodyResponse = await supabase
+      .from('inventory_items')
+      .select(
+        'id, custody_holder, storage_location, grams_per_piece, size, supplier_name, facebook_name, created_at, custody_handler:staff_profiles!custody_handler_id ( full_name )',
+      )
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (custodyResponse.error) break; // degrade to "unknown custody"
+    const batch = (custodyResponse.data ?? []) as Array<Record<string, unknown>>;
+    custodyData.push(...batch);
+    if (batch.length < PAGE) break;
+  }
 
   const custodyById = new Map<
     string,
@@ -88,7 +112,7 @@ export async function listInventory(): Promise<InventoryListResult> {
       createdAt: string | null;
     }
   >();
-  for (const row of (custodyResponse.data ?? []) as Array<{
+  for (const row of custodyData as unknown as Array<{
     id: string;
     custody_holder: CustodyHolder | null;
     storage_location: string | null;
@@ -116,7 +140,7 @@ export async function listInventory(): Promise<InventoryListResult> {
   }
 
   const rows = (
-    (response.data ?? []) as Array<{
+    monitorData as unknown as Array<{
       inventory_item_id: string;
       item_code: string;
       item_name: string | null;
