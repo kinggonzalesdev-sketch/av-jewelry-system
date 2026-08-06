@@ -717,6 +717,7 @@ function ForInvoiceView({
               pancakeConversationId: detail.customer.pancakeConversationId,
               facebookConversationUrl: detail.customer.facebookConversationUrl,
             }}
+            customerName={detail.customer.displayName}
             onSaved={onDone}
           />
 

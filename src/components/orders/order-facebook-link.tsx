@@ -12,15 +12,28 @@ import { setOrderFacebookLinkAction } from '@/lib/orders/actions';
  * customer's default (no order link yet, falling back to the customer), or Not linked.
  * Actions: Open conversation · Confirm / Change · Remove link.
  */
+type PancakeConv = { id: string; customerName: string | null; snippet: string | null };
+
+/** Loose name normalize for filtering (mirrors the SQL/auto-link normalizer). */
+function norm(v: string): string {
+  return v
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function OrderFacebookLink({
   orderId,
   order,
   customer,
+  customerName,
   onSaved,
 }: {
   orderId: string;
   order: { conversationId: string | null; url: string | null; status: string | null };
   customer: { pancakeConversationId: string | null; facebookConversationUrl: string | null };
+  customerName?: string;
   onSaved: () => void;
 }) {
   const hasOrderLink = Boolean(order.conversationId || order.url);
@@ -35,6 +48,50 @@ export function OrderFacebookLink({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  // Pancake conversation SEARCH (§4). Loads the Page's conversations once (owner-gated,
+  // server-side), then filters by name — pre-seeded with the customer's name.
+  const [convs, setConvs] = useState<PancakeConv[] | null>(null);
+  const [loadingConvs, setLoadingConvs] = useState(false);
+  const [convError, setConvError] = useState<string | null>(null);
+  const [convQuery, setConvQuery] = useState(customerName ?? '');
+
+  const loadConvs = async () => {
+    if (loadingConvs) return;
+    setLoadingConvs(true);
+    setConvError(null);
+    try {
+      const res = await fetch('/api/integrations/pancake/conversations', {
+        headers: { accept: 'application/json' },
+      });
+      const body = (await res.json().catch(() => null)) as
+        | { ok: boolean; message: string; conversations: PancakeConv[] }
+        | null;
+      if (!body) {
+        setConvError('Pancake is unavailable right now. Try again, or paste the id.');
+      } else if (body.ok) {
+        setConvs(body.conversations);
+      } else {
+        setConvError(body.message);
+      }
+    } catch {
+      setConvError('Pancake is unavailable right now. Try again, or paste the id.');
+    } finally {
+      setLoadingConvs(false);
+    }
+  };
+
+  const filteredConvs = (() => {
+    if (!convs) return [];
+    const q = norm(convQuery);
+    if (!q) return convs.slice(0, 20);
+    return convs
+      .filter((c) => {
+        const n = norm(c.customerName ?? '');
+        return n.includes(q) || q.includes(n) || c.id.includes(convQuery.trim());
+      })
+      .slice(0, 20);
+  })();
 
   const run = async (fn: () => Promise<{ ok: boolean; error?: string }>) => {
     if (busy) return;
@@ -144,8 +201,64 @@ export function OrderFacebookLink({
         </div>
       ) : (
         <div className="space-y-1.5">
+          {/* Search Pancake conversations by name (§4). Loads once, filters live. */}
+          <div className="rounded-md border border-border bg-background p-1.5">
+            <div className="flex items-center gap-1.5">
+              <input
+                value={convQuery}
+                onChange={(e) => setConvQuery(e.target.value)}
+                placeholder="Search Pancake by name…"
+                className="h-8 flex-1 rounded-md border border-border bg-card px-2 text-[11px] outline-none focus:border-gold"
+                data-testid="order-fb-search-input"
+              />
+              <button
+                type="button"
+                onClick={() => void loadConvs()}
+                disabled={loadingConvs}
+                className="rounded-md border border-border px-2 py-1 text-[11px] font-medium hover:bg-accent disabled:opacity-60"
+                data-testid="order-fb-search"
+              >
+                {loadingConvs ? 'Loading…' : convs ? 'Reload' : '🔎 Search'}
+              </button>
+            </div>
+            {convError ? (
+              <p className="mt-1 text-[10px] text-muted-foreground">{convError}</p>
+            ) : null}
+            {convs ? (
+              <ul
+                className="mt-1 max-h-32 divide-y divide-border overflow-auto rounded border border-border"
+                data-testid="order-fb-search-results"
+              >
+                {filteredConvs.length === 0 ? (
+                  <li className="px-2 py-1.5 text-[11px] text-muted-foreground">No matches.</li>
+                ) : (
+                  filteredConvs.map((c) => (
+                    <li key={c.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConv(c.id);
+                          setNotice(`Selected ${c.customerName ?? 'conversation'} — Save to confirm.`);
+                        }}
+                        className="block w-full px-2 py-1.5 text-left text-[11px] hover:bg-accent"
+                        data-testid={`order-fb-pick-${c.id}`}
+                      >
+                        <span className="font-medium">{c.customerName ?? 'Unknown'}</span>
+                        {c.snippet ? (
+                          <span className="block truncate text-[10px] text-muted-foreground">
+                            {c.snippet}
+                          </span>
+                        ) : null}
+                      </button>
+                    </li>
+                  ))
+                )}
+              </ul>
+            ) : null}
+          </div>
+
           <label className="block text-[10px] uppercase tracking-wide text-muted-foreground">
-            Pancake conversation id (Integrations → Load conversations → Copy ID)
+            Pancake conversation id (or search above / paste from Load conversations)
           </label>
           <input
             value={conv}
