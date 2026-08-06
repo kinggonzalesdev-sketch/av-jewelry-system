@@ -12,7 +12,20 @@ import { setOrderFacebookLinkAction } from '@/lib/orders/actions';
  * customer's default (no order link yet, falling back to the customer), or Not linked.
  * Actions: Open conversation · Confirm / Change · Remove link.
  */
-type PancakeConv = { id: string; customerName: string | null; snippet: string | null };
+type PancakeConv = {
+  id: string;
+  customerName: string | null;
+  snippet: string | null;
+  updatedAt?: string | null;
+  avatar?: string | null;
+};
+type PancakeMsg = { id: string; fromPage: boolean; from: string | null; text: string | null; at: string | null };
+
+function fmtWhen(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString();
+}
 
 /** Loose name normalize for filtering (mirrors the SQL/auto-link normalizer). */
 function norm(v: string): string {
@@ -93,6 +106,38 @@ export function OrderFacebookLink({
       .slice(0, 20);
   })();
 
+  // View recent messages (§3) — reads the linked conversation's recent messages.
+  const [messages, setMessages] = useState<PancakeMsg[] | null>(null);
+  const [loadingMsgs, setLoadingMsgs] = useState(false);
+  const [msgError, setMsgError] = useState<string | null>(null);
+
+  const loadMessages = async () => {
+    if (loadingMsgs) return;
+    const id = (effConv ?? '').trim();
+    if (!id) {
+      setMsgError('No Pancake conversation is linked.');
+      return;
+    }
+    setLoadingMsgs(true);
+    setMsgError(null);
+    try {
+      const res = await fetch(
+        `/api/integrations/pancake/messages?conversationId=${encodeURIComponent(id)}`,
+        { headers: { accept: 'application/json' } },
+      );
+      const body = (await res.json().catch(() => null)) as
+        | { ok: boolean; message?: string; messages?: PancakeMsg[] }
+        | null;
+      if (!body) setMsgError('Pancake is unavailable right now.');
+      else if (body.ok) setMessages(body.messages ?? []);
+      else setMsgError(body.message ?? 'Could not load messages.');
+    } catch {
+      setMsgError('Pancake is unavailable right now.');
+    } finally {
+      setLoadingMsgs(false);
+    }
+  };
+
   const run = async (fn: () => Promise<{ ok: boolean; error?: string }>) => {
     if (busy) return;
     setBusy(true);
@@ -167,36 +212,70 @@ export function OrderFacebookLink({
       )}
 
       {!editing ? (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            onClick={openChat}
-            className="rounded-md border border-border px-2 py-1 text-[11px] font-medium hover:bg-accent"
-            data-testid="order-fb-open"
-          >
-            💬 Open conversation
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setError(null);
-              setEditing(true);
-            }}
-            className="rounded-md border border-border px-2 py-1 text-[11px] font-medium hover:bg-accent"
-            data-testid="order-fb-edit"
-          >
-            {hasOrderLink ? 'Change' : 'Confirm / Link'}
-          </button>
-          {hasOrderLink ? (
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
-              onClick={() => void run(() => setOrderFacebookLinkAction(orderId, { conversationId: null, url: null }))}
-              disabled={busy}
-              className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-destructive hover:bg-accent disabled:opacity-60"
-              data-testid="order-fb-remove"
+              onClick={openChat}
+              className="rounded-md border border-border px-2 py-1 text-[11px] font-medium hover:bg-accent"
+              data-testid="order-fb-open"
             >
-              Remove link
+              💬 Open conversation
             </button>
+            {effConv ? (
+              <button
+                type="button"
+                onClick={() => void loadMessages()}
+                disabled={loadingMsgs}
+                className="rounded-md border border-border px-2 py-1 text-[11px] font-medium hover:bg-accent disabled:opacity-60"
+                data-testid="order-fb-view-messages"
+              >
+                {loadingMsgs ? 'Loading…' : '✉ View recent messages'}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                setError(null);
+                setEditing(true);
+              }}
+              className="rounded-md border border-border px-2 py-1 text-[11px] font-medium hover:bg-accent"
+              data-testid="order-fb-edit"
+            >
+              {hasOrderLink ? 'Change' : 'Confirm / Link'}
+            </button>
+            {hasOrderLink ? (
+              <button
+                type="button"
+                onClick={() => void run(() => setOrderFacebookLinkAction(orderId, { conversationId: null, url: null }))}
+                disabled={busy}
+                className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-destructive hover:bg-accent disabled:opacity-60"
+                data-testid="order-fb-remove"
+              >
+                Remove link
+              </button>
+            ) : null}
+          </div>
+          {msgError ? <p className="text-[10px] text-muted-foreground">{msgError}</p> : null}
+          {messages ? (
+            <ul
+              className="max-h-40 space-y-1 overflow-auto rounded-md border border-border bg-background p-1.5"
+              data-testid="order-fb-messages"
+            >
+              {messages.length === 0 ? (
+                <li className="text-[11px] text-muted-foreground">No recent messages.</li>
+              ) : (
+                messages.map((m) => (
+                  <li key={m.id} className={`text-[11px] ${m.fromPage ? 'text-right' : ''}`}>
+                    <span className="font-medium">{m.fromPage ? 'You' : m.from ?? 'Customer'}:</span>{' '}
+                    <span className="break-words">{m.text ?? '—'}</span>
+                    {m.at ? (
+                      <span className="block text-[9px] text-muted-foreground">{fmtWhen(m.at)}</span>
+                    ) : null}
+                  </li>
+                ))
+              )}
+            </ul>
           ) : null}
         </div>
       ) : (
@@ -240,15 +319,34 @@ export function OrderFacebookLink({
                           setConv(c.id);
                           setNotice(`Selected ${c.customerName ?? 'conversation'} — Save to confirm.`);
                         }}
-                        className="block w-full px-2 py-1.5 text-left text-[11px] hover:bg-accent"
+                        className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-[11px] hover:bg-accent"
                         data-testid={`order-fb-pick-${c.id}`}
                       >
-                        <span className="font-medium">{c.customerName ?? 'Unknown'}</span>
-                        {c.snippet ? (
-                          <span className="block truncate text-[10px] text-muted-foreground">
-                            {c.snippet}
+                        {c.avatar ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={c.avatar}
+                            alt=""
+                            className="h-6 w-6 shrink-0 rounded-full object-cover"
+                          />
+                        ) : (
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[9px] font-bold text-muted-foreground">
+                            {(c.customerName ?? '?').slice(0, 1).toUpperCase()}
                           </span>
-                        ) : null}
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-medium">{c.customerName ?? 'Unknown'}</span>
+                          {c.snippet ? (
+                            <span className="block truncate text-[10px] text-muted-foreground">
+                              {c.snippet}
+                            </span>
+                          ) : null}
+                          {c.updatedAt ? (
+                            <span className="block text-[9px] text-muted-foreground">
+                              Last: {fmtWhen(c.updatedAt)}
+                            </span>
+                          ) : null}
+                        </span>
                       </button>
                     </li>
                   ))

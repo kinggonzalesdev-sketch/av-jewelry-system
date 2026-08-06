@@ -576,6 +576,8 @@ export type PancakeConversation = {
   customerName: string | null;
   snippet: string | null;
   updatedAt: string | null;
+  /** Best-effort avatar URL for the person, when the API includes one. */
+  avatar: string | null;
 };
 
 export type PancakeConversationsResult = {
@@ -646,9 +648,112 @@ function extractConversations(body: unknown): {
       asConvText(c.snippet) ?? asConvText(c.recent_phrase) ?? asConvText(c.last_message);
     const updatedAt =
       asConvText(c.updated_at) ?? asConvText(c.last_sent_at) ?? asConvText(c.inserted_at);
-    out.push({ id, customerName, snippet, updatedAt });
+    const avatar =
+      asConvText(cust?.avatar) ??
+      asConvText(firstCust?.avatar) ??
+      asConvText(from?.avatar) ??
+      asConvText(pageCust?.avatar) ??
+      asConvText(recentSender?.avatar) ??
+      asConvText(c.avatar) ??
+      asConvText(c.avatar_url);
+    out.push({ id, customerName, snippet, updatedAt, avatar });
   }
   return { conversations: out, rawCount, skippedComments };
+}
+
+export type PancakeMessage = {
+  id: string;
+  fromPage: boolean;
+  from: string | null;
+  text: string | null;
+  at: string | null;
+};
+export type PancakeMessagesResult =
+  | { ok: true; messages: PancakeMessage[] }
+  | { ok: false; message: string };
+
+/**
+ * Recent messages of ONE Pancake conversation (oldest→newest, capped). Super-Admin
+ * only; the token stays server-side. Best-effort shape parsing, like the conversations
+ * feed — pages.fm's public API varies, so we never assume one exact structure.
+ */
+export async function getPancakeConversationMessages(
+  conversationId: string,
+): Promise<PancakeMessagesResult> {
+  try {
+    await requirePrimarySuperAdmin();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) {
+      return { ok: false, message: 'Recent messages are available to the Super Admin.' };
+    }
+    throw cause;
+  }
+
+  const pageToken = process.env.PANCAKE_PAGE_ACCESS_TOKEN;
+  const token = pageToken || process.env.PANCAKE_USER_ACCESS_TOKEN;
+  const tokenParam =
+    process.env.PANCAKE_SEND_TOKEN_PARAM || (pageToken ? 'page_access_token' : 'access_token');
+  const pageId = process.env.PANCAKE_PAGE_ID;
+  if (!token?.trim() || !pageId?.trim()) {
+    return { ok: false, message: 'Pancake is not configured.' };
+  }
+  const convId = (conversationId ?? '').trim();
+  if (!convId) return { ok: false, message: 'No conversation is linked.' };
+
+  const base = resolvePancakeApiBase();
+  const template =
+    process.env.PANCAKE_MESSAGES_PATH ||
+    '/pages/{page_id}/conversations/{conversation_id}/messages';
+  const path = template
+    .replace('{page_id}', encodeURIComponent(pageId.trim()))
+    .replace('{conversation_id}', encodeURIComponent(convId));
+
+  try {
+    const endpoint = `${base}${path}${path.includes('?') ? '&' : '?'}${tokenParam}=${encodeURIComponent(token.trim())}`;
+    const res = await fetch(endpoint, { cache: 'no-store', signal: AbortSignal.timeout(10000) });
+    const rawText = await res.text().catch(() => '');
+    let body: unknown = null;
+    try {
+      body = rawText ? JSON.parse(rawText) : null;
+    } catch {
+      body = null;
+    }
+    if (!res.ok || !body) {
+      return { ok: false, message: `Pancake returned HTTP ${res.status}.` };
+    }
+    const root = typeof body === 'object' ? (body as Record<string, unknown>) : null;
+    const list: unknown[] = Array.isArray(body)
+      ? (body as unknown[])
+      : (Array.isArray(root?.messages) && (root.messages as unknown[])) ||
+        (Array.isArray(root?.data) && (root.data as unknown[])) ||
+        [];
+    const messages: PancakeMessage[] = list
+      .filter((m): m is Record<string, unknown> => Boolean(m) && typeof m === 'object')
+      .slice(-15)
+      .map((m, i) => {
+        const fromObj =
+          m.from && typeof m.from === 'object' ? (m.from as Record<string, unknown>) : null;
+        const fromPage = m.is_page === true || m.from_page === true;
+        return {
+          id: asConvText(m.id) ?? String(i),
+          fromPage,
+          from:
+            asConvText(fromObj?.name) ??
+            asConvText(m.from_name) ??
+            asConvText(m.sender_name) ??
+            (fromPage ? 'You' : null),
+          text:
+            asConvText(m.message) ??
+            asConvText(m.text) ??
+            asConvText(m.original_message) ??
+            asConvText(m.content),
+          at: asConvText(m.inserted_at) ?? asConvText(m.created_at) ?? asConvText(m.updated_at),
+        };
+      });
+    return { ok: true, messages };
+  } catch {
+    return { ok: false, message: 'Pancake API is unavailable right now.' };
+  }
 }
 
 /** Normalize a customer/FB name for de-duplication: lower-case, strip punctuation,
