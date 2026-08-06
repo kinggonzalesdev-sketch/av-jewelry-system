@@ -120,8 +120,16 @@ describe('Phase 1 migration boundary', () => {
   it('pins search_path on every security definer function', () => {
     // An unpinned search_path on a SECURITY DEFINER function is a privilege
     // escalation path. Phase 1 defines none, but this guards future additions.
+    //
+    // Match only real DEFINITIONS: strip SQL comments first, so a migration that
+    // merely MENTIONS "security definer" in a comment (e.g. a GRANT/REVOKE
+    // hardening migration that defines no function) is not a false positive. This
+    // also makes the guard stronger — a `set search_path` that lives only in a
+    // comment no longer satisfies it for a real function definition.
+    const stripComments = (sql: string) =>
+      sql.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--[^\n]*/g, '');
     const offenders = sqlFiles.filter((file) => {
-      const sql = readFileSync(join(migrationsDir, file), 'utf8');
+      const sql = stripComments(readFileSync(join(migrationsDir, file), 'utf8'));
       if (!/security definer/i.test(sql)) return false;
       return !/set search_path/i.test(sql);
     });
