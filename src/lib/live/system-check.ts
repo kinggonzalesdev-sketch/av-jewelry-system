@@ -24,6 +24,17 @@ import type {
  * ./system-check-types so the client can import them without this server module.
  */
 
+/** Compact "x ago" for a heartbeat age in ms. */
+function relTime(ms: number): string {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} h ago`;
+  return `${Math.round(h / 24)} day(s) ago`;
+}
+
 export async function runSystemCheck(): Promise<SystemCheckResult> {
   const staff = await requireActiveStaff();
   // Super Admin (owner) only — the whole live-readiness surface is Super-Admin gated.
@@ -206,13 +217,50 @@ export async function runSystemCheck(): Promise<SystemCheckResult> {
     });
   }
 
-  // 10. Screenshot device registry is the next phase (live-session device selection).
-  items.push({
-    key: 'screenshot_device',
-    label: 'Registered Screenshot Device',
-    status: 'not_configured',
-    detail: 'Live-session device selection is a later phase.',
-  });
+  // 10 + 11. Capture device + floating app — reflect a REAL mobile sign-in via the
+  //    heartbeat recorded on every mobile API call (the phone's login included).
+  //    Ready when a capture account signed in within the last 24h.
+  try {
+    const { data: hb } = await supabase
+      .from('capture_device_heartbeats')
+      .select('last_seen_at')
+      .order('last_seen_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const seenAt = (hb as { last_seen_at?: string } | null)?.last_seen_at ?? null;
+    const ageMs = seenAt ? Date.now() - new Date(seenAt).getTime() : null;
+    const recent = ageMs !== null && ageMs <= 24 * 60 * 60 * 1000;
+    const rel = ageMs !== null ? relTime(ageMs) : null;
+    items.push({
+      key: 'screenshot_device',
+      label: 'Registered Screenshot Device',
+      status: recent ? 'ready' : 'not_configured',
+      detail: recent
+        ? `A capture device is signed in — last active ${rel}.`
+        : 'No capture device signed in yet — sign in on the MineFlow Capture app on the phone.',
+    });
+    items.push({
+      key: 'floating_app',
+      label: 'Floating Screenshot App',
+      status: recent ? 'ready' : 'not_configured',
+      detail: recent
+        ? `Capture app signed in (active ${rel}) — make sure the floating button is running on the phone.`
+        : 'Open MineFlow Capture on the phone and start the floating button.',
+    });
+  } catch {
+    items.push({
+      key: 'screenshot_device',
+      label: 'Registered Screenshot Device',
+      status: 'not_configured',
+      detail: 'Could not read capture-device status.',
+    });
+    items.push({
+      key: 'floating_app',
+      label: 'Floating Screenshot App',
+      status: 'not_configured',
+      detail: 'Confirmed on the Android capture device.',
+    });
+  }
 
   return { ok: true, items };
 }

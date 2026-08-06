@@ -79,6 +79,14 @@ export async function resolveMobileStaff(request: Request): Promise<MobileAuthRe
   if (!data) return { ok: false, reason: 'account_not_found' };
   if (data.is_active !== true) return { ok: false, reason: 'account_inactive' };
 
+  // Record a lightweight heartbeat so the web System Check can show a signed-in
+  // capture device + active app. Best-effort: it never blocks or fails the auth.
+  try {
+    await supabase.rpc('record_capture_heartbeat', { p_device: null, p_platform: 'android' });
+  } catch {
+    /* heartbeat is best-effort */
+  }
+
   return {
     ok: true,
     staff: {

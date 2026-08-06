@@ -130,6 +130,16 @@ class ApiClient(context: Context) {
 
     // ---- MineFlow backend -----------------------------------------------------
 
+    /**
+     * Lightweight heartbeat: re-verify the session so the backend records this
+     * capture device as ACTIVE (the web System Check reads it). Best-effort — safe
+     * to call on app open/resume; ignores the result and never throws.
+     */
+    fun pingSession() {
+        if (!store.isLoggedIn) return
+        runCatching { get("/api/mobile/session") }
+    }
+
     fun searchInventory(query: String): JSONArray {
         val res = get("/api/mobile/inventory/search?q=" + encode(query))
         return if (res.ok) res.body.optJSONArray("items") ?: JSONArray() else JSONArray()

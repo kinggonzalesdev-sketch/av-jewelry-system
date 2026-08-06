@@ -18,7 +18,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.mineflow.capture.capture.OverlayCaptureService
+import com.mineflow.capture.data.ApiClient
 import com.mineflow.capture.data.SecureStore
+import kotlin.concurrent.thread
 
 /**
  * Capture Setup & permissions. Compact status board + guided actions:
@@ -40,6 +42,14 @@ class SetupActivity : AppCompatActivity() {
     private lateinit var captureStatus: TextView
     private lateinit var notifyStatus: TextView
     private lateinit var serviceStatus: TextView
+
+    override fun onResume() {
+        super.onResume()
+        // Heartbeat: tell the backend this capture device is active, so the web
+        // System Check shows "Registered Screenshot Device" + "Floating Screenshot
+        // App" as Ready while the app is open. Best-effort, off the UI thread.
+        thread { ApiClient(this).pingSession() }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

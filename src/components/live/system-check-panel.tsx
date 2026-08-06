@@ -87,12 +87,8 @@ async function clientChecks(): Promise<SystemCheckItem[]> {
         ? 'Web Bluetooth available on this device.'
         : 'This browser cannot use Web Bluetooth — pair on the capture device.',
     },
-    {
-      key: 'floating_app',
-      label: 'Floating Screenshot App',
-      status: 'not_configured',
-      detail: 'Confirmed on the Android capture device, not here.',
-    },
+    // "Floating Screenshot App" is now a SERVER check (tied to the capture-device
+    // heartbeat), so it is no longer added here.
     // "Printer Paper" removed (Owner) — the paper lives in the Xprinter; no separate
     // manual confirmation step is needed in the check.
   ];
