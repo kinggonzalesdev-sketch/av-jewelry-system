@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   dismissPendingCaptureAction,
@@ -12,6 +12,11 @@ import {
   type CapturePrefill,
 } from '@/components/orders/new-order-workflow';
 import { useDashboardSync } from '@/components/shell/dashboard-sync';
+import { usePrinter } from '@/components/print/printer-context';
+import { writeToChannel } from '@/lib/print/bluetooth-printer';
+import { encodeReceipt } from '@/lib/print/receipt-encoders';
+import { stickerDate, type OrderReceiptData } from '@/lib/print/order-receipt';
+import { readStickerFields } from '@/lib/print/sticker-fields';
 import type { CaptureItem, WalkInItem } from '@/lib/orders/service';
 import type { AdminNameContext } from '@/lib/authz/admin-name';
 import { Button } from '@/components/ui/button';
@@ -37,10 +42,55 @@ export function IncomingCapturesStrip({
   admins: AdminNameContext;
 }) {
   const { lastSyncedAt } = useDashboardSync();
+  const { activeChannel, printLang } = usePrinter();
   const [rows, setRows] = useState<PendingCaptureRow[]>([]);
   const [selected, setSelected] = useState<PendingCaptureRow | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Auto-print preference, read lazily from localStorage. Safe from hydration
+  // mismatch: the strip renders null until captures load, so this control is never
+  // in the SSR output. The window guard keeps the initializer server-safe.
+  const [autoPrint, setAutoPrint] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return localStorage.getItem('mineflow.captureAutoPrint') === '1';
+    } catch {
+      return false;
+    }
+  });
+
+  // The capture ids already printed on THIS station, persisted so a reload/re-poll
+  // never reprints. Seeded on mount (ref mutation only — no re-render).
+  const printedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('mineflow.capturePrinted');
+      if (raw) printedRef.current = new Set(JSON.parse(raw) as string[]);
+    } catch {
+      /* ignore unavailable/blocked storage */
+    }
+  }, []);
+
+  const toggleAutoPrint = (on: boolean) => {
+    setAutoPrint(on);
+    try {
+      localStorage.setItem('mineflow.captureAutoPrint', on ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const rememberPrinted = (id: string) => {
+    printedRef.current.add(id);
+    try {
+      localStorage.setItem(
+        'mineflow.capturePrinted',
+        JSON.stringify([...printedRef.current].slice(-200)),
+      );
+    } catch {
+      /* ignore */
+    }
+  };
 
   const load = useCallback(() => {
     loadPendingCapturesAction()
@@ -61,6 +111,41 @@ export function IncomingCapturesStrip({
     const iv = setInterval(load, 1000);
     return () => clearInterval(iv);
   }, [load]);
+
+  // AUTO-PRINT (opt-in): when a NEW capture arrives and the printer is linked, print
+  // its Facebook-Name + Date sticker once — the hands-off half of the one-tap flow
+  // (the phone auto-sends the screenshot; the PC auto-prints the label). Skips test
+  // captures and name-less reads; each capture prints at most once per station, so
+  // the 1s poll never reprints. A capture is marked printed BEFORE the write, so a
+  // flaky printer can't trigger a reprint storm — reprint deliberately via "Use".
+  useEffect(() => {
+    if (!autoPrint || !activeChannel) return;
+    const pending = rows.filter(
+      (r) =>
+        !r.isTest &&
+        (r.fbName ?? '').trim().length >= 2 &&
+        !printedRef.current.has(r.captureRecordId),
+    );
+    if (pending.length === 0) return;
+    void (async () => {
+      for (const r of pending) {
+        rememberPrinted(r.captureRecordId);
+        const data: OrderReceiptData = {
+          customerName: (r.fbName ?? '').trim(),
+          itemName: '',
+          grams: null,
+          quantity: 1,
+          unitPrice: null,
+          date: stickerDate(),
+        };
+        try {
+          await writeToChannel(activeChannel, encodeReceipt(data, printLang, readStickerFields()));
+        } catch {
+          /* keep it marked printed to avoid a reprint storm on a flaky link */
+        }
+      }
+    })();
+  }, [rows, autoPrint, activeChannel, printLang]);
 
   const dismiss = (id: string) => {
     if (busy) return;
@@ -99,11 +184,23 @@ export function IncomingCapturesStrip({
       <h2 id="incoming-captures-h" className="text-sm font-semibold text-gold-strong">
         Incoming Captures ({rows.length})
       </h2>
-      <p className="mb-3 mt-0.5 text-xs text-muted-foreground">
+      <p className="mb-2 mt-0.5 text-xs text-muted-foreground">
         Screenshots from the floating button. Tap <strong>Use</strong> to confirm the
         name + item and create the order (it prints here and lands in For Invoice), or
         Dismiss to discard.
       </p>
+      <label className="mb-3 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+        <input
+          type="checkbox"
+          checked={autoPrint}
+          onChange={(e) => toggleAutoPrint(e.target.checked)}
+          data-testid="capture-auto-print"
+        />
+        Auto-print the sticker (Facebook Name + Date) the moment each capture arrives
+        {autoPrint && !activeChannel ? (
+          <span className="font-medium text-amber-600">— link the printer first (Settings ▸ Printer)</span>
+        ) : null}
+      </label>
       {error ? (
         <p role="alert" className="mb-2 text-sm text-destructive">
           {error}

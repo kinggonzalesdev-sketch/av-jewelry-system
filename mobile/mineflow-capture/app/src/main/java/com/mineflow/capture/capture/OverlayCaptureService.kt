@@ -415,22 +415,46 @@ class OverlayCaptureService : Service() {
             val bytes = if (bmp != null) toJpeg(bmp) else file.readBytes()
             val path = runCatching { api.uploadScreenshot(captureId, "image/jpeg", bytes) }.getOrNull()
             val res = api.createPendingCapture(captureId, path, null)
-            toastMain(
-                if (res.ok) "Sent to MineFlow — confirm it on the PC."
-                else "Send failed: ${res.body.optString("error", "please try again")}",
-            )
-            // 2) OCR on-device, then UPDATE the same pending row's name/item guess
-            //    (create_pending_capture is idempotent on device+capture). This runs
-            //    after the capture already appeared, so it never delays it.
-            if (res.ok && bmp != null) {
-                val guess = ocrBlocking(bmp)
-                if (guess != null && (!guess.fbName.isNullOrBlank() || !guess.itemQuery.isNullOrBlank())) {
-                    val ocr = JSONObject()
-                        .putOpt("fbName", guess.fbName)
-                        .putOpt("itemQuery", guess.itemQuery)
-                    runCatching { api.createPendingCapture(captureId, path, ocr) }
+            if (!res.ok) {
+                toastMain("Send failed: ${res.body.optString("error", "please try again")}")
+                bmp?.recycle(); runCatching { file.delete() }
+                return@thread
+            }
+
+            // 2) OCR on-device: the pinned Facebook name + mined item. Update the same
+            //    pending row's guess (create_pending_capture is idempotent on
+            //    device+capture), so the PC's Incoming Captures shows the pre-fill.
+            val guess = if (bmp != null) ocrBlocking(bmp) else null
+            val name = guess?.fbName?.trim().orEmpty()
+            if (guess != null && (name.isNotEmpty() || !guess.itemQuery.isNullOrBlank())) {
+                val ocr = JSONObject()
+                    .putOpt("fbName", guess.fbName)
+                    .putOpt("itemQuery", guess.itemQuery)
+                runCatching { api.createPendingCapture(captureId, path, ocr) }
+            }
+
+            // 3) AUTO-SEND: if the pinned name resolves to EXACTLY ONE linked customer
+            //    with a Facebook/Pancake chat, deliver the screenshot to them now — the
+            //    one-tap goal. A shared or unrecognised name is NOT sent; it waits on the
+            //    PC for the operator to link and confirm, so a wrong guess never reaches
+            //    a customer. The backend send is idempotent, so a repeat tap won't dupe.
+            var sentTo: String? = null
+            if (!path.isNullOrBlank() && name.length >= 2) {
+                val convId = runCatching { api.resolveConversation(name) }.getOrNull()
+                if (!convId.isNullOrBlank()) {
+                    val msg = "Hi $name! 📸 Ito po ang inyong na-mine na item. " +
+                        "Ihahanda na po namin ang invoice ninyo — maraming salamat! 💛"
+                    val sent = runCatching { api.send(captureId, convId, msg, path) }.getOrNull()
+                    if (sent?.ok == true) sentTo = name
                 }
             }
+            toastMain(
+                when {
+                    sentTo != null -> "Sent the screenshot to $sentTo on Facebook. 💛"
+                    name.isNotEmpty() -> "Read \"$name\" — confirm & link on the PC to send."
+                    else -> "Sent to MineFlow — confirm it on the PC."
+                },
+            )
             bmp?.recycle()
             runCatching { file.delete() }
         }
