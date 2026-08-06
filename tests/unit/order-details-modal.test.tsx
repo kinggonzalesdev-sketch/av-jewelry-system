@@ -222,10 +222,7 @@ describe('OrderDetailsModal', () => {
     expect(sendInvoiceMessageAction).not.toHaveBeenCalled();
   });
 
-  it('shows the simplified For Reminder view (fields + 3 reminders + Confirm for Preparation)', async () => {
-    const { sendOrderReminderAction, setCustomerResponseAction } = await import(
-      '@/lib/orders/actions'
-    );
+  it('For Reminder no longer has reminder / Confirm-for-Preparation actions (removed)', async () => {
     loadOrderDetailAction.mockResolvedValue({
       ok: true,
       detail: detail({
@@ -233,7 +230,7 @@ describe('OrderDetailsModal', () => {
         permissions: {
           isOwner: true,
           canRecordPayment: true,
-          canPrepareFulfillment: false,
+          canPrepareFulfillment: true,
           canReleaseFulfillment: false,
           canPrepareInvoice: false,
           canRequestApproval: false,
@@ -242,28 +239,13 @@ describe('OrderDetailsModal', () => {
     });
     render(<OrderDetailsModal orderId="o1" onClose={vi.fn()} />);
 
-    // Stripped-down fields; the response dropdown is gone (moved to For Prepare).
-    const fields = await screen.findByTestId('for-reminder-fields');
-    expect(fields).toHaveTextContent('Remaining Required Payment');
-    expect(fields).toHaveTextContent('₱0'); // required 3,200 − verified 6,000 → 0
-    expect(screen.queryByTestId('order-customer-response')).not.toBeInTheDocument();
-
-    // A single Reminder button (Owner request — Reminder 2 & 3 removed).
-    expect(await screen.findByTestId('order-send-reminder-1')).not.toBeDisabled();
-    expect(screen.queryByTestId('order-send-reminder-2')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('order-send-reminder-3')).not.toBeInTheDocument();
-
-    // Sending a reminder never moves the order; it records after confirmation.
-    fireEvent.click(screen.getByTestId('order-send-reminder-1'));
-    fireEvent.click(screen.getByTestId('order-reminder-confirm'));
-    expect(sendOrderReminderAction).toHaveBeenCalled();
-    expect(setCustomerResponseAction).not.toHaveBeenCalled();
-
-    // Confirm for Preparation requires its confirmation before moving to For Prepare.
-    fireEvent.click(screen.getByTestId('order-confirm-preparation'));
-    expect(screen.getByTestId('order-prep-confirm')).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('order-prep-confirm-apply'));
-    expect(setCustomerResponseAction).toHaveBeenCalledWith('o1', 'confirmed');
+    // A For-Reminder order now loads in the GENERAL modal (no dedicated view). The
+    // reminder + Confirm-for-Preparation actions are gone; the order is routed via
+    // Transfer to Destination instead.
+    await screen.findByText('Gold Ring');
+    expect(screen.queryByTestId('for-reminder-fields')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('order-send-reminder-1')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('order-confirm-preparation')).not.toBeInTheDocument();
   });
 
   it('no longer shows the Ready-for-Preparation workflow step (removed) for a For Confirm order', async () => {
