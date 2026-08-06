@@ -30,6 +30,9 @@ vi.mock('@/lib/orders/actions', () => ({
   setCustomerResponseAction: vi.fn(() => Promise.resolve({ ok: true })),
   // Best-effort ambiguity check fired when the message panel opens (no ambiguity here).
   getCustomerMatchInfoAction: vi.fn(() => Promise.resolve(null)),
+  deleteTestOrderAction: vi.fn(() =>
+    Promise.resolve({ ok: true, returnedItems: 1, paymentsRemoved: 1 }),
+  ),
   renderOrderMessageAction: vi.fn(() =>
     Promise.resolve({ ok: true, message: 'Thank you for choosing A.V. Jewelry!' }),
   ),
@@ -67,6 +70,7 @@ function detail(over: Partial<OrderDetail> = {}): OrderDetail {
     completionBlock: 'This order is not fully paid yet.',
     waybillNumber: null,
     convertedToLayaway: false,
+    isTest: false,
     adminName: 'UAT Owner',
     completedAt: null,
     completedByName: null,
@@ -325,5 +329,48 @@ describe('OrderDetailsModal', () => {
     render(<OrderDetailsModal orderId="o1" onClose={vi.fn()} />);
     expect(await screen.findByText(/could not be loaded/i)).toBeInTheDocument();
     expect(screen.getByText('denied')).toBeInTheDocument();
+  });
+
+  it('offers "Delete Test Order" to the Owner ONLY for a test order', async () => {
+    loadOrderDetailAction.mockResolvedValue({
+      ok: true,
+      detail: detail({
+        isTest: true,
+        permissions: {
+          isOwner: true,
+          canRecordPayment: false,
+          canPrepareFulfillment: false,
+          canReleaseFulfillment: false,
+          canPrepareInvoice: false,
+          canRequestApproval: false,
+        },
+      }),
+    });
+    render(<OrderDetailsModal orderId="o1" onClose={vi.fn()} />);
+    // The Super-Admin delete-test-order control appears; its confirmation asks for
+    // the exact "DELETE TEST" phrase.
+    fireEvent.click(await screen.findByTestId('delete-test-order'));
+    expect(screen.getByPlaceholderText('DELETE TEST')).toBeInTheDocument();
+    expect(screen.getByTestId('delete-test-order-confirm')).toBeDisabled();
+  });
+
+  it('never offers "Delete Test Order" for a production order (even to the Owner)', async () => {
+    loadOrderDetailAction.mockResolvedValue({
+      ok: true,
+      detail: detail({
+        isTest: false,
+        permissions: {
+          isOwner: true,
+          canRecordPayment: false,
+          canPrepareFulfillment: false,
+          canReleaseFulfillment: false,
+          canPrepareInvoice: false,
+          canRequestApproval: false,
+        },
+      }),
+    });
+    render(<OrderDetailsModal orderId="o1" onClose={vi.fn()} />);
+    await screen.findByText('Gold Ring');
+    expect(screen.queryByTestId('delete-test-order')).not.toBeInTheDocument();
   });
 });

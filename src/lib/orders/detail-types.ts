@@ -113,6 +113,11 @@ export type OrderDetail = {
    *  order then leaves the For Layaway card and is tracked in the Layaway ledger. */
   convertedToLayaway: boolean;
 
+  /** True when this order was created under Test Mode / a test session (is_test).
+   *  Enables the Super-Admin "Delete Test Order & Return Item" action; a production
+   *  order (isTest=false) is NEVER offered it, and the DB refuses it regardless. */
+  isTest: boolean;
+
   /** Admin Name (§2): who this order is attributed to, and when it was completed.
    *  Completion attribution is null until the order actually completes. */
   adminName: string | null;

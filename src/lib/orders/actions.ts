@@ -36,6 +36,10 @@ import {
 } from '@/lib/orders/for-invoice';
 import { recordAuditEvent } from '@/lib/audit/log';
 import {
+  deleteTestOrderAndReturnItems,
+  type DeleteTestOrderResult,
+} from '@/lib/orders/test-order';
+import {
   finalizeOrderCancellation,
   requestOrderCancellation,
   type CancellationResult,
@@ -242,6 +246,27 @@ export async function rejectOrderCancellationAction(
   const result = await rejectOrderCancellation(orderId, note ?? null);
   if (result.ok) {
     revalidatePath('/orders');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+/**
+ * SUPER ADMIN (Owner) — delete a TEST order and return its item(s) to Active
+ * Inventory. Requires typing "DELETE TEST". The domain fn + DB function are the real
+ * gate (Owner-only, is_test-only, money-safe: test rows never hit reports).
+ */
+export async function deleteTestOrderAction(
+  orderId: string,
+  confirm: string,
+): Promise<DeleteTestOrderResult> {
+  if (confirm !== 'DELETE TEST') {
+    return { ok: false, error: 'Type DELETE TEST to confirm.' };
+  }
+  const result = await deleteTestOrderAndReturnItems(orderId);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/inventory');
     revalidatePath('/dashboard');
   }
   return result;

@@ -49,6 +49,7 @@ type OrderRow = {
   completed_at: string | null;
   waybill_number: string | null;
   converted_to_layaway: boolean | null;
+  is_test: boolean | null;
   completed_by_staff: unknown;
   admin_staff: unknown;
   customers: unknown;
@@ -65,7 +66,7 @@ export async function getOrderDetail(officialOrderId: string): Promise<OrderDeta
     .select(
       `id, order_number, invoice_number, status, created_at,
        fulfillment_destination, fulfillment_destination_set_at, completed_at, waybill_number,
-       converted_to_layaway,
+       converted_to_layaway, is_test,
        fb_pancake_conversation_id, fb_conversation_url, fb_link_status,
        destination_by:staff_profiles!fulfillment_destination_set_by ( full_name ),
        completed_by_staff:staff_profiles!completed_by ( full_name ),
@@ -278,6 +279,7 @@ export async function getOrderDetail(officialOrderId: string): Promise<OrderDeta
     completionBlock,
     waybillNumber: order.waybill_number ?? null,
     convertedToLayaway: order.converted_to_layaway === true,
+    isTest: order.is_test === true,
     adminName: one<{ full_name: string }>(order.admin_staff)?.full_name ?? null,
     completedAt: order.completed_at ?? null,
     completedByName:

@@ -21,6 +21,7 @@ import { OrderDestinationTransfer } from '@/components/orders/order-destination-
 import { FbChatButton } from '@/components/orders/fb-chat-button';
 import { OrderFacebookLink } from '@/components/orders/order-facebook-link';
 import { OrderCancelAction } from '@/components/orders/order-cancel-action';
+import { DeleteTestOrderAction } from '@/components/orders/delete-test-order-action';
 import { OrderPaymentActions } from '@/components/orders/order-payment-actions';
 import { OrderVerifyPayment } from '@/components/orders/order-verify-payment';
 import { OrderCompletionActions } from '@/components/orders/order-completion-actions';
@@ -394,6 +395,11 @@ function HeaderActions({
           compact
           onDone={onRefresh}
         />
+      ) : null}
+      {/* Super-Admin-only, TEST orders only: delete the test order + return item(s).
+          A production order never reaches this (isTest=false) and the DB refuses it. */}
+      {detail.permissions.isOwner && detail.isTest ? (
+        <DeleteTestOrderAction detail={detail} onDone={onRefresh} />
       ) : null}
     </>
   );
