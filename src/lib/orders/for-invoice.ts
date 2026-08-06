@@ -18,9 +18,51 @@ export type PancakeDelivery = {
 };
 
 /**
+ * Best-effort: the item screenshot/photo to attach to a Pancake send — the mined
+ * capture screenshot if the order has one, else the newest image attachment on the
+ * order. Returns a short-lived signed URL, or null (the send then stays text-only).
+ * Never throws: a lookup/sign failure simply omits the photo.
+ */
+async function findOrderImageUrl(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  officialOrderId: string,
+): Promise<string | null> {
+  const ATTACH_BUCKET = 'attachments';
+  // 1) The mined-item capture screenshot linked to this order (the true item photo).
+  const cap = (await supabase
+    .from('capture_records')
+    .select('screenshot_path')
+    .eq('official_order_id', officialOrderId)
+    .not('screenshot_path', 'is', null)
+    .order('captured_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()) as { data: { screenshot_path?: string | null } | null };
+  let path = cap.data?.screenshot_path ?? null;
+  // 2) Else the newest image attachment uploaded onto the order.
+  if (!path) {
+    const att = (await supabase
+      .from('attachments')
+      .select('storage_path')
+      .eq('related_entity_type', 'order')
+      .eq('related_entity_id', officialOrderId)
+      .ilike('content_type', 'image/%')
+      .order('uploaded_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()) as { data: { storage_path?: string | null } | null };
+    path = att.data?.storage_path ?? null;
+  }
+  if (!path) return null;
+  const signed = (await supabase.storage
+    .from(ATTACH_BUCKET)
+    .createSignedUrl(path, 600)) as { data: { signedUrl?: string } | null };
+  return signed.data?.signedUrl ?? null;
+}
+
+/**
  * Best-effort deliver a message to the order's customer via Pancake. NEVER throws
  * and never blocks the workflow: if the customer has no Pancake conversation id it
  * is simply skipped; a send failure is reported so the UI can offer a manual send.
+ * When the order has an item screenshot/photo it is attached to the Pancake message.
  */
 async function deliverOrderMessageViaPancake(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -57,9 +99,12 @@ async function deliverOrderMessageViaPancake(
     if (!conversationId || !conversationId.trim()) {
       return { attempted: false, delivered: false, error: null };
     }
+    // Attach the item screenshot/photo when the order has one (best-effort).
+    const attachmentUrl = await findOrderImageUrl(supabase, officialOrderId).catch(() => null);
     const res = await sendPancakeConversationMessage({
       conversationId: conversationId.trim(),
       message,
+      attachmentUrl,
     });
     // Record the send result on the order's customer_message (message id + a Sent /
     // Failed status) so the UI can show it and a failure can be retried. Best-effort:
