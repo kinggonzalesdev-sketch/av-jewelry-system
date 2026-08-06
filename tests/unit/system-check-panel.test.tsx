@@ -15,15 +15,10 @@ vi.mock('@/lib/live/live-ops-actions', () => ({
   ),
 }));
 
-// The Realtime check subscribes to a throwaway channel; stub it to report SUBSCRIBED.
+// The Realtime check reads the shared socket state; stub it as connected → Ready.
 vi.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
-    channel: () => ({
-      subscribe: (cb: (s: string) => void) => {
-        cb('SUBSCRIBED');
-        return {};
-      },
-    }),
+    realtime: { isConnected: () => true, connect: () => {} },
     removeChannel: () => Promise.resolve('ok'),
   }),
 }));

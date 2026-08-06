@@ -8,33 +8,47 @@ import { runSystemCheckAction } from '@/lib/live/live-ops-actions';
 import { Button } from '@/components/ui/button';
 
 /**
- * Verify Realtime the SAME way the app uses it: a postgres_changes subscription on
- * the public schema (exactly what DashboardSyncProvider does). A bare channel with no
- * binding fails to join on this stack; a real postgres_changes channel reports
- * SUBSCRIBED once the shared warm socket is up. Realtime is a NUDGE — the app still
- * works via navigation + manual refresh without it — so a hiccup is a non-blocking
- * WARNING, never a critical Failed that would stop the live.
+ * Verify Realtime by asking the app's OWN shared socket whether it is connected.
+ * DashboardSyncProvider keeps one Realtime websocket open for the whole app (the
+ * memoized client), so once it is up, realtime works. Opening a SECOND
+ * postgres_changes subscription here just to test it competes with that one on the
+ * same socket and often never acks (the "Warning" you saw) — so instead we read the
+ * live socket state directly, nudging it to connect if needed. Realtime is a NUDGE
+ * (the app still works via navigation + manual refresh), so failing to come up is a
+ * non-blocking WARNING, never a critical Failed.
  */
 function checkRealtime(): Promise<CheckStatus> {
   return new Promise((resolve) => {
     try {
-      const supabase = createClient();
-      const channel = supabase.channel(`syscheck-${Date.now()}`);
-      const done = (s: CheckStatus) => {
-        clearTimeout(timer);
-        void supabase.removeChannel(channel);
-        resolve(s);
+      const rt = createClient().realtime;
+      const isUp = () => {
+        try {
+          return rt.isConnected();
+        } catch {
+          return false;
+        }
       };
-      const timer = setTimeout(() => done('warning'), 12000);
-      void channel
-        .on('postgres_changes', { event: '*', schema: 'public' }, () => {})
-        .subscribe((status) => {
-          const s = String(status);
-          if (s === 'SUBSCRIBED') done('ready');
-          else if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT' || s === 'CLOSED') {
-            done('warning');
-          }
-        });
+      if (isUp()) {
+        resolve('ready');
+        return;
+      }
+      // The socket isn't open yet — open it and poll briefly for it to come up.
+      try {
+        rt.connect();
+      } catch {
+        /* connect is best-effort */
+      }
+      let elapsed = 0;
+      const iv = setInterval(() => {
+        elapsed += 400;
+        if (isUp()) {
+          clearInterval(iv);
+          resolve('ready');
+        } else if (elapsed >= 12000) {
+          clearInterval(iv);
+          resolve('warning');
+        }
+      }, 400);
     } catch {
       resolve('warning');
     }
