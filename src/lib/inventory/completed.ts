@@ -160,24 +160,28 @@ export async function returnCompletedItemToReview(
   };
 }
 
-export type ForceDeleteResult =
+export type ReturnToInventoryResult =
   { ok: true; deletedOrders: number } | { ok: false; error: string };
 
 /**
- * SUPER ADMIN (Owner) force-delete of a Completed item, for correcting mistakes
- * ("if magkamali ako I can delete pa"). The database function is the real gate: it
- * re-checks Owner, removes the item + all its links, deletes a linked order only
- * when it becomes empty (multi-item orders keep their remaining items), and REFUSES
- * when a linked order has recorded payments or the item is part of a layaway
- * (money is protected). Irreversible; the audit row (no FK to the item) survives it.
+ * SUPER ADMIN (Owner) correction for a Completed item: remove the mistaken
+ * order/customer INFO but RETURN THE ITEM to Active Inventory as available stock
+ * ("madedelete lang yung info ko pero yung item babalik sa inventory"). The item
+ * record is kept. The database function is the real gate: Owner-only, it strips the
+ * claim/order links, deletes a linked order only when it becomes empty (multi-item
+ * orders keep their remaining items), returns the item to available through an
+ * owner-approved Returned-to-Stock Review (§19), and REFUSES when a linked order has
+ * recorded payments or the item is tied to a layaway (money is protected).
  */
-export async function forceDeleteCompletedItem(itemId: string): Promise<ForceDeleteResult> {
+export async function returnCompletedItemToInventory(
+  itemId: string,
+): Promise<ReturnToInventoryResult> {
   try {
     await requireOwner();
   } catch (cause) {
     if (cause instanceof AuthorizationError) {
       await recordAuditEvent({
-        action: 'inventory.force_delete_completed',
+        action: 'inventory.return_completed_to_inventory',
         entityType: 'inventory_item',
         entityId: itemId,
         outcome: 'denied',
@@ -189,13 +193,13 @@ export async function forceDeleteCompletedItem(itemId: string): Promise<ForceDel
   }
 
   const supabase = await createClient();
-  const res = (await supabase.rpc('force_delete_completed_item', {
+  const res = (await supabase.rpc('return_completed_item_to_inventory', {
     p_item_id: itemId,
   })) as { data: Record<string, unknown> | null; error: { message: string } | null };
 
   if (res.error) {
     await recordAuditEvent({
-      action: 'inventory.force_delete_completed',
+      action: 'inventory.return_completed_to_inventory',
       entityType: 'inventory_item',
       entityId: itemId,
       outcome: 'failed',
@@ -206,10 +210,10 @@ export async function forceDeleteCompletedItem(itemId: string): Promise<ForceDel
 
   const deletedOrders = Number(res.data?.deleted_orders ?? 0);
   await recordAuditEvent({
-    action: 'inventory.force_delete_completed',
+    action: 'inventory.return_completed_to_inventory',
     entityType: 'inventory_item',
     entityId: itemId,
-    context: { permanent: true, owner_approved: true, deleted_orders: deletedOrders },
+    context: { returned_to_available: true, owner_approved: true, deleted_orders: deletedOrders },
   });
   return { ok: true, deletedOrders };
 }

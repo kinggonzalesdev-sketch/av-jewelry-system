@@ -15,7 +15,7 @@ import {
   type ItemDependency,
 } from '@/lib/inventory/archive';
 import {
-  forceDeleteCompletedItem,
+  returnCompletedItemToInventory,
   returnCompletedItemToReview,
 } from '@/lib/inventory/completed';
 import { createInventoryEntry } from '@/lib/inventory/create';
@@ -108,11 +108,12 @@ export async function returnCompletedItemAction(
 }
 
 /**
- * SUPER ADMIN (Owner) force-delete of a Completed item (mistake correction). Requires
- * typing DELETE. The domain fn + DB function are the real gate (Owner-only, money
- * protected). Reports how many linked orders were removed alongside the item.
+ * SUPER ADMIN (Owner) correction for a Completed item (mistake fix): remove the
+ * order/customer info and RETURN the item to Active Inventory. Requires typing
+ * DELETE. The domain fn + DB function are the real gate (Owner-only, money
+ * protected). Reports how many linked orders were removed alongside the return.
  */
-export async function forceDeleteCompletedItemAction(
+export async function returnCompletedItemToInventoryAction(
   _prev: InventoryActionState,
   formData: FormData,
 ): Promise<InventoryActionState> {
@@ -120,10 +121,10 @@ export async function forceDeleteCompletedItemAction(
   const confirm = text(formData, 'confirm');
   if (!itemId) return { error: 'An item is required.', success: null };
   if (confirm !== 'DELETE') {
-    return { error: 'Type DELETE to permanently delete this completed item.', success: null };
+    return { error: 'Type DELETE to confirm returning this item to inventory.', success: null };
   }
 
-  const result = await forceDeleteCompletedItem(itemId);
+  const result = await returnCompletedItemToInventory(itemId);
   if (!result.ok) return { error: result.error, success: null };
 
   revalidatePath('/orders/inventory');
@@ -131,8 +132,8 @@ export async function forceDeleteCompletedItemAction(
     error: null,
     success:
       result.deletedOrders > 0
-        ? `Completed item deleted, along with ${result.deletedOrders} linked order(s).`
-        : 'Completed item permanently deleted. The audit trail is preserved.',
+        ? `Item returned to Active Inventory. ${result.deletedOrders} linked order(s) removed.`
+        : 'Item returned to Active Inventory. The order info was removed.',
   };
 }
 

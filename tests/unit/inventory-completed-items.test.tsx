@@ -130,31 +130,31 @@ describe('Inventory — Active vs Completed', () => {
     renderWorkspace();
     fireEvent.click(screen.getByRole('tab', { name: 'Completed Items' }));
     const table = screen.getByTestId('completed-items');
-    // Only View — never Delete — when canForceDeleteCompleted is not granted.
+    // Only View — never Delete — when canReturnCompleted is not granted.
     expect(within(table).queryByText('Delete')).not.toBeInTheDocument();
   });
 
-  it('shows a Super-Admin Delete on Completed Items that asks to type DELETE', () => {
+  it('shows a Super-Admin Delete that removes the order info + returns the item', () => {
     render(
       <InventoryWorkspace
         inventory={{ ok: true, rows }}
         completed={completed}
         canMonitor={false}
-        canForceDeleteCompleted
+        canReturnCompleted
       />,
     );
     fireEvent.click(screen.getByRole('tab', { name: 'Completed Items' }));
     const deletes = screen.getAllByText('Delete');
     expect(deletes.length).toBe(completed.length);
     fireEvent.click(deletes[0]!);
-    // The confirmation is explicit + gated on typing DELETE.
+    // Honest wording: the item is returned to inventory, not deleted; gated on DELETE.
     expect(
-      screen.getByRole('heading', { name: 'Permanently delete completed item' }),
+      screen.getByRole('heading', { name: 'Delete order info & return item to inventory' }),
     ).toBeInTheDocument();
-    // Gated on typing DELETE: the confirm field + the permanent-delete button.
+    expect(screen.getByText(/goes back to available stock/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText('DELETE')).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Delete permanently' }),
+      screen.getByRole('button', { name: 'Delete info & return' }),
     ).toBeInTheDocument();
   });
 });

@@ -6,8 +6,8 @@ import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 import {
   createInventoryItemAction,
   deleteAllInventoryItemsAction,
-  forceDeleteCompletedItemAction,
   returnCompletedItemAction,
+  returnCompletedItemToInventoryAction,
 } from '@/lib/inventory/actions';
 import type { InventoryActionState } from '@/lib/inventory/action-state';
 import { EMPTY_INVENTORY_STATE } from '@/lib/inventory/action-state';
@@ -93,7 +93,7 @@ export function InventoryWorkspace({
   canEdit = false,
   canDelete = false,
   canDeleteAll = false,
-  canForceDeleteCompleted = false,
+  canReturnCompleted = false,
   canImportExport = false,
 }: {
   inventory: InventoryListResult;
@@ -108,8 +108,9 @@ export function InventoryWorkspace({
   canDelete?: boolean;
   /** SUPER ADMIN (owner) only — shows the bulk "Delete All" control. */
   canDeleteAll?: boolean;
-  /** SUPER ADMIN (owner) only — per-row Delete on Completed Items (mistake fix). */
-  canForceDeleteCompleted?: boolean;
+  /** SUPER ADMIN (owner) only — per-row "return to inventory" on Completed Items
+   *  (mistake fix: removes the order info, keeps the item as available stock). */
+  canReturnCompleted?: boolean;
   /** SUPER ADMIN only — Excel/CSV import and export (Owner request). */
   canImportExport?: boolean;
 }) {
@@ -642,8 +643,8 @@ export function InventoryWorkspace({
                               >
                                 View
                               </button>
-                              {canForceDeleteCompleted ? (
-                                <CompletedItemDelete row={c} />
+                              {canReturnCompleted ? (
+                                <CompletedItemReturn row={c} />
                               ) : null}
                             </div>
                           </td>
@@ -738,18 +739,19 @@ export function InventoryWorkspace({
 }
 
 /**
- * SUPER ADMIN (Owner) per-row delete on a Completed item — for correcting mistakes.
- * Irreversible "type DELETE" confirmation. The server action + DB function are the
- * real gate: Owner-only, the item + its links are removed, a linked order is deleted
- * only when it becomes empty (siblings kept), and the delete is REFUSED when a linked
- * order has recorded payments or the item is part of a layaway — surfaced as an error.
+ * SUPER ADMIN (Owner) per-row correction on a Completed item — for fixing mistakes.
+ * It DELETES the order/customer info but RETURNS the item to Active Inventory as
+ * available stock (the item itself is kept). "type DELETE" confirmation. The server
+ * action + DB function are the real gate: Owner-only, a linked order is deleted only
+ * when it becomes empty (siblings kept), and the action is REFUSED when a linked
+ * order has recorded payments or the item is in a layaway — surfaced as an error.
  */
-function CompletedItemDelete({ row }: { row: CompletedInventoryRow }) {
+function CompletedItemReturn({ row }: { row: CompletedInventoryRow }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState('');
   const [state, action, pending] = useActionState<InventoryActionState, FormData>(
-    forceDeleteCompletedItemAction,
+    returnCompletedItemToInventoryAction,
     EMPTY_INVENTORY_STATE,
   );
   const lastDone = useRef<string | null>(null);
@@ -778,8 +780,8 @@ function CompletedItemDelete({ row }: { row: CompletedInventoryRow }) {
       <Modal
         open={open}
         onClose={() => setOpen(false)}
-        title="Permanently delete completed item"
-        description="Super Admin only. This cannot be undone."
+        title="Delete order info & return item to inventory"
+        description="Super Admin only."
         size="sm"
         critical
         footer={
@@ -790,23 +792,25 @@ function CompletedItemDelete({ row }: { row: CompletedInventoryRow }) {
             <Button
               type="submit"
               variant="destructive"
-              form={`completed-delete-form-${row.inventoryItemId}`}
+              form={`completed-return-form-${row.inventoryItemId}`}
               disabled={pending || confirm !== 'DELETE'}
             >
-              {pending ? 'Deleting…' : 'Delete permanently'}
+              {pending ? 'Working…' : 'Delete info & return'}
             </Button>
           </>
         }
       >
         <form
-          id={`completed-delete-form-${row.inventoryItemId}`}
+          id={`completed-return-form-${row.inventoryItemId}`}
           action={action}
           className="space-y-3"
         >
           <input type="hidden" name="inventoryItemId" value={row.inventoryItemId} />
           <p className="text-sm">
-            Permanently delete <span className="font-mono">{row.itemCode}</span>
-            {row.customerName ? ` (${row.customerName})` : ''}?
+            Remove the order/customer info for <span className="font-mono">{row.itemCode}</span>
+            {row.customerName ? ` (${row.customerName})` : ''} and return the item to{' '}
+            <strong>Active Inventory</strong>? The item itself is <strong>not</strong> deleted —
+            it goes back to available stock.
           </p>
           <p className="text-xs text-muted-foreground">
             {row.orderNumber ? (

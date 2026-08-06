@@ -55,9 +55,10 @@ export default async function InventoryPage() {
         canEdit={permissions.has('inventory_edit')}
         canDelete={permissions.has('inventory_delete')}
         canDeleteAll={canDeleteAll}
-        // Per-row Delete on Completed Items is the Super Admin's mistake-fix tool
-        // (money-protected in the DB); never shown to an Admin or Staff.
-        canForceDeleteCompleted={canDeleteAll}
+        // Per-row "return to inventory" on Completed Items is the Super Admin's
+        // mistake-fix tool (removes order info, keeps the item; money-protected in
+        // the DB); never shown to an Admin or Staff.
+        canReturnCompleted={canDeleteAll}
         canImportExport={profile.roleKey === 'owner'}
       />
     </div>
