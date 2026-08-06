@@ -291,8 +291,11 @@ function ConversationsCard({
           </p>
         ) : null}
         {syncState.success ? (
-          <p className="text-sm text-green-700" data-testid="pancake-sync-result">
-            {syncState.success}
+          <p
+            className="rounded-md border border-green-600/40 bg-green-600/10 px-3 py-2 text-sm font-medium text-green-700"
+            data-testid="pancake-sync-result"
+          >
+            ✓ {syncState.success}
           </p>
         ) : null}
         {error ? (

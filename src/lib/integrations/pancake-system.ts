@@ -2,7 +2,9 @@ import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import {
+  buildPancakeSyncMessage,
   fetchPancakeConversationsCore,
+  getPancakeLinkCoverage,
   type PancakeSyncResult,
 } from '@/lib/integrations/pancake';
 
@@ -54,10 +56,13 @@ export async function syncPancakeConversationsSystem(): Promise<PancakeSyncResul
   }
 
   const matched = Number(data?.matched ?? 0);
+  const { linked, total: totalCustomers } = await getPancakeLinkCoverage(admin);
   return {
     ok: true,
-    message: `Linked ${matched} customer(s) from ${conv.conversations.length} conversation(s).`,
+    message: buildPancakeSyncMessage(matched, linked, totalCustomers),
     matched,
     total: conv.conversations.length,
+    linkedCustomers: linked,
+    totalCustomers,
   };
 }

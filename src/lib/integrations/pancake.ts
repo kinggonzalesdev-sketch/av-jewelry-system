@@ -1,5 +1,7 @@
 import 'server-only';
 
+import type { SupabaseClient } from '@supabase/supabase-js';
+
 import { AuthorizationError, requirePrimarySuperAdmin } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 
@@ -995,11 +997,41 @@ export async function fetchPancakeConversationsCore(): Promise<PancakeConversati
 export type PancakeSyncResult = {
   ok: boolean;
   message: string;
-  /** How many customers were linked. */
+  /** How many customers were linked this run. */
   matched: number;
   /** Conversations loaded from Pancake. */
   total: number;
+  /** Active customers now linked to a Pancake conversation (running coverage). */
+  linkedCustomers?: number;
+  /** Total active customers. */
+  totalCustomers?: number;
 };
+
+/** Running link coverage — how many active customers have a Pancake conversation (so
+ *  are reachable by Send Invoice + the one-tap auto-send) out of all active customers.
+ *  Works with either the user-scoped or the service-role client. */
+export async function getPancakeLinkCoverage(
+  supabase: SupabaseClient,
+): Promise<{ linked: number; total: number }> {
+  const [totalRes, linkedRes] = await Promise.all([
+    supabase.from('customers').select('id', { count: 'exact', head: true }).eq('is_active', true),
+    supabase
+      .from('customers')
+      .select('id', { count: 'exact', head: true })
+      .eq('is_active', true)
+      .not('pancake_conversation_id', 'is', null),
+  ]);
+  return { linked: Number(linkedRes.count ?? 0), total: Number(totalRes.count ?? 0) };
+}
+
+/** The confirmation after a sync — this run's NEW links plus running coverage. */
+export function buildPancakeSyncMessage(matched: number, linked: number, total: number): string {
+  const newly = matched === 1 ? '1 new customer' : `${matched} new customers`;
+  return (
+    `Linked ${newly}. ${linked} of ${total} active customers are now reachable ` +
+    `by Send Invoice and the one-tap auto-send.`
+  );
+}
 
 export async function syncPancakeConversationsToCustomers(): Promise<PancakeSyncResult> {
   const conv = await listPancakeConversations();
@@ -1036,10 +1068,13 @@ export async function syncPancakeConversationsToCustomers(): Promise<PancakeSync
   }
 
   const matched = Number(data?.matched ?? 0);
+  const { linked, total: totalCustomers } = await getPancakeLinkCoverage(supabase);
   return {
     ok: true,
-    message: `Linked ${matched} customer(s) from ${conv.conversations.length} conversation(s). Send Invoice / Reminder will now auto-deliver to them.`,
+    message: buildPancakeSyncMessage(matched, linked, totalCustomers),
     matched,
     total: conv.conversations.length,
+    linkedCustomers: linked,
+    totalCustomers,
   };
 }
