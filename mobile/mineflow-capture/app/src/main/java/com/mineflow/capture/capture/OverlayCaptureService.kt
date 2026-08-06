@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
@@ -32,10 +33,14 @@ import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.mineflow.capture.App
+import com.mineflow.capture.data.ApiClient
+import com.mineflow.capture.data.ScreenshotOcr
+import com.mineflow.capture.data.SecureStore
 import com.mineflow.capture.ui.MainActivity
-import com.mineflow.capture.ui.PreviewActivity
+import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import kotlin.concurrent.thread
 import kotlin.math.abs
 
 /**
@@ -385,11 +390,52 @@ class OverlayCaptureService : Service() {
         reader = null
     }
 
+    /**
+     * AUTO-SEND (no preview/retake/save-draft): one tap → capture the whole screen →
+     * OCR the pinned Facebook name + mined item on-device → upload the screenshot and
+     * post it as a PENDING capture. It appears on the PC's "Incoming Captures" for the
+     * operator to confirm/correct, then Send Invoice delivers the screenshot to that
+     * customer's Facebook/Pancake chat. A quick toast is the only on-phone feedback.
+     */
     private fun onCaptured(file: File) {
         restoreButton()
-        // Phase 1: open the capture PREVIEW (Retake / Save Draft / Discard). No order,
-        // upload, send, or print happens here.
-        PreviewActivity.openCapture(this, file.absolutePath)
+        val ctx = this
+        if (!SecureStore.get(ctx).isLoggedIn) {
+            toastMain("Sign in to MineFlow Capture first.")
+            runCatching { file.delete() }
+            return
+        }
+        val bmp = BitmapFactory.decodeFile(file.absolutePath)
+        if (bmp == null) {
+            toastMain("Screenshot could not be read — try again.")
+            runCatching { file.delete() }
+            return
+        }
+        toastMain("Sending to MineFlow…")
+        val api = ApiClient(ctx)
+        val captureId = file.nameWithoutExtension.ifBlank { "cap-${System.currentTimeMillis()}" }
+        // OCR (on-device, offline); its callback runs on the main thread, then we
+        // upload + post the pending capture off the UI thread.
+        ScreenshotOcr.analyze(bmp) { guess ->
+            thread {
+                val path = runCatching {
+                    api.uploadScreenshot(captureId, "image/png", file.readBytes())
+                }.getOrNull()
+                val ocr = JSONObject()
+                    .putOpt("fbName", guess.fbName)
+                    .putOpt("itemQuery", guess.itemQuery)
+                val res = api.createPendingCapture(captureId, path, ocr)
+                runCatching { file.delete() }
+                toastMain(
+                    if (res.ok) "Sent to MineFlow — confirm it on the PC."
+                    else "Send failed: ${res.body.optString("error", "please try again")}",
+                )
+            }
+        }
+    }
+
+    private fun toastMain(msg: String) {
+        handler.post { Toast.makeText(this, msg, Toast.LENGTH_LONG).show() }
     }
 
     private fun onCaptureFailed(reason: String) {
