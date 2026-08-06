@@ -1,12 +1,19 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- App theme (MineFlow brand: black surface, ivory text, gold accent). -->
-    <style name="Theme.MineFlowCapture" parent="Theme.Material3.DayNight">
+    <!-- App theme (MineFlow brand: black surface, ivory text, gold accent).
+         Force the DARK palette (not DayNight): the app is always black-on-ivory, so
+         on a phone set to LIGHT mode DayNight was making default text dark — invisible
+         on the black background (the login typing looked blank). The explicit text
+         colours guarantee typed text, hints and labels are always readable. -->
+    <style name="Theme.MineFlowCapture" parent="Theme.Material3.Dark">
         <item name="colorPrimary">#C9A227</item>
         <item name="colorOnPrimary">#111111</item>
         <item name="android:colorBackground">#0B0B0B</item>
         <item name="colorSurface">#141414</item>
         <item name="colorOnSurface">#F5EFE0</item>
+        <item name="android:textColorPrimary">#F5EFE0</item>
+        <item name="android:textColorSecondary">#B7A98A</item>
+        <item name="android:textColorHint">#B7A98A</item>
     </style>
 
     <!-- Transparent theme for the MediaProjection-consent activity. -->
