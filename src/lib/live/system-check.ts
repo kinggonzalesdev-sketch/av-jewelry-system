@@ -89,9 +89,33 @@ export async function runSystemCheck(): Promise<SystemCheckResult> {
     });
   }
 
-  // 3-5. Pancake connection + selected Page + conversation links. listPancakePages
-  //      is Primary-Super-Admin gated (it hits pages.fm), so a second Super Admin
-  //      sees an honest "Primary only" note rather than a hard failure.
+  // Facebook auto-send reach — a plain active-customer count, so EVERY Super Admin
+  // sees how ready one-tap auto-send is (a capture auto-sends ONLY to a customer that
+  // is already linked to a Facebook chat). Not gated on the Primary-only pages.fm
+  // calls below, since it reads nothing from pages.fm.
+  try {
+    const link = await getPancakeLinkStatus();
+    items.push({
+      key: 'conversations',
+      label: 'Facebook Auto-Send Reach',
+      status: link.linked > 0 ? 'ready' : 'warning',
+      detail:
+        `${link.linked} of ${link.total} customer(s) linked to a Facebook chat — ` +
+        'a capture auto-sends only to a linked customer; the rest wait on the PC. ' +
+        'Run Integrations → Sync to link more.',
+    });
+  } catch {
+    items.push({
+      key: 'conversations',
+      label: 'Facebook Auto-Send Reach',
+      status: 'warning',
+      detail: 'Could not read customer link coverage.',
+    });
+  }
+
+  // Pancake connection + selected Page. listPancakePages is Primary-Super-Admin gated
+  // (it hits pages.fm), so a second Super Admin sees an honest "Primary only" note
+  // rather than a hard failure.
   const primary = await isPrimarySuperAdmin();
   if (primary) {
     const pages = await listPancakePages();
@@ -117,14 +141,6 @@ export async function runSystemCheck(): Promise<SystemCheckResult> {
       detail: selected
         ? `Selected: ${selected.pageName ?? selected.pageId}`
         : 'No Page selected yet.',
-    });
-
-    const link = await getPancakeLinkStatus();
-    items.push({
-      key: 'conversations',
-      label: 'Customer & Conversation Lookup',
-      status: link.linked > 0 ? 'ready' : 'warning',
-      detail: `${link.linked}/${link.total} customer(s) linked to a conversation.`,
     });
   } else {
     items.push({
