@@ -13,10 +13,12 @@ import {
 import { readStickerFields, writeStickerFields } from '@/lib/print/sticker-fields';
 
 /**
- * Sticker Settings + live preview. The operator picks which lines print (Facebook
- * name, item, price, price per gram, date) and sees a live preview of the exact
- * sticker. The choice is stored per device and read by every print path (New Order,
- * Test Print, and the future auto-print), so what you see here is what prints.
+ * Sticker Settings + editable live preview. The operator picks which lines print
+ * (Facebook name, item, price, price per gram, date) AND can type their own sample
+ * text to see exactly how it looks (e.g. a long name). The field choice is stored per
+ * device and read by every print path (New Order, Test Print, auto-print), so what
+ * you see is what prints. The sample text is only for the preview — the real print
+ * uses the order's own values.
  */
 
 const FIELD_LABELS: { key: StickerField; label: string }[] = [
@@ -53,13 +55,20 @@ export function StickerSettingsCard() {
     });
   };
 
+  // Editable sample values (preview only — not stored, not what really prints).
+  const [name, setName] = useState('KING GONZALES');
+  const [item, setItem] = useState('K18 HK ITEM RING');
+  const [grams, setGrams] = useState('1.40');
+  const [price, setPrice] = useState('37500');
+  const [perGram, setPerGram] = useState('26785');
+
   const sample: OrderReceiptData = {
-    customerName: 'KING GONZALES',
-    itemName: 'K18 HK ITEM RING',
-    grams: '1.40',
+    customerName: name.trim() || '—',
+    itemName: item.trim() || '—',
+    grams: grams.trim() || null,
     quantity: 1,
-    unitPrice: '37500',
-    pricePerGram: '26785',
+    unitPrice: price.trim() || null,
+    pricePerGram: perGram.trim() || null,
     date: stickerDate(),
   };
   const lines = stickerLineItems(sample, fields);
@@ -82,6 +91,19 @@ export function StickerSettingsCard() {
         <p className="max-w-[15rem] pt-1 text-[11px] text-muted-foreground">
           Saved on this device. Every print (New Order, Test Print, auto-print) uses
           exactly these fields.
+        </p>
+      </div>
+
+      {/* Editable sample — type your own text to see how it looks (preview only). */}
+      <div className="space-y-1.5">
+        <p className="text-xs font-medium text-muted-foreground">Sample text (preview only):</p>
+        <SampleInput label="Facebook Name" value={name} onChange={setName} />
+        <SampleInput label="Item Name" value={item} onChange={setItem} />
+        <SampleInput label="Grams" value={grams} onChange={setGrams} />
+        <SampleInput label="Price" value={price} onChange={setPrice} />
+        <SampleInput label="Price / gram" value={perGram} onChange={setPerGram} />
+        <p className="max-w-[14rem] pt-0.5 text-[11px] text-muted-foreground">
+          This is just for the preview — the real sticker uses the order’s own values.
         </p>
       </div>
 
@@ -113,5 +135,27 @@ export function StickerSettingsCard() {
         </div>
       </div>
     </div>
+  );
+}
+
+function SampleInput({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="flex items-center gap-2 text-xs">
+      <span className="w-24 shrink-0 text-muted-foreground">{label}</span>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-8 w-40 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-gold"
+      />
+    </label>
   );
 }
