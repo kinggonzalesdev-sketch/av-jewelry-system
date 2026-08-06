@@ -44,10 +44,18 @@ const PREVIEW_FONT: Record<StickerField, { size: number; weight: number }> = {
 export function StickerSettingsCard() {
   const [fields, setFields] = useState<StickerFields>(DEFAULT_STICKER_FIELDS);
 
-  // Read the stored preference on the client (avoids an SSR/hydration mismatch).
+  // Auto-print each incoming capture's sticker (shared flag read by Incoming Captures).
+  const [autoPrint, setAutoPrint] = useState(false);
+
+  // Read the stored preferences on the client (avoids an SSR/hydration mismatch).
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setFields(readStickerFields());
+    try {
+      setAutoPrint(localStorage.getItem('mineflow.captureAutoPrint') === '1');
+    } catch {
+      /* storage unavailable — leave off */
+    }
   }, []);
 
   const toggle = (k: StickerField) => {
@@ -56,6 +64,15 @@ export function StickerSettingsCard() {
       writeStickerFields(next);
       return next;
     });
+  };
+
+  const toggleAutoPrint = (on: boolean) => {
+    setAutoPrint(on);
+    try {
+      localStorage.setItem('mineflow.captureAutoPrint', on ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
   };
 
   // Editable sample values (preview only — not stored, not what really prints).
@@ -93,6 +110,7 @@ export function StickerSettingsCard() {
   };
 
   return (
+    <div className="space-y-4">
     <div className="flex flex-wrap items-start gap-6">
       <div className="space-y-2">
         <p className="text-xs font-medium text-muted-foreground">Show on the sticker:</p>
@@ -162,6 +180,28 @@ export function StickerSettingsCard() {
           <p className="mt-1 max-w-[210px] text-[11px] text-foreground">{printMsg}</p>
         ) : null}
       </div>
+    </div>
+
+      {/* Auto-print: when a floating-screenshot capture lands on this PC, print its
+          sticker automatically on this printer. Set it HERE before the live — the
+          Incoming Captures list only appears once captures start arriving, so this is
+          the reliable place to turn it on ahead of time. */}
+      <label className="flex flex-wrap items-center gap-2 rounded-md border border-gold/40 bg-gold/5 px-3 py-2 text-sm">
+        <input
+          type="checkbox"
+          checked={autoPrint}
+          onChange={(e) => toggleAutoPrint(e.target.checked)}
+          data-testid="sticker-auto-print"
+        />
+        <span className="font-medium">Auto-print each incoming capture’s sticker</span>
+        <span className="text-[11px] text-muted-foreground">
+          — prints automatically the moment a capture lands on this PC (uses the fields
+          above).
+          {autoPrint && !activeChannel
+            ? ' Connect the printer first (Test Print above).'
+            : ''}
+        </span>
+      </label>
     </div>
   );
 }

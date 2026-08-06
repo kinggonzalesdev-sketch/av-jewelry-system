@@ -156,8 +156,9 @@ export function PrinterTestCard() {
       ) : null}
 
       <p className="text-[11px] text-muted-foreground">
-        The sample prints as: <span className="font-medium">KING GONZALES · K18 HK ITEM
-        RING · ₱37,500 · {stickerDate()}</span> — centered, one 40×30 mm label.
+        Prints one centered 40×30 mm label using the fields chosen in{' '}
+        <span className="font-medium">Sticker Settings</span> (currently Facebook Name ·
+        Price per gram · Date).
       </p>
     </div>
   );
