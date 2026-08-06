@@ -203,6 +203,42 @@ export async function enqueueCaptureReview(
   };
 }
 
+export type PendingCaptureResult =
+  | { ok: true; captureRecordId: string; idempotent: boolean }
+  | { ok: false; error: string };
+
+/**
+ * Create a PENDING capture from the floating screenshot — the screenshot path + OCR
+ * guess only (no order/item yet). The PC web app picks it up for operator review.
+ * Idempotent per device+capture in the database, so a repeated tap is one row.
+ */
+export async function createPendingCapture(
+  supabase: SupabaseClient,
+  input: {
+    deviceInstallationId: string;
+    captureId: string;
+    screenshotPath?: string | null;
+    ocr?: unknown;
+  },
+): Promise<PendingCaptureResult> {
+  if (!input.deviceInstallationId?.trim() || !input.captureId?.trim()) {
+    return { ok: false, error: 'A device id and capture id are required.' };
+  }
+  const { data, error } = (await supabase.rpc('create_pending_capture', {
+    p_device: input.deviceInstallationId.trim(),
+    p_capture_id: input.captureId.trim(),
+    p_screenshot_path: input.screenshotPath ?? null,
+    p_ocr: input.ocr ?? null,
+  })) as { data: Record<string, unknown> | null; error: { message: string } | null };
+  if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  const d = data ?? {};
+  return {
+    ok: true,
+    captureRecordId: (d.capture_record_id as string) ?? '',
+    idempotent: d.idempotent === true,
+  };
+}
+
 const CAPTURE_BUCKET = 'attachments';
 const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 /** 12 MB — a generous cap for a high-quality still, blocking abuse. */
