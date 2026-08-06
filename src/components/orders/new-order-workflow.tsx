@@ -24,6 +24,7 @@ import {
 } from '@/lib/print/order-receipt';
 import { writeToChannel } from '@/lib/print/bluetooth-printer';
 import { encodeReceipt } from '@/lib/print/receipt-encoders';
+import { readStickerFields } from '@/lib/print/sticker-fields';
 import { usePrinter } from '@/components/print/printer-context';
 import { linkCaptureToOrderAction } from '@/lib/capture/pending-actions';
 import { CustomerMatchHint } from '@/components/customers/customer-match-hint';
@@ -684,20 +685,24 @@ export function NewOrderModal({
       grams: item?.grams ?? null,
       quantity: 1,
       unitPrice: centavosToStr(rowTotalCentavos(row, item)),
+      // The per-gram rate, so the optional "Price per gram" sticker field can print it.
+      pricePerGram: row.priceMode === 'per_gram' ? (row.perGram.trim() || null) : null,
       date,
     }));
   };
 
-  // Print one sticker per item. Returns true when transmitted (or the browser dialog
-  // was used because no BLE printer is connected), false on a real write failure.
+  // Print one sticker per item, honouring the operator's Sticker Settings fields.
+  // Returns true when transmitted (or the browser dialog was used because no BLE
+  // printer is connected), false on a real write failure.
   const printStickers = async (stickers: OrderReceiptData[]): Promise<boolean> => {
+    const fields = readStickerFields();
     if (!activeChannel) {
-      printOrderStickers(stickers);
+      printOrderStickers(stickers, fields);
       return true;
     }
     try {
       for (const sticker of stickers) {
-        await writeToChannel(activeChannel, encodeReceipt(sticker, printLang));
+        await writeToChannel(activeChannel, encodeReceipt(sticker, printLang, fields));
       }
       return true;
     } catch {

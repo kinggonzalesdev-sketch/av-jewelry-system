@@ -4,6 +4,7 @@ import Link from 'next/link';
 
 import { SystemCheckPanel } from '@/components/live/system-check-panel';
 import { PrinterTestCard } from '@/components/print/printer-test-card';
+import { StickerSettingsCard } from '@/components/print/sticker-settings-card';
 import { TestModeControls } from '@/components/live/test-mode-controls';
 import { LiveSessionControls } from '@/components/live/live-session-controls';
 import { ErrorRecoveryPanel } from '@/components/live/error-recovery-panel';
@@ -116,6 +117,22 @@ export default async function LiveOperationsPage() {
           reachable.
         </p>
         <PrinterTestCard />
+      </section>
+
+      {/* Sticker Settings — choose which lines print on the 40x30 label, with a live
+          preview. Applies to New Order, Test Print, and the auto-print. */}
+      <section
+        className="rounded-xl border border-border bg-card p-4"
+        aria-labelledby="stickerfields-h"
+      >
+        <h2 id="stickerfields-h" className="mb-1 text-sm font-semibold text-foreground">
+          Sticker Settings
+        </h2>
+        <p className="mb-3 text-xs text-muted-foreground">
+          Pick which lines appear on the sticker and see a live preview. Saved on this
+          device; every print uses these fields.
+        </p>
+        <StickerSettingsCard />
       </section>
 
       {/* Error Recovery Center — the failures a live can hit (a message that failed

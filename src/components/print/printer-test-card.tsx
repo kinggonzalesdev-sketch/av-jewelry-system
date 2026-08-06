@@ -10,6 +10,7 @@ import {
   stickerDate,
   type OrderReceiptData,
 } from '@/lib/print/order-receipt';
+import { readStickerFields } from '@/lib/print/sticker-fields';
 import { Button } from '@/components/ui/button';
 
 /**
@@ -40,9 +41,10 @@ export function PrinterTestCard() {
   const sample = (): OrderReceiptData => ({
     customerName: 'KING GONZALES',
     itemName: 'K18 HK ITEM RING',
-    grams: null,
+    grams: '1.40',
     quantity: 1,
     unitPrice: '37500',
+    pricePerGram: '26785',
     date: stickerDate(),
   });
 
@@ -50,7 +52,7 @@ export function PrinterTestCard() {
     if (!activeChannel) return;
     setResult(null);
     try {
-      await writeToChannel(activeChannel, encodeReceipt(sample(), printLang));
+      await writeToChannel(activeChannel, encodeReceipt(sample(), printLang, readStickerFields()));
       setResult(
         'Sent the sample sticker to the printer. Did it print correctly? If nothing came out, try another Channel or Format below, or use the browser dialog.',
       );
@@ -61,7 +63,7 @@ export function PrinterTestCard() {
 
   const printBrowser = () => {
     setResult('Opening the browser print dialog — choose the 40×30 mm printer, then Print.');
-    printOrderReceipt(sample());
+    printOrderReceipt(sample(), readStickerFields());
   };
 
   const adapterOff = supported && adapterAvailable === false;

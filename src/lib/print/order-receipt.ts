@@ -27,9 +27,28 @@ export type OrderReceiptData = {
   quantity: number;
   /** Authoritative peso string, or null when there is no price yet. */
   unitPrice: string | null;
-  /** Preformatted date, e.g. "June 15, 2026". */
+  /** Price-per-gram rate as a peso string, or null. Only printed if the "Price per
+   *  gram" sticker field is enabled. */
+  pricePerGram?: string | null;
+  /** Preformatted date, e.g. "August 6, 2026". */
   date: string;
 };
+
+/** Which lines the operator wants on the sticker (Sticker Settings). */
+export type StickerField = 'name' | 'item' | 'price' | 'pricePerGram' | 'date';
+export type StickerFields = Record<StickerField, boolean>;
+
+/** Default sticker layout — Facebook name · item · price · date (price-per-gram off).
+ *  The operator changes these in Sticker Settings; it is stored per device. */
+export const DEFAULT_STICKER_FIELDS: StickerFields = {
+  name: true,
+  item: true,
+  price: true,
+  pricePerGram: false,
+  date: true,
+};
+
+export type StickerLine = { text: string; kind: StickerField };
 
 /** Format a peso amount for a sticker — reuses the one centralized formatter so
  *  the sticker matches every other peso in the system (₱1,000 · ₱1,250.50). */
@@ -41,15 +60,29 @@ export function formatStickerPeso(amount: string): string {
  *  Customer Name · Item (+grams) · Price · Date (the centered stack the Owner asked
  *  for). Price is its own prominent line; the quantity only shows when more than one
  *  piece, since a single-piece jewelry sticker shows just the amount. */
+export function stickerLineItems(
+  d: OrderReceiptData,
+  fields: StickerFields = DEFAULT_STICKER_FIELDS,
+): StickerLine[] {
+  const out: StickerLine[] = [];
+  if (fields.name) out.push({ text: d.customerName || '—', kind: 'name' });
+  if (fields.item) {
+    out.push({ text: d.grams ? `${d.itemName} ${d.grams}` : d.itemName, kind: 'item' });
+  }
+  if (fields.price) {
+    const price = d.unitPrice ? formatStickerPeso(d.unitPrice) : '—';
+    out.push({ text: d.quantity > 1 ? `${d.quantity} x ${price}` : price, kind: 'price' });
+  }
+  if (fields.pricePerGram && d.pricePerGram) {
+    out.push({ text: `${formatStickerPeso(d.pricePerGram)}/g`, kind: 'pricePerGram' });
+  }
+  if (fields.date) out.push({ text: d.date, kind: 'date' });
+  return out;
+}
+
+/** Backward-compatible string lines with the DEFAULT fields (name · item · price · date). */
 export function stickerLines(d: OrderReceiptData): string[] {
-  const price = d.unitPrice ? formatStickerPeso(d.unitPrice) : '—';
-  const priceLine = d.quantity > 1 ? `${d.quantity} x ${price}` : price;
-  return [
-    d.customerName || '—',
-    d.grams ? `${d.itemName} ${d.grams}` : d.itemName,
-    priceLine,
-    d.date,
-  ];
+  return stickerLineItems(d).map((l) => l.text);
 }
 
 /** Today's date in long words, e.g. "August 6, 2026" (Owner request — not 08/06/2026). */
@@ -129,16 +162,22 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function receiptHtml(d: OrderReceiptData): string {
-  const [name, item, price, date] = stickerLines(d);
-  return `
-    <div class="stk">
-      <div class="name">${escapeHtml(name ?? '')}</div>
-      <div class="item">${escapeHtml(item ?? '')}</div>
-      <div class="price">${escapeHtml(price ?? '')}</div>
-      <div class="date">${escapeHtml(date ?? '')}</div>
-    </div>
-  `;
+const CLASS_BY_KIND: Record<StickerField, string> = {
+  name: 'name',
+  item: 'item',
+  price: 'price',
+  pricePerGram: 'price',
+  date: 'date',
+};
+
+function receiptHtml(
+  d: OrderReceiptData,
+  fields: StickerFields = DEFAULT_STICKER_FIELDS,
+): string {
+  const lines = stickerLineItems(d, fields)
+    .map((l) => `<div class="${CLASS_BY_KIND[l.kind]}">${escapeHtml(l.text)}</div>`)
+    .join('');
+  return `<div class="stk">${lines}</div>`;
 }
 
 // Centered both ways in the middle printable area of the 40×30 mm sticker, with a
@@ -166,7 +205,10 @@ const RECEIPT_STYLE = `
   @media print { @page { size: 40mm 30mm; margin: 0; } }
 `;
 
-export function printOrderReceipt(data: OrderReceiptData): void {
+export function printOrderReceipt(
+  data: OrderReceiptData,
+  fields: StickerFields = DEFAULT_STICKER_FIELDS,
+): void {
   if (typeof window === 'undefined') return;
 
   const iframe = document.createElement('iframe');
@@ -187,6 +229,7 @@ export function printOrderReceipt(data: OrderReceiptData): void {
       data.customerName,
     )}</title><style>${RECEIPT_STYLE}</style></head><body>${receiptHtml(
       data,
+      fields,
     )}</body></html>`,
   );
   doc.close();
@@ -213,7 +256,10 @@ export function printOrderReceipt(data: OrderReceiptData): void {
  * Entry so a multi-item order yields one centered sticker per piece — the same format
  * as the direct-to-printer path.
  */
-export function printOrderStickers(items: OrderReceiptData[]): void {
+export function printOrderStickers(
+  items: OrderReceiptData[],
+  fields: StickerFields = DEFAULT_STICKER_FIELDS,
+): void {
   if (typeof window === 'undefined' || items.length === 0) return;
 
   const iframe = document.createElement('iframe');
@@ -228,7 +274,7 @@ export function printOrderStickers(items: OrderReceiptData[]): void {
     return;
   }
 
-  const body = items.map((d) => receiptHtml(d)).join('');
+  const body = items.map((d) => receiptHtml(d, fields)).join('');
   const title = items[0]?.customerName ?? 'Stickers';
   doc.open();
   doc.write(

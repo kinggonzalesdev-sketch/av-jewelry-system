@@ -1,8 +1,11 @@
 import {
   formatStickerPeso,
-  stickerLines,
+  stickerLineItems,
+  DEFAULT_STICKER_FIELDS,
   type OrderReceiptData,
   type OrderSlipData,
+  type StickerField,
+  type StickerFields,
 } from '@/lib/print/order-receipt';
 
 /**
@@ -124,17 +127,21 @@ function fitElement(text: string, fontOrder: string[]): SizedLine[] {
 
 /** All physical sticker lines, sized by the hierarchy (name/price large, item a step
  *  down, date medium). */
-export function tsplStickerLines(d: OrderReceiptData): SizedLine[] {
-  const [name, item, price, date] = stickerLines(d);
-  return [
-    // Name + price start at font 3 (not 4) so a longer name fits on ONE line
-    // (~18 chars) instead of wrapping — e.g. "KING GONZALES" stays whole. They
-    // still step down to font 2 for very long text before wrapping (Owner request).
-    ...fitElement(name ?? '', ['3', '2']), // Customer Name
-    ...fitElement(item ?? '', ['3', '2']), // Item
-    ...fitElement(price ?? '', ['3', '2']), // Price
-    ...fitElement(date ?? '', ['2']), // Date — medium
-  ];
+/** Font order per sticker field. Name/price start at font 3 (not 4) so a longer name
+ *  fits on ONE line (~18 chars) before wrapping; date is a step smaller. */
+const TSPL_FONT_BY_KIND: Record<StickerField, string[]> = {
+  name: ['3', '2'],
+  item: ['3', '2'],
+  price: ['3', '2'],
+  pricePerGram: ['3', '2'],
+  date: ['2'],
+};
+
+export function tsplStickerLines(
+  d: OrderReceiptData,
+  fields: StickerFields = DEFAULT_STICKER_FIELDS,
+): SizedLine[] {
+  return stickerLineItems(d, fields).flatMap((l) => fitElement(l.text, TSPL_FONT_BY_KIND[l.kind]));
 }
 
 /** Position the sized lines centered both ways and emit the TSPL TEXT commands. */
@@ -162,8 +169,22 @@ function gsSize(widthTimes: number, heightTimes: number): number {
  * (name/price double, item slightly smaller, date normal) and long name/item wrapped
  * to two lines. A leading feed gives balanced top spacing on a continuous receipt.
  */
-export function encodeReceiptEscPos(d: OrderReceiptData): Uint8Array {
-  const [name, item, price, date] = stickerLines(d);
+/** ESC/POS size per field: width×1 tall×2 keeps a long name on one line; date normal. */
+const ESC_STYLE_BY_KIND: Record<
+  StickerField,
+  { w: number; h: number; bold: boolean; max: number | null }
+> = {
+  name: { w: 1, h: 2, bold: true, max: 24 },
+  item: { w: 1, h: 2, bold: true, max: 24 },
+  price: { w: 1, h: 2, bold: true, max: null },
+  pricePerGram: { w: 1, h: 2, bold: true, max: null },
+  date: { w: 1, h: 1, bold: false, max: null },
+};
+
+export function encodeReceiptEscPos(
+  d: OrderReceiptData,
+  fields: StickerFields = DEFAULT_STICKER_FIELDS,
+): Uint8Array {
   const out: number[] = [];
   const emit = (
     text: string,
@@ -185,12 +206,10 @@ export function encodeReceiptEscPos(d: OrderReceiptData): Uint8Array {
   out.push(ESC, 0x61, 0x01); // center align
   out.push(LF); // top spacing for vertical balance
 
-  // Name + price at normal width (×1), tall (×2) so a longer name fits on one line
-  // (~24 chars) instead of wrapping; still bold for prominence (Owner request).
-  emit(name ?? '', 1, 2, true, 24); // Customer Name — bold
-  emit(item ?? '', 1, 2, true, 24); // Item — bold
-  emit(price ?? '', 1, 2, true, null); // Price — bold
-  emit(date ?? '', 1, 1, false, null); // Date — medium
+  for (const line of stickerLineItems(d, fields)) {
+    const s = ESC_STYLE_BY_KIND[line.kind];
+    emit(line.text, s.w, s.h, s.bold, s.max);
+  }
 
   out.push(LF, LF, LF); // feed clear of the tear bar
   out.push(ESC, 0x61, 0x00); // back to left align
@@ -204,13 +223,16 @@ export function encodeReceiptEscPos(d: OrderReceiptData): Uint8Array {
  * sized by the hierarchy, long name/item wrapped to two lines. TSPL is line-based
  * ASCII, so the label program is just text.
  */
-export function encodeLabelTspl(d: OrderReceiptData): Uint8Array {
+export function encodeLabelTspl(
+  d: OrderReceiptData,
+  fields: StickerFields = DEFAULT_STICKER_FIELDS,
+): Uint8Array {
   const program = [
     'SIZE 40 mm,30 mm',
     'GAP 2 mm,0 mm',
     'DIRECTION 1',
     'CLS',
-    ...layoutTsplText(tsplStickerLines(d)),
+    ...layoutTsplText(tsplStickerLines(d, fields)),
     'PRINT 1,1',
     '',
   ].join('\r\n');
@@ -223,8 +245,9 @@ export type ReceiptLanguage = 'escpos' | 'tspl';
 export function encodeReceipt(
   d: OrderReceiptData,
   language: ReceiptLanguage,
+  fields: StickerFields = DEFAULT_STICKER_FIELDS,
 ): Uint8Array {
-  return language === 'tspl' ? encodeLabelTspl(d) : encodeReceiptEscPos(d);
+  return language === 'tspl' ? encodeLabelTspl(d, fields) : encodeReceiptEscPos(d, fields);
 }
 
 /** ESC/POS byte stream for the combined multi-item slip (full itemized receipt). */

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { stickerLines, type OrderReceiptData } from '@/lib/print/order-receipt';
+import {
+  stickerLineItems,
+  stickerLines,
+  type OrderReceiptData,
+} from '@/lib/print/order-receipt';
 import {
   encodeLabelTspl,
   encodeReceiptEscPos,
@@ -36,6 +40,50 @@ describe('stickerLines content', () => {
 
   it('shows an em dash for the price when there is none', () => {
     expect(stickerLines({ ...data, unitPrice: null })[2]).toBe('—');
+  });
+});
+
+describe('stickerLineItems — configurable fields', () => {
+  const withRate = { ...data, pricePerGram: '983' };
+
+  it('defaults to name · item · price · date (price-per-gram OFF)', () => {
+    expect(stickerLineItems(data).map((l) => l.kind)).toEqual([
+      'name',
+      'item',
+      'price',
+      'date',
+    ]);
+  });
+
+  it('omits disabled fields — e.g. Facebook name + date only', () => {
+    const lines = stickerLineItems(withRate, {
+      name: true,
+      item: false,
+      price: false,
+      pricePerGram: false,
+      date: true,
+    });
+    expect(lines.map((l) => l.text)).toEqual(['King Gonzales', 'June 15, 2026']);
+  });
+
+  it('adds a Price per gram line only when enabled AND a rate is present', () => {
+    const on = stickerLineItems(withRate, {
+      name: false,
+      item: false,
+      price: false,
+      pricePerGram: true,
+      date: false,
+    });
+    expect(on).toEqual([{ text: '₱983/g', kind: 'pricePerGram' }]);
+    // Enabled but no rate → nothing.
+    const noRate = stickerLineItems(data, {
+      name: false,
+      item: false,
+      price: false,
+      pricePerGram: true,
+      date: false,
+    });
+    expect(noRate).toEqual([]);
   });
 });
 
