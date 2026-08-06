@@ -14,7 +14,10 @@ import {
   type DeleteAllInventoryResult,
   type ItemDependency,
 } from '@/lib/inventory/archive';
-import { returnCompletedItemToReview } from '@/lib/inventory/completed';
+import {
+  forceDeleteCompletedItem,
+  returnCompletedItemToReview,
+} from '@/lib/inventory/completed';
 import { createInventoryEntry } from '@/lib/inventory/create';
 import {
   importInventoryItems,
@@ -102,6 +105,35 @@ export async function returnCompletedItemAction(
 
   revalidatePath('/orders/inventory');
   return { error: null, success: result.message };
+}
+
+/**
+ * SUPER ADMIN (Owner) force-delete of a Completed item (mistake correction). Requires
+ * typing DELETE. The domain fn + DB function are the real gate (Owner-only, money
+ * protected). Reports how many linked orders were removed alongside the item.
+ */
+export async function forceDeleteCompletedItemAction(
+  _prev: InventoryActionState,
+  formData: FormData,
+): Promise<InventoryActionState> {
+  const itemId = text(formData, 'inventoryItemId');
+  const confirm = text(formData, 'confirm');
+  if (!itemId) return { error: 'An item is required.', success: null };
+  if (confirm !== 'DELETE') {
+    return { error: 'Type DELETE to permanently delete this completed item.', success: null };
+  }
+
+  const result = await forceDeleteCompletedItem(itemId);
+  if (!result.ok) return { error: result.error, success: null };
+
+  revalidatePath('/orders/inventory');
+  return {
+    error: null,
+    success:
+      result.deletedOrders > 0
+        ? `Completed item deleted, along with ${result.deletedOrders} linked order(s).`
+        : 'Completed item permanently deleted. The audit trail is preserved.',
+  };
 }
 
 export async function updateItemCustodyAction(

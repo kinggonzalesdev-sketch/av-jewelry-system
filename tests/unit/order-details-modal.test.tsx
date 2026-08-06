@@ -28,6 +28,11 @@ vi.mock('@/lib/orders/actions', () => ({
   setCustomerFacebookUrlAction: vi.fn(() => Promise.resolve({ ok: true })),
   setCustomerPancakeConversationAction: vi.fn(() => Promise.resolve({ ok: true })),
   setCustomerResponseAction: vi.fn(() => Promise.resolve({ ok: true })),
+  // Best-effort ambiguity check fired when the message panel opens (no ambiguity here).
+  getCustomerMatchInfoAction: vi.fn(() => Promise.resolve(null)),
+  renderOrderMessageAction: vi.fn(() =>
+    Promise.resolve({ ok: true, message: 'Thank you for choosing A.V. Jewelry!' }),
+  ),
   loadOrderInvoiceMessageAction: vi.fn(() =>
     Promise.resolve({
       ok: true,

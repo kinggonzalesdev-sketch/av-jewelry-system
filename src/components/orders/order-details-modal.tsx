@@ -535,8 +535,11 @@ function ForInvoiceView({
     setMsgStatus(res.message?.status ?? null);
     setSavedMsg(false);
     setMsgState('open');
-    // Best-effort ambiguity check for the send warning.
-    void getCustomerMatchInfoAction(detail.customer.id).then(setMatchInfo);
+    // Best-effort ambiguity check for the send warning — never let a failed
+    // lookup surface as an unhandled rejection; the warning just stays hidden.
+    void getCustomerMatchInfoAction(detail.customer.id)
+      .then(setMatchInfo)
+      .catch(() => setMatchInfo(null));
   };
 
   const saveMessage = async () => {

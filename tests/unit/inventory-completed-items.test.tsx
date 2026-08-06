@@ -125,4 +125,36 @@ describe('Inventory — Active vs Completed', () => {
     expect(within(table).getByText('SBA-C-4444')).toBeInTheDocument();
     expect(within(table).getByText('For Invoice')).toBeInTheDocument();
   });
+
+  it('hides the per-row Delete on Completed Items for non-Super-Admins', () => {
+    renderWorkspace();
+    fireEvent.click(screen.getByRole('tab', { name: 'Completed Items' }));
+    const table = screen.getByTestId('completed-items');
+    // Only View — never Delete — when canForceDeleteCompleted is not granted.
+    expect(within(table).queryByText('Delete')).not.toBeInTheDocument();
+  });
+
+  it('shows a Super-Admin Delete on Completed Items that asks to type DELETE', () => {
+    render(
+      <InventoryWorkspace
+        inventory={{ ok: true, rows }}
+        completed={completed}
+        canMonitor={false}
+        canForceDeleteCompleted
+      />,
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Completed Items' }));
+    const deletes = screen.getAllByText('Delete');
+    expect(deletes.length).toBe(completed.length);
+    fireEvent.click(deletes[0]!);
+    // The confirmation is explicit + gated on typing DELETE.
+    expect(
+      screen.getByRole('heading', { name: 'Permanently delete completed item' }),
+    ).toBeInTheDocument();
+    // Gated on typing DELETE: the confirm field + the permanent-delete button.
+    expect(screen.getByPlaceholderText('DELETE')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Delete permanently' }),
+    ).toBeInTheDocument();
+  });
 });

@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { recordAuditEvent } from '@/lib/audit/log';
-import { AuthorizationError, requirePermission } from '@/lib/authz/guard';
+import { AuthorizationError, requireOwner, requirePermission } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 
 /**
@@ -158,6 +158,60 @@ export async function returnCompletedItemToReview(
     ok: true,
     message: 'Item sent to Returned-to-Stock Review — inspection and approval required.',
   };
+}
+
+export type ForceDeleteResult =
+  { ok: true; deletedOrders: number } | { ok: false; error: string };
+
+/**
+ * SUPER ADMIN (Owner) force-delete of a Completed item, for correcting mistakes
+ * ("if magkamali ako I can delete pa"). The database function is the real gate: it
+ * re-checks Owner, removes the item + all its links, deletes a linked order only
+ * when it becomes empty (multi-item orders keep their remaining items), and REFUSES
+ * when a linked order has recorded payments or the item is part of a layaway
+ * (money is protected). Irreversible; the audit row (no FK to the item) survives it.
+ */
+export async function forceDeleteCompletedItem(itemId: string): Promise<ForceDeleteResult> {
+  try {
+    await requireOwner();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) {
+      await recordAuditEvent({
+        action: 'inventory.force_delete_completed',
+        entityType: 'inventory_item',
+        entityId: itemId,
+        outcome: 'denied',
+        reason: cause.message,
+      });
+      return { ok: false, error: cause.message };
+    }
+    throw cause;
+  }
+
+  const supabase = await createClient();
+  const res = (await supabase.rpc('force_delete_completed_item', {
+    p_item_id: itemId,
+  })) as { data: Record<string, unknown> | null; error: { message: string } | null };
+
+  if (res.error) {
+    await recordAuditEvent({
+      action: 'inventory.force_delete_completed',
+      entityType: 'inventory_item',
+      entityId: itemId,
+      outcome: 'failed',
+      reason: res.error.message,
+    });
+    return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+
+  const deletedOrders = Number(res.data?.deleted_orders ?? 0);
+  await recordAuditEvent({
+    action: 'inventory.force_delete_completed',
+    entityType: 'inventory_item',
+    entityId: itemId,
+    context: { permanent: true, owner_approved: true, deleted_orders: deletedOrders },
+  });
+  return { ok: true, deletedOrders };
 }
 
 /** Derive a readable completion type from the fulfillment method + channel. */

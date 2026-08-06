@@ -6,6 +6,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 import {
   createInventoryItemAction,
   deleteAllInventoryItemsAction,
+  forceDeleteCompletedItemAction,
   returnCompletedItemAction,
 } from '@/lib/inventory/actions';
 import type { InventoryActionState } from '@/lib/inventory/action-state';
@@ -92,6 +93,7 @@ export function InventoryWorkspace({
   canEdit = false,
   canDelete = false,
   canDeleteAll = false,
+  canForceDeleteCompleted = false,
   canImportExport = false,
 }: {
   inventory: InventoryListResult;
@@ -106,6 +108,8 @@ export function InventoryWorkspace({
   canDelete?: boolean;
   /** SUPER ADMIN (owner) only — shows the bulk "Delete All" control. */
   canDeleteAll?: boolean;
+  /** SUPER ADMIN (owner) only — per-row Delete on Completed Items (mistake fix). */
+  canForceDeleteCompleted?: boolean;
   /** SUPER ADMIN only — Excel/CSV import and export (Owner request). */
   canImportExport?: boolean;
 }) {
@@ -545,17 +549,17 @@ export function InventoryWorkspace({
               >
                 {/* Balanced, content-aware widths (sum = 100%). */}
                 <colgroup>
-                  <col style={{ width: '14%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '7%' }} />
+                  <col style={{ width: '5%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '9%' }} />
+                  <col style={{ width: '9%' }} />
                   <col style={{ width: '8%' }} />
-                  <col style={{ width: '6%' }} />
-                  <col style={{ width: '11%' }} />
-                  <col style={{ width: '11%' }} />
-                  <col style={{ width: '11%' }} />
-                  <col style={{ width: '9%' }} />
-                  <col style={{ width: '8%' }} />
                   <col style={{ width: '9%' }} />
                   <col style={{ width: '9%' }} />
-                  <col style={{ width: '4%' }} />
+                  <col style={{ width: '12%' }} />
                 </colgroup>
                 <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                   <tr>
@@ -629,14 +633,19 @@ export function InventoryWorkspace({
                             {c.completedDate ? c.completedDate.slice(0, 10) : '—'}
                           </td>
                           <td className="px-3 py-2.5 text-center">
-                            <button
-                              type="button"
-                              onClick={() => setCompView(c)}
-                              data-testid={`completed-view-${c.inventoryItemId}`}
-                              className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
-                            >
-                              View
-                            </button>
+                            <div className="inline-flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setCompView(c)}
+                                data-testid={`completed-view-${c.inventoryItemId}`}
+                                className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+                              >
+                                View
+                              </button>
+                              {canForceDeleteCompleted ? (
+                                <CompletedItemDelete row={c} />
+                              ) : null}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -725,6 +734,112 @@ export function InventoryWorkspace({
       </Modal>
 
     </div>
+  );
+}
+
+/**
+ * SUPER ADMIN (Owner) per-row delete on a Completed item — for correcting mistakes.
+ * Irreversible "type DELETE" confirmation. The server action + DB function are the
+ * real gate: Owner-only, the item + its links are removed, a linked order is deleted
+ * only when it becomes empty (siblings kept), and the delete is REFUSED when a linked
+ * order has recorded payments or the item is part of a layaway — surfaced as an error.
+ */
+function CompletedItemDelete({ row }: { row: CompletedInventoryRow }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [confirm, setConfirm] = useState('');
+  const [state, action, pending] = useActionState<InventoryActionState, FormData>(
+    forceDeleteCompletedItemAction,
+    EMPTY_INVENTORY_STATE,
+  );
+  const lastDone = useRef<string | null>(null);
+  useEffect(() => {
+    if (state.success && state.success !== lastDone.current) {
+      lastDone.current = state.success;
+      setOpen(false);
+      router.refresh();
+    }
+  }, [state.success, router]);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setConfirm('');
+          setOpen(true);
+        }}
+        data-testid={`completed-delete-${row.inventoryItemId}`}
+        className="rounded-md border border-destructive/40 px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
+      >
+        Delete
+      </button>
+
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Permanently delete completed item"
+        description="Super Admin only. This cannot be undone."
+        size="sm"
+        critical
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="destructive"
+              form={`completed-delete-form-${row.inventoryItemId}`}
+              disabled={pending || confirm !== 'DELETE'}
+            >
+              {pending ? 'Deleting…' : 'Delete permanently'}
+            </Button>
+          </>
+        }
+      >
+        <form
+          id={`completed-delete-form-${row.inventoryItemId}`}
+          action={action}
+          className="space-y-3"
+        >
+          <input type="hidden" name="inventoryItemId" value={row.inventoryItemId} />
+          <p className="text-sm">
+            Permanently delete <span className="font-mono">{row.itemCode}</span>
+            {row.customerName ? ` (${row.customerName})` : ''}?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {row.orderNumber ? (
+              <>
+                If <span className="font-mono">{row.orderNumber}</span> has no other items,
+                the whole order is removed too; otherwise only this item’s line is removed.{' '}
+              </>
+            ) : null}
+            An order with recorded payment(s), or an item in a layaway account, is{' '}
+            <strong>protected</strong> — resolve it first.
+          </p>
+          <div>
+            <Label htmlFor={`comp-del-${row.inventoryItemId}`} className="text-xs">
+              Type <span className="font-mono font-semibold">DELETE</span> to confirm
+            </Label>
+            <Input
+              id={`comp-del-${row.inventoryItemId}`}
+              name="confirm"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              autoComplete="off"
+              placeholder="DELETE"
+              className="mt-1 h-9"
+            />
+          </div>
+          {state.error ? (
+            <p role="alert" className="text-sm text-destructive">
+              {state.error}
+            </p>
+          ) : null}
+        </form>
+      </Modal>
+    </>
   );
 }
 
