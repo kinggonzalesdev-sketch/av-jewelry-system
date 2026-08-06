@@ -18,7 +18,10 @@ function checkRealtime(): Promise<CheckStatus> {
         void supabase.removeChannel(channel);
         resolve(s);
       };
-      const timer = setTimeout(() => done('warning'), 6000);
+      // The app shares ONE warm Realtime socket (createClient is memoized), so this
+      // throwaway channel usually reports SUBSCRIBED almost immediately. The generous
+      // window only guards a genuinely slow network before falling back to a Warning.
+      const timer = setTimeout(() => done('warning'), 12000);
       void channel.subscribe((status) => {
         const s = String(status);
         if (s === 'SUBSCRIBED') done('ready');
