@@ -119,6 +119,49 @@ export type SalesSummary = {
   paymentsUnverified: number;
 };
 
+/** Total order value split by how the order is fulfilled (§7). Money as strings. */
+export type SalesByChannel = {
+  walkIn: string;
+  pickup: string;
+  rider: string;
+  shipment: string;
+  other: string;
+  walkInCount: number;
+  pickupCount: number;
+  riderCount: number;
+  shipmentCount: number;
+  otherCount: number;
+};
+
+/**
+ * Sales split into Walk In / Pick Up / Rider / Shipment for the dashboard's date
+ * range. Every peso is summed in SQL from the tested order-total function; excludes
+ * cancelled + test orders. Returns null on a read failure (explicit error, never a
+ * false zero).
+ */
+export async function getSalesByChannel(
+  from: string,
+  to: string,
+): Promise<SalesByChannel | null> {
+  const supabase = await createClient();
+  const response = await supabase.rpc('sales_by_channel', { p_from: from, p_to: to });
+  if (response.error || !response.data) return null;
+
+  const r = response.data as Record<string, unknown>;
+  return {
+    walkIn: moneyString(r.walk_in),
+    pickup: moneyString(r.pickup),
+    rider: moneyString(r.rider),
+    shipment: moneyString(r.shipment),
+    other: moneyString(r.other),
+    walkInCount: Number(r.walk_in_count ?? 0),
+    pickupCount: Number(r.pickup_count ?? 0),
+    riderCount: Number(r.rider_count ?? 0),
+    shipmentCount: Number(r.shipment_count ?? 0),
+    otherCount: Number(r.other_count ?? 0),
+  };
+}
+
 /** Audited business totals (Bible §7, §25). Money fields are strings, never floats. */
 export type DashboardMetrics = {
   totalOfficialOrders: number;

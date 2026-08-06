@@ -52,6 +52,7 @@ function renderView(over: Partial<Parameters<typeof DashboardView>[0]> = {}) {
     <DashboardView
       counts={zeroCounts}
       metrics={zeroMetrics}
+      salesByChannel={null}
       scrapTotal={{ totalAmount: '0', saleCount: 0 }}
       scrapByMaterial={[]}
       layaway={{

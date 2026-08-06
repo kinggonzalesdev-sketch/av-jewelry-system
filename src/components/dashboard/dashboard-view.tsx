@@ -6,7 +6,11 @@ import { useRouter } from 'next/navigation';
 import { refreshDashboardAction } from '@/lib/dashboard/actions';
 import type { DashboardActionState } from '@/lib/dashboard/action-state';
 import { EMPTY_DASHBOARD_STATE } from '@/lib/dashboard/action-state';
-import type { DashboardCounts, DashboardMetrics } from '@/lib/dashboard/service';
+import type {
+  DashboardCounts,
+  DashboardMetrics,
+  SalesByChannel,
+} from '@/lib/dashboard/service';
 import type { ScrapIncomeRow, ScrapTotal } from '@/lib/scrap/service';
 import type { LayawayDashboard } from '@/lib/payments/layaway-ledger';
 import { formatPeso } from '@/lib/payments/format';
@@ -89,6 +93,29 @@ function moneyWeight(amount: string): number {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+/** One Sales-by-Channel tile: channel name, total (privacy-masked), and order count. */
+function ChannelTile({
+  label,
+  amount,
+  count,
+  money,
+}: {
+  label: string;
+  amount: string;
+  count: number;
+  money: (a: string) => string;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-card/60 p-3">
+      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-0.5 text-lg font-semibold tabular-nums">{money(amount)}</p>
+      <p className="text-[11px] text-muted-foreground">
+        {count} order{count === 1 ? '' : 's'}
+      </p>
+    </div>
+  );
+}
+
 /**
  * Add peso strings as EXACT integer centavos — never through a JS float.
  *
@@ -115,6 +142,7 @@ function sumMoney(...values: Array<string | null | undefined>): string {
 export function DashboardView({
   counts,
   metrics,
+  salesByChannel,
   scrapTotal,
   scrapByMaterial,
   layaway,
@@ -124,6 +152,7 @@ export function DashboardView({
 }: {
   counts: DashboardCounts | null;
   metrics: DashboardMetrics | null;
+  salesByChannel: SalesByChannel | null;
   scrapTotal: ScrapTotal;
   scrapByMaterial: ScrapIncomeRow[];
   layaway: LayawayDashboard;
@@ -349,6 +378,31 @@ export function DashboardView({
                 value={money(metrics.salesMonth)}
               />
             </div>
+
+            {/* Sales by Channel — total order value split by how it's fulfilled:
+                Walk In / Pick Up / Rider / Shipment (Owner request). Real SQL sums
+                scoped to the selected range; excludes cancelled + test orders. */}
+            {salesByChannel ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Sales by Channel</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <ChannelTile label="Walk In" amount={salesByChannel.walkIn} count={salesByChannel.walkInCount} money={money} />
+                    <ChannelTile label="Pick Up" amount={salesByChannel.pickup} count={salesByChannel.pickupCount} money={money} />
+                    <ChannelTile label="Rider" amount={salesByChannel.rider} count={salesByChannel.riderCount} money={money} />
+                    <ChannelTile label="Shipment" amount={salesByChannel.shipment} count={salesByChannel.shipmentCount} money={money} />
+                  </div>
+                  {salesByChannel.otherCount > 0 ? (
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      Plus {money(salesByChannel.other)} from {salesByChannel.otherCount} order(s)
+                      not yet routed to a channel (or kept in store).
+                    </p>
+                  ) : null}
+                </CardContent>
+              </Card>
+            ) : null}
 
             {/* The 14-card Layaway grid was removed by Owner request. The layaway
                 figures themselves are unchanged and still live below (the Layaway

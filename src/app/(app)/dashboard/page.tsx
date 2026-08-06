@@ -7,6 +7,7 @@ import { canOpenPage, getGrantedPermissions } from '@/lib/authz/guard';
 import {
   getDashboardCounts,
   getDashboardMetricsRanged,
+  getSalesByChannel,
 } from '@/lib/dashboard/service';
 import { getLayawayDashboard } from '@/lib/payments/layaway-ledger';
 import { getScrapIncome, getScrapTotal } from '@/lib/scrap/service';
@@ -49,10 +50,11 @@ export default async function DashboardPage({
   const effFrom = rangeFrom ?? '2000-01-01';
   const effTo = rangeTo ?? today;
 
-  const [counts, metrics, scrapTotal, scrapIncome, permissions, layaway] =
+  const [counts, metrics, salesByChannel, scrapTotal, scrapIncome, permissions, layaway] =
     await Promise.all([
       getDashboardCounts(),
       getDashboardMetricsRanged(effFrom, effTo),
+      getSalesByChannel(effFrom, effTo),
       getScrapTotal(effFrom, effTo),
       getScrapIncome(effFrom, effTo),
       getGrantedPermissions(),
@@ -70,6 +72,7 @@ export default async function DashboardPage({
       <DashboardView
         counts={counts}
         metrics={metrics}
+        salesByChannel={salesByChannel}
         scrapTotal={scrapTotal}
         scrapByMaterial={scrapByMaterial}
         layaway={layaway}
