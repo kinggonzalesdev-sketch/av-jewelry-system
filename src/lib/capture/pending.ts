@@ -33,7 +33,7 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
     .select('id, captured_at, screenshot_path, ocr, is_test')
     .eq('source', 'floating')
     .is('official_order_id', null)
-    .eq('confirmed', false)
+    .is('confirmed', null)
     .order('captured_at', { ascending: false })
     .limit(50);
 
