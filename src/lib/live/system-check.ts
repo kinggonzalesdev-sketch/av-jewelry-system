@@ -172,15 +172,41 @@ export async function runSystemCheck(): Promise<SystemCheckResult> {
     detail: version,
   });
 
-  // 9-10. Printer/screenshot device registry + Print Bridge are the next phase
-  //       (flexible-printer). Report them honestly as Not Configured rather than
-  //       claiming a status the system cannot yet observe.
-  items.push({
-    key: 'printer_device',
-    label: 'Active Printer Device',
-    status: 'not_configured',
-    detail: 'Printer device registry is a later phase (flexible printer).',
-  });
+  // 9. Active printer device — from the printer registry. Ready once at least one
+  //    printer is registered (the operator pairs it on the capture device); the
+  //    default printer is named.
+  try {
+    const { data: printers } = await supabase
+      .from('printers')
+      .select('name, is_default')
+      .eq('is_active', true);
+    const list = (printers ?? []) as Array<{ name: string; is_default: boolean }>;
+    if (list.length > 0) {
+      const def = list.find((p) => p.is_default) ?? list[0];
+      items.push({
+        key: 'printer_device',
+        label: 'Active Printer Device',
+        status: 'ready',
+        detail: `${list.length} printer(s) registered${def ? ` — default: ${def.name}` : ''}.`,
+      });
+    } else {
+      items.push({
+        key: 'printer_device',
+        label: 'Active Printer Device',
+        status: 'not_configured',
+        detail: 'No printer registered yet — add one in Live Operations → Printers.',
+      });
+    }
+  } catch {
+    items.push({
+      key: 'printer_device',
+      label: 'Active Printer Device',
+      status: 'not_configured',
+      detail: 'Could not read the printer registry.',
+    });
+  }
+
+  // 10. Screenshot device registry is the next phase (live-session device selection).
   items.push({
     key: 'screenshot_device',
     label: 'Registered Screenshot Device',

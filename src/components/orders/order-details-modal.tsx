@@ -4,12 +4,10 @@ import { createPortal } from 'react-dom';
 import { useCallback, useEffect, useState } from 'react';
 
 import {
-  confirmRequiredPaymentAction,
   getCustomerMatchInfoAction,
   loadOrderDetailAction,
   loadOrderInvoiceMessageAction,
   loadOrderRemindersAction,
-  readyForPreparationAction,
   resendInvoiceAction,
   saveOrderInvoiceMessageAction,
   sendInvoiceMessageAction,
@@ -1640,112 +1638,6 @@ function KeepView({
   );
 }
 
-/**
- * Orders Workflow (Epic A) forward-transition bar. Renders the ONE contextual
- * action for the order's current status: For Reminder → For Confirm (payment-gated
- * server-side), or For Confirm → For Prepare. Each has a confirm step, is guarded
- * + idempotent server-side, and refreshes on success. Money is display-only here.
- */
-function WorkflowActions({
-  orderId,
-  status,
-  canConfirmPayment,
-  canPrepare,
-  requiredDown,
-  verified,
-  onDone,
-}: {
-  orderId: string;
-  status: string;
-  canConfirmPayment: boolean;
-  canPrepare: boolean;
-  requiredDown: string;
-  verified: string;
-  onDone: () => void;
-}) {
-  const [confirming, setConfirming] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const isReminder = status === 'awaiting_required_payment';
-  const isConfirm = status === 'required_payment_verified';
-  const canAct = isReminder ? canConfirmPayment : isConfirm ? canPrepare : false;
-  if ((!isReminder && !isConfirm) || !canAct) return null;
-
-  const label = isReminder ? 'Confirm Required Payment' : 'Ready for Preparation';
-  const target = isReminder ? 'For Confirm' : 'For Prepare';
-
-  const run = async () => {
-    setPending(true);
-    setError(null);
-    const res = isReminder
-      ? await confirmRequiredPaymentAction(orderId)
-      : await readyForPreparationAction(orderId);
-    setPending(false);
-    if (!res.ok) {
-      setError(res.error);
-      return;
-    }
-    onDone();
-  };
-
-  return (
-    <div className="no-print rounded-lg border border-gold/40 bg-gold/5 p-3">
-      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gold-strong">
-        {isReminder ? 'For Reminder' : 'For Confirm'}
-      </p>
-      {isReminder ? (
-        <p className="mb-2 text-xs text-muted-foreground">
-          Required down:{' '}
-          <span className="font-medium tabular-nums">
-            <Money amount={requiredDown} />
-          </span>{' '}
-          · Verified:{' '}
-          <span className="font-medium tabular-nums">
-            <Money amount={verified} />
-          </span>
-        </p>
-      ) : null}
-      <div className="flex flex-wrap items-center gap-2">
-        {!confirming ? (
-          <button
-            type="button"
-            onClick={() => setConfirming(true)}
-            data-testid="order-workflow-advance"
-            className="rounded-md bg-gold px-2.5 py-1 text-xs font-semibold text-black hover:bg-gold/90"
-          >
-            {label}
-          </button>
-        ) : (
-          <span className="flex items-center gap-1.5 text-xs">
-            Move to {target}?
-            <button
-              type="button"
-              onClick={() => void run()}
-              disabled={pending}
-              className="rounded-md bg-gold px-2 py-1 font-semibold text-black hover:bg-gold/90"
-            >
-              {pending ? '…' : 'Confirm'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfirming(false)}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              Cancel
-            </button>
-          </span>
-        )}
-      </div>
-      {error ? (
-        <p role="alert" className="mt-1 text-xs text-destructive">
-          {error}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
 function DetailBody({
   detail,
   section,
@@ -2182,15 +2074,9 @@ function OrderActionsBar({
             />
           ) : null}
 
-          <WorkflowActions
-            orderId={detail.officialOrderId}
-            status={detail.status}
-            canConfirmPayment={detail.permissions.canRecordPayment}
-            canPrepare={detail.permissions.canPrepareFulfillment}
-            requiredDown={a.requiredDownPayment}
-            verified={a.verifiedNetPayments}
-            onDone={onRefresh}
-          />
+          {/* Owner: the reminder / Confirm-for-Preparation / For-Prepare workflow steps
+              are removed — an order is routed with "Transfer to Destination" (below)
+              instead, from whatever stage it is in. */}
 
           {/* For Layaway — "Set Up Layaway": a fill-up popup that creates a layaway
               account from this order's customer + total + grams (Owner request). On

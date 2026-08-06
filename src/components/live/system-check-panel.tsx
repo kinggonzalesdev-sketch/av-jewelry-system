@@ -68,12 +68,8 @@ async function clientChecks(): Promise<SystemCheckItem[]> {
       status: 'not_configured',
       detail: 'Confirmed on the Android capture device, not here.',
     },
-    {
-      key: 'paper',
-      label: 'Printer Paper',
-      status: 'not_configured',
-      detail: 'Confirm paper on the printer manually before the live.',
-    },
+    // "Printer Paper" removed (Owner) — the paper lives in the Xprinter; no separate
+    // manual confirmation step is needed in the check.
   ];
 }
 

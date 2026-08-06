@@ -266,7 +266,7 @@ describe('OrderDetailsModal', () => {
     expect(setCustomerResponseAction).toHaveBeenCalledWith('o1', 'confirmed');
   });
 
-  it('shows Ready for Preparation for a For Confirm order (fulfillment permission)', async () => {
+  it('no longer shows the Ready-for-Preparation workflow step (removed) for a For Confirm order', async () => {
     loadOrderDetailAction.mockResolvedValue({
       ok: true,
       detail: detail({
@@ -282,9 +282,10 @@ describe('OrderDetailsModal', () => {
       }),
     });
     render(<OrderDetailsModal orderId="o1" onClose={vi.fn()} />);
-    expect(await screen.findByTestId('order-workflow-advance')).toHaveTextContent(
-      /Ready for Preparation/i,
-    );
+    // The order still loads; the reminder/confirm/prepare advance bar is gone —
+    // orders are routed with Transfer to Destination instead.
+    await screen.findByText('Gold Ring');
+    expect(screen.queryByTestId('order-workflow-advance')).not.toBeInTheDocument();
   });
 
   it('hides the For-Invoice view for a non-invoiced order', async () => {

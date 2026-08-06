@@ -651,6 +651,16 @@ function extractConversations(body: unknown): {
   return { conversations: out, rawCount, skippedComments };
 }
 
+/** Normalize a customer/FB name for de-duplication: lower-case, strip punctuation,
+ *  collapse whitespace. Mirrors the SQL app_private.normalize_name used by auto-link. */
+function normalizeConvName(v: string): string {
+  return v
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export async function listPancakeConversations(): Promise<PancakeConversationsResult> {
   try {
     await requirePrimarySuperAdmin();
@@ -824,7 +834,21 @@ export async function listPancakeConversations(): Promise<PancakeConversationsRe
     }
   }
 
-  const conversations = [...byId.values()];
+  // De-duped by conversation id above; now collapse to ONE per customer (same
+  // normalized name → the newest thread wins) so a person who appears in multiple
+  // threads counts once (Owner request). Un-named threads are kept individually.
+  const byName = new Map<string, PancakeConversation>();
+  const unnamed: PancakeConversation[] = [];
+  for (const c of byId.values()) {
+    const key = normalizeConvName(c.customerName ?? '');
+    if (!key) {
+      unnamed.push(c);
+      continue;
+    }
+    const prev = byName.get(key);
+    if (!prev || (c.updatedAt ?? '') > (prev.updatedAt ?? '')) byName.set(key, c);
+  }
+  const conversations = [...byName.values(), ...unnamed];
   // Honest breakdown so the count is explainable (comments filtered, rate-limit cut-off).
   const breakdown =
     `${conversations.length} inbox` +
