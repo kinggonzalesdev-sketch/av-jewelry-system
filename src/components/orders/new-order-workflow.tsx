@@ -25,6 +25,7 @@ import {
 import { writeToChannel } from '@/lib/print/bluetooth-printer';
 import { encodeReceipt } from '@/lib/print/receipt-encoders';
 import { usePrinter } from '@/components/print/printer-context';
+import { CustomerMatchHint } from '@/components/customers/customer-match-hint';
 import { PhotoCapture } from '@/components/attachments/photo-capture';
 import { Button } from '@/components/ui/button';
 import { Combobox } from '@/components/ui/combobox';
@@ -1169,6 +1170,9 @@ function NewOrderModal({
               onChange={setCustomerInput}
               options={customers.map((c) => c.displayName)}
             />
+            {/* Shared match hint: as you type, surfaces an existing customer (and its
+                Facebook-linked state) so you reuse it instead of creating a duplicate. */}
+            <CustomerMatchHint name={customerInput} className="mt-1" />
           </label>
           <label className="block">
             <L>Admin Name</L>
