@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import { listRecentActivityAction } from '@/lib/live/live-ops-actions';
 import type { ActivityRow } from '@/lib/live/activity-types';
@@ -38,8 +38,11 @@ function outcomeClass(outcome: string): string {
  */
 export function RecentActivityPanel() {
   const [rows, setRows] = useState<ActivityRow[] | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
+  // Collapsed by default — the log is long and only needed on demand, so it no longer
+  // clutters the page and no longer fetches 100 rows on every page load.
+  const [open, setOpen] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -55,47 +58,48 @@ export function RecentActivityPanel() {
       });
   };
 
-  useEffect(() => {
-    let alive = true;
-    listRecentActivityAction()
-      .then((data) => {
-        if (alive) {
-          setRows(data);
-          setLoading(false);
-        }
-      })
-      .catch(() => {
-        if (alive) {
-          setFailed(true);
-          setLoading(false);
-        }
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next && rows === null) void load(); // lazy-load the first time it is opened
+  };
 
   return (
     <div className="space-y-3" data-testid="recent-activity-panel">
-      <div className="flex items-center gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => void load()}
-          disabled={loading}
-          data-testid="recent-activity-refresh"
-        >
-          {loading ? 'Loading…' : 'Refresh'}
-        </Button>
-        {rows ? (
-          <span className="text-xs text-muted-foreground">
-            {rows.length === 0 ? 'No activity yet' : `Latest ${rows.length}`}
-          </span>
-        ) : null}
-      </div>
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open}
+        data-testid="recent-activity-toggle"
+        className="flex w-full items-center justify-between rounded-md border border-border bg-card/50 px-3 py-2 text-left text-sm hover:bg-muted/50"
+      >
+        <span className="font-medium">
+          {open ? 'Hide activity log' : 'Show activity log'}
+          {rows ? (
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
+              {rows.length === 0 ? 'no activity yet' : `latest ${rows.length}`}
+            </span>
+          ) : null}
+        </span>
+        <span className="text-muted-foreground">{open ? '▾' : '▸'}</span>
+      </button>
 
-      {failed ? (
+      {open ? (
+        <>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void load()}
+              disabled={loading}
+              data-testid="recent-activity-refresh"
+            >
+              {loading ? 'Loading…' : 'Refresh'}
+            </Button>
+          </div>
+
+          {failed ? (
         <p role="alert" className="text-sm text-destructive">
           The activity log could not be read.
         </p>
@@ -130,6 +134,8 @@ export function RecentActivityPanel() {
             </li>
           ))}
         </ul>
+      ) : null}
+        </>
       ) : null}
     </div>
   );

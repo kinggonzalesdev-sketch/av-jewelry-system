@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { RecentActivityPanel } from '@/components/live/recent-activity-panel';
@@ -10,9 +10,11 @@ vi.mock('@/lib/live/live-ops-actions', () => ({
 }));
 
 describe('RecentActivityPanel', () => {
-  it('shows the empty state when there is no activity', async () => {
+  it('shows the empty state when there is no activity (once expanded)', async () => {
     listMock.mockResolvedValueOnce([]);
     render(<RecentActivityPanel />);
+    // Collapsed by default — expand to load + show the log.
+    fireEvent.click(screen.getByTestId('recent-activity-toggle'));
     expect(await screen.findByTestId('recent-activity-empty')).toBeInTheDocument();
   });
 
@@ -29,7 +31,9 @@ describe('RecentActivityPanel', () => {
       },
     ]);
     render(<RecentActivityPanel />);
+    fireEvent.click(screen.getByTestId('recent-activity-toggle'));
     const panel = await screen.findByTestId('recent-activity-panel');
+    expect(await screen.findByText('Layaway Ledger Add Payment')).toBeInTheDocument();
     expect(panel).toHaveTextContent('Layaway Ledger Add Payment');
     expect(panel).toHaveTextContent('King Gonzales');
     expect(panel).toHaveTextContent('success');
