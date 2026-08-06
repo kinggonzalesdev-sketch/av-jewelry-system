@@ -43,14 +43,6 @@ class SetupActivity : AppCompatActivity() {
     private lateinit var notifyStatus: TextView
     private lateinit var serviceStatus: TextView
 
-    override fun onResume() {
-        super.onResume()
-        // Heartbeat: tell the backend this capture device is active, so the web
-        // System Check shows "Registered Screenshot Device" + "Floating Screenshot
-        // App" as Ready while the app is open. Best-effort, off the UI thread.
-        thread { ApiClient(this).pingSession() }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val pad = dp(20)
@@ -136,6 +128,10 @@ class SetupActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refreshStatus()
+        // Heartbeat: tell the backend this capture device is active, so the web
+        // System Check shows "Registered Screenshot Device" + "Floating Screenshot
+        // App" as Ready while the app is open. Best-effort, off the UI thread.
+        thread { ApiClient(this).pingSession() }
     }
 
     private fun refreshStatus() {
