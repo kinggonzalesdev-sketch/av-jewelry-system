@@ -167,6 +167,13 @@ class ApiClient(context: Context) {
         return post("/api/mobile/capture/order", payload)
     }
 
+    /** Resolve the Pancake conversation id for an OCR'd Facebook name (auto-send), or
+     *  null when no unique linked customer matches. */
+    fun resolveConversation(name: String): String? {
+        val res = get("/api/mobile/customer/conversation?name=" + encode(name))
+        return if (res.ok) res.body.optString("conversationId").ifBlank { null } else null
+    }
+
     fun send(captureId: String, conversationId: String, message: String, screenshotPath: String?): Result {
         val payload = JSONObject()
             .put("deviceInstallationId", store.deviceInstallationId)

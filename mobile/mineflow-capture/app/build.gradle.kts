@@ -84,4 +84,8 @@ dependencies {
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     // Networking. org.json ships with Android, so no JSON dependency is needed.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // On-device text recognition (OCR) for auto-reading the pinned comment in a capture
+    // — the customer's Facebook name + the mined item. Bundled + offline; no data leaves
+    // the phone during recognition.
+    implementation("com.google.mlkit:text-recognition:16.0.1")
 }

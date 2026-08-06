@@ -14,6 +14,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.mineflow.capture.data.ApiClient
+import com.mineflow.capture.data.ScreenshotOcr
 import org.json.JSONObject
 import java.io.File
 import kotlin.concurrent.thread
@@ -21,8 +22,10 @@ import kotlin.concurrent.thread
 /**
  * Review screen (Owner rules): the captured screenshot + editable, staff-confirmed
  * details. NOTHING is uploaded, ordered, or sent until the operator taps a button.
- * OCR is not run here — the operator confirms the customer + item explicitly. The
- * item is chosen from Active Inventory (never inferred from the screenshot alone).
+ * On-device OCR now PRE-FILLS the Facebook name from the pinned comment and searches
+ * Active Inventory for the mined item — but it is only a suggestion: the operator
+ * confirms/edits every field, and the item is always chosen from Active Inventory
+ * (never inferred from the screenshot alone), so a wrong read is never sent silently.
  */
 class ReviewActivity : AppCompatActivity() {
 
@@ -88,6 +91,42 @@ class ReviewActivity : AppCompatActivity() {
         }
         createSendBtn.setOnClickListener {
             submit(customer.text.toString(), conversation.text.toString(), message.text.toString(), send = true)
+        }
+
+        // AUTO-CAPTURE: read the pinned comment via OCR and pre-fill the Facebook name +
+        // find the mined item, so the operator only confirms (one tap → Create & Send).
+        // A wrong guess is fully editable and is never auto-sent silently.
+        if (path != null) {
+            status.text = "Reading the screenshot…"
+            val bmp = BitmapFactory.decodeFile(path)
+            if (bmp != null) {
+                ScreenshotOcr.analyze(bmp) { guess ->
+                    val name = guess.fbName
+                    if (!name.isNullOrBlank() && customer.text.isBlank()) {
+                        customer.setText(name)
+                        // Auto-resolve this customer's Pancake conversation so Create &
+                        // Send can deliver the screenshot with no manual id entry.
+                        thread {
+                            val convId = api.resolveConversation(name)
+                            if (!convId.isNullOrBlank()) runOnUiThread {
+                                if (conversation.text.isBlank()) conversation.setText(convId)
+                            }
+                        }
+                    }
+                    if (!guess.itemQuery.isNullOrBlank()) {
+                        itemSearch.setText(guess.itemQuery)
+                        runSearch(guess.itemQuery)
+                    }
+                    status.text = when {
+                        !guess.fbName.isNullOrBlank() ->
+                            "Read: ${guess.fbName}. Confirm/edit, then Create & Send."
+                        guess.rawLines.isEmpty() ->
+                            "Couldn't read the screenshot — type the details manually."
+                        else ->
+                            "Couldn't detect the name — type it, then Create & Send."
+                    }
+                }
+            }
         }
     }
 
