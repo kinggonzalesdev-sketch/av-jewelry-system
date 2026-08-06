@@ -12,12 +12,16 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.mineflow.capture.data.ApiClient
 import com.mineflow.capture.data.CaptureDraftStore
+import com.mineflow.capture.data.ScreenshotOcr
 import com.mineflow.capture.data.SecureStore
+import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.concurrent.thread
 
 /**
  * Screenshot preview (Phase 1: capture only). Two modes:
@@ -98,16 +102,72 @@ class PreviewActivity : AppCompatActivity() {
 
         val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         if (mode == MODE_CAPTURE) {
+            // PRIMARY action: send the screenshot to MineFlow so it appears on the PC's
+            // "Incoming Captures" (with the OCR'd name + item) for the operator to
+            // confirm into an order. Save Draft stays as the offline fallback.
             buttons.addView(outlineButton("Retake") { retake() }, weight())
             buttons.addView(outlineButton("Discard") { discard() }, weight())
-            buttons.addView(goldButton("Save Draft") { saveDraft(file, bounds.outWidth, bounds.outHeight) }, weight())
+            buttons.addView(outlineButton("Save Draft") { saveDraft(file, bounds.outWidth, bounds.outHeight) }, weight())
         } else {
             buttons.addView(outlineButton("Delete Draft") { deleteDraft() }, weight())
             buttons.addView(goldButton("Close") { finish() }, weight())
         }
         root.addView(buttons, wide())
 
+        if (mode == MODE_CAPTURE) {
+            sendButton = goldButton("Send to MineFlow") { sendToMineflow(file) }
+            root.addView(sendButton, wide().apply { topMargin = dp(8) })
+        }
+
         setContentView(root)
+    }
+
+    private var sendButton: android.widget.Button? = null
+
+    /**
+     * Read the screenshot with on-device OCR, upload it to MineFlow, and create a
+     * PENDING capture (screenshot + OCR guess) that surfaces on the PC's "Incoming
+     * Captures". Nothing is ordered/printed/sent here — the operator confirms on the
+     * PC. Idempotent on the backend, so a repeated tap is one pending row.
+     */
+    private fun sendToMineflow(file: File) {
+        val store = SecureStore.get(this)
+        if (!store.isLoggedIn) {
+            toast("Sign in to MineFlow first.")
+            return
+        }
+        sendButton?.isEnabled = false
+        sendButton?.text = "Reading + uploading…"
+        val bmp = BitmapFactory.decodeFile(file.absolutePath)
+        if (bmp == null) {
+            toast("Screenshot could not be read.")
+            sendButton?.isEnabled = true
+            sendButton?.text = "Send to MineFlow"
+            return
+        }
+        val api = ApiClient(this)
+        val captureId = file.nameWithoutExtension.ifBlank { "cap-${System.currentTimeMillis()}" }
+        // OCR (best-effort); its callback fires on the main thread, then we upload off it.
+        ScreenshotOcr.analyze(bmp) { guess ->
+            thread {
+                val path = runCatching { api.uploadScreenshot(captureId, "image/png", file.readBytes()) }
+                    .getOrNull()
+                val ocr = JSONObject()
+                    .putOpt("fbName", guess.fbName)
+                    .putOpt("itemQuery", guess.itemQuery)
+                val res = api.createPendingCapture(captureId, path, ocr)
+                runOnUiThread {
+                    if (res.ok) {
+                        toast("Sent to MineFlow. Confirm it on the PC.")
+                        finish()
+                    } else {
+                        toast("Send failed: ${res.body.optString("error", "please try again")}")
+                        sendButton?.isEnabled = true
+                        sendButton?.text = "Send to MineFlow"
+                    }
+                }
+            }
+        }
     }
 
     // ---- capture-mode actions ------------------------------------------------

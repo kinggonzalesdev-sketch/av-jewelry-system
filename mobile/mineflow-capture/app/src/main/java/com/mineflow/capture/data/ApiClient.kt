@@ -167,6 +167,21 @@ class ApiClient(context: Context) {
         return post("/api/mobile/capture/order", payload)
     }
 
+    /**
+     * Send a PENDING capture to MineFlow: the uploaded screenshot path + the on-device
+     * OCR guess (Facebook name + mined item). No order is created here — it appears on
+     * the PC's "Incoming Captures" for the operator to confirm/correct into an order.
+     * Idempotent per device+capture on the backend, so a repeated tap is one row.
+     */
+    fun createPendingCapture(captureId: String, screenshotPath: String?, ocr: JSONObject?): Result {
+        val payload = JSONObject()
+            .put("deviceInstallationId", store.deviceInstallationId)
+            .put("captureId", captureId)
+            .putOpt("screenshotPath", screenshotPath)
+            .putOpt("ocr", ocr)
+        return post("/api/mobile/capture/pending", payload)
+    }
+
     /** Resolve the Pancake conversation id for an OCR'd Facebook name (auto-send), or
      *  null when no unique linked customer matches. */
     fun resolveConversation(name: String): String? {
