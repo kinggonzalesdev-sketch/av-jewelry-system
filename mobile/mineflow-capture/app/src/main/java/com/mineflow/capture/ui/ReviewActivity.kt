@@ -41,6 +41,11 @@ class ReviewActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Back arrow in the top bar → returns to the previous section.
+        supportActionBar?.apply {
+            title = "Review capture"
+            setDisplayHomeAsUpEnabled(true)
+        }
         api = ApiClient(this)
 
         val path = intent.getStringExtra(EXTRA_PATH)
@@ -203,6 +208,11 @@ class ReviewActivity : AppCompatActivity() {
     ).apply { gravity = Gravity.CENTER_HORIZONTAL }
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+
+    override fun onSupportNavigateUp(): Boolean {
+        finish()
+        return true
+    }
 
     companion object {
         private const val EXTRA_PATH = "path"

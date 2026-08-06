@@ -35,20 +35,16 @@ class CaptureHistoryActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Back arrow in the top bar → returns to the previous section.
+        supportActionBar?.apply {
+            title = "Capture History"
+            setDisplayHomeAsUpEnabled(true)
+        }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(black)
             setPadding(dp(16), dp(16), dp(16), dp(16))
         }
-        root.addView(
-            TextView(this).apply {
-                text = "Capture History"
-                textSize = 20f
-                setTextColor(ivory)
-                setPadding(0, 0, 0, dp(12))
-            },
-            wide(),
-        )
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(list, wide())
         setContentView(ScrollView(this).apply { setBackgroundColor(black); addView(root) })
@@ -121,6 +117,11 @@ class CaptureHistoryActivity : AppCompatActivity() {
 
             list.addView(row, wide().apply { topMargin = dp(8) })
         }
+    }
+
+    override fun onSupportNavigateUp(): Boolean {
+        finish()
+        return true
     }
 
     private fun wide() = LinearLayout.LayoutParams(

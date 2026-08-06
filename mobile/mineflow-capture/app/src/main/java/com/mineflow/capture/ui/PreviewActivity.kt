@@ -45,6 +45,11 @@ class PreviewActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Back arrow in the top bar → returns to the previous section.
+        supportActionBar?.apply {
+            title = "Screenshot"
+            setDisplayHomeAsUpEnabled(true)
+        }
         mode = intent.getStringExtra(EXTRA_MODE) ?: MODE_CAPTURE
         tempPath = intent.getStringExtra(EXTRA_PATH)
         draftId = intent.getStringExtra(EXTRA_DRAFT_ID)
@@ -228,6 +233,11 @@ class PreviewActivity : AppCompatActivity() {
         setBackgroundColor(Color.TRANSPARENT)
         setOnClickListener { onClick() }
     }.also { it.setPadding(dp(8), dp(8), dp(8), dp(8)) }
+
+    override fun onSupportNavigateUp(): Boolean {
+        finish()
+        return true
+    }
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 
