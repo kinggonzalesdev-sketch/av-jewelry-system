@@ -28,6 +28,7 @@ import { Button } from '@/components/ui/button';
 
 const FIELD_LABELS: { key: StickerField; label: string }[] = [
   { key: 'name', label: 'Facebook Name' },
+  { key: 'pricePerGram', label: 'Price per gram' },
   { key: 'date', label: 'Date' },
 ];
 
@@ -57,8 +58,9 @@ export function StickerSettingsCard() {
     });
   };
 
-  // Editable sample value (preview only — not stored, not what really prints).
+  // Editable sample values (preview only — not stored, not what really prints).
   const [name, setName] = useState('KING GONZALES');
+  const [pricePerGram, setPricePerGram] = useState('7100');
 
   const { activeChannel, printLang } = usePrinter();
   const [printMsg, setPrintMsg] = useState<string | null>(null);
@@ -69,7 +71,7 @@ export function StickerSettingsCard() {
     grams: null,
     quantity: 1,
     unitPrice: null,
-    pricePerGram: null,
+    pricePerGram: pricePerGram.trim() || null,
     date: stickerDate(),
   };
   const lines = stickerLineItems(sample, fields);
@@ -115,6 +117,7 @@ export function StickerSettingsCard() {
       <div className="space-y-1.5">
         <p className="text-xs font-medium text-muted-foreground">Sample text (preview only):</p>
         <SampleInput label="Facebook Name" value={name} onChange={setName} />
+        <SampleInput label="Price per gram" value={pricePerGram} onChange={setPricePerGram} />
         <p className="max-w-[14rem] pt-0.5 text-[11px] text-muted-foreground">
           This is just for the preview — the real sticker uses the order’s own values.
         </p>
