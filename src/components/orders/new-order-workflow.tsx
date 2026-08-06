@@ -25,6 +25,7 @@ import {
 import { writeToChannel } from '@/lib/print/bluetooth-printer';
 import { encodeReceipt } from '@/lib/print/receipt-encoders';
 import { usePrinter } from '@/components/print/printer-context';
+import { linkCaptureToOrderAction } from '@/lib/capture/pending-actions';
 import { CustomerMatchHint } from '@/components/customers/customer-match-hint';
 import { PhotoCapture } from '@/components/attachments/photo-capture';
 import { Button } from '@/components/ui/button';
@@ -489,18 +490,30 @@ function OrderSummary({ total: totalCentavos, count }: { total: bigint; count: n
   );
 }
 
-function NewOrderModal({
+/** Pre-fill for New Order from a floating-screenshot pending capture (OCR guess).
+ *  Every field is a suggestion the operator confirms/corrects before saving. */
+export type CapturePrefill = {
+  customerName?: string | undefined;
+  itemQuery?: string | undefined;
+  captureRecordId?: string | undefined;
+  screenshotUrl?: string | null | undefined;
+};
+
+export function NewOrderModal({
   customers,
   items,
   walkInItems,
   admins,
   onClose,
+  prefill,
 }: {
   customers: Customer[];
   items: CaptureItem[];
   walkInItems: WalkInItem[];
   admins: AdminNameContext;
   onClose: () => void;
+  /** Optional pre-fill from a floating-screenshot pending capture (OCR guess). */
+  prefill?: CapturePrefill;
 }) {
   const router = useRouter();
   const { activeChannel, printLang } = usePrinter();
@@ -514,12 +527,17 @@ function NewOrderModal({
   const adminId = admins.selfId;
   const adminName = admins.selfName;
 
-  const [customerInput, setCustomerInput] = useState('');
+  const [customerInput, setCustomerInput] = useState(prefill?.customerName ?? '');
   const matchedCustomer =
     customers.find((c) => c.displayName === customerInput.trim()) ?? null;
 
   // Item rows per mode (kept separate so switching modes doesn't mix item lists).
-  const [orderRows, setOrderRows] = useState<Row[]>([newRow()]);
+  // A capture pre-fill seeds the first row's item search with the OCR'd item guess.
+  const [orderRows, setOrderRows] = useState<Row[]>(() => {
+    const first = newRow();
+    if (prefill?.itemQuery) first.itemInput = prefill.itemQuery;
+    return [first];
+  });
   const [walkRows, setWalkRows] = useState<Row[]>([newRow()]);
   const rows = mode === 'walkin' ? walkRows : orderRows;
   const setRows = mode === 'walkin' ? setWalkRows : setOrderRows;
@@ -744,6 +762,14 @@ function NewOrderModal({
         stickers,
         walkIn: false,
       });
+      // If this order came from a floating-screenshot capture, link the capture to
+      // it so Send Invoice auto-attaches the mined-item screenshot (and it leaves the
+      // "Incoming Captures" strip). Best-effort — never blocks the save/print.
+      if (prefill?.captureRecordId) {
+        void linkCaptureToOrderAction(prefill.captureRecordId, res.officialOrderId).catch(
+          () => undefined,
+        );
+      }
       router.refresh();
       void runPrint(stickers, res.officialOrderId, 'print');
     } finally {
@@ -1157,6 +1183,21 @@ function NewOrderModal({
       </div>
 
       <div className="space-y-3">
+        {/* Captured screenshot (from the floating button) shown for reference so the
+            operator can verify the OCR-filled name + item against what was mined. */}
+        {prefill?.screenshotUrl ? (
+          <figure className="rounded-lg border border-gold/40 bg-gold/5 p-2">
+            <figcaption className="mb-1.5 text-[11px] font-semibold text-gold-strong">
+              Captured screenshot — confirm the name and item below, then Confirm Order.
+            </figcaption>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={prefill.screenshotUrl}
+              alt="Captured mined-item screenshot"
+              className="max-h-56 w-full rounded-md object-contain"
+            />
+          </figure>
+        ) : null}
         {/* Customer Name + Admin Name side by side (one line on desktop). Admin Name
             is the signed-in account, read-only. The Walk-In tab keeps its own "Name"
             label — untouched. */}

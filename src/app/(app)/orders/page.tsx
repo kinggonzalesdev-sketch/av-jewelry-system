@@ -5,6 +5,7 @@ import { NewOrderWorkflow } from '@/components/orders/new-order-workflow';
 import { OrdersView } from '@/components/orders/orders-view';
 import { OwnerApprovalsPanel } from '@/components/orders/owner-approvals-panel';
 import { CaptureReviewPanel } from '@/components/capture/capture-review-panel';
+import { IncomingCapturesStrip } from '@/components/capture/incoming-captures-strip';
 import { canOpenPage, getCurrentStaffProfile, getGrantedPermissions } from '@/lib/authz/guard';
 import { getAdminNameContext } from '@/lib/authz/admin-name';
 import { listOwnerApprovals } from '@/lib/fulfillment/service';
@@ -83,6 +84,16 @@ export default async function OrdersPage({
             panel self-hides when the queue is empty. */}
         {permissions.has('claim_capture') ? (
           <CaptureReviewPanel rows={pendingReviews} />
+        ) : null}
+        {/* Incoming Captures — floating-screenshot uploads waiting to become orders on
+            this PC. Realtime; self-hides when empty. Same permission as capture. */}
+        {permissions.has('claim_capture') ? (
+          <IncomingCapturesStrip
+            customers={customers}
+            items={items}
+            walkInItems={walkInItems}
+            admins={admins}
+          />
         ) : null}
         <OrdersView
           result={result}
