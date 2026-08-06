@@ -54,10 +54,11 @@ export function IncomingCapturesStrip({
     load();
   }, [load, lastSyncedAt]);
 
-  // Poll as a fallback so captures still appear promptly even if Realtime is down or
-  // slow — the auto-appear never depends solely on the socket.
+  // Poll FAST (1s) so a phone capture shows up on the PC within ~1s, independent of
+  // Realtime. Cheap for a single live station; the auto-appear never depends solely
+  // on the socket.
   useEffect(() => {
-    const iv = setInterval(load, 6000);
+    const iv = setInterval(load, 1000);
     return () => clearInterval(iv);
   }, [load]);
 
