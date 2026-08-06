@@ -54,9 +54,8 @@ describe('encodeReceiptEscPos', () => {
 
   it('prints the sticker content with the price on its own line (no "Qty")', () => {
     const text = asText(encodeReceiptEscPos(data));
-    // The long two-word name wraps to two centered lines.
-    expect(text).toContain('King');
-    expect(text).toContain('Gonzales');
+    // The name now fits on ONE line (normal width) instead of wrapping.
+    expect(text).toContain('King Gonzales');
     expect(text).toContain('Necklace 12.2');
     // ₱ folds to P on a thermal printer; the grouped amount survives.
     expect(text).toContain('P12,000');
@@ -114,19 +113,18 @@ describe('encodeLabelTspl', () => {
     const text = asText(encodeLabelTspl(data));
     expect(text).toContain('SIZE 40 mm,30 mm');
     expect(text).toContain('GAP 2 mm,0 mm');
-    // Name wraps to two lines; the item and price sit on their own lines.
-    expect(text).toContain('"King"');
-    expect(text).toContain('"Gonzales"');
+    // Name now fits on ONE line (font 3) instead of wrapping to two.
+    expect(text).toContain('"King Gonzales"');
     expect(text).toContain('Necklace 12.2');
     expect(text).toContain('P12,000');
     expect(text).toContain('PRINT 1,1');
   });
 
-  it('sizes the name/price larger (font 4) than the item (font 3) and date (font 2)', () => {
+  it('sizes name/item/price at font 3 (a long name fits on one line) and date at font 2', () => {
     const lines = tsplStickerLines(data);
-    // name -> font 4, item -> font 3, price -> font 4, date -> font 2
+    expect(lines.find((l) => l.text === 'King Gonzales')?.font).toBe('3');
     expect(lines.find((l) => l.text === 'Necklace 12.2')?.font).toBe('3');
-    expect(lines.find((l) => l.text === 'P12,000')?.font).toBe('4');
+    expect(lines.find((l) => l.text === 'P12,000')?.font).toBe('3');
     expect(lines.find((l) => l.text === 'June 15, 2026')?.font).toBe('2');
   });
 

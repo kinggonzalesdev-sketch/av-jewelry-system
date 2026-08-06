@@ -154,10 +154,12 @@ const RECEIPT_STYLE = `
     text-align: center; gap: 1.1mm; line-height: 1.12;
   }
   .stk > div { width: 100%; overflow-wrap: break-word; word-break: break-word; }
-  .name { font-size: 30px; font-weight: 800; }
-  .item { font-size: 26px; font-weight: 700; }
-  .price { font-size: 28px; font-weight: 800; }
-  .date { font-size: 22px; font-weight: 500; }
+  /* Name + price a touch smaller (was 30/28) so a longer name fits on one line
+     before wrapping — matches the thermal label sizing. */
+  .name { font-size: 25px; font-weight: 800; }
+  .item { font-size: 24px; font-weight: 700; }
+  .price { font-size: 25px; font-weight: 800; }
+  .date { font-size: 21px; font-weight: 500; }
   /* One sticker per label: break to a new page BETWEEN stickers (never a trailing
      blank page). */
   .stk + .stk { break-before: page; page-break-before: always; }

@@ -127,9 +127,12 @@ function fitElement(text: string, fontOrder: string[]): SizedLine[] {
 export function tsplStickerLines(d: OrderReceiptData): SizedLine[] {
   const [name, item, price, date] = stickerLines(d);
   return [
-    ...fitElement(name ?? '', ['4', '3', '2']), // Customer Name — largest
-    ...fitElement(item ?? '', ['3', '2']), // Item — slightly smaller
-    ...fitElement(price ?? '', ['4', '3', '2']), // Price — large
+    // Name + price start at font 3 (not 4) so a longer name fits on ONE line
+    // (~18 chars) instead of wrapping — e.g. "KING GONZALES" stays whole. They
+    // still step down to font 2 for very long text before wrapping (Owner request).
+    ...fitElement(name ?? '', ['3', '2']), // Customer Name
+    ...fitElement(item ?? '', ['3', '2']), // Item
+    ...fitElement(price ?? '', ['3', '2']), // Price
     ...fitElement(date ?? '', ['2']), // Date — medium
   ];
 }
@@ -182,9 +185,11 @@ export function encodeReceiptEscPos(d: OrderReceiptData): Uint8Array {
   out.push(ESC, 0x61, 0x01); // center align
   out.push(LF); // top spacing for vertical balance
 
-  emit(name ?? '', 2, 2, true, 12); // Customer Name — largest, bold
-  emit(item ?? '', 1, 2, true, 20); // Item — slightly smaller, bold
-  emit(price ?? '', 2, 2, true, null); // Price — large, bold
+  // Name + price at normal width (×1), tall (×2) so a longer name fits on one line
+  // (~24 chars) instead of wrapping; still bold for prominence (Owner request).
+  emit(name ?? '', 1, 2, true, 24); // Customer Name — bold
+  emit(item ?? '', 1, 2, true, 24); // Item — bold
+  emit(price ?? '', 1, 2, true, null); // Price — bold
   emit(date ?? '', 1, 1, false, null); // Date — medium
 
   out.push(LF, LF, LF); // feed clear of the tear bar
