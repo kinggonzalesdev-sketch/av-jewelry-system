@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 
 import {
   DEFAULT_STICKER_FIELDS,
+  printOrderReceipt,
   stickerDate,
   stickerLineItems,
   type OrderReceiptData,
@@ -11,6 +12,10 @@ import {
   type StickerFields,
 } from '@/lib/print/order-receipt';
 import { readStickerFields, writeStickerFields } from '@/lib/print/sticker-fields';
+import { usePrinter } from '@/components/print/printer-context';
+import { writeToChannel } from '@/lib/print/bluetooth-printer';
+import { encodeReceipt } from '@/lib/print/receipt-encoders';
+import { Button } from '@/components/ui/button';
 
 /**
  * Sticker Settings + editable live preview. The operator picks which lines print
@@ -62,6 +67,9 @@ export function StickerSettingsCard() {
   const [price, setPrice] = useState('37500');
   const [perGram, setPerGram] = useState('26785');
 
+  const { activeChannel, printLang } = usePrinter();
+  const [printMsg, setPrintMsg] = useState<string | null>(null);
+
   const sample: OrderReceiptData = {
     customerName: name.trim() || '—',
     itemName: item.trim() || '—',
@@ -72,6 +80,22 @@ export function StickerSettingsCard() {
     date: stickerDate(),
   };
   const lines = stickerLineItems(sample, fields);
+
+  // Print EXACTLY the previewed sample (same sample + fields), so what you see prints.
+  const printPreview = async () => {
+    setPrintMsg(null);
+    if (activeChannel) {
+      try {
+        await writeToChannel(activeChannel, encodeReceipt(sample, printLang, fields));
+        setPrintMsg('Sent this exact preview to the printer.');
+      } catch (err) {
+        setPrintMsg(err instanceof Error ? `Write failed: ${err.message}` : 'Write failed.');
+      }
+    } else {
+      printOrderReceipt(sample, fields);
+      setPrintMsg('Opened the browser print dialog for this preview.');
+    }
+  };
 
   return (
     <div className="flex flex-wrap items-start gap-6">
@@ -133,6 +157,18 @@ export function StickerSettingsCard() {
             ))
           )}
         </div>
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => void printPreview()}
+          className="mt-2"
+          data-testid="sticker-print-preview"
+        >
+          🖨 Print this preview
+        </Button>
+        {printMsg ? (
+          <p className="mt-1 max-w-[210px] text-[11px] text-foreground">{printMsg}</p>
+        ) : null}
       </div>
     </div>
   );
