@@ -37,14 +37,18 @@ function isPublicRoute(pathname: string): boolean {
 }
 
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
-  // The MineFlow Capture (Android) app authenticates the /api/mobile/* endpoints
-  // with a Supabase Bearer token in the Authorization header — verified inside each
-  // route handler (resolveMobileStaff), NOT with the session cookie this proxy
-  // manages. Running the cookie check here would find no cookie and 307-redirect the
-  // app to /sign-in, so these token-authenticated routes are bypassed entirely and
-  // left to their own verification. (The matcher also excludes them; this guard keeps
-  // the behaviour correct even if the matcher is ever narrowed.)
-  if (request.nextUrl.pathname.startsWith('/api/mobile/')) {
+  // Routes that authenticate WITHOUT the session cookie this proxy manages must be
+  // bypassed, or the cookie check finds no cookie and 307-redirects them to /sign-in:
+  //   - /api/mobile/*  — the MineFlow Capture app sends a Supabase Bearer token,
+  //     verified in-handler by resolveMobileStaff.
+  //   - /api/cron/*    — Vercel Cron sends `Authorization: Bearer $CRON_SECRET`,
+  //     verified in-handler; a redirect here would stop the cron ever running.
+  // (The matcher also excludes both; this guard keeps the behaviour correct even if
+  // the matcher is ever narrowed.)
+  if (
+    request.nextUrl.pathname.startsWith('/api/mobile/') ||
+    request.nextUrl.pathname.startsWith('/api/cron/')
+  ) {
     return NextResponse.next({ request });
   }
 

@@ -26,6 +26,8 @@ export const config = {
      *  - api/mobile/**  (Bearer-token endpoints for the MineFlow Capture app —
      *    they verify their own token in-handler and must NOT be redirected to
      *    /sign-in by the cookie-based session check)
+     *  - api/cron/**  (Vercel Cron endpoints — authenticated in-handler by
+     *    CRON_SECRET, not the session cookie; a redirect would stop the cron)
      *
      * `preview` is excluded deliberately. The prototype holds only sample data,
      * touches no database, and makes no authorization decision — running the
@@ -34,6 +36,6 @@ export const config = {
      * when NODE_ENV is production, so it can never be served from a production
      * build. Excluding it here therefore widens no production surface.
      */
-    '/((?!_next/static|_next/image|favicon.ico|preview|api/mobile|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|preview|api/mobile|api/cron|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };
