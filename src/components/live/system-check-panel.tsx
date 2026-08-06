@@ -7,7 +7,14 @@ import type { CheckStatus, SystemCheckItem } from '@/lib/live/system-check-types
 import { runSystemCheckAction } from '@/lib/live/live-ops-actions';
 import { Button } from '@/components/ui/button';
 
-/** Subscribe to a throwaway Realtime channel and resolve on the socket's verdict. */
+/**
+ * Verify Realtime the SAME way the app uses it: a postgres_changes subscription on
+ * the public schema (exactly what DashboardSyncProvider does). A bare channel with no
+ * binding fails to join on this stack; a real postgres_changes channel reports
+ * SUBSCRIBED once the shared warm socket is up. Realtime is a NUDGE — the app still
+ * works via navigation + manual refresh without it — so a hiccup is a non-blocking
+ * WARNING, never a critical Failed that would stop the live.
+ */
 function checkRealtime(): Promise<CheckStatus> {
   return new Promise((resolve) => {
     try {
@@ -18,17 +25,18 @@ function checkRealtime(): Promise<CheckStatus> {
         void supabase.removeChannel(channel);
         resolve(s);
       };
-      // The app shares ONE warm Realtime socket (createClient is memoized), so this
-      // throwaway channel usually reports SUBSCRIBED almost immediately. The generous
-      // window only guards a genuinely slow network before falling back to a Warning.
       const timer = setTimeout(() => done('warning'), 12000);
-      void channel.subscribe((status) => {
-        const s = String(status);
-        if (s === 'SUBSCRIBED') done('ready');
-        else if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT') done('failed');
-      });
+      void channel
+        .on('postgres_changes', { event: '*', schema: 'public' }, () => {})
+        .subscribe((status) => {
+          const s = String(status);
+          if (s === 'SUBSCRIBED') done('ready');
+          else if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT' || s === 'CLOSED') {
+            done('warning');
+          }
+        });
     } catch {
-      resolve('failed');
+      resolve('warning');
     }
   });
 }
