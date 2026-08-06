@@ -134,12 +134,20 @@ class ReviewActivity : AppCompatActivity() {
                 captureId, customer.trim(), itemId, price.text.toString().trim(),
                 grams.text.toString().trim().ifBlank { null }, screenshotPath, ocr,
             )
+            // In Review Mode the backend QUEUES the capture instead of creating the
+            // order (it returns {review:true}); a reviewer approves it on the web, which
+            // creates the order then. Nothing is created or sent from here in that case.
+            val queuedForReview = res.body.optBoolean("review")
             var msg = if (res.ok) {
-                "Order ${res.body.optString("order_number")} created" +
-                    if (res.body.optBoolean("idempotent")) " (already existed)" else ""
+                if (queuedForReview) {
+                    "Queued for review — approve it in Orders on the web."
+                } else {
+                    "Order ${res.body.optString("order_number")} created" +
+                        if (res.body.optBoolean("idempotent")) " (already existed)" else ""
+                }
             } else res.body.optString("error", "Order failed.")
 
-            if (res.ok && send) {
+            if (res.ok && send && !queuedForReview) {
                 val s = api.send(captureId, conversationId.trim(), message.trim(), screenshotPath)
                 msg += if (s.ok) " · sent to Pancake" else " · send failed: ${s.body.optString("error")}"
             }
