@@ -15,8 +15,15 @@ export function readStickerFields(): StickerFields {
     const raw = window.localStorage.getItem(KEY);
     if (!raw) return DEFAULT_STICKER_FIELDS;
     const parsed = JSON.parse(raw) as Partial<StickerFields>;
-    // Merge over defaults so a new field added later is always defined.
-    return { ...DEFAULT_STICKER_FIELDS, ...parsed };
+    // Merge over defaults, then FORCE the removed fields off so an older saved config
+    // (or a crafted value) can never print item / price / price-per-gram again.
+    return {
+      ...DEFAULT_STICKER_FIELDS,
+      ...parsed,
+      item: false,
+      price: false,
+      pricePerGram: false,
+    };
   } catch {
     return DEFAULT_STICKER_FIELDS;
   }

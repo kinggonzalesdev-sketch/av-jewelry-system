@@ -4,6 +4,7 @@ import {
   stickerLineItems,
   stickerLines,
   type OrderReceiptData,
+  type StickerFields,
 } from '@/lib/print/order-receipt';
 import {
   encodeLabelTspl,
@@ -24,9 +25,19 @@ const data: OrderReceiptData = {
 
 const asText = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
+/** All lines on — for tests that exercise the item/price rendering explicitly. The
+ *  DEFAULT is now name + date only (Owner removed item/price/price-per-gram). */
+const ALL: StickerFields = {
+  name: true,
+  item: true,
+  price: true,
+  pricePerGram: false,
+  date: true,
+};
+
 describe('stickerLines content', () => {
-  it('is Name · Item+grams · Price · Date, price only (no "Qty") for a single piece', () => {
-    expect(stickerLines(data)).toEqual([
+  it('with all fields is Name · Item+grams · Price · Date, price only (no "Qty")', () => {
+    expect(stickerLineItems(data, ALL).map((l) => l.text)).toEqual([
       'King Gonzales',
       'Necklace 12.2',
       '₱12,000',
@@ -35,24 +46,25 @@ describe('stickerLines content', () => {
   });
 
   it('shows the quantity only when more than one piece', () => {
-    expect(stickerLines({ ...data, quantity: 3 })[2]).toBe('3 x ₱12,000');
+    expect(
+      stickerLineItems({ ...data, quantity: 3 }, ALL).find((l) => l.kind === 'price')?.text,
+    ).toBe('3 x ₱12,000');
   });
 
   it('shows an em dash for the price when there is none', () => {
-    expect(stickerLines({ ...data, unitPrice: null })[2]).toBe('—');
+    expect(
+      stickerLineItems({ ...data, unitPrice: null }, ALL).find((l) => l.kind === 'price')?.text,
+    ).toBe('—');
   });
 });
 
 describe('stickerLineItems — configurable fields', () => {
   const withRate = { ...data, pricePerGram: '983' };
 
-  it('defaults to name · item · price · date (price-per-gram OFF)', () => {
-    expect(stickerLineItems(data).map((l) => l.kind)).toEqual([
-      'name',
-      'item',
-      'price',
-      'date',
-    ]);
+  it('DEFAULTS to Facebook name + date only', () => {
+    expect(stickerLineItems(data).map((l) => l.kind)).toEqual(['name', 'date']);
+    // The back-compat string helper follows the same default.
+    expect(stickerLines(data)).toEqual(['King Gonzales', 'June 15, 2026']);
   });
 
   it('omits disabled fields — e.g. Facebook name + date only', () => {
@@ -101,7 +113,7 @@ describe('encodeReceiptEscPos', () => {
   });
 
   it('prints the sticker content with the price on its own line (no "Qty")', () => {
-    const text = asText(encodeReceiptEscPos(data));
+    const text = asText(encodeReceiptEscPos(data, ALL));
     // The name now fits on ONE line (normal width) instead of wrapping.
     expect(text).toContain('King Gonzales');
     expect(text).toContain('Necklace 12.2');
@@ -116,8 +128,8 @@ describe('non-ASCII is folded to ASCII (thermal printers need it)', () => {
   it('folds the ₱ sign and any special item name so the label still prints', () => {
     const withUnicode = { ...data, itemName: 'Singsing – 21K' };
     for (const bytes of [
-      encodeReceiptEscPos(withUnicode),
-      encodeLabelTspl(withUnicode),
+      encodeReceiptEscPos(withUnicode, ALL),
+      encodeLabelTspl(withUnicode, ALL),
     ]) {
       const text = asText(bytes);
       expect(text).toContain('Singsing - 21K');
@@ -158,7 +170,7 @@ describe('encodeTest', () => {
 
 describe('encodeLabelTspl', () => {
   it('emits a 40x30mm label program with the sticker content, centered', () => {
-    const text = asText(encodeLabelTspl(data));
+    const text = asText(encodeLabelTspl(data, ALL));
     expect(text).toContain('SIZE 40 mm,30 mm');
     expect(text).toContain('GAP 2 mm,0 mm');
     // Name now fits on ONE line (font 3) instead of wrapping to two.
@@ -169,7 +181,7 @@ describe('encodeLabelTspl', () => {
   });
 
   it('sizes name/item/price at font 3 (a long name fits on one line) and date at font 2', () => {
-    const lines = tsplStickerLines(data);
+    const lines = tsplStickerLines(data, ALL);
     expect(lines.find((l) => l.text === 'King Gonzales')?.font).toBe('3');
     expect(lines.find((l) => l.text === 'Necklace 12.2')?.font).toBe('3');
     expect(lines.find((l) => l.text === 'P12,000')?.font).toBe('3');
@@ -177,7 +189,7 @@ describe('encodeLabelTspl', () => {
   });
 
   it('centers each line horizontally within the 320-dot label', () => {
-    const text = asText(encodeLabelTspl(data));
+    const text = asText(encodeLabelTspl(data, ALL));
     // A short line like the price is pushed well right of the margin (centered),
     // never printed hard against the left edge (x=16 was the old fixed margin).
     const priceCmd = text.split(/\r?\n/).find((l) => l.includes('P12,000')) ?? '';

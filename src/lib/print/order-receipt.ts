@@ -38,12 +38,13 @@ export type OrderReceiptData = {
 export type StickerField = 'name' | 'item' | 'price' | 'pricePerGram' | 'date';
 export type StickerFields = Record<StickerField, boolean>;
 
-/** Default sticker layout — Facebook name · item · price · date (price-per-gram off).
- *  The operator changes these in Sticker Settings; it is stored per device. */
+/** Default sticker layout — Facebook name + date only (Owner request 2026-08-06:
+ *  item / price / price-per-gram were removed). Name + date are toggleable in
+ *  Sticker Settings; the choice is stored per device. */
 export const DEFAULT_STICKER_FIELDS: StickerFields = {
   name: true,
-  item: true,
-  price: true,
+  item: false,
+  price: false,
   pricePerGram: false,
   date: true,
 };

@@ -28,9 +28,6 @@ import { Button } from '@/components/ui/button';
 
 const FIELD_LABELS: { key: StickerField; label: string }[] = [
   { key: 'name', label: 'Facebook Name' },
-  { key: 'item', label: 'Item Name' },
-  { key: 'price', label: 'Price' },
-  { key: 'pricePerGram', label: 'Price per gram' },
   { key: 'date', label: 'Date' },
 ];
 
@@ -60,23 +57,19 @@ export function StickerSettingsCard() {
     });
   };
 
-  // Editable sample values (preview only — not stored, not what really prints).
+  // Editable sample value (preview only — not stored, not what really prints).
   const [name, setName] = useState('KING GONZALES');
-  const [item, setItem] = useState('K18 HK ITEM RING');
-  const [grams, setGrams] = useState('1.40');
-  const [price, setPrice] = useState('37500');
-  const [perGram, setPerGram] = useState('26785');
 
   const { activeChannel, printLang } = usePrinter();
   const [printMsg, setPrintMsg] = useState<string | null>(null);
 
   const sample: OrderReceiptData = {
     customerName: name.trim() || '—',
-    itemName: item.trim() || '—',
-    grams: grams.trim() || null,
+    itemName: '',
+    grams: null,
     quantity: 1,
-    unitPrice: price.trim() || null,
-    pricePerGram: perGram.trim() || null,
+    unitPrice: null,
+    pricePerGram: null,
     date: stickerDate(),
   };
   const lines = stickerLineItems(sample, fields);
@@ -118,14 +111,10 @@ export function StickerSettingsCard() {
         </p>
       </div>
 
-      {/* Editable sample — type your own text to see how it looks (preview only). */}
+      {/* Editable sample — type your own name to see how it looks (preview only). */}
       <div className="space-y-1.5">
         <p className="text-xs font-medium text-muted-foreground">Sample text (preview only):</p>
         <SampleInput label="Facebook Name" value={name} onChange={setName} />
-        <SampleInput label="Item Name" value={item} onChange={setItem} />
-        <SampleInput label="Grams" value={grams} onChange={setGrams} />
-        <SampleInput label="Price" value={price} onChange={setPrice} />
-        <SampleInput label="Price / gram" value={perGram} onChange={setPerGram} />
         <p className="max-w-[14rem] pt-0.5 text-[11px] text-muted-foreground">
           This is just for the preview — the real sticker uses the order’s own values.
         </p>
