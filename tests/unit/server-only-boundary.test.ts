@@ -68,25 +68,43 @@ describe('privileged Supabase client isolation', () => {
     expect(clientFilesImportingAdmin).toEqual([]);
   });
 
-  it('has exactly ONE sanctioned caller: the Owner-gated, server-only team-accounts', () => {
-    // Owner request 2026-07-22: account creation/reset from the UI was enabled
-    // (a deliberate override of ADR §11's "boundary only" default). The single
-    // permitted caller of the service-role client is lib/authz/team-accounts.ts —
-    // and it MUST be server-only and re-check Owner before touching the client.
+  it('has exactly the sanctioned callers of the privileged client, each server-only', () => {
+    // The service-role client bypasses RLS, so its callers are an explicit, audited
+    // whitelist. Each MUST be server-only and carry its OWN authorization:
+    //   - lib/authz/team-accounts.ts — Owner-gated (requireOwner); UI account
+    //     create/reset (Owner request 2026-07-22, a deliberate ADR §11 override).
+    //   - lib/integrations/pancake-system.ts — the daily Pancake link sync; it has no
+    //     user session, so its authority is the CRON_SECRET check in its only caller,
+    //     the /api/cron/pancake-sync route.
+    const sanctioned = [/team-accounts\.ts$/, /pancake-system\.ts$/];
+
     const sourceFiles = collectSourceFiles(srcDir).filter(
       (file) => file !== adminModulePath,
     );
-
     const callers = sourceFiles.filter((file) =>
       /from\s+['"][^'"]*supabase\/admin['"]/.test(readFileSync(file, 'utf8')),
     );
 
-    expect(callers).toHaveLength(1);
-    expect(callers[0]).toMatch(/team-accounts\.ts$/);
+    // No UNSANCTIONED caller slipped in, and there are exactly as many as we sanction.
+    for (const caller of callers) {
+      expect(sanctioned.some((re) => re.test(caller))).toBe(true);
+      // Every caller of the RLS-bypassing client must itself be server-only.
+      expect(readFileSync(caller, 'utf8')).toMatch(/^import 'server-only';/m);
+    }
+    expect(callers).toHaveLength(sanctioned.length);
 
-    const teamAccounts = readFileSync(callers[0] as string, 'utf8');
-    expect(teamAccounts).toMatch(/^import 'server-only';/m);
-    expect(teamAccounts).toMatch(/requireOwner\(\)/);
+    // team-accounts re-checks Owner before touching the client ...
+    const teamAccounts = callers.find((f) => /team-accounts\.ts$/.test(f));
+    expect(teamAccounts).toBeDefined();
+    expect(readFileSync(teamAccounts as string, 'utf8')).toMatch(/requireOwner\(\)/);
+
+    // ... and the Pancake system sync is reachable only through the CRON_SECRET-gated
+    // route (its authority, since it has no user session).
+    const cronRoute = readFileSync(
+      join(srcDir, 'app', 'api', 'cron', 'pancake-sync', 'route.ts'),
+      'utf8',
+    );
+    expect(cronRoute).toMatch(/CRON_SECRET/);
   });
 });
 

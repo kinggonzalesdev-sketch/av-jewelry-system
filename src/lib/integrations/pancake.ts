@@ -775,7 +775,16 @@ export async function listPancakeConversations(): Promise<PancakeConversationsRe
     }
     throw cause;
   }
+  return fetchPancakeConversationsCore();
+}
 
+/**
+ * The raw pages.fm conversation fetch — reads the page token/id from SERVER ENV and
+ * has NO auth gate of its own. Only callers that have ALREADY authorized the request
+ * may call it: `listPancakeConversations` (Owner session) or the CRON_SECRET-guarded
+ * daily sync ([lib/integrations/pancake-system.ts]). Never reach this from the client.
+ */
+export async function fetchPancakeConversationsCore(): Promise<PancakeConversationsResult> {
   const pageToken = process.env.PANCAKE_PAGE_ACCESS_TOKEN;
   const token = pageToken || process.env.PANCAKE_USER_ACCESS_TOKEN;
   const tokenParam =
