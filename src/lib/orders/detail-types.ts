@@ -130,6 +130,15 @@ export type OrderDetail = {
     pancakeConversationId: string | null;
   };
 
+  /** The ORDER's OWN confirmed Facebook/Pancake link (spec §6/§7). When set it is used
+   *  ahead of the customer's link for Send Invoice + Open FB Chat, and it survives a
+   *  customer-profile edit. */
+  orderFacebook: {
+    conversationId: string | null;
+    url: string | null;
+    status: string | null;
+  };
+
   items: OrderLineItemDetail[];
 
   /** Authoritative money, all strings. `unavailable` holds the read failure

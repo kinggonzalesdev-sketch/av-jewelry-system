@@ -27,6 +27,7 @@ import {
   sendOrderReminder,
   setCustomerFacebookUrl,
   setCustomerPancakeConversation,
+  setOrderFacebookLink,
   setOrderCustomerResponse,
   type BulkInvoiceOrder,
   type ForInvoiceResult,
@@ -348,6 +349,24 @@ export async function setCustomerPancakeConversationAction(
 ): Promise<ForInvoiceResult> {
   if (!customerId) return { ok: false, error: 'A customer is required.' };
   const result = await setCustomerPancakeConversation(customerId, conversationId);
+  if (result.ok) revalidatePath('/orders');
+  return result;
+}
+
+/** Save (or clear) the confirmed Facebook/Pancake link on ONE order (Owner/Admin). The
+ *  transaction keeps its own conversation for Send Invoice / Open FB Chat (spec §6). */
+export async function setOrderFacebookLinkAction(
+  orderId: string,
+  input: {
+    conversationId?: string | null;
+    url?: string | null;
+    pancakeCustomerId?: string | null;
+    pageId?: string | null;
+    method?: string | null;
+    confidence?: string | null;
+  },
+): Promise<ForInvoiceResult> {
+  const result = await setOrderFacebookLink(orderId, input);
   if (result.ok) revalidatePath('/orders');
   return result;
 }

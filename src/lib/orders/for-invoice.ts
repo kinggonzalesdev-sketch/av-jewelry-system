@@ -40,13 +40,20 @@ async function deliverOrderMessageViaPancake(
 
     const response = (await supabase
       .from('official_orders')
-      .select('customers ( pancake_conversation_id )')
+      .select('fb_pancake_conversation_id, customers ( pancake_conversation_id )')
       .eq('id', officialOrderId)
-      .maybeSingle()) as { data: { customers?: unknown } | null };
+      .maybeSingle()) as {
+      data: { fb_pancake_conversation_id?: string | null; customers?: unknown } | null;
+    };
     type Cust = { pancake_conversation_id?: string | null };
     const customer = response.data?.customers as Cust | Cust[] | null | undefined;
     const one = Array.isArray(customer) ? customer[0] : customer;
-    const conversationId = one?.pancake_conversation_id;
+    // Prefer the ORDER's OWN confirmed conversation (spec §6/§7) — it is the exact chat
+    // for this transaction and survives customer-profile edits — then fall back to the
+    // customer's default link.
+    const orderConv = response.data?.fb_pancake_conversation_id;
+    const conversationId =
+      orderConv && orderConv.trim() ? orderConv : one?.pancake_conversation_id;
     if (!conversationId || !conversationId.trim()) {
       return { attempted: false, delivered: false, error: null };
     }
@@ -596,6 +603,63 @@ export async function setCustomerFacebookUrl(
     entityType: 'customer',
     entityId: customerId,
     context: { set: trimmed.length > 0 },
+  });
+  return { ok: true };
+}
+
+/**
+ * Save (or clear) the confirmed Facebook/Pancake link on ONE order (Owner/Admin). The
+ * transaction keeps its OWN conversation + chat URL, so Send Invoice / Open FB Chat use
+ * exactly that chat even if the customer profile changes later (spec §6/§7/§8). Passing
+ * empty conversation + url clears the order's link (delivery falls back to the customer).
+ */
+export async function setOrderFacebookLink(
+  orderId: string,
+  input: {
+    conversationId?: string | null;
+    url?: string | null;
+    pancakeCustomerId?: string | null;
+    pageId?: string | null;
+    method?: string | null;
+    confidence?: string | null;
+  },
+): Promise<ForInvoiceResult> {
+  if (!orderId) return { ok: false, error: 'An order is required.' };
+  const url = (input.url ?? '').trim();
+  if (url && !/^https?:\/\//i.test(url)) {
+    return { ok: false, error: 'Enter a full link starting with http:// or https://.' };
+  }
+
+  try {
+    await requireOwnerOrAdmin();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
+    throw cause;
+  }
+
+  const supabase = await createClient();
+  const response = await supabase.rpc('set_order_facebook_link', {
+    p_order_id: orderId,
+    p_conversation_id: input.conversationId?.trim() || null,
+    p_url: url || null,
+    p_pancake_customer_id: input.pancakeCustomerId?.trim() || null,
+    p_page_id: input.pageId?.trim() || null,
+    p_method: input.method?.trim() || null,
+    p_confidence: input.confidence?.trim() || null,
+  });
+  if (response.error) {
+    return { ok: false, error: response.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+
+  await recordAuditEvent({
+    action: 'order.set_facebook_link',
+    entityType: 'official_order',
+    entityId: orderId,
+    context: {
+      hasConversation: Boolean(input.conversationId?.trim()),
+      hasUrl: Boolean(url),
+      method: input.method ?? null,
+    },
   });
   return { ok: true };
 }

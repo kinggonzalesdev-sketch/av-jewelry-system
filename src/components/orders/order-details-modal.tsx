@@ -10,8 +10,6 @@ import {
   resendInvoiceAction,
   saveOrderInvoiceMessageAction,
   sendInvoiceMessageAction,
-  setCustomerFacebookUrlAction,
-  setCustomerPancakeConversationAction,
 } from '@/lib/orders/actions';
 import { renderOrderMessageAction } from '@/lib/messaging/actions';
 import { CopyButton } from '@/components/ui/copy-button';
@@ -21,6 +19,7 @@ import type { CustomerMatchInfo } from '@/lib/orders/customer-match-types';
 import type { PaymentStatus } from '@/lib/orders/service';
 import { OrderDestinationTransfer } from '@/components/orders/order-destination-transfer';
 import { FbChatButton } from '@/components/orders/fb-chat-button';
+import { OrderFacebookLink } from '@/components/orders/order-facebook-link';
 import { OrderCancelAction } from '@/components/orders/order-cancel-action';
 import { OrderPaymentActions } from '@/components/orders/order-payment-actions';
 import { OrderVerifyPayment } from '@/components/orders/order-verify-payment';
@@ -401,90 +400,6 @@ function HeaderActions({
 }
 
 /**
- * Small inline editor for a per-customer link/id (the Facebook Messenger URL that
- * powers "Open FB Chat", or the Pancake conversation id that powers auto-delivery
- * of Send Invoice / Send Reminder). Saved once on the customer, reused by every
- * future order for them.
- */
-function CustomerLinkEditor({
-  label,
-  hasValue,
-  placeholder,
-  onSave,
-  onSaved,
-  testid,
-}: {
-  label: string;
-  hasValue: boolean;
-  placeholder: string;
-  onSave: (value: string) => Promise<{ ok: boolean; error?: string }>;
-  onSaved: () => void;
-  testid?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [value, setValue] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const save = async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      const res = await onSave(value.trim());
-      if (res.ok) {
-        setOpen(false);
-        setValue('');
-        onSaved();
-      } else {
-        setError(res.error ?? 'Could not save.');
-      }
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        data-testid={testid}
-        className="text-xs font-medium text-gold-strong underline"
-      >
-        {hasValue ? `Update ${label}` : `🔗 Link ${label}`}
-      </button>
-    );
-  }
-
-  return (
-    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-      <input
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder={placeholder}
-        className="h-8 min-w-[220px] flex-1 rounded-md border border-border bg-background px-2 text-xs outline-none focus:border-gold"
-      />
-      <button
-        type="button"
-        onClick={() => void save()}
-        disabled={saving}
-        className="rounded-md border border-border px-2 py-1 font-medium hover:bg-accent disabled:opacity-60"
-      >
-        {saving ? 'Saving…' : 'Save'}
-      </button>
-      <button
-        type="button"
-        onClick={() => setOpen(false)}
-        className="text-muted-foreground hover:underline"
-      >
-        Cancel
-      </button>
-      {error ? <span className="text-destructive">{error}</span> : null}
-    </div>
-  );
-}
-
-/**
  * For Invoice view (Owner request 2026-07-27) — the WHOLE modal body when an order
  * is in the For Invoice state ('invoiced'). Deliberately minimal: six read-only
  * facts (Order Number, Customer Name, Total Price, Total Grams, Date Created,
@@ -514,7 +429,8 @@ function ForInvoiceView({
   onClose: () => void;
 }) {
   const orderId = detail.officialOrderId;
-  const fbUrl = detail.customer.facebookConversationUrl;
+  // Prefer the ORDER's own chat link, then the customer's default (spec §7).
+  const fbUrl = detail.orderFacebook.url ?? detail.customer.facebookConversationUrl;
   const canManage = detail.permissions.canPrepareInvoice;
   const a = detail.amounts;
 
@@ -725,7 +641,11 @@ function ForInvoiceView({
                   {detail.customer.displayName}
                   <FbChatButton
                     url={detail.customer.facebookConversationUrl}
-                    linked={Boolean(detail.customer.pancakeConversationId)}
+                    linked={Boolean(
+                      detail.orderFacebook.conversationId ||
+                        detail.orderFacebook.url ||
+                        detail.customer.pancakeConversationId,
+                    )}
                   />
                 </span>
               ),
@@ -787,29 +707,18 @@ function ForInvoiceView({
             </p>
           ) : null}
 
-          {/* Two links, two jobs (they are different things):
-                • Facebook chat link (Messenger URL) → powers "Open FB Chat".
-                • Pancake conversation → powers Send Invoice ACTUAL DELIVERY to the
-                  customer's chat. Without it, Send Invoice only advances the order and
-                  nothing reaches the customer — which is why "nothing happened". */}
-          <div className="flex flex-col gap-1">
-            <CustomerLinkEditor
-              label="Facebook chat link"
-              hasValue={Boolean(fbUrl)}
-              placeholder="https://m.me/… (opens the chat)"
-              onSave={(v) => setCustomerFacebookUrlAction(detail.customer.id, v)}
-              onSaved={onDone}
-              testid="order-fb-link"
-            />
-            <CustomerLinkEditor
-              label="Pancake chat — required to send the invoice"
-              hasValue={Boolean(detail.customer.pancakeConversationId)}
-              placeholder="Pancake conversation id (Integrations → Load conversations → Copy ID)"
-              onSave={(v) => setCustomerPancakeConversationAction(detail.customer.id, v)}
-              onSaved={onDone}
-              testid="order-pancake-link"
-            />
-          </div>
+          {/* Linked Facebook Customer — this ORDER's own confirmed conversation
+              (§3/§4/§6). It is what Send Invoice delivers to and Open FB Chat opens,
+              ahead of the customer's default, and it survives customer-profile edits. */}
+          <OrderFacebookLink
+            orderId={orderId}
+            order={detail.orderFacebook}
+            customer={{
+              pancakeConversationId: detail.customer.pancakeConversationId,
+              facebookConversationUrl: detail.customer.facebookConversationUrl,
+            }}
+            onSaved={onDone}
+          />
 
           {/* Editable message. */}
           {msgState === 'loading' ? (
@@ -993,7 +902,7 @@ function ForInvoiceView({
               {/* Honest delivery status: Send Invoice can only reach the customer's chat
                   when a Pancake conversation is linked. If not, say so plainly so the
                   operator isn't left wondering why "nothing happened". */}
-              {detail.customer.pancakeConversationId ? (
+              {detail.orderFacebook.conversationId || detail.customer.pancakeConversationId ? (
                 <p
                   className="rounded-md border border-green-600/40 bg-green-600/10 px-2 py-1 text-[11px] text-green-700"
                   data-testid="order-send-will-deliver"
@@ -1159,7 +1068,11 @@ function KeepView({
                   {detail.customer.displayName}
                   <FbChatButton
                     url={detail.customer.facebookConversationUrl}
-                    linked={Boolean(detail.customer.pancakeConversationId)}
+                    linked={Boolean(
+                      detail.orderFacebook.conversationId ||
+                        detail.orderFacebook.url ||
+                        detail.customer.pancakeConversationId,
+                    )}
                   />
                 </span>
               ),
@@ -1293,7 +1206,11 @@ function DetailBody({
                   {detail.customer.displayName}
                   <FbChatButton
                     url={detail.customer.facebookConversationUrl}
-                    linked={Boolean(detail.customer.pancakeConversationId)}
+                    linked={Boolean(
+                      detail.orderFacebook.conversationId ||
+                        detail.orderFacebook.url ||
+                        detail.customer.pancakeConversationId,
+                    )}
                   />
                 </span>
               ),

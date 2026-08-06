@@ -66,6 +66,7 @@ export async function getOrderDetail(officialOrderId: string): Promise<OrderDeta
       `id, order_number, invoice_number, status, created_at,
        fulfillment_destination, fulfillment_destination_set_at, completed_at, waybill_number,
        converted_to_layaway,
+       fb_pancake_conversation_id, fb_conversation_url, fb_link_status,
        destination_by:staff_profiles!fulfillment_destination_set_by ( full_name ),
        completed_by_staff:staff_profiles!completed_by ( full_name ),
        admin_staff:staff_profiles!admin_staff_profile_id ( full_name ),
@@ -288,6 +289,18 @@ export async function getOrderDetail(officialOrderId: string): Promise<OrderDeta
       address: customer?.address ?? null,
       facebookConversationUrl: customer?.facebook_conversation_url ?? null,
       pancakeConversationId: customer?.pancake_conversation_id ?? null,
+    },
+    // The ORDER's own confirmed Facebook/Pancake link (spec §6/§7). When set, Send
+    // Invoice + Open FB Chat use exactly this, ahead of the customer's default link.
+    orderFacebook: {
+      conversationId:
+        ((order as unknown as { fb_pancake_conversation_id?: string | null })
+          .fb_pancake_conversation_id) ?? null,
+      url:
+        ((order as unknown as { fb_conversation_url?: string | null }).fb_conversation_url) ??
+        null,
+      status:
+        ((order as unknown as { fb_link_status?: string | null }).fb_link_status) ?? null,
     },
     items,
     amounts: {
