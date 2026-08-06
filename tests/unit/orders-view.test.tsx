@@ -223,6 +223,7 @@ describe('OrdersView — search and filters (existing, preserved)', () => {
       'Cancelled',
       'Pending Payment',
       'Completed',
+      'Walk In',
     ]);
     expect(select.value).toBe('all');
   });

@@ -101,7 +101,8 @@ type CardKey =
   | 'for_cancel'
   | 'cancelled'
   | 'unverified_pay'
-  | 'completed';
+  | 'completed'
+  | 'walk_in';
 
 const CARD_DEFS: Array<{ key: CardKey; label: string; icon: string; tone: BadgeTone }> = [
   { key: 'all', label: 'Total', icon: '▤', tone: 'gold' },
@@ -119,6 +120,8 @@ const CARD_DEFS: Array<{ key: CardKey; label: string; icon: string; tone: BadgeT
   { key: 'cancelled', label: 'Cancelled', icon: '✕', tone: 'danger' },
   { key: 'unverified_pay', label: 'Pending Payment', icon: '⚠', tone: 'warning' },
   { key: 'completed', label: 'Completed', icon: '✓', tone: 'strong' },
+  // Order SOURCE (not a status): filter to walk-in sales.
+  { key: 'walk_in', label: 'Walk In', icon: '🚶', tone: 'gold' },
 ];
 
 /** Order statuses that count as GENUINELY completed — the final item handoff is
@@ -278,6 +281,9 @@ function matchesCard(order: OrderListRow, key: CardKey): boolean {
   switch (key) {
     case 'all':
       return true;
+    case 'walk_in':
+      // Order SOURCE filter — every walk-in sale, regardless of its status.
+      return order.orderSource === 'walk_in';
     case 'for_invoice':
       // Leaves this card once routed to a destination (Transfer to Destination is
       // now available from For Invoice) — it then shows under that destination.
