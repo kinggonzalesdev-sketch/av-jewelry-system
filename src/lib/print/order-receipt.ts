@@ -52,12 +52,12 @@ export function stickerLines(d: OrderReceiptData): string[] {
   ];
 }
 
-/** Today's date as "08/06/2026" (compact numeric, the approved sticker format). */
+/** Today's date in long words, e.g. "August 6, 2026" (Owner request — not 08/06/2026). */
 export function stickerDate(now: Date = new Date()): string {
   return now.toLocaleDateString('en-US', {
     year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
+    month: 'long',
+    day: 'numeric',
   });
 }
 
