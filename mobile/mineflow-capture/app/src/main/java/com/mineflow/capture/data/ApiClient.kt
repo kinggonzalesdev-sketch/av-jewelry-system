@@ -128,6 +128,53 @@ class ApiClient(context: Context) {
             }
         }
 
+    /**
+     * Mint a fresh access token from the stored refresh token (Supabase refresh grant).
+     * A live runs longer than the ~1h access-token lifetime, so this keeps the operator
+     * signed in without a manual re-login. Stores the new access + rotated refresh
+     * token. Returns true on success. Never throws; diagnostics go to Logcat, sanitized.
+     *
+     * Serialized on a PROCESS-WIDE lock (the store is a singleton) so two concurrent
+     * 401s can't both spend the same refresh token — Supabase rotates refresh tokens
+     * and rejects a reused one, which would log the operator out. `usedToken` is the
+     * access token the failing request carried: if the stored token already differs,
+     * another thread refreshed first, so we reuse that instead of spending again.
+     */
+    fun refreshAccessToken(usedToken: String? = null): Boolean = synchronized(REFRESH_LOCK) {
+        if (usedToken != null && !store.accessToken.isNullOrBlank() && store.accessToken != usedToken) {
+            return@synchronized true
+        }
+        val refresh = store.refreshToken?.trim().orEmpty()
+        if (refresh.isEmpty()) return@synchronized false
+        val path = "/auth/v1/token?grant_type=refresh_token"
+        val payload = JSONObject().put("refresh_token", refresh)
+        val req = Request.Builder()
+            .url(BuildConfig.SUPABASE_URL + path)
+            .addHeader("apikey", BuildConfig.SUPABASE_ANON_KEY)
+            .addHeader("Content-Type", "application/json")
+            .addHeader("Accept", "application/json")
+            .post(payload.toString().toRequestBody(json))
+            .build()
+        try {
+            http.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) {
+                    Log.i(TAG, "refresh POST /auth/v1/token -> HTTP ${resp.code}")
+                    return@synchronized false
+                }
+                val body = parseJson(resp.body?.string())
+                val access = body.optString("access_token").trim()
+                if (access.isEmpty()) return@synchronized false
+                store.accessToken = access
+                body.optString("refresh_token").trim().ifEmpty { null }
+                    ?.let { store.refreshToken = it }
+                return@synchronized true
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "refresh network failure: ${e.javaClass.simpleName}")
+            return@synchronized false
+        }
+    }
+
     // ---- MineFlow backend -----------------------------------------------------
 
     /**
@@ -221,23 +268,38 @@ class ApiClient(context: Context) {
             .build()
     )
 
-    private fun execute(base: Request): Result {
+    private fun execute(base: Request, allowRefresh: Boolean = true): Result {
+        val used = store.accessToken
         val req = base.newBuilder()
-            .addHeader("Authorization", "Bearer ${store.accessToken.orEmpty()}")
+            .addHeader("Authorization", "Bearer ${used.orEmpty()}")
             .addHeader("Accept", "application/json")
             .build()
         val path = req.url.encodedPath // path only — never the token or query secrets
         return try {
-            http.newCall(req).execute().use { resp ->
-                val body = parseJson(resp.body?.string())
-                val ok = resp.isSuccessful && body.optBoolean("ok", resp.isSuccessful)
+            val resp = http.newCall(req).execute()
+            // Access token expired? Refresh ONCE with the stored refresh token and retry
+            // before treating it as logged out — so a long live never forces a re-login.
+            if (resp.code == 401 && allowRefresh) {
+                resp.close()
+                return if (refreshAccessToken(used)) {
+                    execute(base, allowRefresh = false)
+                } else {
+                    store.clearSession()
+                    Result(false, 401, JSONObject().put("error", "Session expired. Please sign in again."))
+                }
+            }
+            resp.use {
+                val body = parseJson(it.body?.string())
+                val ok = it.isSuccessful && body.optBoolean("ok", it.isSuccessful)
                 if (!ok) {
                     val code = body.optString("code").ifBlank { null }
-                    Log.i(TAG, "${req.method} $path -> HTTP ${resp.code}" +
+                    Log.i(TAG, "${req.method} $path -> HTTP ${it.code}" +
                         if (code != null) " code=$code" else "")
                 }
-                if (resp.code == 401) store.clearSession()
-                Result(ok, resp.code, body)
+                // A 401 that survived the refresh+retry means the account itself is
+                // rejected (deactivated / permission revoked) — clear the dead session.
+                if (it.code == 401) store.clearSession()
+                Result(ok, it.code, body)
             }
         } catch (e: Exception) {
             Log.w(TAG, "${req.method} $path network failure: ${e.javaClass.simpleName}")
@@ -259,5 +321,9 @@ class ApiClient(context: Context) {
 
     private companion object {
         private const val TAG = "MineFlowAuth"
+
+        /** Process-wide lock so token refresh is serialized across ApiClient instances
+         *  (the SecureStore is a singleton, so the refresh token is shared state). */
+        private val REFRESH_LOCK = Any()
     }
 }

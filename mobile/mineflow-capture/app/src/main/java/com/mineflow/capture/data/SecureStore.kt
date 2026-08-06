@@ -38,7 +38,10 @@ class SecureStore private constructor(private val prefs: SharedPreferences) {
             return id
         }
 
-    val isLoggedIn: Boolean get() = !accessToken.isNullOrBlank()
+    // Signed in while we hold EITHER a live access token OR a refresh token: an access
+    // token expires after ~1h (shorter than a live), but the refresh token lets us mint
+    // a new one silently. Only a real logout / a failed refresh clears both.
+    val isLoggedIn: Boolean get() = !accessToken.isNullOrBlank() || !refreshToken.isNullOrBlank()
 
     fun clearSession() {
         prefs.edit().remove(KEY_ACCESS).remove(KEY_REFRESH).remove(KEY_NAME).apply()
