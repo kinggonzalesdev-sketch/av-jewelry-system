@@ -405,33 +405,52 @@ class OverlayCaptureService : Service() {
             runCatching { file.delete() }
             return
         }
-        val bmp = BitmapFactory.decodeFile(file.absolutePath)
-        if (bmp == null) {
-            toastMain("Screenshot could not be read — try again.")
-            runCatching { file.delete() }
-            return
-        }
         toastMain("Sending to MineFlow…")
         val api = ApiClient(ctx)
         val captureId = file.nameWithoutExtension.ifBlank { "cap-${System.currentTimeMillis()}" }
-        // OCR (on-device, offline); its callback runs on the main thread, then we
-        // upload + post the pending capture off the UI thread.
-        ScreenshotOcr.analyze(bmp) { guess ->
-            thread {
-                val path = runCatching {
-                    api.uploadScreenshot(captureId, "image/png", file.readBytes())
-                }.getOrNull()
-                val ocr = JSONObject()
-                    .putOpt("fbName", guess.fbName)
-                    .putOpt("itemQuery", guess.itemQuery)
-                val res = api.createPendingCapture(captureId, path, ocr)
-                runCatching { file.delete() }
-                toastMain(
-                    if (res.ok) "Sent to MineFlow — confirm it on the PC."
-                    else "Send failed: ${res.body.optString("error", "please try again")}",
-                )
+        thread {
+            val bmp = BitmapFactory.decodeFile(file.absolutePath)
+            // 1) Compress to a small JPEG and upload FIRST, so the capture appears in the
+            //    PC's Incoming Captures in ~1s. (The OCR reads the full bitmap below.)
+            val bytes = if (bmp != null) toJpeg(bmp) else file.readBytes()
+            val path = runCatching { api.uploadScreenshot(captureId, "image/jpeg", bytes) }.getOrNull()
+            val res = api.createPendingCapture(captureId, path, null)
+            toastMain(
+                if (res.ok) "Sent to MineFlow — confirm it on the PC."
+                else "Send failed: ${res.body.optString("error", "please try again")}",
+            )
+            // 2) OCR on-device, then UPDATE the same pending row's name/item guess
+            //    (create_pending_capture is idempotent on device+capture). This runs
+            //    after the capture already appeared, so it never delays it.
+            if (res.ok && bmp != null) {
+                val guess = ocrBlocking(bmp)
+                if (guess != null && (!guess.fbName.isNullOrBlank() || !guess.itemQuery.isNullOrBlank())) {
+                    val ocr = JSONObject()
+                        .putOpt("fbName", guess.fbName)
+                        .putOpt("itemQuery", guess.itemQuery)
+                    runCatching { api.createPendingCapture(captureId, path, ocr) }
+                }
             }
+            bmp?.recycle()
+            runCatching { file.delete() }
         }
+    }
+
+    /** Compress a screenshot bitmap to a small JPEG for a fast upload. */
+    private fun toJpeg(bmp: Bitmap): ByteArray =
+        java.io.ByteArrayOutputStream().use { out ->
+            bmp.compress(Bitmap.CompressFormat.JPEG, 72, out)
+            out.toByteArray()
+        }
+
+    /** Run on-device OCR and block briefly for the result. Safe on a background
+     *  thread: ML Kit posts its callback to the main thread, which is free here. */
+    private fun ocrBlocking(bmp: Bitmap): com.mineflow.capture.data.OcrGuess? {
+        val latch = java.util.concurrent.CountDownLatch(1)
+        var result: com.mineflow.capture.data.OcrGuess? = null
+        ScreenshotOcr.analyze(bmp) { g -> result = g; latch.countDown() }
+        runCatching { latch.await(5, java.util.concurrent.TimeUnit.SECONDS) }
+        return result
     }
 
     private fun toastMain(msg: String) {
