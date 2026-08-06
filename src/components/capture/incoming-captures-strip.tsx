@@ -104,11 +104,12 @@ export function IncomingCapturesStrip({
     load();
   }, [load, lastSyncedAt]);
 
-  // Poll FAST (1s) so a phone capture shows up on the PC within ~1s, independent of
-  // Realtime. Cheap for a single live station; the auto-appear never depends solely
-  // on the socket.
+  // Realtime (lastSyncedAt above) is the FAST path — a phone capture triggers a load
+  // near-instantly. This interval is only a FALLBACK for when the socket drops, so a
+  // 2.5s cadence still surfaces a capture quickly while cutting the steady request
+  // load ~2.5x (matters most during a live, when the page is open the whole time).
   useEffect(() => {
-    const iv = setInterval(load, 1000);
+    const iv = setInterval(load, 2500);
     return () => clearInterval(iv);
   }, [load]);
 
