@@ -8,47 +8,34 @@ import { runSystemCheckAction } from '@/lib/live/live-ops-actions';
 import { Button } from '@/components/ui/button';
 
 /**
- * Verify Realtime by asking the app's OWN shared socket whether it is connected.
- * DashboardSyncProvider keeps one Realtime websocket open for the whole app (the
- * memoized client), so once it is up, realtime works. Opening a SECOND
- * postgres_changes subscription here just to test it competes with that one on the
- * same socket and often never acks (the "Warning" you saw) — so instead we read the
- * live socket state directly, nudging it to connect if needed. Realtime is a NUDGE
- * (the app still works via navigation + manual refresh), so failing to come up is a
- * non-blocking WARNING, never a critical Failed.
+ * Verify Realtime the way the app actually uses it: a single postgres_changes
+ * subscription (on a tiny table) on a fresh client's own socket — exactly like
+ * DashboardSyncProvider. If realtime works it reports SUBSCRIBED within the window;
+ * a cold socket has time to connect. Realtime is only a NUDGE (the app still works
+ * via navigation + manual refresh, and Incoming Captures also polls), so a hiccup is
+ * a non-blocking WARNING, never a critical Failed.
  */
 function checkRealtime(): Promise<CheckStatus> {
   return new Promise((resolve) => {
+    let settled = false;
     try {
-      const rt = createClient().realtime;
-      const isUp = () => {
-        try {
-          return rt.isConnected();
-        } catch {
-          return false;
-        }
+      const supabase = createClient();
+      const channel = supabase.channel(`syscheck-${Date.now()}`);
+      const done = (s: CheckStatus) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        void supabase.removeChannel(channel);
+        resolve(s);
       };
-      if (isUp()) {
-        resolve('ready');
-        return;
-      }
-      // The socket isn't open yet — open it and poll briefly for it to come up.
-      try {
-        rt.connect();
-      } catch {
-        /* connect is best-effort */
-      }
-      let elapsed = 0;
-      const iv = setInterval(() => {
-        elapsed += 400;
-        if (isUp()) {
-          clearInterval(iv);
-          resolve('ready');
-        } else if (elapsed >= 12000) {
-          clearInterval(iv);
-          resolve('warning');
-        }
-      }, 400);
+      const timer = setTimeout(() => done('warning'), 12000);
+      void channel
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'live_test_state' }, () => {})
+        .subscribe((status) => {
+          const s = String(status);
+          if (s === 'SUBSCRIBED') done('ready');
+          else if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT' || s === 'CLOSED') done('warning');
+        });
     } catch {
       resolve('warning');
     }

@@ -15,12 +15,21 @@ vi.mock('@/lib/live/live-ops-actions', () => ({
   ),
 }));
 
-// The Realtime check reads the shared socket state; stub it as connected → Ready.
+// The Realtime check subscribes a postgres_changes channel; stub it as SUBSCRIBED.
 vi.mock('@/lib/supabase/client', () => ({
-  createClient: () => ({
-    realtime: { isConnected: () => true, connect: () => {} },
-    removeChannel: () => Promise.resolve('ok'),
-  }),
+  createClient: () => {
+    const channel = {
+      on: () => channel,
+      subscribe: (cb: (s: string) => void) => {
+        cb('SUBSCRIBED');
+        return channel;
+      },
+    };
+    return {
+      channel: () => channel,
+      removeChannel: () => Promise.resolve('ok'),
+    };
+  },
 }));
 
 describe('SystemCheckPanel', () => {
