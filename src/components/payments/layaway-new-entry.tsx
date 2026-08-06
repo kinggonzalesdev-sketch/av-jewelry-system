@@ -16,6 +16,7 @@ import { formatPeso } from '@/lib/payments/format';
 import { DEFAULT_PAYMENT_METHOD, PAYMENT_METHOD_OPTIONS } from '@/lib/payments/methods';
 import { Button } from '@/components/ui/button';
 import { Combobox } from '@/components/ui/combobox';
+import { CustomerMatchHint } from '@/components/customers/customer-match-hint';
 import { Modal } from '@/components/ui/modal';
 import { MoneyInput } from '@/components/ui/money-input';
 import { cn } from '@/lib/utils';
@@ -412,6 +413,9 @@ function EntryForm({
               onChange={setCustomer}
               options={customers}
             />
+            {/* Shared match hint — reuse an existing customer (and see its FB-linked
+                state) instead of creating a duplicate. */}
+            <CustomerMatchHint name={customer} className="mt-1" />
           </label>
           <label className="block">
             <L>Admin Name</L>

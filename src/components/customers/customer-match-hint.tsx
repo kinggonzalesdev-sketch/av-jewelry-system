@@ -18,13 +18,17 @@ import type { CustomerMatchOutcome } from '@/lib/customers/matching-types';
 export function CustomerMatchHint({
   name,
   phone,
+  excludeCustomerId,
   className,
 }: {
   name: string;
   phone?: string | null;
+  /** Omit this customer from the results — used in Customer editing so a record never
+   *  "matches itself" (only real duplicates surface). */
+  excludeCustomerId?: string;
   className?: string;
 }) {
-  const [outcome, setOutcome] = useState<CustomerMatchOutcome | null>(null);
+  const [raw, setRaw] = useState<CustomerMatchOutcome | null>(null);
 
   useEffect(() => {
     const q = name.trim();
@@ -34,15 +38,15 @@ export function CustomerMatchHint({
     const t = setTimeout(() => {
       if (!alive) return;
       if (q.length < 2) {
-        setOutcome(null);
+        setRaw(null);
         return;
       }
       findCustomerMatchesAction({ name: q, phone: phone ?? null })
         .then((res) => {
-          if (alive) setOutcome(res);
+          if (alive) setRaw(res);
         })
         .catch(() => {
-          if (alive) setOutcome(null);
+          if (alive) setRaw(null);
         });
     }, 350);
     return () => {
@@ -51,9 +55,18 @@ export function CustomerMatchHint({
     };
   }, [name, phone]);
 
-  if (!outcome || outcome.candidates.length === 0) return null;
+  if (!raw) return null;
 
-  const auto = outcome.autoMatch;
+  // Drop the edited customer itself (so it never "matches itself"). Recompute the
+  // auto-match on the filtered set: only a single remaining high-confidence match
+  // auto-selects.
+  const candidates = excludeCustomerId
+    ? raw.candidates.filter((c) => c.customerId !== excludeCustomerId)
+    : raw.candidates;
+  if (candidates.length === 0) return null;
+
+  const highs = candidates.filter((c) => c.confidence === 'high');
+  const auto = highs.length === 1 ? highs[0]! : null;
 
   return (
     <div className={className} data-testid="customer-match-hint">
@@ -75,10 +88,10 @@ export function CustomerMatchHint({
           className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-800"
           data-testid="customer-match-multi"
         >
-          {outcome.candidates.length} possible match(es) — confirm which person this is to
+          {candidates.length} possible match(es) — confirm which person this is to
           avoid a duplicate:
           <ul className="mt-0.5 space-y-0.5">
-            {outcome.candidates.slice(0, 4).map((c) => (
+            {candidates.slice(0, 4).map((c) => (
               <li key={c.customerId} className="flex items-center gap-1">
                 <span className="font-medium">{c.displayName}</span>
                 {c.contactNumber ? (

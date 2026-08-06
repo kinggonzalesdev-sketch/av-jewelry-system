@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { updateCustomerAction } from '@/lib/customers/actions';
 import type { CustomerListRow, CustomersResult } from '@/lib/customers/service';
 import { CustomerRowActions } from '@/components/customers/customer-row-actions';
+import { CustomerMatchHint } from '@/components/customers/customer-match-hint';
 import { EmptyState } from '@/components/states/empty-state';
 import { Sensitive, SensitivePhone } from '@/components/shell/privacy';
 import { Button } from '@/components/ui/button';
@@ -239,6 +240,14 @@ function CustomerModalContent({
             required
             className="mt-1 h-9"
             data-testid="customer-edit-name"
+          />
+          {/* Shared match hint — warns if this name now collides with ANOTHER customer
+              (this record is excluded, so it never matches itself). */}
+          <CustomerMatchHint
+            name={name}
+            phone={contact}
+            excludeCustomerId={customer.id}
+            className="mt-1"
           />
         </div>
         <div>
