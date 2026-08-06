@@ -59,6 +59,13 @@ class OverlayCaptureService : Service() {
     private var layoutParams: WindowManager.LayoutParams? = null
 
     private var projection: MediaProjection? = null
+    // A PERSISTENT screen-mirror kept alive for the whole session, so consent is asked
+    // ONCE (first capture) and every later tap grabs a frame instantly — no popup.
+    private var reader: ImageReader? = null
+    private var virtualDisplay: VirtualDisplay? = null
+    private var captureW = 0
+    private var captureH = 0
+    @Volatile private var pendingCapture = false
     private var busy = false
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -120,11 +127,13 @@ class OverlayCaptureService : Service() {
                         val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
                         projection = mpm.getMediaProjection(code, data).also {
                             it.registerCallback(object : MediaProjection.Callback() {
-                                override fun onStop() { projection = null }
+                                override fun onStop() { teardownCapture(); projection = null }
                             }, handler)
                         }
-                        // Consent just granted for THIS tap — capture now.
-                        doCapture()
+                        // Set up the PERSISTENT mirror once (consent just granted), then
+                        // capture this tap. Every later tap reuses it — no popup.
+                        setupCapture()
+                        requestFrame()
                     } catch (t: Throwable) {
                         onCaptureFailed("Screen capture couldn't start — please try again.")
                     }
@@ -228,7 +237,10 @@ class OverlayCaptureService : Service() {
         // Hide the button so it is not part of the screenshot, then capture.
         button?.visibility = View.GONE
         handler.postDelayed({
-            if (projection != null) doCapture() else CapturePermissionActivity.request(this)
+            // Reuse the live mirror when we already have consent — no popup. Only the
+            // FIRST capture of a session asks for permission.
+            if (reader != null && projection != null) requestFrame()
+            else CapturePermissionActivity.request(this)
         }, 200)
     }
 
@@ -287,45 +299,90 @@ class OverlayCaptureService : Service() {
 
     // ---- One-tap capture ------------------------------------------------------
 
-    private fun doCapture() {
-        val mp = projection
-        if (mp == null) { onCaptureFailed("Screen capture unavailable — grant permission again."); return }
+    /**
+     * Create the PERSISTENT screen-mirror once (right after consent) and keep it alive
+     * for the whole session. Because the projection stays actively mirroring, Android
+     * does NOT ask for consent again — so every later tap is instant.
+     */
+    private fun setupCapture() {
+        teardownCapture()
+        val mp = projection ?: return
         val metrics = DisplayMetrics()
         @Suppress("DEPRECATION") windowManager.defaultDisplay.getRealMetrics(metrics)
-        val w = metrics.widthPixels; val h = metrics.heightPixels; val density = metrics.densityDpi
+        captureW = metrics.widthPixels
+        captureH = metrics.heightPixels
+        val density = metrics.densityDpi
 
-        val reader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
-        var vd: VirtualDisplay? = null
-        reader.setOnImageAvailableListener({ r ->
-            val image = r.acquireLatestImage()
-            if (image == null) {
-                vd?.release(); r.close()
-                handler.post { onCaptureFailed("Screenshot failed — please try again.") }
-                return@setOnImageAvailableListener
-            }
+        val r = ImageReader.newInstance(captureW, captureH, PixelFormat.RGBA_8888, 2)
+        r.setOnImageAvailableListener({ rr ->
+            val image = rr.acquireLatestImage() ?: return@setOnImageAvailableListener
             try {
-                val plane = image.planes[0]
-                val rowStride = plane.rowStride
-                val pixelStride = plane.pixelStride
-                val rowPadding = rowStride - pixelStride * w
-                val bmp = Bitmap.createBitmap(w + rowPadding / pixelStride, h, Bitmap.Config.ARGB_8888)
-                bmp.copyPixelsFromBuffer(plane.buffer)
-                val cropped = Bitmap.createBitmap(bmp, 0, 0, w, h)
-                val file = savePng(cropped)
-                bmp.recycle(); cropped.recycle()
-                handler.post { onCaptured(file) }
+                // The mirror produces frames continuously; only SAVE one when a tap
+                // requested it — otherwise just drop the frame to keep the pipeline free.
+                if (pendingCapture) {
+                    pendingCapture = false
+                    val file = imageToPng(image)
+                    handler.post { onCaptured(file) }
+                }
+            } catch (_: Throwable) {
+                handler.post { onCaptureFailed("Screenshot failed — please try again.") }
             } finally {
                 image.close()
-                vd?.release()
-                r.close()
             }
         }, handler)
-
-        vd = mp.createVirtualDisplay(
-            "mineflow-capture", w, h, density,
+        reader = r
+        virtualDisplay = mp.createVirtualDisplay(
+            "mineflow-capture", captureW, captureH, density,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            reader.surface, null, handler,
+            r.surface, null, handler,
         )
+    }
+
+    /** Save the live mirror's next frame. Falls back to the latest available frame if a
+     *  static screen produces no new one. */
+    private fun requestFrame() {
+        val r = reader
+        if (r == null) { onCaptureFailed("Screen capture unavailable — please try again."); return }
+        pendingCapture = true
+        handler.postDelayed({
+            if (pendingCapture) {
+                val image = r.acquireLatestImage()
+                if (image != null) {
+                    try {
+                        pendingCapture = false
+                        val file = imageToPng(image)
+                        handler.post { onCaptured(file) }
+                    } catch (_: Throwable) {
+                        handler.post { onCaptureFailed("Screenshot failed — please try again.") }
+                    } finally {
+                        image.close()
+                    }
+                }
+            }
+        }, 400)
+    }
+
+    private fun imageToPng(image: android.media.Image): File {
+        val plane = image.planes[0]
+        val rowStride = plane.rowStride
+        val pixelStride = plane.pixelStride
+        val rowPadding = rowStride - pixelStride * captureW
+        val bmp = Bitmap.createBitmap(
+            captureW + rowPadding / pixelStride, captureH, Bitmap.Config.ARGB_8888,
+        )
+        bmp.copyPixelsFromBuffer(plane.buffer)
+        val cropped = Bitmap.createBitmap(bmp, 0, 0, captureW, captureH)
+        val file = savePng(cropped)
+        bmp.recycle(); cropped.recycle()
+        return file
+    }
+
+    private fun teardownCapture() {
+        pendingCapture = false
+        runCatching { virtualDisplay?.release() }
+        virtualDisplay = null
+        runCatching { reader?.close() }
+        reader = null
     }
 
     private fun onCaptured(file: File) {
@@ -385,6 +442,7 @@ class OverlayCaptureService : Service() {
         hideQuickMenu()
         button?.let { runCatching { windowManager.removeView(it) } }
         button = null
+        teardownCapture()
         projection?.stop(); projection = null
     }
 
