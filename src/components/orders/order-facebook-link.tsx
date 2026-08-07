@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { setOrderFacebookLinkAction } from '@/lib/orders/actions';
 
@@ -70,6 +70,41 @@ export function OrderFacebookLink({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  // AUTO-LINK ON OPEN — when the order has no Facebook link yet, resolve the customer's
+  // Pancake conversation in the background (fast, bounded) and save a UNIQUE match to
+  // the order automatically, so it shows linked with no manual step. Runs at most once
+  // per open (ref-guarded); a shared/ambiguous name is left for the manual Confirm.
+  const autoLinkTried = useRef(false);
+  useEffect(() => {
+    if (autoLinkTried.current || hasOrderLink || effConv || effUrl || !(customerName ?? '').trim()) {
+      return;
+    }
+    autoLinkTried.current = true;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/integrations/pancake/resolve?name=${encodeURIComponent(customerName ?? '')}`,
+          { headers: { accept: 'application/json' } },
+        );
+        const body = (await res.json().catch(() => null)) as
+          | { ok: boolean; conversationId: string | null }
+          | null;
+        const cid = body?.ok ? body.conversationId : null;
+        if (cid) {
+          const saved = await setOrderFacebookLinkAction(orderId, {
+            conversationId: cid,
+            method: 'auto',
+            confidence: 'auto',
+          });
+          if (saved.ok) onSaved();
+        }
+      } catch {
+        /* ignore — the manual Confirm / Link remains available */
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Pancake conversation SEARCH (§4). Loads the Page's conversations once (owner-gated,
   // server-side), then filters by name — pre-seeded with the customer's name.
