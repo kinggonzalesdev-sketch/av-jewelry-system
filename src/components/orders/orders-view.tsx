@@ -14,6 +14,7 @@ import type { KeepLayawayRow } from '@/lib/payments/layaway-ledger';
 import { Money } from '@/components/shell/privacy';
 import { EmptyState } from '@/components/states/empty-state';
 import { StatusBadge, ReadError, type BadgeTone } from '@/components/ui/page-primitives';
+import { DataTable, Thead, Tr, Th, Td } from '@/components/ui/data-table';
 import { cn } from '@/lib/utils';
 
 /**
@@ -186,34 +187,31 @@ function OrderRow({
       data-testid="order-row"
       className="cursor-pointer border-b border-border last:border-0 hover:bg-accent/60 focus:bg-accent/60 focus:outline-none"
     >
-      <td className="px-3 py-2.5">
+      <Td>
         <StatusBadge label={humanize(order.status)} tone="neutral" />
-      </td>
-      <td
-        className="truncate px-3 py-2.5 font-mono text-xs"
-        title={order.waybillNumber || order.orderNumber}
-      >
+      </Td>
+      <Td clip title={order.waybillNumber || order.orderNumber} className="font-mono text-xs">
         {order.waybillNumber || <span className="text-muted-foreground">—</span>}
-      </td>
-      <td className="truncate px-3 py-2.5 font-mono text-xs" title={order.invoiceNumber || undefined}>
+      </Td>
+      <Td clip title={order.invoiceNumber || undefined} className="font-mono text-xs">
         {order.invoiceNumber || <span className="text-muted-foreground">—</span>}
-      </td>
-      <td className="truncate px-3 py-2.5 font-medium" title={order.customerDisplayName}>
+      </Td>
+      <Td kind="grow" clip title={order.customerDisplayName} className="font-medium">
         {order.customerDisplayName}
         {order.orderSource === 'walk_in' ? (
           <span className="ml-1.5 rounded-full border border-gold/40 bg-gold/10 px-1.5 py-0.5 text-[10px] font-medium text-gold-strong">
             Walk-in
           </span>
         ) : null}
-      </td>
-      <td className="whitespace-nowrap px-3 py-2.5 pr-6 text-right tabular-nums">
+      </Td>
+      <Td kind="num">
         {order.paymentStatus === 'unavailable' ? (
           '—'
         ) : (
           <Money amount={order.totalAmountPayable} />
         )}
-      </td>
-      <td className="whitespace-nowrap px-3 py-2.5 text-center">
+      </Td>
+      <Td kind="center">
         <StatusBadge
           label={PAYMENT_LABEL[order.paymentStatus]}
           tone={PAYMENT_TONE[order.paymentStatus]}
@@ -223,8 +221,8 @@ function OrderRow({
             <Money amount={order.outstandingBalance} /> due
           </span>
         ) : null}
-      </td>
-      <td className="px-3 py-2.5 text-center">
+      </Td>
+      <Td kind="center">
         {order.fulfillmentStatus ? (
           <StatusBadge
             label={humanize(order.fulfillmentStatus)}
@@ -233,8 +231,8 @@ function OrderRow({
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
         )}
-      </td>
-      <td className="whitespace-nowrap px-3 py-2.5 text-right">
+      </Td>
+      <Td kind="actions">
         <span className="inline-flex items-center gap-1.5">
           {/* View (everyone) opens the order detail drawer. Edit + Delete are
               Super-Admin only: Edit corrects the customer name + total; Delete removes
@@ -266,7 +264,7 @@ function OrderRow({
             />
           ) : null}
         </span>
-      </td>
+      </Td>
     </tr>
   );
 }
@@ -610,34 +608,30 @@ export function OrdersView({
           </div>
         )
       ) : (
-        <div className="rounded-xl border border-border bg-card">
-          <div className="overflow-x-auto">
-            <table className="data-table w-full min-w-[860px] text-left text-sm">
-              <thead>
-                <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <th className="px-3 py-2.5 text-left font-medium">Status</th>
-                  <th className="px-3 py-2.5 text-left font-medium">Waybill Number</th>
-                  <th className="px-3 py-2.5 text-left font-medium">Invoice No.</th>
-                  <th className="col-grow px-3 py-2.5 text-left font-medium">Customer</th>
-                  <th className="col-num px-3 py-2.5 pr-6 font-medium">Amount</th>
-                  <th className="col-center px-3 py-2.5 font-medium">Payment</th>
-                  <th className="col-center px-3 py-2.5 font-medium">Fulfillment</th>
-                  <th className="col-actions px-3 py-2.5 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((order) => (
-                  <OrderRow
-                    key={order.officialOrderId}
-                    order={order}
-                    onOpen={(o) => setSelectedId(o.officialOrderId)}
-                    canManageOrders={canManageOrders}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <DataTable minWidth="860px">
+          <Thead>
+            <Tr plain>
+              <Th>Status</Th>
+              <Th>Waybill Number</Th>
+              <Th>Invoice No.</Th>
+              <Th kind="grow">Customer</Th>
+              <Th kind="num">Amount</Th>
+              <Th kind="center">Payment</Th>
+              <Th kind="center">Fulfillment</Th>
+              <Th kind="actions">Actions</Th>
+            </Tr>
+          </Thead>
+          <tbody>
+            {filtered.map((order) => (
+              <OrderRow
+                key={order.officialOrderId}
+                order={order}
+                onOpen={(o) => setSelectedId(o.officialOrderId)}
+                canManageOrders={canManageOrders}
+              />
+            ))}
+          </tbody>
+        </DataTable>
       )}
 
       {/* KEEP items from Layaway — surfaced under the Keep card so every KEEP item

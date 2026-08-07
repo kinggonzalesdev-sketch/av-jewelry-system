@@ -240,35 +240,8 @@ export function DateCell({ value, className }: { value: string | null | undefine
   );
 }
 
-/** A status pill. One tone vocabulary for the whole system. */
-export function StatusBadge({
-  tone = 'neutral',
-  className,
-  children,
-}: {
-  tone?: ('neutral' | 'accent' | 'amber' | 'red' | 'green') | undefined;
-  className?: string | undefined;
-  children: ReactNode;
-}) {
-  const tones: Record<string, string> = {
-    neutral: 'bg-muted text-muted-foreground',
-    accent: 'bg-gold/15 text-gold-strong',
-    green: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
-    amber: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
-    red: 'bg-destructive/10 text-destructive',
-  };
-  return (
-    <span
-      className={cn(
-        'inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium',
-        tones[tone],
-        className,
-      )}
-    >
-      {children}
-    </span>
-  );
-}
+/* Status pills use the existing shared <StatusBadge> in ui/page-primitives.tsx
+ * (label + tone API) — not duplicated here. */
 
 /** Full-width empty state row (never a collapsed one-cell row). */
 export function EmptyRow({ colSpan, children }: { colSpan: number; children: ReactNode }) {
