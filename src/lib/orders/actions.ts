@@ -40,6 +40,10 @@ import {
   type DeleteTestOrderResult,
 } from '@/lib/orders/test-order';
 import {
+  deleteCancelledOrder,
+  type DeleteCancelledOrderResult,
+} from '@/lib/orders/cancelled-order';
+import {
   finalizeOrderCancellation,
   requestOrderCancellation,
   type CancellationResult,
@@ -264,6 +268,27 @@ export async function deleteTestOrderAction(
     return { ok: false, error: 'Type DELETE TEST to confirm.' };
   }
   const result = await deleteTestOrderAndReturnItems(orderId);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/inventory');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+/**
+ * SUPER ADMIN (Owner) — delete a CANCELLED order and return any still-reserved item(s)
+ * to Active Inventory. Requires typing "DELETE". The domain fn + DB function are the
+ * real gate (Owner-only, cancelled-status-only).
+ */
+export async function deleteCancelledOrderAction(
+  orderId: string,
+  confirm: string,
+): Promise<DeleteCancelledOrderResult> {
+  if (confirm !== 'DELETE') {
+    return { ok: false, error: 'Type DELETE to confirm.' };
+  }
+  const result = await deleteCancelledOrder(orderId);
   if (result.ok) {
     revalidatePath('/orders');
     revalidatePath('/orders/inventory');

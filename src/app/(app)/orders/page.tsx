@@ -99,6 +99,7 @@ export default async function OrdersPage({
           result={result}
           openForInvoice={openForInvoice}
           keepLayaways={keepLayaways}
+          canDeleteCancelled={profile.roleKey === 'owner'}
           // Passed as a slot so Send All Invoices can sit beside it: the active-card
           // state that decides when to show that button lives inside OrdersView.
           newOrderAction={

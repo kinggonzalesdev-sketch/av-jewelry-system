@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 
 import { OrderDetailsModal } from '@/components/orders/order-details-modal';
 import { SendAllInvoices } from '@/components/orders/send-all-invoices';
+import { CancelledOrderDelete } from '@/components/orders/cancelled-order-delete';
 import { LayawayLedgerViewModal } from '@/components/payments/layaway-ledger-view-modal';
 
 import type { OrderListRow, OrdersResult, PaymentStatus } from '@/lib/orders/service';
@@ -161,9 +162,11 @@ const CARD_ICON_TONE: Record<BadgeTone, string> = {
 function OrderRow({
   order,
   onOpen,
+  canDeleteCancelled,
 }: {
   order: OrderListRow;
   onOpen: (order: OrderListRow) => void;
+  canDeleteCancelled: boolean;
 }) {
   // The whole row opens the in-page Order Details drawer (no navigation). Keyboard
   // accessible: focusable with Enter/Space. The cells hold only text/badges (no
@@ -230,8 +233,17 @@ function OrderRow({
           <span className="text-xs text-muted-foreground">—</span>
         )}
       </td>
-      <td className="whitespace-nowrap px-3 py-2.5 text-right text-xs font-medium text-gold-strong">
-        View ›
+      <td className="whitespace-nowrap px-3 py-2.5 text-right text-xs font-medium">
+        <span className="inline-flex items-center gap-2">
+          {canDeleteCancelled && order.status === 'cancelled' ? (
+            <CancelledOrderDelete
+              orderId={order.officialOrderId}
+              orderLabel={order.invoiceNumber !== '—' ? order.invoiceNumber : order.orderNumber}
+              customerName={order.customerDisplayName}
+            />
+          ) : null}
+          <span className="text-gold-strong">View ›</span>
+        </span>
       </td>
     </tr>
   );
@@ -363,6 +375,7 @@ export function OrdersView({
   openForInvoice = false,
   keepLayaways = [],
   newOrderAction,
+  canDeleteCancelled = false,
 }: {
   result: OrdersResult;
   /** The + New Order control, rendered in the top action row so Send All Invoices
@@ -372,6 +385,9 @@ export function OrdersView({
   openForInvoice?: boolean;
   /** Layaway accounts marked KEEP — surfaced under the Keep card (Owner request). */
   keepLayaways?: KeepLayawayRow[];
+  /** Super Admin (Owner): show a Delete button in the Actions column for cancelled
+   *  orders. The DB re-checks Owner + cancelled-status, so this only gates the UI. */
+  canDeleteCancelled?: boolean;
 }) {
   // Hooks must run unconditionally; the error/empty branches come after. Memoized
   // so the derived useMemo hooks below keep a stable dependency identity.
@@ -603,6 +619,7 @@ export function OrdersView({
                     key={order.officialOrderId}
                     order={order}
                     onOpen={(o) => setSelectedId(o.officialOrderId)}
+                    canDeleteCancelled={canDeleteCancelled}
                   />
                 ))}
               </tbody>
