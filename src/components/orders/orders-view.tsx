@@ -235,7 +235,6 @@ function OrderRow({
       </td>
       <td className="whitespace-nowrap px-3 py-2.5 text-right text-xs font-medium">
         <span className="inline-flex items-center gap-2">
-          <span className="text-gold-strong">View ›</span>
           {canDeleteCancelled && order.status === 'cancelled' ? (
             <CancelledOrderDelete
               orderId={order.officialOrderId}
@@ -243,6 +242,7 @@ function OrderRow({
               customerName={order.customerDisplayName}
             />
           ) : null}
+          <span className="text-gold-strong">View ›</span>
         </span>
       </td>
     </tr>
