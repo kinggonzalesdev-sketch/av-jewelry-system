@@ -241,6 +241,21 @@
 .data-table .col-grow {
   width: 100%;
 }
+
+/*
+ * GLOBAL TABLE SPACING (Owner spec) — opt-in roomier density via `.data-roomy`
+ * (DataTable `spacious`). 44px header, 48px rows, 16px horizontal / 10px vertical
+ * padding. Higher specificity than the base `.data-table` rules, so it overrides
+ * padding + height only, leaving alignment/colour/borders (the gold hairlines) intact.
+ */
+.data-table.data-roomy > thead > tr > th {
+  padding: 0 16px;
+  height: 44px;
+}
+.data-table.data-roomy > tbody > tr > td {
+  padding: 10px 16px;
+  height: 48px;
+}
 /* A content-heavy cell that must not balloon: caps its width and truncates. Pair with
    the cell's own `truncate` (title=… for the full value on hover). */
 .data-table .col-clip {

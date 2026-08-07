@@ -7,16 +7,7 @@ import { ScrapRowActions } from '@/components/scrap/scrap-row-actions';
 import { ScrapEntryModal } from '@/components/scrap/scrap-entry-modal';
 import { downloadCsv } from '@/lib/export/csv';
 import { formatPeso } from '@/lib/payments/format';
-import {
-  DataTable,
-  Thead,
-  Tr,
-  Th,
-  Td,
-  MoneyCell,
-  DateCell,
-  EmptyRow,
-} from '@/components/ui/data-table';
+import { DataTable, Thead, Tr, Th, Td, DateCell, EmptyRow } from '@/components/ui/data-table';
 import { MetricCard, ReadError } from '@/components/ui/page-primitives';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -161,17 +152,21 @@ export function ScrapView({
         </CardHeader>
         <CardContent>
           {/* Built from the shared table components (the reference migration). */}
-          <DataTable minWidth="720px">
+          <DataTable
+            minWidth="880px"
+            spacious
+            columns={['26%', '10%', '8%', '8%', '12%', '12%', '14%', '10%']}
+          >
             <Thead>
               <Tr plain>
-                <Th>Material</Th>
+                <Th kind="center">Customer Name</Th>
+                <Th kind="center">Material</Th>
                 <Th kind="center">Karat</Th>
-                <Th kind="num">Grams</Th>
-                <Th kind="num">Amount</Th>
-                <Th kind="grow">Customer Name</Th>
+                <Th kind="center">Grams</Th>
+                <Th kind="center">Amount</Th>
                 <Th kind="center">Sold On</Th>
-                <Th>Note</Th>
-                <Th kind="actions">Actions</Th>
+                <Th kind="center">Note</Th>
+                <Th kind="center">Actions</Th>
               </Tr>
             </Thead>
             <tbody>
@@ -180,18 +175,25 @@ export function ScrapView({
               ) : (
                 sales.map((s) => (
                   <Tr key={s.id}>
-                    <Td className="capitalize">{s.material}</Td>
-                    <Td kind="center">{s.karat ?? '—'}</Td>
-                    <Td kind="num">{s.grams}</Td>
-                    <MoneyCell amount={s.amount} />
-                    <Td kind="grow" clip title={s.buyer ?? undefined}>
+                    <Td kind="center" clip title={s.buyer ?? undefined}>
                       {s.buyer ?? '—'}
                     </Td>
+                    <Td kind="center" className="capitalize">
+                      {s.material}
+                    </Td>
+                    <Td kind="center">{s.karat ?? '—'}</Td>
+                    <Td kind="center">{s.grams}</Td>
+                    <Td kind="center">{formatPeso(s.amount)}</Td>
                     <DateCell value={s.soldOn} />
-                    <Td clip title={s.note ?? undefined} className="text-muted-foreground">
+                    <Td
+                      kind="center"
+                      clip
+                      title={s.note ?? undefined}
+                      className="text-muted-foreground"
+                    >
                       {s.note ?? '—'}
                     </Td>
-                    <Td kind="actions">
+                    <Td kind="center">
                       <ScrapRowActions sale={s} canDelete={canDelete} canEdit={canDelete} />
                     </Td>
                   </Tr>

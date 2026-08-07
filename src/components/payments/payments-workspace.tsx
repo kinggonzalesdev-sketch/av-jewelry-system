@@ -1148,19 +1148,32 @@ function LayawayTable({
 
   return (
     <div className="overflow-x-auto rounded-xl border border-border bg-card">
-      <table className="data-table w-full min-w-[900px] text-left text-xs" data-testid="layaway-table">
-        {/* Content-based sizing: Customer Name absorbs the slack (col-grow); short
-            columns (Code, amount, dates, Overdue) stay narrow; Remarks caps + truncates
-            (col-clip); Actions pinned right. No fixed equal percentages. */}
+      <table
+        className="data-table data-roomy w-full min-w-[1000px] text-left text-xs"
+        data-testid="layaway-table"
+      >
+        {/* Owner width spec: Unique Code + Customer Name are the two widest; Code and
+            Overdue stay compact; Actions pinned right. Width HINTS (no table-fixed), so
+            a column can still grow to fit its content and nothing is clipped. */}
+        <colgroup>
+          <col style={{ width: '20%' }} />
+          <col style={{ width: '22%' }} />
+          <col style={{ width: '7%' }} />
+          <col style={{ width: '13%' }} />
+          <col style={{ width: '12%' }} />
+          <col style={{ width: '11%' }} />
+          <col style={{ width: '7%' }} />
+          <col style={{ width: '8%' }} />
+        </colgroup>
         <thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
           <tr>
-            <th className="col-grow px-3 py-2 text-left">Customer Name</th>
-            <th className="px-3 py-2 text-left">Code</th>
+            <th className="px-3 py-2 text-left">Unique Code</th>
+            <th className="px-3 py-2 text-left">Customer Name</th>
+            <th className="col-center px-3 py-2">Code</th>
             <th className="px-3 py-2 text-left">Remarks / Financer</th>
             <th className="col-num px-3 py-2">Total Amount</th>
             <th className="col-center px-3 py-2">Date Purchased</th>
             <th className="col-center px-3 py-2">Overdue</th>
-            <th className="px-3 py-2 text-left">Unique Code</th>
             <th className="col-actions px-3 py-2">Actions</th>
           </tr>
         </thead>
@@ -1174,34 +1187,6 @@ function LayawayTable({
           ) : (
             rows.map((r) => (
               <tr key={r.key} className="hover:bg-accent/40">
-                <td className="truncate px-3 py-2 font-medium" title={r.customerName}>
-                  {r.customerName}
-                </td>
-                <td className="truncate px-3 py-2 font-mono font-semibold">{r.code ?? '—'}</td>
-                <td
-                  className="col-clip truncate px-3 py-2 text-muted-foreground"
-                  title={[r.financer, r.remarks].filter(Boolean).join(' · ') || undefined}
-                >
-                  {[r.financer, r.remarks].filter(Boolean).join(' · ') || '—'}
-                </td>
-                {/* A Completed account is fully paid, so its Total Amount shows
-                    nothing (Owner request). Full money detail stays in View. */}
-                <td className="px-3 py-2 text-right tabular-nums">
-                  {isCompletedStatus(r.status) ? '—' : cash(r.item)}
-                </td>
-                <td className="whitespace-nowrap px-3 py-2 text-center">
-                  {r.datePurchased ?? '—'}
-                </td>
-                <td className="px-3 py-2 text-center">
-                  {(() => {
-                    const o = overdueLabel(r);
-                    return o === 'Yes' ? (
-                      <span className="font-medium text-destructive">Yes</span>
-                    ) : (
-                      <span className="text-muted-foreground">{o}</span>
-                    );
-                  })()}
-                </td>
                 <td
                   className="truncate px-3 py-2 font-mono text-[11px]"
                   title={`Unique Code${r.uniqueCode ? `: ${r.uniqueCode}` : ' — not linked'} · Order/Account No. ${r.accountNo}`}
@@ -1218,9 +1203,39 @@ function LayawayTable({
                     <span className="text-muted-foreground">Not linked</span>
                   )}
                 </td>
+                <td className="truncate px-3 py-2 font-medium" title={r.customerName}>
+                  {r.customerName}
+                </td>
+                <td className="col-center truncate px-3 py-2 font-mono font-semibold">
+                  {r.code ?? '—'}
+                </td>
+                <td
+                  className="col-clip truncate px-3 py-2 text-muted-foreground"
+                  title={[r.financer, r.remarks].filter(Boolean).join(' · ') || undefined}
+                >
+                  {[r.financer, r.remarks].filter(Boolean).join(' · ') || '—'}
+                </td>
+                {/* A Completed account is fully paid, so its Total Amount shows
+                    nothing (Owner request). Full money detail stays in View. */}
+                <td className="col-num px-3 py-2">
+                  {isCompletedStatus(r.status) ? '—' : cash(r.item)}
+                </td>
+                <td className="col-center whitespace-nowrap px-3 py-2">
+                  {r.datePurchased ?? '—'}
+                </td>
+                <td className="col-center px-3 py-2">
+                  {(() => {
+                    const o = overdueLabel(r);
+                    return o === 'Yes' ? (
+                      <span className="font-medium text-destructive">Yes</span>
+                    ) : (
+                      <span className="text-muted-foreground">{o}</span>
+                    );
+                  })()}
+                </td>
                 <td className="px-3 py-2 text-right">
                   {r.officialOrderId && r.layawayRow ? (
-                    <div className="flex flex-wrap justify-end gap-1">
+                    <div className="flex flex-wrap justify-end gap-2">
                       <button
                         type="button"
                         onClick={() => onOpenOrder(r.officialOrderId as string)}
@@ -1234,7 +1249,7 @@ function LayawayTable({
                       ) : null}
                     </div>
                   ) : r.ledgerId ? (
-                    <div className="flex flex-nowrap items-center justify-end gap-1">
+                    <div className="flex flex-nowrap items-center justify-end gap-2">
                       {/* Actions are View · Edit · Delete only, on ONE line. "Add
                           Payment" and "Cancel Order" live INSIDE the View modal. They
                           now show for EVERY active account — Owner, Admin, and Staff

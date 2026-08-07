@@ -196,7 +196,7 @@ function OrderRow({
       <Td clip title={order.invoiceNumber || undefined} className="font-mono text-xs">
         {order.invoiceNumber || <span className="text-muted-foreground">—</span>}
       </Td>
-      <Td kind="grow" clip title={order.customerDisplayName} className="font-medium">
+      <Td clip title={order.customerDisplayName} className="font-medium">
         {order.customerDisplayName}
         {order.orderSource === 'walk_in' ? (
           <span className="ml-1.5 rounded-full border border-gold/40 bg-gold/10 px-1.5 py-0.5 text-[10px] font-medium text-gold-strong">
@@ -233,7 +233,7 @@ function OrderRow({
         )}
       </Td>
       <Td kind="actions">
-        <span className="inline-flex items-center gap-1.5">
+        <span className="inline-flex items-center gap-2">
           {/* View (everyone) opens the order detail drawer. Edit + Delete are
               Super-Admin only: Edit corrects the customer name + total; Delete removes
               the order. */}
@@ -608,13 +608,17 @@ export function OrdersView({
           </div>
         )
       ) : (
-        <DataTable minWidth="860px">
+        <DataTable
+          minWidth="960px"
+          spacious
+          columns={['14%', '13%', '12%', '24%', '11%', '10%', '8%', '8%']}
+        >
           <Thead>
             <Tr plain>
               <Th>Status</Th>
               <Th>Waybill Number</Th>
               <Th>Invoice No.</Th>
-              <Th kind="grow">Customer</Th>
+              <Th>Customer</Th>
               <Th kind="num">Amount</Th>
               <Th kind="center">Payment</Th>
               <Th kind="center">Fulfillment</Th>

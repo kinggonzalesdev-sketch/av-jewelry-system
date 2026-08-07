@@ -109,11 +109,20 @@ const COL_CLASS: Record<ColKind, string> = {
  *  readable — below it the wrapper scrolls sideways instead of crushing them. */
 export function DataTable({
   minWidth,
+  columns,
+  spacious = false,
   className,
   testId,
   children,
 }: {
   minWidth?: string | undefined;
+  /** Per-column width HINTS (e.g. ["14%","24%",…]) — a content-aware distribution
+   *  rendered as a <colgroup>. Auto-layout (never table-fixed) still lets a column
+   *  grow past its hint to fit content (e.g. Actions), so nothing is ever clipped. */
+  columns?: string[] | undefined;
+  /** Roomier density from the global spec: 44px header, 48px rows, 16px horizontal /
+   *  10px vertical padding. Opt-in per table so density stays a deliberate choice. */
+  spacious?: boolean | undefined;
   className?: string | undefined;
   testId?: string | undefined;
   children: ReactNode;
@@ -121,10 +130,17 @@ export function DataTable({
   return (
     <div className={cn(tableWrap)}>
       <table
-        className={cn('data-table w-full text-left text-sm', className)}
+        className={cn('data-table w-full text-left text-sm', spacious && 'data-roomy', className)}
         style={minWidth ? { minWidth } : undefined}
         data-testid={testId}
       >
+        {columns ? (
+          <colgroup>
+            {columns.map((w, i) => (
+              <col key={i} style={{ width: w }} />
+            ))}
+          </colgroup>
+        ) : null}
         {children}
       </table>
     </div>
