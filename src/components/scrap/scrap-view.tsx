@@ -73,10 +73,30 @@ export function ScrapView({
           Scrap income card header below. */}
       <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Scrap</h1>
 
-      {/* Income summary per material — actions sit on the right of this card header. */}
+      {/* Income summary — title + date filter on the LEFT of the header, ＋ Add New /
+          Export CSV on the RIGHT; the per-material totals are the card body. */}
       <Card>
-        <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-          <CardTitle className="text-base">Scrap income</CardTitle>
+        <CardHeader className="flex-row flex-wrap items-end justify-between gap-3 space-y-0">
+          <div className="flex flex-wrap items-end gap-3">
+            <CardTitle className="text-base leading-8">Scrap income</CardTitle>
+            <form method="GET" className="flex flex-wrap items-end gap-2">
+              <div>
+                <Label htmlFor="from" className="text-xs">
+                  From
+                </Label>
+                <Input id="from" name="from" type="date" defaultValue={from} className="h-8" />
+              </div>
+              <div>
+                <Label htmlFor="to" className="text-xs">
+                  To
+                </Label>
+                <Input id="to" name="to" type="date" defaultValue={to} className="h-8" />
+              </div>
+              <Button type="submit" size="sm" variant="outline">
+                Apply
+              </Button>
+            </form>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
@@ -99,24 +119,6 @@ export function ScrapView({
           </div>
         </CardHeader>
         <CardContent>
-          <form method="GET" className="mb-3 flex flex-wrap items-end gap-2">
-            <div>
-              <Label htmlFor="from" className="text-xs">
-                From
-              </Label>
-              <Input id="from" name="from" type="date" defaultValue={from} className="h-8" />
-            </div>
-            <div>
-              <Label htmlFor="to" className="text-xs">
-                To
-              </Label>
-              <Input id="to" name="to" type="date" defaultValue={to} className="h-8" />
-            </div>
-            <Button type="submit" size="sm" variant="outline">
-              Apply
-            </Button>
-          </form>
-
           {!income.ok ? (
             <ReadError
               title="Scrap income unavailable"
