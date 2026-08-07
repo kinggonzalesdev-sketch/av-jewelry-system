@@ -658,6 +658,85 @@ export async function setCustomerFacebookUrl(
  * exactly that chat even if the customer profile changes later (spec §6/§7/§8). Passing
  * empty conversation + url clears the order's link (delivery falls back to the customer).
  */
+/**
+ * AUTO-SEND ON LINK: the moment an order gets a confirmed Pancake conversation, deliver
+ * the order's mined capture screenshot to that exact chat — so the buyer receives the
+ * photo automatically even when the capture-time resolve (on the phone) missed. This
+ * is what makes "tap Capture → the pinned commenter gets the screenshot" reliable: it
+ * rides the SAME send path Send Invoice uses, but fires on link instead of a click.
+ *
+ * IDEMPOTENT + SAFE: skips if the capture was already sent (so a re-link / correction
+ * never double-sends), skips in a Test Session, and never throws — linking must succeed
+ * regardless. Marks the capture sent/failed via the same RPC the mobile path uses.
+ */
+async function autoSendCaptureScreenshotOnLink(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  orderId: string,
+  conversationId: string,
+): Promise<void> {
+  try {
+    const conv = conversationId.trim();
+    if (!conv) return;
+
+    // Test Session — record nothing to a real customer.
+    const { data: tm } = await supabase.from('live_test_state').select('active').maybeSingle();
+    if ((tm as { active?: boolean } | null)?.active === true) return;
+
+    // The order's mined capture: idempotency flag + device/capture keys for marking.
+    const { data } = (await supabase
+      .from('capture_records')
+      .select('device_installation_id, capture_id, screenshot_path, message_status, is_test')
+      .eq('official_order_id', orderId)
+      .not('screenshot_path', 'is', null)
+      .order('captured_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()) as {
+      data: {
+        device_installation_id: string | null;
+        capture_id: string | null;
+        screenshot_path: string | null;
+        message_status: string | null;
+        is_test: boolean | null;
+      } | null;
+    };
+    if (!data || !data.screenshot_path) return; // no photo to send
+    if (data.message_status === 'sent' || data.is_test === true) return; // already delivered / test
+
+    const attachmentUrl = await findOrderImageUrl(supabase, orderId).catch(() => null);
+    if (!attachmentUrl) return;
+
+    // Greet by the linked customer's name.
+    const { data: ord } = (await supabase
+      .from('official_orders')
+      .select('customers ( display_name )')
+      .eq('id', orderId)
+      .maybeSingle()) as { data: { customers?: unknown } | null };
+    type C = { display_name?: string | null };
+    const cust = ord?.customers as C | C[] | null | undefined;
+    const name = (Array.isArray(cust) ? cust[0]?.display_name : cust?.display_name)?.trim() || '';
+    const message =
+      `${name ? `Hi ${name}! ` : ''}📸 Ito po ang inyong na-mine na item. ` +
+      `Ihahanda na po namin ang invoice ninyo — maraming salamat! 💛`;
+
+    const res = await sendPancakeConversationMessage({ conversationId: conv, message, attachmentUrl });
+
+    // Mark the capture sent/failed (idempotency) via the same RPC the mobile send uses.
+    if (data.device_installation_id && data.capture_id) {
+      await supabase.rpc('update_capture_dispatch', {
+        p_device: data.device_installation_id,
+        p_capture_id: data.capture_id,
+        p_message_status: res.ok ? 'sent' : 'failed',
+        p_print_status: null,
+        p_pancake_message_id: res.pancakeMessageId,
+        p_screenshot_path: data.screenshot_path,
+        p_pancake_conversation_id: conv,
+      });
+    }
+  } catch {
+    /* best-effort: a failed auto-send must never block linking */
+  }
+}
+
 export async function setOrderFacebookLink(
   orderId: string,
   input: {
@@ -706,6 +785,15 @@ export async function setOrderFacebookLink(
       method: input.method ?? null,
     },
   });
+
+  // Now that the exact conversation is confirmed, auto-deliver the mined screenshot to
+  // it (idempotent — a re-link never resends). This is the reliable path: even if the
+  // phone couldn't resolve the buyer at capture, the photo goes out the moment the
+  // order is linked (auto on open, or manually), with no Send Invoice click needed.
+  if (input.conversationId?.trim()) {
+    await autoSendCaptureScreenshotOnLink(supabase, orderId, input.conversationId.trim());
+  }
+
   return { ok: true };
 }
 
