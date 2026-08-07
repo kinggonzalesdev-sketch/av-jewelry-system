@@ -1053,6 +1053,63 @@ export function buildPancakeSyncMessage(matched: number, linked: number, total: 
   );
 }
 
+/**
+ * Capture-time LIVE lookup — find the Pancake conversation for an OCR'd name among the
+ * MOST RECENT interactions (messages + comments, last ~2 days, page 1 only: a single
+ * bounded API call, so it stays fast and rate-limit-friendly during a live). This is
+ * what lets a live COMMENTER be auto-sent to before they are a saved, pre-linked
+ * customer. SAFE: returns an id ONLY when exactly one distinct conversation carries
+ * that normalized name — a shared/ambiguous name (or a person split across an inbox +
+ * comment thread) returns null, so a screenshot is never sent to the wrong person.
+ * Never throws; missing config/network → null.
+ */
+export async function findRecentPancakeConversationByName(
+  name: string,
+): Promise<{ conversationId: string | null; matchCount: number }> {
+  const norm = normalizeConvName(name);
+  if (norm.length < 2) return { conversationId: null, matchCount: 0 };
+
+  const pageToken = process.env.PANCAKE_PAGE_ACCESS_TOKEN;
+  const token = (pageToken || process.env.PANCAKE_USER_ACCESS_TOKEN || '').trim();
+  const tokenParam =
+    process.env.PANCAKE_SEND_TOKEN_PARAM || (pageToken ? 'page_access_token' : 'access_token');
+  const pageId = (process.env.PANCAKE_PAGE_ID || '').trim();
+  if (!token || !pageId) return { conversationId: null, matchCount: 0 };
+
+  const base = resolvePancakeApiBase();
+  const template = process.env.PANCAKE_CONVERSATIONS_PATH || '/pages/{page_id}/conversations';
+  const path = template.replace('{page_id}', encodeURIComponent(pageId));
+  const now = Math.floor(Date.now() / 1000);
+  const since = now - 2 * 86400; // last 2 days — a live's commenters are all very recent
+  const endpoint =
+    `${base}${path}${path.includes('?') ? '&' : '?'}` +
+    `${tokenParam}=${encodeURIComponent(token)}&since=${since}&until=${now}&page_number=1`;
+
+  let convs: PancakeConversation[];
+  try {
+    const res = await fetch(endpoint, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return { conversationId: null, matchCount: 0 };
+    const body = (await res.json().catch(() => null)) as unknown;
+    if (body && typeof body === 'object' && (body as { success?: boolean }).success === false) {
+      return { conversationId: null, matchCount: 0 };
+    }
+    convs = extractConversations(body).conversations;
+  } catch {
+    return { conversationId: null, matchCount: 0 };
+  }
+
+  // Distinct conversations carrying this exact normalized name; auto-send only when
+  // there is exactly ONE (else it is ambiguous — leave it for the PC).
+  const byId = new Map<string, PancakeConversation>();
+  for (const c of convs) {
+    if (normalizeConvName(c.customerName ?? '') !== norm) continue;
+    if (!byId.has(c.id)) byId.set(c.id, c);
+  }
+  if (byId.size !== 1) return { conversationId: null, matchCount: byId.size };
+  const only = [...byId.values()][0];
+  return { conversationId: only?.id ?? null, matchCount: 1 };
+}
+
 export async function syncPancakeConversationsToCustomers(): Promise<PancakeSyncResult> {
   const conv = await listPancakeConversations();
   if (!conv.ok) {
