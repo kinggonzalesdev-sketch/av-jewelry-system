@@ -31,6 +31,19 @@ export function normalizeName(v: string | null | undefined): string {
     .trim();
 }
 
+/**
+ * "first|last" of a normalized name — a middle-name-tolerant key so "King Franchesco
+ * Gonzales" and "King Gonzales" match. Mirrors app_private.name_key in SQL. Empty for a
+ * blank name. A single-token name keys to "token|token" (so it only matches another
+ * single-token name, never a First-Last one).
+ */
+export function nameKey(v: string | null | undefined): string {
+  const norm = normalizeName(v);
+  if (!norm) return '';
+  const parts = norm.split(' ');
+  return `${parts[0]}|${parts[parts.length - 1]}`;
+}
+
 /** Digits only, for loose phone comparison (ignores +, spaces, dashes). */
 function digitsOf(v: string | null | undefined): string {
   return (v ?? '').replace(/\D/g, '');

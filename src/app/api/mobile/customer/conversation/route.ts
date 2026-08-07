@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { authenticateMobile } from '@/lib/mobile/auth';
-import { normalizeName } from '@/lib/customers/matching';
+import { nameKey, normalizeName } from '@/lib/customers/matching';
 import { findRecentPancakeConversationByName } from '@/lib/integrations/pancake';
 
 export const dynamic = 'force-dynamic';
@@ -43,18 +43,40 @@ export async function GET(request: Request): Promise<Response> {
     display_name: string | null;
     pancake_conversation_id: string | null;
   }>;
-  const matches = rows.filter((c) => normalizeName(c.display_name ?? '') === norm);
-  const withConv = matches.filter((c) => c.pancake_conversation_id);
-  const conversationId = withConv.length === 1 ? (withConv[0]?.pancake_conversation_id ?? null) : null;
 
-  // Tier 1 hit — a uniquely-named, pre-linked customer.
-  if (conversationId) {
-    return NextResponse.json({ ok: true, conversationId, matchCount: matches.length, source: 'customer' });
+  // Tier 1a — EXACT full-name (strongest). A unique linked customer wins.
+  const exact = rows.filter((c) => normalizeName(c.display_name ?? '') === norm);
+  const exactLinked = exact.filter((c) => c.pancake_conversation_id);
+  if (exactLinked.length === 1) {
+    return NextResponse.json({
+      ok: true,
+      conversationId: exactLinked[0]?.pancake_conversation_id ?? null,
+      matchCount: exact.length,
+      source: 'customer',
+    });
+  }
+  // A name shared by 2+ known customers is ambiguous — never guess.
+  if (exact.length > 1) {
+    return NextResponse.json({ ok: true, conversationId: null, matchCount: exact.length });
   }
 
-  // A name shared by 2+ known customers is ambiguous — never guess a live conversation.
-  if (matches.length > 1) {
-    return NextResponse.json({ ok: true, conversationId: null, matchCount: matches.length });
+  // Tier 1b — FIRST+LAST (middle-name tolerant), matching the sync's smart linking, so
+  // "King Gonzales" resolves the customer stored as "KING FRANCHESCO GONZALES". Unique
+  // linked customer only.
+  const key = nameKey(name);
+  const flLinked = rows.filter(
+    (c) => nameKey(c.display_name ?? '') === key && c.pancake_conversation_id,
+  );
+  if (flLinked.length === 1) {
+    return NextResponse.json({
+      ok: true,
+      conversationId: flLinked[0]?.pancake_conversation_id ?? null,
+      matchCount: 1,
+      source: 'customer_first_last',
+    });
+  }
+  if (flLinked.length > 1) {
+    return NextResponse.json({ ok: true, conversationId: null, matchCount: flLinked.length });
   }
 
   // Tier 2 — LIVE lookup: the person may have just commented and not be a saved
@@ -63,7 +85,7 @@ export async function GET(request: Request): Promise<Response> {
   return NextResponse.json({
     ok: true,
     conversationId: live.conversationId,
-    matchCount: matches.length || live.matchCount,
+    matchCount: exact.length || live.matchCount,
     source: live.conversationId ? 'pancake_live' : 'none',
   });
 }
