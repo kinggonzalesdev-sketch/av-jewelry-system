@@ -69,36 +69,34 @@ export function ScrapView({
 
   return (
     <div className="space-y-4">
-      {/* Header: title "Scrap" with a small ＋ Add New beside it on the left; Export
-          CSV on the right. */}
-      <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Scrap</h1>
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => setShowRecord(true)}
-            data-testid="scrap-record-open"
-          >
-            ＋ Add New
-          </Button>
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={exporting || sales.length === 0}
-          onClick={exportSales}
-          data-testid="scrap-export"
-        >
-          {exporting ? 'Preparing…' : '⭳ Export CSV'}
-        </Button>
-      </div>
+      {/* Page title. The ＋ Add New / Export CSV actions live on the right of the
+          Scrap income card header below. */}
+      <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Scrap</h1>
 
-      {/* Income summary per material */}
+      {/* Income summary per material — actions sit on the right of this card header. */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
           <CardTitle className="text-base">Scrap income</CardTitle>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setShowRecord(true)}
+              data-testid="scrap-record-open"
+            >
+              ＋ Add New
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={exporting || sales.length === 0}
+              onClick={exportSales}
+              data-testid="scrap-export"
+            >
+              {exporting ? 'Preparing…' : '⭳ Export CSV'}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <form method="GET" className="mb-3 flex flex-wrap items-end gap-2">
