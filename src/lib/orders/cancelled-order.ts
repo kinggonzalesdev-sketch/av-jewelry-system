@@ -59,3 +59,55 @@ export async function deleteCancelledOrder(
   });
   return { ok: true, returnedItems, paymentsRemoved };
 }
+
+/**
+ * SUPER ADMIN (Owner) deletion of ANY order (Owner request: Delete on every row).
+ * Same cleanup + item return as the cancelled variant, but the DB gates on Owner ONLY
+ * (no status restriction). Destructive: removes the order + all its records, including
+ * payment history — use for corrections/cleanup only.
+ */
+export async function deleteOrder(
+  officialOrderId: string,
+): Promise<DeleteCancelledOrderResult> {
+  try {
+    await requireOwner();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) {
+      await recordAuditEvent({
+        action: 'order.delete',
+        entityType: 'official_order',
+        entityId: officialOrderId,
+        outcome: 'denied',
+        reason: cause.message,
+      });
+      return { ok: false, error: cause.message };
+    }
+    throw cause;
+  }
+
+  const supabase = await createClient();
+  const res = (await supabase.rpc('delete_order', {
+    p_order_id: officialOrderId,
+  })) as { data: Record<string, unknown> | null; error: { message: string } | null };
+
+  if (res.error) {
+    await recordAuditEvent({
+      action: 'order.delete',
+      entityType: 'official_order',
+      entityId: officialOrderId,
+      outcome: 'failed',
+      reason: res.error.message,
+    });
+    return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+
+  const returnedItems = Number(res.data?.returned_items ?? 0);
+  const paymentsRemoved = Number(res.data?.payments_removed ?? 0);
+  await recordAuditEvent({
+    action: 'order.delete',
+    entityType: 'official_order',
+    entityId: officialOrderId,
+    context: { owner_approved: true, returned_items: returnedItems, payments_removed: paymentsRemoved },
+  });
+  return { ok: true, returnedItems, paymentsRemoved };
+}

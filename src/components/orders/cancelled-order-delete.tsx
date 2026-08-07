@@ -3,27 +3,29 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { deleteCancelledOrderAction } from '@/lib/orders/actions';
+import { deleteOrderAction } from '@/lib/orders/actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Modal } from '@/components/ui/modal';
 
 /**
- * SUPER ADMIN (Owner) — "Delete" a CANCELLED order from the Orders list Actions column.
- * Rendered only for a cancelled order to an Owner; the DB refuses anything that is not
- * cancelled. Removes the order + its records and returns any still-reserved item(s) to
- * Active Inventory. Requires typing "DELETE". stopPropagation keeps the row's own
- * click (which opens the order drawer) from firing when this control is used.
+ * SUPER ADMIN (Owner) — "Delete" an order from the Orders list Actions column. Shown on
+ * every row to an Owner; the DB gates on Owner. Removes the order + all its records
+ * (including any payments) and returns any still-reserved item(s) to Active Inventory.
+ * Requires typing "DELETE". stopPropagation keeps the row's own click (which opens the
+ * order drawer) from firing when this control is used.
  */
-export function CancelledOrderDelete({
+export function OrderDelete({
   orderId,
   orderLabel,
   customerName,
+  orderStatus,
 }: {
   orderId: string;
   orderLabel: string;
   customerName: string;
+  orderStatus?: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -35,7 +37,7 @@ export function CancelledOrderDelete({
     if (pending || confirm !== 'DELETE') return;
     setPending(true);
     setError(null);
-    const res = await deleteCancelledOrderAction(orderId, confirm);
+    const res = await deleteOrderAction(orderId, confirm);
     if (!res.ok) {
       setPending(false);
       setError(res.error);
@@ -66,8 +68,8 @@ export function CancelledOrderDelete({
       <Modal
         open={open}
         onClose={() => setOpen(false)}
-        title="Delete Cancelled Order"
-        description="Super Admin only. Removes this cancelled order and returns any reserved item(s) to Active Inventory."
+        title="Delete Order"
+        description="Super Admin only. Removes this order and returns any reserved item(s) to Active Inventory."
         size="sm"
         critical
         footer={
@@ -89,10 +91,17 @@ export function CancelledOrderDelete({
       >
         <div className="space-y-3 text-sm">
           <p>
-            Delete cancelled order{' '}
-            <span className="font-mono font-semibold">{orderLabel}</span> for{' '}
-            <span className="font-medium">{customerName}</span>? Its records are removed and any
-            reserved item(s) return to <strong>Active Inventory</strong>. This cannot be undone.
+            Delete order <span className="font-mono font-semibold">{orderLabel}</span> for{' '}
+            <span className="font-medium">{customerName}</span>
+            {orderStatus ? (
+              <>
+                {' '}
+                (status: <span className="font-medium">{orderStatus}</span>)
+              </>
+            ) : null}
+            ? This removes the order and{' '}
+            <strong>all its records (including any payments)</strong> and returns any reserved
+            item(s) to <strong>Active Inventory</strong>. This cannot be undone.
           </p>
           <div>
             <Label htmlFor="delete-cancelled-confirm" className="text-xs">

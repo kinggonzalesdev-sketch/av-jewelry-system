@@ -41,6 +41,7 @@ import {
 } from '@/lib/orders/test-order';
 import {
   deleteCancelledOrder,
+  deleteOrder,
   type DeleteCancelledOrderResult,
 } from '@/lib/orders/cancelled-order';
 import {
@@ -289,6 +290,27 @@ export async function deleteCancelledOrderAction(
     return { ok: false, error: 'Type DELETE to confirm.' };
   }
   const result = await deleteCancelledOrder(orderId);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/inventory');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+/**
+ * SUPER ADMIN (Owner) — delete ANY order (Delete on every row) and return its item(s)
+ * to Active Inventory. Requires typing "DELETE". Owner-only in the DB. Destructive:
+ * removes the order + all its records including payment history.
+ */
+export async function deleteOrderAction(
+  orderId: string,
+  confirm: string,
+): Promise<DeleteCancelledOrderResult> {
+  if (confirm !== 'DELETE') {
+    return { ok: false, error: 'Type DELETE to confirm.' };
+  }
+  const result = await deleteOrder(orderId);
   if (result.ok) {
     revalidatePath('/orders');
     revalidatePath('/orders/inventory');
