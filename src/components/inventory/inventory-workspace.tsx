@@ -447,8 +447,7 @@ export function InventoryWorkspace({
             <table className="data-table w-full min-w-[720px] text-left text-xs">
               <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                 <tr>
-                  <th className="px-3 py-2.5 text-left">Unique Code</th>
-                  <th className="col-grow px-3 py-2.5 text-left">Facebook Name</th>
+                  <th className="col-grow px-3 py-2.5 text-left">Unique Code</th>
                   <th className="px-3 py-2.5 text-left">Status</th>
                   <th className="col-num px-3 py-2.5">Grams</th>
                   <th className="col-center px-3 py-2.5">Date Encoded</th>
@@ -459,7 +458,7 @@ export function InventoryWorkspace({
               <tbody className="divide-y">
                 {filteredInventory.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-10 text-center text-muted-foreground">
+                    <td colSpan={6} className="px-3 py-10 text-center text-muted-foreground">
                       {inventory.rows.length === 0
                         ? 'No inventory items.'
                         : 'No items match these filters.'}
@@ -468,11 +467,8 @@ export function InventoryWorkspace({
                 ) : (
                   filteredInventory.map((i) => (
                   <tr key={i.inventoryItemId}>
-                    <td className="truncate px-3 py-2.5 font-mono" title={i.itemCode}>
+                    <td className="col-grow truncate px-3 py-2.5 font-mono" title={i.itemCode}>
                       {i.itemCode}
-                    </td>
-                    <td className="truncate px-3 py-2.5" title={i.facebookName ?? undefined}>
-                      {i.facebookName ?? <span className="text-muted-foreground">—</span>}
                     </td>
                     <td className="px-3 py-2.5 text-left capitalize">
                       {i.availabilityStatus.replace(/_/g, ' ')}

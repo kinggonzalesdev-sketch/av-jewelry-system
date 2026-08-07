@@ -153,7 +153,7 @@ export function ScrapRowActions({
   };
 
   return (
-    <div className="flex flex-wrap items-center justify-center gap-2">
+    <div className="flex flex-nowrap items-center justify-center gap-2">
       <button
         type="button"
         onClick={() => setViewing(true)}
