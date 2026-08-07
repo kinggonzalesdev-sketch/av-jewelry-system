@@ -3,7 +3,6 @@ import { notFound } from 'next/navigation';
 import { canOpenPage, getCurrentStaffProfile } from '@/lib/authz/guard';
 
 import { ScrapView } from '@/components/scrap/scrap-view';
-import { PageHeader } from '@/components/ui/page-primitives';
 import { getScrapIncome, listScrapSales } from '@/lib/scrap/service';
 
 export const metadata: Metadata = {
@@ -45,7 +44,6 @@ export default async function ScrapPage({
 
   return (
     <div>
-      <PageHeader title="Scrap Income" />
       <ScrapView
         income={income}
         sales={sales}

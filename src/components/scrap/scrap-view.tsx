@@ -69,19 +69,29 @@ export function ScrapView({
 
   return (
     <div className="space-y-4">
-      {/* Top actions, side by side at the right: Export CSV then Record Scrap Sale. */}
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      {/* Header: title "Scrap" with a small ＋ Add New beside it on the left; Export
+          CSV on the right. */}
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Scrap</h1>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => setShowRecord(true)}
+            data-testid="scrap-record-open"
+          >
+            ＋ Add New
+          </Button>
+        </div>
         <Button
           type="button"
+          size="sm"
           variant="outline"
           disabled={exporting || sales.length === 0}
           onClick={exportSales}
           data-testid="scrap-export"
         >
           {exporting ? 'Preparing…' : '⭳ Export CSV'}
-        </Button>
-        <Button type="button" onClick={() => setShowRecord(true)} data-testid="scrap-record-open">
-          ＋ Record Scrap Sale
         </Button>
       </div>
 
