@@ -29,7 +29,10 @@ export async function GET(request: Request): Promise<Response> {
     return NextResponse.json({ ok: true, conversationId: null, matchCount: 0 });
   }
 
-  const res = await findRecentPancakeConversationByName(name, { sinceDays: 60, maxPages: 3 });
+  // Search deep but with early-stop: up to ~4 months, up to 12 pages — the lookup stops
+  // the moment the name is found, so a recent person is instant and an older one is
+  // still reachable (instead of being missed after only a few pages).
+  const res = await findRecentPancakeConversationByName(name, { sinceDays: 120, maxPages: 12 });
   return NextResponse.json({
     ok: true,
     conversationId: res.conversationId,

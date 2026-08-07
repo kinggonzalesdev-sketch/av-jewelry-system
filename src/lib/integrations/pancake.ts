@@ -1094,7 +1094,9 @@ export async function findRecentPancakeConversationByName(
   // takes). Live capture uses the tight default (2 days, 1 page); the order panel
   // passes a wider-but-still-bounded window.
   const sinceDays = Math.max(1, opts?.sinceDays ?? 2);
-  const maxPages = Math.max(1, Math.min(opts?.maxPages ?? 1, 5));
+  // Up to 15 pages — but the loop stops early the moment the name is found, so a deep
+  // cap only costs pages when the person is genuinely far back.
+  const maxPages = Math.max(1, Math.min(opts?.maxPages ?? 1, 15));
   const since = now - sinceDays * 86400;
 
   const byId = new Map<string, PancakeConversation>();
@@ -1116,6 +1118,18 @@ export async function findRecentPancakeConversationByName(
     }
     if (convs.length === 0) break;
     for (const c of convs) if (!byId.has(c.id)) byId.set(c.id, c);
+    // Early stop: once this name appears, stop paging — no need to fetch deeper. This
+    // lets us search MANY pages cheaply (fast when the person is recent; only pages
+    // deep when they're not), instead of always giving up after a few pages.
+    let hit = false;
+    for (const c of byId.values()) {
+      const cn = c.customerName ?? '';
+      if (normalizeConvName(cn) === norm || (key !== '' && convNameKey(cn) === key)) {
+        hit = true;
+        break;
+      }
+    }
+    if (hit) break;
     if (page < maxPages) await new Promise((r) => setTimeout(r, 300)); // gentle pacing
   }
 
