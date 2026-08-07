@@ -312,6 +312,8 @@ export async function updateCaptureDispatch(
     printStatus?: string | null;
     pancakeMessageId?: string | null;
     screenshotPath?: string | null;
+    /** Persist the resolved conversation on the capture so the order inherits it. */
+    pancakeConversationId?: string | null;
   },
 ): Promise<DispatchResult> {
   const { data, error } = (await supabase.rpc('update_capture_dispatch', {
@@ -321,6 +323,7 @@ export async function updateCaptureDispatch(
     p_print_status: input.printStatus ?? null,
     p_pancake_message_id: input.pancakeMessageId ?? null,
     p_screenshot_path: input.screenshotPath ?? null,
+    p_pancake_conversation_id: input.pancakeConversationId ?? null,
   })) as { data: Record<string, unknown> | null; error: { message: string } | null };
 
   if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
@@ -399,7 +402,9 @@ export async function sendCaptureMessage(
     attachmentUrl,
   });
 
-  // Record the outcome so the app can show status / offer a safe retry.
+  // Record the outcome so the app can show status / offer a safe retry. Persist the
+  // conversation even on a FAILED send: it was a confident, explicit target, so the
+  // order still inherits the link and a Retry Send reuses the same chat.
   await supabase.rpc('update_capture_dispatch', {
     p_device: device,
     p_capture_id: capture,
@@ -407,6 +412,7 @@ export async function sendCaptureMessage(
     p_print_status: null,
     p_pancake_message_id: result.pancakeMessageId,
     p_screenshot_path: path,
+    p_pancake_conversation_id: input.conversationId.trim(),
   });
 
   if (!result.ok) return { ok: false, code: result.code, error: result.message };
