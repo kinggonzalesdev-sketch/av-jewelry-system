@@ -5,7 +5,12 @@ import { revalidatePath } from 'next/cache';
 import {
   deleteScrapSale,
   recordScrapSale,
+  recordScrapSales,
+  updateScrapSale,
   type ScrapDeleteResult,
+  type ScrapEditInput,
+  type ScrapItemInput,
+  type RecordScrapResult,
 } from '@/lib/scrap/service';
 import type { ScrapActionState } from '@/lib/scrap/action-state';
 
@@ -34,6 +39,32 @@ export async function recordScrapAction(
 
   revalidatePath('/admin/scrap');
   return { error: null, success: 'Scrap sale recorded.' };
+}
+
+/** Record a MULTI-ITEM scrap entry (Customer Name + one or more pieces). Called with a
+ *  structured payload from the client form, not FormData. */
+export async function recordScrapSalesAction(input: {
+  buyer: string | null;
+  soldOn: string | null;
+  note: string | null;
+  items: ScrapItemInput[];
+}): Promise<RecordScrapResult> {
+  const result = await recordScrapSales(input);
+  if (result.ok) revalidatePath('/admin/scrap');
+  return result;
+}
+
+/** Edit ONE scrap sale (Owner / Selected Admin — re-checked in the DB). */
+export async function updateScrapSaleAction(
+  id: string,
+  input: ScrapEditInput,
+): Promise<RecordScrapResult> {
+  const result = await updateScrapSale(id, input);
+  if (result.ok) {
+    revalidatePath('/admin/scrap');
+    revalidatePath('/dashboard');
+  }
+  return result;
 }
 
 /** Permanently delete ONE scrap sale (Owner / Selected Admin). Revalidates so the
