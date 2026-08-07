@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { requirePermission } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 import { listPendingCaptures } from '@/lib/capture/pending';
+import { autoSendCaptureForOrder } from '@/lib/orders/for-invoice';
 import type { PendingCaptureRow } from '@/lib/capture/pending-types';
 
 /** Load the floating captures waiting to be turned into orders (realtime-refreshed). */
@@ -26,6 +27,11 @@ export async function linkCaptureToOrderAction(
     p_order_id: orderId,
   });
   if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  // Deliver the mined screenshot to the buyer NOW — if the order (via inheritance) or
+  // the customer already has a Pancake conversation, it sends immediately, so no Send
+  // Invoice click is needed. Idempotent: a capture already sent (phone / prior link)
+  // is skipped. Best-effort so linking always succeeds.
+  await autoSendCaptureForOrder(orderId).catch(() => undefined);
   revalidatePath('/orders');
   return { ok: true };
 }

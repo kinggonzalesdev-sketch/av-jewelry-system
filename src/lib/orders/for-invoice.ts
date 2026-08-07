@@ -737,6 +737,38 @@ async function autoSendCaptureScreenshotOnLink(
   }
 }
 
+/**
+ * Public trigger: resolve the order's conversation (its OWN confirmed one, else the
+ * linked customer's) and auto-send the mined screenshot to it — idempotent. Called the
+ * moment a capture becomes an order ("Use"), which covers the case the on-link hook
+ * misses: a customer who is ALREADY linked, so the order never gets separately
+ * FB-linked and setOrderFacebookLink never fires. Combined with the on-link hook, the
+ * screenshot reaches the buyer automatically in every case — no Send Invoice click.
+ */
+export async function autoSendCaptureForOrder(orderId: string): Promise<void> {
+  if (!orderId) return;
+  try {
+    const supabase = await createClient();
+    const { data } = (await supabase
+      .from('official_orders')
+      .select('fb_pancake_conversation_id, customers ( pancake_conversation_id )')
+      .eq('id', orderId)
+      .maybeSingle()) as {
+      data: { fb_pancake_conversation_id?: string | null; customers?: unknown } | null;
+    };
+    type Cust = { pancake_conversation_id?: string | null };
+    const cust = data?.customers as Cust | Cust[] | null | undefined;
+    const one = Array.isArray(cust) ? cust[0] : cust;
+    const orderConv = data?.fb_pancake_conversation_id;
+    const conv =
+      orderConv && orderConv.trim() ? orderConv.trim() : (one?.pancake_conversation_id ?? '').trim();
+    if (!conv) return; // not linked yet — the on-link hook will fire when it is
+    await autoSendCaptureScreenshotOnLink(supabase, orderId, conv);
+  } catch {
+    /* best-effort — never blocks the caller */
+  }
+}
+
 export async function setOrderFacebookLink(
   orderId: string,
   input: {
