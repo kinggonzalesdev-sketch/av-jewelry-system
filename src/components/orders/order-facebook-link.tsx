@@ -36,6 +36,15 @@ function norm(v: string): string {
     .trim();
 }
 
+/** "first|last" of the normalized name — middle-name-tolerant, mirrors
+ *  app_private.name_key so this panel matches the same way the auto-link does. */
+function nameKey(v: string): string {
+  const n = norm(v);
+  if (!n) return '';
+  const parts = n.split(' ');
+  return `${parts[0]}|${parts[parts.length - 1]}`;
+}
+
 export function OrderFacebookLink({
   orderId,
   order,
@@ -84,6 +93,21 @@ export function OrderFacebookLink({
         setConvError('Pancake is unavailable right now. Try again, or paste the id.');
       } else if (body.ok) {
         setConvs(body.conversations);
+        // Auto-match (Owner: "auto get conversation id if the name matches from
+        // Pancake"). If the customer name uniquely first+last-matches one conversation,
+        // fill the id automatically — the operator just Saves. Never overwrites an id
+        // already set/typed, and stays silent when the match is ambiguous.
+        const key = nameKey(customerName ?? '');
+        if (key && !conv.trim()) {
+          const matched = body.conversations.filter((c) => nameKey(c.customerName ?? '') === key);
+          const distinct = Array.from(new Map(matched.map((c) => [c.id, c])).values());
+          if (distinct.length === 1 && distinct[0]) {
+            setConv(distinct[0].id);
+            setNotice(
+              `Auto-matched from Pancake: ${distinct[0].customerName ?? 'conversation'}. Save to confirm.`,
+            );
+          }
+        }
       } else {
         setConvError(body.message);
       }
@@ -238,6 +262,9 @@ export function OrderFacebookLink({
               onClick={() => {
                 setError(null);
                 setEditing(true);
+                // Auto-search Pancake by the customer name on open, so the id auto-fills
+                // when it uniquely matches (no manual Search click needed).
+                if (!convs && !loadingConvs) void loadConvs();
               }}
               className="rounded-md border border-border px-2 py-1 text-[11px] font-medium hover:bg-accent"
               data-testid="order-fb-edit"

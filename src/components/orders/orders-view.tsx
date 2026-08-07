@@ -119,9 +119,9 @@ const CARD_DEFS: Array<{ key: CardKey; label: string; icon: string; tone: BadgeT
   { key: 'keep', label: 'Keep', icon: '❏', tone: 'neutral' },
   { key: 'cancelled', label: 'Cancelled', icon: '✕', tone: 'danger' },
   { key: 'unverified_pay', label: 'Pending Payment', icon: '⚠', tone: 'warning' },
-  { key: 'completed', label: 'Completed', icon: '✓', tone: 'strong' },
   // Order SOURCE (not a status): filter to walk-in sales.
   { key: 'walk_in', label: 'Walk In', icon: '🚶', tone: 'gold' },
+  { key: 'completed', label: 'Completed', icon: '✓', tone: 'strong' },
 ];
 
 /** Order statuses that count as GENUINELY completed — the final item handoff is
