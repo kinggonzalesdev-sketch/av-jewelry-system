@@ -580,6 +580,10 @@ export type PancakeConversation = {
   updatedAt: string | null;
   /** Best-effort avatar URL for the person, when the API includes one. */
   avatar: string | null;
+  /** True when the latest activity is a post COMMENT rather than an inbox message.
+   *  Still per-person and messageable, but an inbox thread is preferred over a comment
+   *  when the same person has both (so a stored conversation id stays messageable). */
+  isComment?: boolean;
 };
 
 export type PancakeConversationsResult = {
@@ -620,11 +624,15 @@ function extractConversations(body: unknown): {
     const c = raw as Record<string, unknown>;
     const id = asConvText(c.id) ?? asConvText(c.conversation_id);
     if (!id) continue;
-    // Only private inbox chats — Pancake's conversations feed also includes public
-    // post COMMENTs and RATINGs, which are not people we message an invoice to. Skip
-    // those; keep INBOX and anything whose type we don't recognise (never lose data).
+    // Post COMMENTs are INCLUDED now (Owner request 2026-08-07): a pages.fm conversation
+    // is per-person (id {page_id}_{psid}) and messageable regardless of whether the
+    // latest activity was a comment or an inbox message, so a commenter can be linked to
+    // their customer just like a messager — this is what lifts coverage past the handful
+    // who happened to DM. Flag comments so an inbox thread wins over a comment for the
+    // same person (below). RATING/REVIEW/FEED items are not per-person chats — skip them.
     const convType = (asConvText(c.type) ?? asConvText(c.conversation_type) ?? '').toUpperCase();
-    if (/COMMENT|RATING|REVIEW|FEED/.test(convType)) {
+    const isComment = /COMMENT/.test(convType);
+    if (/RATING|REVIEW|FEED/.test(convType)) {
       skippedComments += 1;
       continue;
     }
@@ -658,7 +666,7 @@ function extractConversations(body: unknown): {
       asConvText(recentSender?.avatar) ??
       asConvText(c.avatar) ??
       asConvText(c.avatar_url);
-    out.push({ id, customerName, snippet, updatedAt, avatar });
+    out.push({ id, customerName, snippet, updatedAt, avatar, isComment });
   }
   return { conversations: out, rawCount, skippedComments };
 }
@@ -951,8 +959,9 @@ export async function fetchPancakeConversationsCore(): Promise<PancakeConversati
   }
 
   // De-duped by conversation id above; now collapse to ONE per customer (same
-  // normalized name → the newest thread wins) so a person who appears in multiple
-  // threads counts once (Owner request). Un-named threads are kept individually.
+  // normalized name counts once — Owner request). Preference within a name: a
+  // messageable INBOX thread beats a post COMMENT; within the same kind the newest
+  // thread wins. Un-named threads are kept individually.
   const byName = new Map<string, PancakeConversation>();
   const unnamed: PancakeConversation[] = [];
   for (const c of byId.values()) {
@@ -962,13 +971,24 @@ export async function fetchPancakeConversationsCore(): Promise<PancakeConversati
       continue;
     }
     const prev = byName.get(key);
-    if (!prev || (c.updatedAt ?? '') > (prev.updatedAt ?? '')) byName.set(key, c);
+    if (!prev) {
+      byName.set(key, c);
+      continue;
+    }
+    const prevComment = prev.isComment === true;
+    const curComment = c.isComment === true;
+    if (prevComment && !curComment) {
+      byName.set(key, c); // an inbox thread replaces a comment
+    } else if (prevComment === curComment && (c.updatedAt ?? '') > (prev.updatedAt ?? '')) {
+      byName.set(key, c); // same kind → newest wins
+    }
+    // else: keep prev (it is inbox and the new one is a comment)
   }
   const conversations = [...byName.values(), ...unnamed];
   // Honest breakdown so the count is explainable (comments filtered, rate-limit cut-off).
   const breakdown =
-    `${conversations.length} inbox` +
-    (totalSkippedComments > 0 ? ` · ${totalSkippedComments} comments/ratings skipped` : '') +
+    `${conversations.length} people (messages + comments)` +
+    (totalSkippedComments > 0 ? ` · ${totalSkippedComments} ratings/reviews skipped` : '') +
     ` · ${totalRaw} raw over ~${months} month(s)` +
     (rateLimited ? ' · rate-limited (partial)' : '');
   if (conversations.length === 0) {
