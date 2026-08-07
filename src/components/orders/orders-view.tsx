@@ -233,8 +233,32 @@ function OrderRow({
           <span className="text-xs text-muted-foreground">—</span>
         )}
       </td>
-      <td className="whitespace-nowrap px-3 py-2.5 text-right text-xs font-medium">
-        <span className="inline-flex items-center gap-2">
+      <td className="whitespace-nowrap px-3 py-2.5 text-right">
+        <span className="inline-flex items-center gap-1.5">
+          {/* View + Edit both open the order detail drawer — the single place an order
+              is viewed AND edited (payments, FB link, fulfillment, cancel). */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpen(order);
+            }}
+            className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-gold-strong hover:bg-accent"
+            data-testid="order-view"
+          >
+            View
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpen(order);
+            }}
+            className="rounded-md border border-border px-2 py-1 text-[11px] font-medium hover:bg-accent"
+            data-testid="order-edit"
+          >
+            Edit
+          </button>
           {canDeleteOrders ? (
             <OrderDelete
               orderId={order.officialOrderId}
@@ -243,7 +267,6 @@ function OrderRow({
               orderStatus={humanize(order.status)}
             />
           ) : null}
-          <span className="text-gold-strong">View ›</span>
         </span>
       </td>
     </tr>
