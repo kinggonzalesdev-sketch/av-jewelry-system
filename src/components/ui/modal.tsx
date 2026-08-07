@@ -90,6 +90,11 @@ export function Modal({
       className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4"
       role="dialog"
       aria-modal="true"
+      // A portaled dialog renders in <body>, but React events bubble through the
+      // COMPONENT tree — so a click inside would otherwise reach whatever rendered the
+      // Modal (e.g. a clickable table ROW, opening it behind the dialog). Contain the
+      // click here. Not keydown: Escape-to-close relies on the document listener.
+      onClick={(e) => e.stopPropagation()}
       {...(title
         ? { 'aria-labelledby': titleId }
         : ariaLabel
