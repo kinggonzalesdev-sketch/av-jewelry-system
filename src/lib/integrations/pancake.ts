@@ -1063,11 +1063,21 @@ export function buildPancakeSyncMessage(matched: number, linked: number, total: 
  * comment thread) returns null, so a screenshot is never sent to the wrong person.
  * Never throws; missing config/network → null.
  */
+/** "first|last" of a conversation-normalized name (middle-name tolerant). */
+function convNameKey(v: string): string {
+  const n = normalizeConvName(v);
+  if (!n) return '';
+  const parts = n.split(' ');
+  return `${parts[0]}|${parts[parts.length - 1]}`;
+}
+
 export async function findRecentPancakeConversationByName(
   name: string,
+  opts?: { sinceDays?: number; maxPages?: number },
 ): Promise<{ conversationId: string | null; matchCount: number }> {
   const norm = normalizeConvName(name);
   if (norm.length < 2) return { conversationId: null, matchCount: 0 };
+  const key = convNameKey(name);
 
   const pageToken = process.env.PANCAKE_PAGE_ACCESS_TOKEN;
   const token = (pageToken || process.env.PANCAKE_USER_ACCESS_TOKEN || '').trim();
@@ -1080,34 +1090,54 @@ export async function findRecentPancakeConversationByName(
   const template = process.env.PANCAKE_CONVERSATIONS_PATH || '/pages/{page_id}/conversations';
   const path = template.replace('{page_id}', encodeURIComponent(pageId));
   const now = Math.floor(Date.now() / 1000);
-  const since = now - 2 * 86400; // last 2 days — a live's commenters are all very recent
-  const endpoint =
-    `${base}${path}${path.includes('?') ? '&' : '?'}` +
-    `${tokenParam}=${encodeURIComponent(token)}&since=${since}&until=${now}&page_number=1`;
+  // BOUNDED window so this stays fast (seconds, not the minutes the full 6-month load
+  // takes). Live capture uses the tight default (2 days, 1 page); the order panel
+  // passes a wider-but-still-bounded window.
+  const sinceDays = Math.max(1, opts?.sinceDays ?? 2);
+  const maxPages = Math.max(1, Math.min(opts?.maxPages ?? 1, 5));
+  const since = now - sinceDays * 86400;
 
-  let convs: PancakeConversation[];
-  try {
-    const res = await fetch(endpoint, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return { conversationId: null, matchCount: 0 };
-    const body = (await res.json().catch(() => null)) as unknown;
-    if (body && typeof body === 'object' && (body as { success?: boolean }).success === false) {
-      return { conversationId: null, matchCount: 0 };
-    }
-    convs = extractConversations(body).conversations;
-  } catch {
-    return { conversationId: null, matchCount: 0 };
-  }
-
-  // Distinct conversations carrying this exact normalized name; auto-send only when
-  // there is exactly ONE (else it is ambiguous — leave it for the PC).
   const byId = new Map<string, PancakeConversation>();
-  for (const c of convs) {
-    if (normalizeConvName(c.customerName ?? '') !== norm) continue;
-    if (!byId.has(c.id)) byId.set(c.id, c);
+  for (let page = 1; page <= maxPages; page += 1) {
+    const endpoint =
+      `${base}${path}${path.includes('?') ? '&' : '?'}` +
+      `${tokenParam}=${encodeURIComponent(token)}&since=${since}&until=${now}&page_number=${page}`;
+    let convs: PancakeConversation[];
+    try {
+      const res = await fetch(endpoint, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+      if (!res.ok) break;
+      const body = (await res.json().catch(() => null)) as unknown;
+      if (body && typeof body === 'object' && (body as { success?: boolean }).success === false) {
+        break;
+      }
+      convs = extractConversations(body).conversations;
+    } catch {
+      break;
+    }
+    if (convs.length === 0) break;
+    for (const c of convs) if (!byId.has(c.id)) byId.set(c.id, c);
+    if (page < maxPages) await new Promise((r) => setTimeout(r, 300)); // gentle pacing
   }
-  if (byId.size !== 1) return { conversationId: null, matchCount: byId.size };
-  const only = [...byId.values()][0];
-  return { conversationId: only?.id ?? null, matchCount: 1 };
+
+  const all = [...byId.values()];
+  // EXACT full-name first — a single distinct conversation is a confident match.
+  const exact = new Map<string, PancakeConversation>();
+  for (const c of all) {
+    if (normalizeConvName(c.customerName ?? '') === norm) exact.set(c.id, c);
+  }
+  if (exact.size === 1) return { conversationId: [...exact.values()][0]?.id ?? null, matchCount: 1 };
+  if (exact.size > 1) return { conversationId: null, matchCount: exact.size };
+
+  // FIRST+LAST fallback (middle-name tolerant) — still a single distinct conversation.
+  if (key) {
+    const fl = new Map<string, PancakeConversation>();
+    for (const c of all) {
+      if (convNameKey(c.customerName ?? '') === key) fl.set(c.id, c);
+    }
+    if (fl.size === 1) return { conversationId: [...fl.values()][0]?.id ?? null, matchCount: 1 };
+    return { conversationId: null, matchCount: fl.size };
+  }
+  return { conversationId: null, matchCount: 0 };
 }
 
 export async function syncPancakeConversationsToCustomers(): Promise<PancakeSyncResult> {

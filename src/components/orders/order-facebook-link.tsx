@@ -77,6 +77,33 @@ export function OrderFacebookLink({
   const [loadingConvs, setLoadingConvs] = useState(false);
   const [convError, setConvError] = useState<string | null>(null);
   const [convQuery, setConvQuery] = useState(customerName ?? '');
+  const [autoResolving, setAutoResolving] = useState(false);
+
+  // FAST auto-match on open — a BOUNDED recent lookup (seconds), NOT the full 6-month
+  // "Load conversations" walk (which can take minutes). Fills the id when the name
+  // uniquely matches; silent otherwise (the manual Search below still does the
+  // exhaustive lookup for older chats). Never overwrites a set/typed id.
+  const autoResolve = async () => {
+    if (autoResolving || conv.trim() || !(customerName ?? '').trim()) return;
+    setAutoResolving(true);
+    try {
+      const res = await fetch(
+        `/api/integrations/pancake/resolve?name=${encodeURIComponent(customerName ?? '')}`,
+        { headers: { accept: 'application/json' } },
+      );
+      const body = (await res.json().catch(() => null)) as
+        | { ok: boolean; conversationId: string | null }
+        | null;
+      if (body?.ok && body.conversationId) {
+        setConv(body.conversationId);
+        setNotice('Auto-matched from Pancake (recent). Save to confirm — or Search for older chats.');
+      }
+    } catch {
+      /* ignore — the manual Search remains available */
+    } finally {
+      setAutoResolving(false);
+    }
+  };
 
   const loadConvs = async () => {
     if (loadingConvs) return;
@@ -262,9 +289,9 @@ export function OrderFacebookLink({
               onClick={() => {
                 setError(null);
                 setEditing(true);
-                // Auto-search Pancake by the customer name on open, so the id auto-fills
-                // when it uniquely matches (no manual Search click needed).
-                if (!convs && !loadingConvs) void loadConvs();
+                // FAST auto-match on open (bounded recent lookup, seconds) — no more
+                // waiting minutes for the full conversations load.
+                void autoResolve();
               }}
               className="rounded-md border border-border px-2 py-1 text-[11px] font-medium hover:bg-accent"
               data-testid="order-fb-edit"
@@ -382,6 +409,11 @@ export function OrderFacebookLink({
             ) : null}
           </div>
 
+          {autoResolving ? (
+            <p className="text-[10px] text-muted-foreground" data-testid="order-fb-auto-matching">
+              Auto-matching from Pancake…
+            </p>
+          ) : null}
           <label className="block text-[10px] uppercase tracking-wide text-muted-foreground">
             Pancake conversation id (or search above / paste from Load conversations)
           </label>
