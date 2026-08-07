@@ -4,6 +4,9 @@
 -- FIRST+LAST key so those link too. Still UNIQUE-GATED (link only when exactly one
 -- customer matches), exact matches always win (pass 1), and a first+last match never
 -- overwrites an exact one (pass-2 excludes exact-linked customers).
+--
+-- NOTE: avoid min(id) on a uuid column — this Postgres has no min(uuid) aggregate
+-- ("function min(uuid) does not exist"); use `select id ... limit 1` when count = 1.
 
 -- "first|last" of the normalized name — internal only (SECURITY DEFINER RPCs call it).
 create or replace function app_private.name_key(p text)
@@ -46,9 +49,12 @@ begin
     if v_name = '' or v_conv = '' then continue; end if;
     v_norm := app_private.normalize_name(v_name);
     if v_norm = '' then continue; end if;
-    select count(*), min(id) into v_count, v_id
+    select count(*) into v_count
       from public.customers where is_active and app_private.normalize_name(display_name) = v_norm;
     if v_count = 1 then
+      select id into v_id
+        from public.customers where is_active and app_private.normalize_name(display_name) = v_norm
+        limit 1;
       update public.customers set pancake_conversation_id = v_conv where id = v_id;
       v_exact := array_append(v_exact, v_id);
       v_matched := v_matched + 1;
@@ -67,10 +73,14 @@ begin
     if found then continue; end if; -- had an exact candidate: resolved (or ambiguous) in pass 1
     v_key := app_private.name_key(v_name);
     if v_key = '' then continue; end if;
-    select count(*), min(id) into v_count, v_id
+    select count(*) into v_count
       from public.customers
       where is_active and app_private.name_key(display_name) = v_key and not (id = any(v_exact));
     if v_count = 1 then
+      select id into v_id
+        from public.customers
+        where is_active and app_private.name_key(display_name) = v_key and not (id = any(v_exact))
+        limit 1;
       update public.customers set pancake_conversation_id = v_conv where id = v_id;
       v_matched := v_matched + 1;
     end if;
