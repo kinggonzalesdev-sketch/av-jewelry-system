@@ -78,7 +78,6 @@ export function ScrapView({
       <Card>
         <CardHeader className="flex-row flex-wrap items-end justify-between gap-3 space-y-0">
           <div className="flex flex-wrap items-end gap-3">
-            <CardTitle className="text-base leading-8">Scrap income</CardTitle>
             <form method="GET" className="flex flex-wrap items-end gap-2">
               <div>
                 <Label htmlFor="from" className="text-xs">
@@ -154,27 +153,17 @@ export function ScrapView({
           {/* Fixed columns mirroring the entry form. The headers stay visible even
               with no data — an empty state is a single full-width row. */}
           <div className="overflow-x-auto">
-            <table className="data-table w-full min-w-[820px] table-fixed text-left text-sm">
-              <colgroup>
-                <col style={{ width: '13%' }} />
-                <col style={{ width: '9%' }} />
-                <col style={{ width: '9%' }} />
-                <col style={{ width: '14%' }} />
-                <col style={{ width: '15%' }} />
-                <col style={{ width: '11%' }} />
-                <col style={{ width: '13%' }} />
-                <col style={{ width: '16%' }} />
-              </colgroup>
+            <table className="data-table w-full min-w-[720px] text-left text-sm">
               <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2.5 text-left font-medium">Material</th>
-                  <th className="px-3 py-2.5 text-center font-medium">Karat</th>
-                  <th className="px-3 py-2.5 text-center font-medium">Grams</th>
-                  <th className="px-3 py-2.5 pr-6 text-right font-medium">Amount</th>
-                  <th className="px-3 py-2.5 text-left font-medium">Customer Name</th>
-                  <th className="px-3 py-2.5 text-center font-medium">Sold On</th>
-                  <th className="px-3 py-2.5 text-left font-medium">Note</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Actions</th>
+                  <th className="col-center px-3 py-2.5 font-medium">Karat</th>
+                  <th className="col-num px-3 py-2.5 font-medium">Grams</th>
+                  <th className="col-num px-3 py-2.5 pr-6 font-medium">Amount</th>
+                  <th className="col-grow px-3 py-2.5 text-left font-medium">Customer Name</th>
+                  <th className="col-center px-3 py-2.5 font-medium">Sold On</th>
+                  <th className="col-clip px-3 py-2.5 text-left font-medium">Note</th>
+                  <th className="col-actions px-3 py-2.5 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -188,17 +177,15 @@ export function ScrapView({
                   sales.map((s) => (
                     <tr key={s.id} className="border-b last:border-0">
                       <td className="px-3 py-2.5 capitalize">{s.material}</td>
-                      <td className="px-3 py-2.5 text-center">{s.karat ?? '—'}</td>
-                      <td className="px-3 py-2.5 text-center tabular-nums">{s.grams}</td>
-                      <td className="whitespace-nowrap px-3 py-2.5 pr-6 text-right tabular-nums">
-                        {formatPeso(s.amount)}
-                      </td>
-                      <td className="truncate px-3 py-2.5" title={s.buyer ?? undefined}>
+                      <td className="col-center px-3 py-2.5">{s.karat ?? '—'}</td>
+                      <td className="col-num px-3 py-2.5">{s.grams}</td>
+                      <td className="col-num px-3 py-2.5 pr-6">{formatPeso(s.amount)}</td>
+                      <td className="col-grow truncate px-3 py-2.5" title={s.buyer ?? undefined}>
                         {s.buyer ?? '—'}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 text-center">{s.soldOn}</td>
+                      <td className="col-center px-3 py-2.5">{s.soldOn}</td>
                       <td
-                        className="truncate px-3 py-2.5 text-muted-foreground"
+                        className="col-clip truncate px-3 py-2.5 text-muted-foreground"
                         title={s.note ?? undefined}
                       >
                         {s.note ?? '—'}

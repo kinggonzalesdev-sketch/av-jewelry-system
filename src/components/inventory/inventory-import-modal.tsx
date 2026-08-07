@@ -263,7 +263,7 @@ export function InventoryImportButton() {
 
             {/* Preview table */}
             <div className="max-h-[45vh] overflow-auto rounded-lg border border-border">
-              <table className="data-table min-w-[1100px] table-fixed text-left text-[11px]">
+              <table className="data-table min-w-[1100px] text-left text-[11px]">
                 <thead className="sticky top-0 z-10 bg-muted/90 text-[10px] uppercase text-muted-foreground">
                   <tr>
                     {['Sheet', 'Row', 'Original', 'Code', 'Item', 'Type', 'Grams', 'Size',

@@ -612,27 +612,17 @@ export function OrdersView({
       ) : (
         <div className="rounded-xl border border-border bg-card">
           <div className="overflow-x-auto">
-            <table className="data-table w-full min-w-[860px] table-fixed text-left text-sm">
-              <colgroup>
-                <col style={{ width: '12%' }} />
-                <col style={{ width: '13%' }} />
-                <col style={{ width: '13%' }} />
-                <col style={{ width: '17%' }} />
-                <col style={{ width: '11%' }} />
-                <col style={{ width: '11%' }} />
-                <col style={{ width: '13%' }} />
-                <col style={{ width: '10%' }} />
-              </colgroup>
+            <table className="data-table w-full min-w-[860px] text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
                   <th className="px-3 py-2.5 text-left font-medium">Status</th>
                   <th className="px-3 py-2.5 text-left font-medium">Waybill Number</th>
                   <th className="px-3 py-2.5 text-left font-medium">Invoice No.</th>
-                  <th className="px-3 py-2.5 text-left font-medium">Customer</th>
-                  <th className="px-3 py-2.5 pr-6 text-right font-medium">Amount</th>
-                  <th className="px-3 py-2.5 text-center font-medium">Payment</th>
-                  <th className="px-3 py-2.5 text-center font-medium">Fulfillment</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Actions</th>
+                  <th className="col-grow px-3 py-2.5 text-left font-medium">Customer</th>
+                  <th className="col-num px-3 py-2.5 pr-6 font-medium">Amount</th>
+                  <th className="col-center px-3 py-2.5 font-medium">Payment</th>
+                  <th className="col-center px-3 py-2.5 font-medium">Fulfillment</th>
+                  <th className="col-actions px-3 py-2.5 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>

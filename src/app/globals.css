@@ -217,3 +217,34 @@
      table's min-width + overflow-x-auto add horizontal scroll when needed. */
   white-space: nowrap;
 }
+
+/*
+ * REUSABLE column-sizing helpers (content-based — NEVER table-layout: fixed with equal
+ * percentages). Put a class on the <th> (and matching <td> for alignment). Columns then
+ * size to their content; ONE `col-grow` column absorbs the slack so short columns
+ * (id, karat, qty, grams, status, date, amount) stay narrow and a text-heavy column
+ * (customer, description, notes, address) takes the extra width — instead of the table
+ * stretching every column evenly.
+ */
+.data-table .col-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.data-table .col-center {
+  text-align: center;
+}
+.data-table .col-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+/* The single column that should absorb leftover width (name / description / notes). */
+.data-table .col-grow {
+  width: 100%;
+}
+/* A content-heavy cell that must not balloon: caps its width and truncates. Pair with
+   the cell's own `truncate` (title=… for the full value on hover). */
+.data-table .col-clip {
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

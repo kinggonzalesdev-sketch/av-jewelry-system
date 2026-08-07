@@ -444,25 +444,16 @@ export function InventoryWorkspace({
             {/* The table (headers + container) stays fixed even with no rows — the
                 empty message sits inside the body so the layout never collapses. */}
             <div className="overflow-x-auto rounded-xl border border-border bg-card">
-            <table className="data-table w-full min-w-[720px] table-fixed text-left text-xs">
-              <colgroup>
-                <col style={{ width: '16%' }} />
-                <col style={{ width: '20%' }} />
-                <col style={{ width: '12%' }} />
-                <col style={{ width: '8%' }} />
-                <col style={{ width: '14%' }} />
-                <col style={{ width: '20%' }} />
-                <col style={{ width: '10%' }} />
-              </colgroup>
+            <table className="data-table w-full min-w-[720px] text-left text-xs">
               <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2.5 text-left">Unique Code</th>
-                  <th className="px-3 py-2.5 text-left">Facebook Name</th>
+                  <th className="col-grow px-3 py-2.5 text-left">Facebook Name</th>
                   <th className="px-3 py-2.5 text-left">Status</th>
-                  <th className="px-3 py-2.5 text-center">Grams</th>
-                  <th className="px-3 py-2.5 text-center">Date Encoded</th>
+                  <th className="col-num px-3 py-2.5">Grams</th>
+                  <th className="col-center px-3 py-2.5">Date Encoded</th>
                   <th className="px-3 py-2.5 text-left">Notes</th>
-                  <th className="px-3 py-2.5 text-right">Actions</th>
+                  <th className="col-actions px-3 py-2.5">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -486,17 +477,17 @@ export function InventoryWorkspace({
                     <td className="px-3 py-2.5 text-left capitalize">
                       {i.availabilityStatus.replace(/_/g, ' ')}
                     </td>
-                    <td className="px-3 py-2.5 text-center tabular-nums">
+                    <td className="col-num px-3 py-2.5">
                       {i.gramsPerPiece ?? parseInventoryCode(i.itemCode).grams ?? '—'}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-center">
                       {fmtEncoded(i.createdAt)}
                     </td>
-                    <td className="truncate px-3 py-2.5 text-muted-foreground">
+                    <td className="col-clip truncate px-3 py-2.5 text-muted-foreground">
                       {i.inRtsReview ? 'In RTS review' : ''}
                       {i.isForfeited ? ' · forfeited (excluded from auto-return)' : ''}
                     </td>
-                    <td className="px-3 py-2.5 text-right">
+                    <td className="col-actions px-3 py-2.5">
                       <InventoryItemActions row={i} canEdit={canEdit} canDelete={canDelete} />
                     </td>
                   </tr>
@@ -545,36 +536,25 @@ export function InventoryWorkspace({
 
             <div className="overflow-x-auto rounded-xl border border-border bg-card">
               <table
-                className="data-table w-full min-w-[960px] table-fixed text-left text-xs"
+                className="data-table w-full min-w-[960px] text-left text-xs"
                 data-testid="completed-items"
               >
-                {/* Balanced, content-aware widths (sum = 100%). */}
-                <colgroup>
-                  <col style={{ width: '12%' }} />
-                  <col style={{ width: '7%' }} />
-                  <col style={{ width: '5%' }} />
-                  <col style={{ width: '10%' }} />
-                  <col style={{ width: '10%' }} />
-                  <col style={{ width: '9%' }} />
-                  <col style={{ width: '9%' }} />
-                  <col style={{ width: '8%' }} />
-                  <col style={{ width: '9%' }} />
-                  <col style={{ width: '9%' }} />
-                  <col style={{ width: '12%' }} />
-                </colgroup>
+                {/* Content-based sizing: Customer absorbs the slack (col-grow); the many
+                    short columns (Type, Grams, Payment, Stage, dates) stay narrow. No
+                    fixed equal percentages. */}
                 <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2.5 text-left">Inventory Code</th>
-                    <th className="px-3 py-2.5 text-center">Type</th>
-                    <th className="px-3 py-2.5 text-center">Grams</th>
-                    <th className="px-3 py-2.5 text-left">Customer</th>
+                    <th className="col-center px-3 py-2.5">Type</th>
+                    <th className="col-num px-3 py-2.5">Grams</th>
+                    <th className="col-grow px-3 py-2.5 text-left">Customer</th>
                     <th className="px-3 py-2.5 text-left">Order</th>
                     <th className="px-3 py-2.5 text-left">Invoice</th>
-                    <th className="px-3 py-2.5 text-right">Sale Amount</th>
-                    <th className="px-3 py-2.5 text-center">Payment</th>
-                    <th className="px-3 py-2.5 text-center">Current Stage</th>
-                    <th className="px-3 py-2.5 text-center">Completion Date</th>
-                    <th className="px-3 py-2.5 text-center">Actions</th>
+                    <th className="col-num px-3 py-2.5">Sale Amount</th>
+                    <th className="col-center px-3 py-2.5">Payment</th>
+                    <th className="col-center px-3 py-2.5">Current Stage</th>
+                    <th className="col-center px-3 py-2.5">Completion Date</th>
+                    <th className="col-actions px-3 py-2.5">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -597,7 +577,7 @@ export function InventoryWorkspace({
                           <td className="truncate px-3 py-2.5 text-center text-muted-foreground">
                             {parsed.itemType ?? '—'}
                           </td>
-                          <td className="px-3 py-2.5 text-center tabular-nums">
+                          <td className="col-num px-3 py-2.5">
                             {parsed.grams ?? '—'}
                           </td>
                           <td className="truncate px-3 py-2.5" title={c.customerName ?? undefined}>
@@ -633,8 +613,8 @@ export function InventoryWorkspace({
                           <td className="whitespace-nowrap px-3 py-2.5 text-center">
                             {c.completedDate ? c.completedDate.slice(0, 10) : '—'}
                           </td>
-                          <td className="px-3 py-2.5 text-center">
-                            <div className="inline-flex items-center justify-center gap-1">
+                          <td className="col-actions px-3 py-2.5">
+                            <div className="inline-flex items-center justify-end gap-1">
                               <button
                                 type="button"
                                 onClick={() => setCompView(c)}

@@ -1148,30 +1148,20 @@ function LayawayTable({
 
   return (
     <div className="overflow-x-auto rounded-xl border border-border bg-card">
-      <table className="data-table w-full min-w-[900px] table-fixed text-left text-xs" data-testid="layaway-table">
-        {/* Widths match the column ORDER below. Remarks is trimmed (it was 22% and
-            left a big empty gap) and the space is spread across Total Amount, Date
-            Purchased, Unique Code, and Actions so the columns read as one tidy block. */}
-        <colgroup>
-          <col style={{ width: '17%' }} /> {/* Customer Name */}
-          <col style={{ width: '7%' }} /> {/* Code */}
-          <col style={{ width: '13%' }} /> {/* Remarks / Financer */}
-          <col style={{ width: '12%' }} /> {/* Total Amount */}
-          <col style={{ width: '12%' }} /> {/* Date Purchased */}
-          <col style={{ width: '9%' }} /> {/* Overdue */}
-          <col style={{ width: '12%' }} /> {/* Unique Code */}
-          <col style={{ width: '18%' }} /> {/* Actions */}
-        </colgroup>
+      <table className="data-table w-full min-w-[900px] text-left text-xs" data-testid="layaway-table">
+        {/* Content-based sizing: Customer Name absorbs the slack (col-grow); short
+            columns (Code, amount, dates, Overdue) stay narrow; Remarks caps + truncates
+            (col-clip); Actions pinned right. No fixed equal percentages. */}
         <thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
           <tr>
-            <th className="px-3 py-2 text-left">Customer Name</th>
+            <th className="col-grow px-3 py-2 text-left">Customer Name</th>
             <th className="px-3 py-2 text-left">Code</th>
             <th className="px-3 py-2 text-left">Remarks / Financer</th>
-            <th className="px-3 py-2 text-right">Total Amount</th>
-            <th className="px-3 py-2 text-center">Date Purchased</th>
-            <th className="px-3 py-2 text-center">Overdue</th>
+            <th className="col-num px-3 py-2">Total Amount</th>
+            <th className="col-center px-3 py-2">Date Purchased</th>
+            <th className="col-center px-3 py-2">Overdue</th>
             <th className="px-3 py-2 text-left">Unique Code</th>
-            <th className="px-3 py-2 text-right">Actions</th>
+            <th className="col-actions px-3 py-2">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y">
@@ -1189,7 +1179,7 @@ function LayawayTable({
                 </td>
                 <td className="truncate px-3 py-2 font-mono font-semibold">{r.code ?? '—'}</td>
                 <td
-                  className="truncate px-3 py-2 text-muted-foreground"
+                  className="col-clip truncate px-3 py-2 text-muted-foreground"
                   title={[r.financer, r.remarks].filter(Boolean).join(' · ') || undefined}
                 >
                   {[r.financer, r.remarks].filter(Boolean).join(' · ') || '—'}
