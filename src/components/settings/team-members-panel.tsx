@@ -244,7 +244,7 @@ export function TeamMembersPanel({
           >
             <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="px-3 py-2.5 text-left font-medium">Team member</th>
+                <th className="col-grow px-3 py-2.5 text-left font-medium">Team member</th>
                 <th className="px-3 py-2.5 text-left font-medium">Sign-in email</th>
                 <th className="px-3 py-2.5 text-center font-medium">Password</th>
                 <th className="px-3 py-2.5 text-left font-medium">Role &amp; Access</th>

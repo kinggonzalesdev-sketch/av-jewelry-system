@@ -155,7 +155,7 @@ export function ReviewAttendanceView({
           >
             <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="px-3 py-2.5 text-left font-medium">Employee</th>
+                <th className="col-grow px-3 py-2.5 text-left font-medium">Employee</th>
                 <th className="px-3 py-2.5 text-center font-medium">Date</th>
                 <th className="px-3 py-2.5 text-center font-medium">Time in</th>
                 <th className="px-3 py-2.5 text-center font-medium">Time out</th>

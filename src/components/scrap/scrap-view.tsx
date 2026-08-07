@@ -7,6 +7,16 @@ import { ScrapRowActions } from '@/components/scrap/scrap-row-actions';
 import { ScrapEntryModal } from '@/components/scrap/scrap-entry-modal';
 import { downloadCsv } from '@/lib/export/csv';
 import { formatPeso } from '@/lib/payments/format';
+import {
+  DataTable,
+  Thead,
+  Tr,
+  Th,
+  Td,
+  MoneyCell,
+  DateCell,
+  EmptyRow,
+} from '@/components/ui/data-table';
 import { MetricCard, ReadError } from '@/components/ui/page-primitives';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -150,55 +160,45 @@ export function ScrapView({
           <CardTitle className="text-base">Recent scrap sales</CardTitle>
         </CardHeader>
         <CardContent>
-          {/* Fixed columns mirroring the entry form. The headers stay visible even
-              with no data — an empty state is a single full-width row. */}
-          <div className="overflow-x-auto">
-            <table className="data-table w-full min-w-[720px] text-left text-sm">
-              <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2.5 text-left font-medium">Material</th>
-                  <th className="col-center px-3 py-2.5 font-medium">Karat</th>
-                  <th className="col-num px-3 py-2.5 font-medium">Grams</th>
-                  <th className="col-num px-3 py-2.5 pr-6 font-medium">Amount</th>
-                  <th className="col-grow px-3 py-2.5 text-left font-medium">Customer Name</th>
-                  <th className="col-center px-3 py-2.5 font-medium">Sold On</th>
-                  <th className="col-clip px-3 py-2.5 text-left font-medium">Note</th>
-                  <th className="col-actions px-3 py-2.5 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sales.length === 0 ? (
-                  <tr className="border-b last:border-0">
-                    <td colSpan={8} className="px-2.5 py-6 text-center text-muted-foreground">
-                      No scrap sales recorded.
-                    </td>
-                  </tr>
-                ) : (
-                  sales.map((s) => (
-                    <tr key={s.id} className="border-b last:border-0">
-                      <td className="px-3 py-2.5 capitalize">{s.material}</td>
-                      <td className="col-center px-3 py-2.5">{s.karat ?? '—'}</td>
-                      <td className="col-num px-3 py-2.5">{s.grams}</td>
-                      <td className="col-num px-3 py-2.5 pr-6">{formatPeso(s.amount)}</td>
-                      <td className="col-grow truncate px-3 py-2.5" title={s.buyer ?? undefined}>
-                        {s.buyer ?? '—'}
-                      </td>
-                      <td className="col-center px-3 py-2.5">{s.soldOn}</td>
-                      <td
-                        className="col-clip truncate px-3 py-2.5 text-muted-foreground"
-                        title={s.note ?? undefined}
-                      >
-                        {s.note ?? '—'}
-                      </td>
-                      <td className="px-3 py-2.5 text-right">
-                        <ScrapRowActions sale={s} canDelete={canDelete} canEdit={canDelete} />
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          {/* Built from the shared table components (the reference migration). */}
+          <DataTable minWidth="720px">
+            <Thead>
+              <Tr plain>
+                <Th>Material</Th>
+                <Th kind="center">Karat</Th>
+                <Th kind="num">Grams</Th>
+                <Th kind="num">Amount</Th>
+                <Th kind="grow">Customer Name</Th>
+                <Th kind="center">Sold On</Th>
+                <Th>Note</Th>
+                <Th kind="actions">Actions</Th>
+              </Tr>
+            </Thead>
+            <tbody>
+              {sales.length === 0 ? (
+                <EmptyRow colSpan={8}>No scrap sales recorded.</EmptyRow>
+              ) : (
+                sales.map((s) => (
+                  <Tr key={s.id}>
+                    <Td className="capitalize">{s.material}</Td>
+                    <Td kind="center">{s.karat ?? '—'}</Td>
+                    <Td kind="num">{s.grams}</Td>
+                    <MoneyCell amount={s.amount} />
+                    <Td kind="grow" clip title={s.buyer ?? undefined}>
+                      {s.buyer ?? '—'}
+                    </Td>
+                    <DateCell value={s.soldOn} />
+                    <Td clip title={s.note ?? undefined} className="text-muted-foreground">
+                      {s.note ?? '—'}
+                    </Td>
+                    <Td kind="actions">
+                      <ScrapRowActions sale={s} canDelete={canDelete} canEdit={canDelete} />
+                    </Td>
+                  </Tr>
+                ))
+              )}
+            </tbody>
+          </DataTable>
         </CardContent>
       </Card>
     </div>

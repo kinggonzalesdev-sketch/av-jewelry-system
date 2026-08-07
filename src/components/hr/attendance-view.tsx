@@ -144,7 +144,7 @@ export function AttendanceView({
                 >
                   <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
                     <tr>
-                      <th className="whitespace-nowrap px-3 py-2.5 text-left font-medium">Employee</th>
+                      <th className="col-grow whitespace-nowrap px-3 py-2.5 text-left font-medium">Employee</th>
                       <th className="whitespace-nowrap px-3 py-2.5 text-center font-medium">Role</th>
                       <th className="min-w-[7rem] whitespace-nowrap px-3 py-2.5 text-right font-medium">
                         Regular Hours
@@ -265,7 +265,7 @@ export function AttendanceView({
                 <table className="data-table w-full min-w-[620px] text-left text-sm">
                   <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
                     <tr>
-                      <th className="px-3 py-2.5 text-left font-medium">Staff</th>
+                      <th className="col-grow px-3 py-2.5 text-left font-medium">Staff</th>
                       <th className="px-3 py-2.5 text-center font-medium">Date</th>
                       <th className="px-3 py-2.5 text-center font-medium">Time in</th>
                       <th className="px-3 py-2.5 text-center font-medium">Time out</th>

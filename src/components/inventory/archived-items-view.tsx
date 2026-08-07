@@ -123,7 +123,7 @@ export function ArchivedItemsView({
           <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
             <tr>
               <th className="px-3 py-2.5 text-left">Inventory Code</th>
-              <th className="px-3 py-2.5 text-left">Item</th>
+              <th className="col-grow px-3 py-2.5 text-left">Item</th>
               <th className="px-3 py-2.5 text-left">Reason</th>
               <th className="px-3 py-2.5 text-left">Archived By</th>
               <th className="px-3 py-2.5 text-center">Archived</th>

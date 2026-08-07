@@ -155,7 +155,7 @@ export function EmployeeRatesView({
       <table className="data-table w-full min-w-[720px] text-left text-sm" data-testid="employee-rates">
         <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
           <tr>
-            <th className="px-3 py-2.5 text-left font-medium">Employee Name</th>
+            <th className="col-grow px-3 py-2.5 text-left font-medium">Employee Name</th>
             <th className="px-3 py-2.5 text-center font-medium">Role</th>
             <th className="px-3 py-2.5 text-right font-medium">Salary Rate</th>
             <th className="px-3 py-2.5 text-center font-medium">Pay Frequency</th>

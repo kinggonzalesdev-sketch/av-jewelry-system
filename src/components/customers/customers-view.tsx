@@ -63,7 +63,7 @@ function CustomerList({
         <table className="data-table w-full min-w-[640px] text-left text-sm">
           <thead>
             <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
-              <th className="px-3 py-2.5 text-left font-medium">Customer Name</th>
+              <th className="col-grow px-3 py-2.5 text-left font-medium">Customer Name</th>
               <th className="px-3 py-2.5 text-left font-medium">Address</th>
               <th className="px-3 py-2.5 text-left font-medium">Contact</th>
               <th className="px-3 py-2.5 text-center font-medium">Status</th>
