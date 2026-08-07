@@ -40,8 +40,10 @@ import {
   type DeleteTestOrderResult,
 } from '@/lib/orders/test-order';
 import {
+  adminEditOrder,
   deleteCancelledOrder,
   deleteOrder,
+  type AdminEditOrderResult,
   type DeleteCancelledOrderResult,
 } from '@/lib/orders/cancelled-order';
 import {
@@ -311,6 +313,24 @@ export async function deleteOrderAction(
     return { ok: false, error: 'Type DELETE to confirm.' };
   }
   const result = await deleteOrder(orderId);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/inventory');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+/**
+ * SUPER ADMIN (Owner) — correct an order's Customer Name and/or Total Amount. Owner-only
+ * in the DB (admin_edit_order). Money passed as an authoritative string.
+ */
+export async function adminEditOrderAction(
+  orderId: string,
+  customerName: string | null,
+  totalAmount: string | null,
+): Promise<AdminEditOrderResult> {
+  const result = await adminEditOrder(orderId, { customerName, totalAmount });
   if (result.ok) {
     revalidatePath('/orders');
     revalidatePath('/orders/inventory');

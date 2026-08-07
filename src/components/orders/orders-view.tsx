@@ -6,6 +6,7 @@ import { useMemo, useState } from 'react';
 import { OrderDetailsModal } from '@/components/orders/order-details-modal';
 import { SendAllInvoices } from '@/components/orders/send-all-invoices';
 import { OrderDelete } from '@/components/orders/cancelled-order-delete';
+import { OrderEdit } from '@/components/orders/order-edit';
 import { LayawayLedgerViewModal } from '@/components/payments/layaway-ledger-view-modal';
 
 import type { OrderListRow, OrdersResult, PaymentStatus } from '@/lib/orders/service';
@@ -162,11 +163,11 @@ const CARD_ICON_TONE: Record<BadgeTone, string> = {
 function OrderRow({
   order,
   onOpen,
-  canDeleteOrders,
+  canManageOrders,
 }: {
   order: OrderListRow;
   onOpen: (order: OrderListRow) => void;
-  canDeleteOrders: boolean;
+  canManageOrders: boolean;
 }) {
   // The whole row opens the in-page Order Details drawer (no navigation). Keyboard
   // accessible: focusable with Enter/Space. The cells hold only text/badges (no
@@ -235,8 +236,9 @@ function OrderRow({
       </td>
       <td className="whitespace-nowrap px-3 py-2.5 text-right">
         <span className="inline-flex items-center gap-1.5">
-          {/* View + Edit both open the order detail drawer — the single place an order
-              is viewed AND edited (payments, FB link, fulfillment, cancel). */}
+          {/* View (everyone) opens the order detail drawer. Edit + Delete are
+              Super-Admin only: Edit corrects the customer name + total; Delete removes
+              the order. */}
           <button
             type="button"
             onClick={(e) => {
@@ -248,18 +250,14 @@ function OrderRow({
           >
             View
           </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpen(order);
-            }}
-            className="rounded-md border border-border px-2 py-1 text-[11px] font-medium hover:bg-accent"
-            data-testid="order-edit"
-          >
-            Edit
-          </button>
-          {canDeleteOrders ? (
+          {canManageOrders ? (
+            <OrderEdit
+              orderId={order.officialOrderId}
+              currentName={order.customerDisplayName}
+              currentTotal={order.paymentStatus === 'unavailable' ? '' : order.totalAmountPayable}
+            />
+          ) : null}
+          {canManageOrders ? (
             <OrderDelete
               orderId={order.officialOrderId}
               orderLabel={order.invoiceNumber !== '—' ? order.invoiceNumber : order.orderNumber}
@@ -399,7 +397,7 @@ export function OrdersView({
   openForInvoice = false,
   keepLayaways = [],
   newOrderAction,
-  canDeleteOrders = false,
+  canManageOrders = false,
 }: {
   result: OrdersResult;
   /** The + New Order control, rendered in the top action row so Send All Invoices
@@ -411,7 +409,7 @@ export function OrdersView({
   keepLayaways?: KeepLayawayRow[];
   /** Super Admin (Owner): show a Delete button in the Actions column for cancelled
    *  orders. The DB re-checks Owner + cancelled-status, so this only gates the UI. */
-  canDeleteOrders?: boolean;
+  canManageOrders?: boolean;
 }) {
   // Hooks must run unconditionally; the error/empty branches come after. Memoized
   // so the derived useMemo hooks below keep a stable dependency identity.
@@ -643,7 +641,7 @@ export function OrdersView({
                     key={order.officialOrderId}
                     order={order}
                     onOpen={(o) => setSelectedId(o.officialOrderId)}
-                    canDeleteOrders={canDeleteOrders}
+                    canManageOrders={canManageOrders}
                   />
                 ))}
               </tbody>
