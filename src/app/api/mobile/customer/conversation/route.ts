@@ -5,6 +5,9 @@ import { nameKey, normalizeName } from '@/lib/customers/matching';
 import { findRecentPancakeConversationByName } from '@/lib/integrations/pancake';
 
 export const dynamic = 'force-dynamic';
+// The live lookup may page through a busy live's conversation list (with early-stop),
+// so give it room beyond the default serverless budget.
+export const maxDuration = 25;
 
 /**
  * GET /api/mobile/customer/conversation?name=… — resolve the Pancake conversation id
@@ -80,8 +83,11 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   // Tier 2 — LIVE lookup: the person may have just commented and not be a saved
-  // customer yet. Returns an id only for a single unambiguous conversation.
-  const live = await findRecentPancakeConversationByName(name);
+  // customer yet. Returns an id only for a single unambiguous conversation (the id is
+  // per-person, {page_id}_{psid}, so two matches = two different people — never guessed).
+  // Search a WIDE-but-recent window with early-stop so a commenter who is past page 1
+  // during a busy live is still found (this is what makes the one-tap auto-send land).
+  const live = await findRecentPancakeConversationByName(name, { sinceDays: 7, maxPages: 8 });
   return NextResponse.json({
     ok: true,
     conversationId: live.conversationId,
