@@ -426,10 +426,13 @@ class OverlayCaptureService : Service() {
             //    device+capture), so the PC's Incoming Captures shows the pre-fill.
             val guess = if (bmp != null) ocrBlocking(bmp) else null
             val name = guess?.fbName?.trim().orEmpty()
-            if (guess != null && (name.isNotEmpty() || !guess.itemQuery.isNullOrBlank())) {
+            if (guess != null &&
+                (name.isNotEmpty() || !guess.itemQuery.isNullOrBlank() || !guess.grams.isNullOrBlank())
+            ) {
                 val ocr = JSONObject()
                     .putOpt("fbName", guess.fbName)
                     .putOpt("itemQuery", guess.itemQuery)
+                    .putOpt("grams", guess.grams)
                 runCatching { api.createPendingCapture(captureId, path, ocr) }
             }
 

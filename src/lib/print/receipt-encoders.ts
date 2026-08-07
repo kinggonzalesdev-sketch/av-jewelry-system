@@ -38,6 +38,10 @@ function asciify(s: string): string {
       .replace(/[—–]/g, '-')
       .replace(/[’‘]/g, "'")
       .replace(/[“”]/g, '"')
+      // Bullet/mid-dot separator (e.g. "11.5g • P7,100/g") — the printer can't render
+      // it, so fold to a hyphen instead of letting the strip below drop it (which would
+      // leave a double space).
+      .replace(/[•·]/g, '-')
       .replace(/₱/g, 'P')
       // Strip other non-ASCII, but KEEP tab/CR/LF — TSPL programs are line-based,
       // so removing CR/LF (as an earlier version did) breaks the whole label.

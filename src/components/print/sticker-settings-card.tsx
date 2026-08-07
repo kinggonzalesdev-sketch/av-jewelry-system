@@ -11,7 +11,12 @@ import {
   type StickerField,
   type StickerFields,
 } from '@/lib/print/order-receipt';
-import { readStickerFields, writeStickerFields } from '@/lib/print/sticker-fields';
+import {
+  readStickerFields,
+  writeStickerFields,
+  readStickerPricePerGram,
+  writeStickerPricePerGram,
+} from '@/lib/print/sticker-fields';
 import { usePrinter } from '@/components/print/printer-context';
 import { writeToChannel } from '@/lib/print/bluetooth-printer';
 import { encodeReceipt } from '@/lib/print/receipt-encoders';
@@ -47,10 +52,17 @@ export function StickerSettingsCard() {
   // Auto-print each incoming capture's sticker (shared flag read by Incoming Captures).
   const [autoPrint, setAutoPrint] = useState(false);
 
+  // Price per gram — the SAVED rate used by every print (New Order, Test Print,
+  // auto-print). The screenshot-to-print flow prints this even though the pinned
+  // comment never contains a price. Seeded from storage on mount below.
+  const [pricePerGram, setPricePerGram] = useState('7500');
+
   // Read the stored preferences on the client (avoids an SSR/hydration mismatch).
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    /* eslint-disable react-hooks/set-state-in-effect */
     setFields(readStickerFields());
+    setPricePerGram(readStickerPricePerGram());
+    /* eslint-enable react-hooks/set-state-in-effect */
     try {
       setAutoPrint(localStorage.getItem('mineflow.captureAutoPrint') === '1');
     } catch {
@@ -75,9 +87,16 @@ export function StickerSettingsCard() {
     }
   };
 
-  // Editable sample values (preview only — not stored, not what really prints).
+  // Persist the saved rate the moment it changes.
+  const changePricePerGram = (v: string) => {
+    setPricePerGram(v);
+    writeStickerPricePerGram(v);
+  };
+
+  // Sample values used only to render the preview (name + a grams weight so the
+  // "11.5g • ₱7,500/g" line is visible) — the real sticker uses the order's values.
   const [name, setName] = useState('KING GONZALES');
-  const [pricePerGram, setPricePerGram] = useState('7100');
+  const [gramsSample, setGramsSample] = useState('11.5');
 
   const { activeChannel, printLang } = usePrinter();
   const [printMsg, setPrintMsg] = useState<string | null>(null);
@@ -85,7 +104,7 @@ export function StickerSettingsCard() {
   const sample: OrderReceiptData = {
     customerName: name.trim() || '—',
     itemName: '',
-    grams: null,
+    grams: gramsSample.trim() || null,
     quantity: 1,
     unitPrice: null,
     pricePerGram: pricePerGram.trim() || null,
@@ -131,14 +150,29 @@ export function StickerSettingsCard() {
         </p>
       </div>
 
-      {/* Editable sample — type your own name to see how it looks (preview only). */}
-      <div className="space-y-1.5">
-        <p className="text-xs font-medium text-muted-foreground">Sample text (preview only):</p>
-        <SampleInput label="Facebook Name" value={name} onChange={setName} />
-        <SampleInput label="Price per gram" value={pricePerGram} onChange={setPricePerGram} />
-        <p className="max-w-[14rem] pt-0.5 text-[11px] text-muted-foreground">
-          This is just for the preview — the real sticker uses the order’s own values.
-        </p>
+      <div className="space-y-2.5">
+        {/* SAVED rate — the single source of truth used by every print, including the
+            screenshot-to-print auto-print (the pinned comment never carries a price). */}
+        <div className="space-y-1.5 rounded-md border border-gold/40 bg-gold/5 px-3 py-2">
+          <p className="text-xs font-semibold text-gold-strong">
+            Price per gram (saved — used on every sticker)
+          </p>
+          <SampleInput label="₱ / gram" value={pricePerGram} onChange={changePricePerGram} />
+          <p className="max-w-[15rem] text-[11px] text-muted-foreground">
+            Printed as <strong>{gramsSample.trim() || '11.5'}g • {pricePerGram.trim() ? `₱${pricePerGram.trim()}` : '₱—'}/g</strong>.
+            Used even when the captured comment has no price.
+          </p>
+        </div>
+
+        {/* Preview-only samples — see how a name + weight looks; not what really prints. */}
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground">Sample text (preview only):</p>
+          <SampleInput label="Facebook Name" value={name} onChange={setName} />
+          <SampleInput label="Grams" value={gramsSample} onChange={setGramsSample} />
+          <p className="max-w-[14rem] pt-0.5 text-[11px] text-muted-foreground">
+            Just for the preview — the real sticker uses the order’s own name and grams.
+          </p>
+        </div>
       </div>
 
       <div>

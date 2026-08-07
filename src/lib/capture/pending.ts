@@ -2,6 +2,7 @@ import 'server-only';
 
 import { requirePermission } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
+import { normalizeGrams } from '@/lib/print/order-receipt';
 import type { PendingCaptureRow } from '@/lib/capture/pending-types';
 
 const CAPTURE_BUCKET = 'attachments';
@@ -65,6 +66,11 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
     screenshotUrl: signed[i] ?? null,
     fbName: ocrStr(r.ocr, 'fbName', 'fb_name', 'name'),
     itemQuery: ocrStr(r.ocr, 'itemQuery', 'item_query', 'item'),
+    // Prefer the dedicated grams field; fall back to the mined number (older builds
+    // put the pinned weight in itemQuery). normalizeGrams also rejects non-weights.
+    grams: normalizeGrams(
+      ocrStr(r.ocr, 'grams', 'weight') ?? ocrStr(r.ocr, 'itemQuery', 'item_query', 'item'),
+    ),
     isTest: r.is_test === true,
   }));
 }

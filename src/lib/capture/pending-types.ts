@@ -15,6 +15,10 @@ export type PendingCaptureRow = {
   fbName: string | null;
   /** OCR guess of the mined item (code or text) to search inventory with. */
   itemQuery: string | null;
+  /** OCR guess of the weight in grams from the pinned comment (a bare number is read
+   *  as grams), normalized ("11.50" → "11.5"). Null when no confident number was read
+   *  — a "needs review" capture the operator confirms before printing/auto-print. */
+  grams: string | null;
   /** True when captured during a Test Mode session. */
   isTest: boolean;
 };

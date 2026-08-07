@@ -39,3 +39,34 @@ export function writeStickerFields(fields: StickerFields): void {
     /* storage may be unavailable (private mode) — non-fatal */
   }
 }
+
+/**
+ * The SINGLE SOURCE OF TRUTH for the price-per-gram rate printed on every sticker
+ * (`stickerSettings.pricePerGram`). Stored per device in Sticker Settings and read by
+ * every print path — including the screenshot-to-print auto-print, which prints the
+ * saved rate even though the pinned comment never contains it. A blank/unset value
+ * means "no rate configured" (the price-per-gram line is then omitted).
+ */
+const PRICE_PER_GRAM_KEY = 'mineflow-sticker-price-per-gram';
+const DEFAULT_PRICE_PER_GRAM = '7500';
+
+export function readStickerPricePerGram(): string {
+  if (typeof window === 'undefined') return DEFAULT_PRICE_PER_GRAM;
+  try {
+    const raw = window.localStorage.getItem(PRICE_PER_GRAM_KEY);
+    // Only an explicit empty string means "cleared"; an unset key uses the default.
+    if (raw === null) return DEFAULT_PRICE_PER_GRAM;
+    return raw.trim();
+  } catch {
+    return DEFAULT_PRICE_PER_GRAM;
+  }
+}
+
+export function writeStickerPricePerGram(value: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(PRICE_PER_GRAM_KEY, value.trim());
+  } catch {
+    /* storage may be unavailable (private mode) — non-fatal */
+  }
+}

@@ -15,8 +15,8 @@ import { useDashboardSync } from '@/components/shell/dashboard-sync';
 import { usePrinter } from '@/components/print/printer-context';
 import { writeToChannel } from '@/lib/print/bluetooth-printer';
 import { encodeReceipt } from '@/lib/print/receipt-encoders';
-import { stickerDate, type OrderReceiptData } from '@/lib/print/order-receipt';
-import { readStickerFields } from '@/lib/print/sticker-fields';
+import { stickerDate, normalizeGrams, type OrderReceiptData } from '@/lib/print/order-receipt';
+import { readStickerFields, readStickerPricePerGram } from '@/lib/print/sticker-fields';
 import type { CaptureItem, WalkInItem } from '@/lib/orders/service';
 import type { AdminNameContext } from '@/lib/authz/admin-name';
 import { Button } from '@/components/ui/button';
@@ -47,6 +47,10 @@ export function IncomingCapturesStrip({
   const [selected, setSelected] = useState<PendingCaptureRow | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Operator's grams correction per capture (for the review case + manual reprint),
+  // and a short per-row status note ("Printed ✓").
+  const [gramsEdits, setGramsEdits] = useState<Record<string, string>>({});
+  const [notes, setNotes] = useState<Record<string, string>>({});
 
   // The capture ids already printed on THIS station, persisted so a reload/re-poll
   // never reprints. Seeded on mount (ref mutation only — no re-render).
@@ -93,12 +97,26 @@ export function IncomingCapturesStrip({
     return () => clearInterval(iv);
   }, [load]);
 
+  // Build the sticker for a capture: Facebook Name / grams • ₱rate/g / Date. The rate
+  // ALWAYS comes from Sticker Settings (the pinned comment never carries a price); the
+  // grams comes from the OCR (or the operator's correction). Pure — no side effects.
+  const stickerFor = (r: PendingCaptureRow, gramsOverride?: string): OrderReceiptData => ({
+    customerName: (r.fbName ?? '').trim() || '—',
+    itemName: '',
+    grams: normalizeGrams(gramsOverride ?? r.grams ?? ''),
+    quantity: 1,
+    unitPrice: null,
+    pricePerGram: readStickerPricePerGram() || null,
+    date: stickerDate(),
+  });
+
   // AUTO-PRINT (opt-in): when a NEW capture arrives and the printer is linked, print
-  // its Facebook-Name + Date sticker once — the hands-off half of the one-tap flow
-  // (the phone auto-sends the screenshot; the PC auto-prints the label). Skips test
-  // captures and name-less reads; each capture prints at most once per station, so
-  // the 1s poll never reprints. A capture is marked printed BEFORE the write, so a
-  // flaky printer can't trigger a reprint storm — reprint deliberately via "Use".
+  // its "Name / grams • ₱rate/g / Date" sticker once — the hands-off half of the
+  // one-tap flow (the phone auto-sends the screenshot; the PC auto-prints the label).
+  // NEEDS-REVIEW GATE: only auto-prints when a CONFIDENT weight was read; a name-only
+  // or uncertain capture waits for the operator to confirm the grams and print. Skips
+  // test captures; each capture prints at most once per station (the poll never
+  // reprints). Marked printed BEFORE the write so a flaky printer can't reprint-storm.
   useEffect(() => {
     if (!activeChannel) return;
     // Read the shared toggle live (set in Sticker Settings), so enabling it there
@@ -114,28 +132,50 @@ export function IncomingCapturesStrip({
       (r) =>
         !r.isTest &&
         (r.fbName ?? '').trim().length >= 2 &&
+        normalizeGrams(r.grams) !== null && // needs a confident weight, else review
         !printedRef.current.has(r.captureRecordId),
     );
     if (pending.length === 0) return;
     void (async () => {
       for (const r of pending) {
         rememberPrinted(r.captureRecordId);
-        const data: OrderReceiptData = {
-          customerName: (r.fbName ?? '').trim(),
-          itemName: '',
-          grams: null,
-          quantity: 1,
-          unitPrice: null,
-          date: stickerDate(),
-        };
         try {
-          await writeToChannel(activeChannel, encodeReceipt(data, printLang, readStickerFields()));
+          await writeToChannel(
+            activeChannel,
+            encodeReceipt(stickerFor(r), printLang, readStickerFields()),
+          );
+          setNotes((cur) => ({ ...cur, [r.captureRecordId]: 'Auto-printed ✓' }));
         } catch {
           /* keep it marked printed to avoid a reprint storm on a flaky link */
         }
       }
     })();
   }, [rows, activeChannel, printLang]);
+
+  // Manual print (review / reprint): print THIS capture's label with the operator's
+  // confirmed grams. Used when the weight needed review, or to reprint deliberately.
+  const printLabel = async (r: PendingCaptureRow) => {
+    if (!activeChannel) {
+      setError('Connect the printer first (Sticker Settings → Test Print).');
+      return;
+    }
+    const g = normalizeGrams(gramsEdits[r.captureRecordId] ?? r.grams ?? '');
+    if (g === null) {
+      setError('Enter the weight in grams before printing.');
+      return;
+    }
+    setError(null);
+    try {
+      await writeToChannel(
+        activeChannel,
+        encodeReceipt(stickerFor(r, g), printLang, readStickerFields()),
+      );
+      rememberPrinted(r.captureRecordId);
+      setNotes((cur) => ({ ...cur, [r.captureRecordId]: 'Printed ✓' }));
+    } catch {
+      setError('Print failed — check the printer link.');
+    }
+  };
 
   const dismiss = (id: string) => {
     if (busy) return;
@@ -175,9 +215,12 @@ export function IncomingCapturesStrip({
         Incoming Captures ({rows.length})
       </h2>
       <p className="mb-3 mt-0.5 text-xs text-muted-foreground">
-        Screenshots from the floating button. Tap <strong>Use</strong> to confirm the
-        name + item and create the order (it prints here and lands in For Invoice), or
-        Dismiss to discard. Auto-print is set in <strong>Sticker Settings</strong>.
+        Screenshots from the floating button. The label prints{' '}
+        <strong>Name / grams • ₱rate/g / date</strong> — the rate comes from{' '}
+        <strong>Sticker Settings</strong>. Confirm the grams and tap <strong>Print</strong>{' '}
+        for the label, <strong>Use</strong> to create the order, or Dismiss to discard.
+        Auto-print (set in Sticker Settings) prints on its own only when the weight was
+        read confidently.
       </p>
       {error ? (
         <p role="alert" className="mb-2 text-sm text-destructive">
@@ -211,11 +254,43 @@ export function IncomingCapturesStrip({
                   </span>
                 ) : null}
               </p>
-              <p className="break-words text-xs text-muted-foreground">
-                {r.itemQuery ?? 'Item not read — pick it below'}
-              </p>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+                <label className="flex items-center gap-1 text-muted-foreground">
+                  Grams
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={gramsEdits[r.captureRecordId] ?? r.grams ?? ''}
+                    placeholder="e.g. 11.5"
+                    onChange={(e) =>
+                      setGramsEdits((cur) => ({ ...cur, [r.captureRecordId]: e.target.value }))
+                    }
+                    className="h-7 w-20 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-gold"
+                    data-testid={`incoming-grams-${r.captureRecordId}`}
+                  />
+                </label>
+                {normalizeGrams(gramsEdits[r.captureRecordId] ?? r.grams ?? '') === null ? (
+                  <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-amber-700">
+                    Needs review
+                  </span>
+                ) : null}
+                {notes[r.captureRecordId] ? (
+                  <span className="text-[10px] font-medium text-emerald-600">
+                    {notes[r.captureRecordId]}
+                  </span>
+                ) : null}
+              </div>
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => void printLabel(r)}
+                data-testid={`incoming-print-${r.captureRecordId}`}
+              >
+                🖨 Print
+              </Button>
               <Button
                 type="button"
                 size="sm"

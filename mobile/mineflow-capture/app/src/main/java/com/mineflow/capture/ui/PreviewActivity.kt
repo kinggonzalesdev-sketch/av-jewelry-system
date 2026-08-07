@@ -160,6 +160,7 @@ class PreviewActivity : AppCompatActivity() {
                 val ocr = JSONObject()
                     .putOpt("fbName", guess.fbName)
                     .putOpt("itemQuery", guess.itemQuery)
+                    .putOpt("grams", guess.grams)
                 val res = api.createPendingCapture(captureId, path, ocr)
                 runOnUiThread {
                     if (res.ok) {

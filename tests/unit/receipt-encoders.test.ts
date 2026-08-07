@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  normalizeGrams,
   stickerLineItems,
   stickerLines,
   type OrderReceiptData,
@@ -78,24 +79,57 @@ describe('stickerLineItems — configurable fields', () => {
     expect(lines.map((l) => l.text)).toEqual(['King Gonzales', 'June 15, 2026']);
   });
 
+  const rateOnly: StickerFields = {
+    name: false,
+    item: false,
+    price: false,
+    pricePerGram: true,
+    date: false,
+  };
+
+  it('combines grams + rate on the price-per-gram line (screenshot-to-print format)', () => {
+    // data.grams is '12.2' → "12.2g • ₱983/g".
+    expect(stickerLineItems(withRate, rateOnly)).toEqual([
+      { text: '12.2g • ₱983/g', kind: 'pricePerGram' },
+    ]);
+  });
+
+  it('shows the rate alone when the weight is unknown', () => {
+    expect(stickerLineItems({ ...withRate, grams: null }, rateOnly)).toEqual([
+      { text: '₱983/g', kind: 'pricePerGram' },
+    ]);
+    // A trailing-zero weight normalizes on the sticker: "11.50" → "11.5g".
+    expect(stickerLineItems({ ...withRate, grams: '11.50' }, rateOnly)).toEqual([
+      { text: '11.5g • ₱983/g', kind: 'pricePerGram' },
+    ]);
+  });
+
   it('adds a Price per gram line only when enabled AND a rate is present', () => {
-    const on = stickerLineItems(withRate, {
-      name: false,
-      item: false,
-      price: false,
-      pricePerGram: true,
-      date: false,
-    });
-    expect(on).toEqual([{ text: '₱983/g', kind: 'pricePerGram' }]);
     // Enabled but no rate → nothing.
-    const noRate = stickerLineItems(data, {
-      name: false,
-      item: false,
-      price: false,
-      pricePerGram: true,
-      date: false,
-    });
+    const noRate = stickerLineItems(data, rateOnly);
     expect(noRate).toEqual([]);
+  });
+});
+
+describe('normalizeGrams', () => {
+  it('reads a bare number as grams and drops trailing zeros', () => {
+    expect(normalizeGrams('0.7')).toBe('0.7');
+    expect(normalizeGrams('1.5')).toBe('1.5');
+    expect(normalizeGrams('11.5')).toBe('11.5');
+    expect(normalizeGrams('20')).toBe('20');
+    expect(normalizeGrams('0.85')).toBe('0.85');
+    expect(normalizeGrams('11.50')).toBe('11.5');
+    expect(normalizeGrams('11.5g')).toBe('11.5');
+    expect(normalizeGrams('1,250')).toBe('1250');
+    expect(normalizeGrams(20)).toBe('20');
+  });
+
+  it('returns null for empty / non-numeric / non-positive input', () => {
+    expect(normalizeGrams(null)).toBeNull();
+    expect(normalizeGrams(undefined)).toBeNull();
+    expect(normalizeGrams('')).toBeNull();
+    expect(normalizeGrams('abc')).toBeNull();
+    expect(normalizeGrams('0')).toBeNull();
   });
 });
 

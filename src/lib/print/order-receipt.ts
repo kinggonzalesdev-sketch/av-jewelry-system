@@ -57,6 +57,24 @@ export function formatStickerPeso(amount: string): string {
   return formatPeso(amount.trim());
 }
 
+/**
+ * Normalize a weight to its grams display: pull the number, drop trailing zeros and
+ * any stray text/commas. Used by the screenshot-to-print flow, where the pinned
+ * comment may be a bare number with no "g" (e.g. "11.5", "0.85", "20"). Returns null
+ * when there is no usable positive number.
+ *
+ *   "11.50" -> "11.5"   "20" -> "20"   "0.70" -> "0.7"   "11.5g" -> "11.5"   "" -> null
+ */
+export function normalizeGrams(value: string | number | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  const match = String(value).replace(/,/g, '').match(/\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const n = Number.parseFloat(match[0]);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  // Number() drops trailing zeros: 11.50 -> 11.5, 20.0 -> 20, 0.70 -> 0.7.
+  return String(n);
+}
+
 /** The four sticker lines. Pure — the one place the format is defined. Order:
  *  Customer Name · Item (+grams) · Price · Date (the centered stack the Owner asked
  *  for). Price is its own prominent line; the quantity only shows when more than one
@@ -75,7 +93,11 @@ export function stickerLineItems(
     out.push({ text: d.quantity > 1 ? `${d.quantity} x ${price}` : price, kind: 'price' });
   }
   if (fields.pricePerGram && d.pricePerGram) {
-    out.push({ text: `${formatStickerPeso(d.pricePerGram)}/g`, kind: 'pricePerGram' });
+    // Grams + rate on one line, e.g. "11.5g • ₱7,500/g" (the screenshot-to-print
+    // format). Falls back to just the rate when the weight is unknown.
+    const perGram = `${formatStickerPeso(d.pricePerGram)}/g`;
+    const g = normalizeGrams(d.grams);
+    out.push({ text: g ? `${g}g • ${perGram}` : perGram, kind: 'pricePerGram' });
   }
   if (fields.date) out.push({ text: d.date, kind: 'date' });
   return out;

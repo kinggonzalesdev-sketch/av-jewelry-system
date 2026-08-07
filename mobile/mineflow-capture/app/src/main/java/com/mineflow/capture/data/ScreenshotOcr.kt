@@ -5,11 +5,14 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 
-/** A best-effort read of the pinned comment in a capture: the customer's Facebook name
- *  and the mined-item text, plus every recognised line so the operator can correct. */
+/** A best-effort read of the pinned comment in a capture: the customer's Facebook name,
+ *  the mined-item text, the weight in grams, plus every recognised line so the operator
+ *  can correct. `grams` is null when no confident weight was read (a "needs review"
+ *  capture the PC won't auto-print). */
 data class OcrGuess(
     val fbName: String?,
     val itemQuery: String?,
+    val grams: String?,
     val rawLines: List<String>,
 )
 
@@ -50,6 +53,11 @@ object ScreenshotOcr {
     private val MINE = Regex("\\bmine\\b|\\bakin\\b|\\bsakin\\b", RegexOption.IGNORE_CASE)
     // A weight/reference number in a claim, e.g. "10.7", "1.23", "8.60".
     private val NUMBER = Regex("\\d{1,3}(?:[.,]\\d{1,3})?")
+    // A line that is ONLY a weight-like number — a bare claim such as "11.5", "0.7",
+    // "20", "0.85" (optionally a trailing "g"). This is the pinned buyer's grams when
+    // there is no explicit "Mine". Anchored (^…$) so times (10:45), percents (85%) and
+    // abbreviated counts (1.2K, 234 viewers) are NOT mistaken for grams.
+    private val WEIGHT_LINE = Regex("^\\d{1,3}(?:[.,]\\d{1,3})?\\s*g?$", RegexOption.IGNORE_CASE)
 
     fun analyze(bitmap: Bitmap, onResult: (OcrGuess) -> Unit) {
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
@@ -62,7 +70,7 @@ object ScreenshotOcr {
                     .filter { it.isNotBlank() }
                 onResult(guessFrom(lines))
             }
-            .addOnFailureListener { onResult(OcrGuess(null, null, emptyList())) }
+            .addOnFailureListener { onResult(OcrGuess(null, null, null, emptyList())) }
     }
 
     private fun isUiNoise(s: String): Boolean =
@@ -82,6 +90,23 @@ object ScreenshotOcr {
     private fun stripClaim(s: String): String =
         s.replace(MINE, "").replace(NUMBER, "").trim().trim('·', '-', ':', '•').trim()
 
+    /** The number from a claim as clean grams: "11.50" -> "11.5", "20" -> "20". Null
+     *  when there is no usable positive weight (0 < g <= 999). */
+    private fun normalizeGrams(raw: String?): String? {
+        if (raw == null) return null
+        val m = NUMBER.find(raw) ?: return null
+        val n = m.value.replace(',', '.').toDoubleOrNull() ?: return null
+        if (n <= 0.0 || n > 999.0) return null
+        return if (n == Math.floor(n)) n.toLong().toString()
+        else n.toString().trimEnd('0').trimEnd('.')
+    }
+
+    /** Nearest name-like line ABOVE index `i` (the viewer list is already dropped). */
+    private fun nameAbove(clean: List<String>, i: Int): String? =
+        (i - 1 downTo 0).asSequence()
+            .map { clean[it] }
+            .firstOrNull { looksLikeName(it) && !MINE.containsMatchIn(it) }
+
     private fun guessFrom(lines: List<String>): OcrGuess {
         val clean = lines.filterNot { isUiNoise(it) }
 
@@ -89,23 +114,32 @@ object ScreenshotOcr {
         val mineIdx = clean.indexOfLast { MINE.containsMatchIn(it) }
         if (mineIdx >= 0) {
             val mineLine = clean[mineIdx]
+            val number = NUMBER.find(mineLine)?.value
+            // Weight in grams from the claim (null if the number isn't weight-like).
+            val grams = normalizeGrams(number)
             // Item query: the weight/number in the claim, else a code, else the raw claim.
-            val itemQuery = NUMBER.find(mineLine)?.value
-                ?: CODE.find(mineLine)?.value
-                ?: mineLine
-            // Name: nearest name-like line ABOVE the claim (viewer list already dropped),
-            // else a name OCR merged onto the claim line itself.
-            val fbName = (mineIdx - 1 downTo 0)
-                .asSequence()
-                .map { clean[it] }
-                .firstOrNull { looksLikeName(it) && !MINE.containsMatchIn(it) }
+            val itemQuery = number ?: CODE.find(mineLine)?.value ?: mineLine
+            // Name: nearest name-like line ABOVE the claim, else a name merged onto it.
+            val fbName = nameAbove(clean, mineIdx)
                 ?: stripClaim(mineLine).takeIf { it.isNotBlank() && looksLikeName(it) }
-            return OcrGuess(fbName, itemQuery, lines)
+            return OcrGuess(fbName, itemQuery, grams, lines)
         }
 
-        // No claim recognised — fall back to the original conservative guess.
+        // No "Mine" — the pinned comment may be just a name + a bare weight ("KING
+        // GONZALES" / "11.5"). Anchor on a bare weight LINE. SAFETY (needs review): only
+        // treat it as grams when there is EXACTLY ONE such line; multiple candidates are
+        // ambiguous, so leave grams null for the operator to confirm on the PC.
+        val weightIdxs = clean.indices.filter { WEIGHT_LINE.matches(clean[it].trim()) }
+        if (weightIdxs.size == 1) {
+            val idx = weightIdxs[0]
+            val grams = normalizeGrams(clean[idx])
+            val fbName = nameAbove(clean, idx)
+            return OcrGuess(fbName, grams, grams, lines)
+        }
+
+        // Ambiguous or no weight — conservative name-only guess (grams null → review).
         val itemQuery = clean.firstOrNull { CODE.containsMatchIn(it) }
         val fbName = clean.firstOrNull { looksLikeName(it) && it != itemQuery }
-        return OcrGuess(fbName, itemQuery, lines)
+        return OcrGuess(fbName, itemQuery, null, lines)
     }
 }
