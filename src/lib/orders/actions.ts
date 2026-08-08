@@ -63,7 +63,12 @@ import {
   type AddOrderPaymentInput,
   type AddOrderPaymentResult,
 } from '@/lib/orders/order-payment';
-import { getOrderLineItems, type OrderLineItem } from '@/lib/orders/service';
+import {
+  getOrderLineItems,
+  searchCaptureItems,
+  type CaptureItem,
+  type OrderLineItem,
+} from '@/lib/orders/service';
 import {
   completeWalkInOrder,
   createWalkInOrder,
@@ -461,6 +466,12 @@ export async function setOrderFacebookLinkAction(
   const result = await setOrderFacebookLink(orderId, input);
   if (result.ok) revalidatePath('/orders');
   return result;
+}
+
+/** Server-side item search for the New Order picker — returns the top available-item
+ *  matches for a typed query so the picker never has to load the whole catalogue. */
+export async function searchCaptureItemsAction(query: string): Promise<CaptureItem[]> {
+  return searchCaptureItems(query, 30);
 }
 
 /**

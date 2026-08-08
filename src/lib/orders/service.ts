@@ -180,31 +180,24 @@ export type CaptureItem = {
 export async function listCaptureItems(): Promise<CaptureItem[]> {
   const supabase = await createClient();
 
-  // The New Order and Layaway pickers must show EVERY available item (Owner: "no
-  // limit"). PostgREST caps each read at db-max-rows (1000), so page through in
-  // stable order until a short page — the shop now has 1000+ active items.
-  const PAGE = 1000;
-  const data: Array<Record<string, unknown>> = [];
-  for (let from = 0; ; from += PAGE) {
-    const res = await supabase
-      .from('inventory_items')
-      .select(
-        'id, item_code, item_name, total_price_per_piece, grams_per_piece, availability_status',
-      )
-      // Archived (incorrect/duplicate/test) items are out of circulation (§4), and
-      // only truly-available items are offered — a committed/sold item can't be sold.
-      .eq('is_archived', false)
-      .in('availability_status', ['available', 'returned_to_available'])
-      .order('item_code', { ascending: true })
-      .order('id', { ascending: true })
-      .range(from, from + PAGE - 1);
-    if (res.error) break;
-    const batch = (res.data ?? []) as Array<Record<string, unknown>>;
-    data.push(...batch);
-    if (batch.length < PAGE) break;
-  }
+  // SCALES to 20k+ items: load only the most-recent AVAILABLE items for the picker's
+  // INITIAL list; the picker searches the rest server-side (searchCaptureItems) as the
+  // operator types. Recent stock is what's actively sold, so this covers the common
+  // case without ever shipping the whole catalogue to the browser (the old code paged
+  // through EVERY available item). Archived / committed / sold items are never offered.
+  const INITIAL = 500;
+  const { data, error } = await supabase
+    .from('inventory_items')
+    .select(
+      'id, item_code, item_name, total_price_per_piece, grams_per_piece, availability_status',
+    )
+    .eq('is_archived', false)
+    .in('availability_status', ['available', 'returned_to_available'])
+    .order('created_at', { ascending: false })
+    .limit(INITIAL);
+  if (error || !data) return [];
 
-  return data.map((r) => ({
+  return (data as Array<Record<string, unknown>>).map((r) => ({
     id: r.id as string,
     itemCode: (r.item_code as string | null) ?? '—',
     itemName: (r.item_name as string | null) ?? null,
@@ -219,6 +212,58 @@ export async function listCaptureItems(): Promise<CaptureItem[]> {
         : String(r.grams_per_piece as string | number),
     availabilityStatus: (r.availability_status as string | null) ?? 'unknown',
   }));
+}
+
+/**
+ * Server-side search for the New Order item picker (scales to 20k+ items). Returns the
+ * top matches among AVAILABLE inventory for a typed query, ranked exact-code → code
+ * prefix → code contains → name contains. Uses the trigram + (availability_status,
+ * item_code) indexes. Read-only. The query is sanitized to alphanumerics/space/dash so
+ * it can never break the PostgREST `or` filter or inject.
+ */
+export async function searchCaptureItems(query: string, limit = 30): Promise<CaptureItem[]> {
+  const safe = query.replace(/[^a-zA-Z0-9 -]/g, ' ').trim();
+  if (safe.length < 1) return [];
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('inventory_items')
+    .select('id, item_code, item_name, total_price_per_piece, grams_per_piece, availability_status')
+    .eq('is_archived', false)
+    .in('availability_status', ['available', 'returned_to_available'])
+    .or(`item_code.ilike.%${safe}%,item_name.ilike.%${safe}%`)
+    .limit(limit * 3);
+  if (error || !data) return [];
+
+  const rows = data as Array<Record<string, unknown>>;
+  const mapped: CaptureItem[] = rows.map((r) => ({
+    id: r.id as string,
+    itemCode: (r.item_code as string | null) ?? '—',
+    itemName: (r.item_name as string | null) ?? null,
+    unitPrice:
+      r.total_price_per_piece === null || r.total_price_per_piece === undefined
+        ? null
+        : String(r.total_price_per_piece as string | number),
+    gramsPerPiece:
+      r.grams_per_piece === null || r.grams_per_piece === undefined
+        ? null
+        : String(r.grams_per_piece as string | number),
+    availabilityStatus: (r.availability_status as string | null) ?? 'unknown',
+  }));
+
+  const q = safe.toLowerCase();
+  const rank = (it: CaptureItem): number => {
+    const code = it.itemCode.toLowerCase();
+    const name = (it.itemName ?? '').toLowerCase();
+    if (code === q) return 0;
+    if (code.startsWith(q)) return 1;
+    if (code.includes(q)) return 2;
+    if (name.includes(q)) return 3;
+    return 4;
+  };
+  return mapped
+    .sort((a, b) => rank(a) - rank(b) || a.itemCode.localeCompare(b.itemCode))
+    .slice(0, limit);
 }
 
 /** A single Active-Inventory item the Walk-In selector may sell — its permanent

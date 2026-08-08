@@ -14,6 +14,7 @@ import {
   completeWalkInOrderAction,
   recordOrderPrintAction,
   saveWalkInOrderAction,
+  searchCaptureItemsAction,
   transferWalkInToReminderAction,
   updateInventoryGramsAction,
 } from '@/lib/orders/actions';
@@ -167,6 +168,7 @@ function ItemRows({
   setRows,
   catalogPrefill,
   editableGrams = false,
+  onSearchItems,
 }: {
   items: PickItem[];
   rows: Row[];
@@ -175,12 +177,46 @@ function ItemRows({
   /** Walk-In: the Grams field is editable and its change is later synced to the
    *  inventory item (audited). New Entry leaves grams read-only. */
   editableGrams?: boolean;
+  /** Optional server-side item search. When provided, typing (debounced) fetches
+   *  matches beyond the bounded initial list and merges them into the picker — so the
+   *  catalogue scales to 20k+ items without shipping them all to the browser. */
+  onSearchItems?: ((query: string) => Promise<PickItem[]>) | undefined;
 }) {
+  // Server-searched items beyond the bounded initial list, merged into the pool so the
+  // Combobox can offer them and selection still resolves via `byLabel`.
+  const [extra, setExtra] = useState<PickItem[]>([]);
+  const allItems = useMemo(() => {
+    if (extra.length === 0) return items;
+    const seen = new Set(items.map((i) => i.label));
+    return [...items, ...extra.filter((e) => !seen.has(e.label))];
+  }, [items, extra]);
+
   const byLabel = useMemo(() => {
     const m = new Map<string, PickItem>();
-    for (const i of items) m.set(i.label, i);
+    for (const i of allItems) m.set(i.label, i);
     return m;
-  }, [items]);
+  }, [allItems]);
+
+  // Debounced (350ms) server search — merges any new matches into `extra`.
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const runSearch = (value: string) => {
+    if (!onSearchItems) return;
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    const q = value.trim();
+    if (q.length < 2) return;
+    searchTimer.current = setTimeout(() => {
+      void onSearchItems(q)
+        .then((results) => {
+          if (results.length === 0) return;
+          setExtra((prev) => {
+            const seen = new Set(prev.map((p) => p.label));
+            const add = results.filter((r) => !seen.has(r.label));
+            return add.length ? [...prev, ...add] : prev;
+          });
+        })
+        .catch(() => undefined);
+    }, 350);
+  };
 
   const matchOf = (r: Row) => byLabel.get(r.itemInput.trim()) ?? null;
 
@@ -197,6 +233,7 @@ function ItemRows({
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...next } : r)));
 
   const onItem = (r: Row, value: string) => {
+    runSearch(value);
     const picked = byLabel.get(value.trim()) ?? null;
     const next: Partial<Row> = { itemInput: value };
     if (picked && isHKItem(picked)) {
@@ -243,7 +280,7 @@ function ItemRows({
         const hkPrice = hk && matched ? (hkFixedPrice(matched) ?? matched.unitPrice) : null;
         const hkLocked = hk && Boolean(hkPrice);
         const taken = chosenElsewhere(r.key);
-        const options = items
+        const options = allItems
           .filter((i) => !taken.has(i.label))
           .map((i) => i.label);
         const perGram = r.priceMode === 'per_gram' && !hk;
@@ -586,6 +623,26 @@ export function NewOrderModal({
     [walkInItems],
   );
   const pickItems = mode === 'walkin' ? walkPickItems : orderPickItems;
+
+  // New Entry: server-side item search so the picker scales past the bounded initial
+  // list (returns the same PickItem shape/label so selection resolves unchanged).
+  const searchOrderItems = async (query: string): Promise<PickItem[]> => {
+    const results = await searchCaptureItemsAction(query);
+    return results
+      .filter(
+        (i) =>
+          i.availabilityStatus === 'available' ||
+          i.availabilityStatus === 'returned_to_available',
+      )
+      .map((i) => ({
+        id: i.id,
+        code: i.itemCode,
+        name: i.itemName,
+        grams: i.gramsPerPiece ?? parseInventoryCode(i.itemCode).grams,
+        unitPrice: i.unitPrice,
+        label: `${i.itemCode}${i.itemName ? ` — ${i.itemName}` : ''}`,
+      }));
+  };
   const byLabel = useMemo(() => {
     const m = new Map<string, PickItem>();
     for (const i of pickItems) m.set(i.label, i);
@@ -1234,6 +1291,7 @@ export function NewOrderModal({
           setRows={setRows}
           catalogPrefill={mode === 'order'}
           editableGrams={mode === 'walkin'}
+          onSearchItems={mode === 'order' ? searchOrderItems : undefined}
         />
 
         <OrderSummary total={totalCentavos} count={rows.length} />
