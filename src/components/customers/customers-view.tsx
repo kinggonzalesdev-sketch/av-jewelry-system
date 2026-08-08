@@ -45,7 +45,7 @@ function CustomerList({
 }) {
   // Render pagination — window to the current page (50). Resets on a new search.
   const [page, setPage] = useState(1);
-  const CUST_PAGE_SIZE = 50;
+  const CUST_PAGE_SIZE = 25;
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPage(1);

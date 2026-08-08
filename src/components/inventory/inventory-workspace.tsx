@@ -159,9 +159,9 @@ export function InventoryWorkspace({
   // rows would otherwise bloat memory + slow the browser). Filtering/search is
   // unchanged; the page just windows the already-filtered list.
   const [invPage, setInvPage] = useState(1);
-  const [invPageSize, setInvPageSize] = useState(50);
+  const [invPageSize, setInvPageSize] = useState(25);
   const [compPage, setCompPage] = useState(1);
-  const [compPageSize, setCompPageSize] = useState(50);
+  const [compPageSize, setCompPageSize] = useState(25);
 
   const invRows = useMemo(() => (inventory.ok ? inventory.rows : []), [inventory]);
   // Group counts (§16): BN / SB / HK ITEM / Other over the ACTIVE items, so a new or

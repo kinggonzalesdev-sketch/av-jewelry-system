@@ -22,6 +22,10 @@ function approval(over: Partial<ApprovalRow> = {}): ApprovalRow {
     requestedAt: '2026-07-28T00:00:00.000Z',
     decidedAt: null,
     executedAt: null,
+    orderNumber: 'ORD-2026-000137',
+    invoiceNumber: 'INV-000137',
+    customerName: 'King Gonzales',
+    requestedBy: 'Ana Cruz',
     ...over,
   };
 }

@@ -1150,7 +1150,7 @@ function LayawayTable({
   // Render pagination — window to the current page (50) so a large account list doesn't
   // put every row in the DOM. Resets to page 1 when the filtered rows change.
   const [layPage, setLayPage] = useState(1);
-  const LAY_PAGE_SIZE = 50;
+  const LAY_PAGE_SIZE = 25;
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLayPage(1);

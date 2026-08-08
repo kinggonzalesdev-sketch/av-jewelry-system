@@ -34,6 +34,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
  *
  * Renders nothing when there is nothing to approve, so it never adds noise.
  */
+/** A short local date-time for the request timestamp, or empty. */
+function fmtWhen(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString();
+}
+
 export function OwnerApprovalsPanel({
   approvals,
   isOwner,
@@ -85,7 +92,28 @@ export function OwnerApprovalsPanel({
                   <p className="truncate text-sm font-semibold capitalize">
                     {a.actionKind.replace(/_/g, ' ')}
                   </p>
-                  <p className="truncate text-xs text-muted-foreground">{a.reason}</p>
+                  {/* WHAT is being approved: the order + customer, so the Owner decides
+                      with full context instead of a bare action name. */}
+                  {a.orderNumber || a.invoiceNumber || a.customerName ? (
+                    <p className="break-words text-xs font-medium text-foreground">
+                      {[
+                        a.orderNumber,
+                        a.invoiceNumber && a.invoiceNumber !== '—' ? a.invoiceNumber : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                      {a.customerName ? ` — ${a.customerName}` : ''}
+                    </p>
+                  ) : null}
+                  {a.reason ? (
+                    <p className="break-words text-xs text-muted-foreground">
+                      Reason: {a.reason}
+                    </p>
+                  ) : null}
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    {a.requestedBy ? `Requested by ${a.requestedBy} · ` : ''}
+                    {fmtWhen(a.requestedAt)}
+                  </p>
                 </div>
                 <span className="whitespace-nowrap rounded-full border px-2 py-0.5 text-xs capitalize">
                   {a.status.replace(/_/g, ' ')}

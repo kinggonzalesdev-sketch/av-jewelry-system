@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import type { ScrapIncomeResult, ScrapSaleRow } from '@/lib/scrap/service';
 import { ScrapRowActions } from '@/components/scrap/scrap-row-actions';
@@ -8,6 +8,7 @@ import { ScrapEntryModal } from '@/components/scrap/scrap-entry-modal';
 import { downloadCsv } from '@/lib/export/csv';
 import { formatPeso } from '@/lib/payments/format';
 import { DataTable, Thead, Tr, Th, Td, DateCell, EmptyRow } from '@/components/ui/data-table';
+import { Pagination } from '@/components/ui/pagination';
 import { MetricCard, ReadError } from '@/components/ui/page-primitives';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -38,6 +39,20 @@ export function ScrapView({
   const [showRecord, setShowRecord] = useState(false);
   // Guards a repeat Export click while the file is being built.
   const [exporting, setExporting] = useState(false);
+
+  // Render pagination (25/page) — windows the rendered rows; resets on a new date range.
+  const [scrapPage, setScrapPage] = useState(1);
+  const SCRAP_PAGE_SIZE = 25;
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setScrapPage(1);
+  }, [sales]);
+  const scrapPageCount = Math.max(1, Math.ceil(sales.length / SCRAP_PAGE_SIZE));
+  const scrapPageSafe = Math.min(scrapPage, scrapPageCount);
+  const pagedSales = sales.slice(
+    (scrapPageSafe - 1) * SCRAP_PAGE_SIZE,
+    scrapPageSafe * SCRAP_PAGE_SIZE,
+  );
 
   /**
    * Export the scrap sales for the SELECTED range. `sales` is already scoped to
@@ -173,7 +188,7 @@ export function ScrapView({
               {sales.length === 0 ? (
                 <EmptyRow colSpan={8}>No scrap sales recorded.</EmptyRow>
               ) : (
-                sales.map((s) => (
+                pagedSales.map((s) => (
                   <Tr key={s.id}>
                     <Td kind="center" clip title={s.buyer ?? undefined}>
                       {s.buyer ?? '—'}
@@ -201,6 +216,15 @@ export function ScrapView({
               )}
             </tbody>
           </DataTable>
+          {sales.length > SCRAP_PAGE_SIZE ? (
+            <Pagination
+              page={scrapPageSafe}
+              pageCount={scrapPageCount}
+              total={sales.length}
+              onPageChange={setScrapPage}
+              className="mt-3"
+            />
+          ) : null}
         </CardContent>
       </Card>
     </div>

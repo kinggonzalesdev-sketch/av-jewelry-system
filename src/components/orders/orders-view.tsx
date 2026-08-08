@@ -425,7 +425,7 @@ export function OrdersView({
   const [shipDate, setShipDate] = useState('');
   // Render pagination — only the current page of rows goes in the DOM (default 50).
   const [ordPage, setOrdPage] = useState(1);
-  const [ordPageSize, setOrdPageSize] = useState(50);
+  const [ordPageSize, setOrdPageSize] = useState(25);
 
   /**
    * Fulfillment status — a SECOND, independent filter alongside the order-flow

@@ -702,33 +702,93 @@ export type ApprovalRow = {
   requestedAt: string;
   decidedAt: string | null;
   executedAt: string | null;
+  /** Context so the Owner can see WHAT is being approved (when the entity is an order):
+   *  the order number, invoice number, customer name, and requester. Null when the
+   *  entity isn't an official order or the detail couldn't be read. */
+  orderNumber: string | null;
+  invoiceNumber: string | null;
+  customerName: string | null;
+  requestedBy: string | null;
 };
 
-/** The Owner Approval Center queue. */
+/** The Owner Approval Center queue, enriched with order + requester context so the
+ *  Owner can see exactly WHAT each Accept/Reject decides. */
 export async function listOwnerApprovals(): Promise<ApprovalRow[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from('owner_approval_requests')
     .select(
-      'id, action_kind, status, entity_type, entity_id, reason, requested_at, decided_at, executed_at',
+      'id, action_kind, status, entity_type, entity_id, reason, evidence_note, requested_at, requested_by, decided_at, executed_at',
     )
     .order('requested_at', { ascending: false })
     .limit(50);
 
-  return ((data ?? []) as unknown[]).map((row) => {
-    const r = row as Record<string, unknown>;
-    return {
-      id: r.id as string,
-      actionKind: r.action_kind as string,
-      status: r.status as string,
-      entityType: r.entity_type as string,
-      entityId: r.entity_id as string,
-      reason: r.reason as string,
-      requestedAt: r.requested_at as string,
-      decidedAt: (r.decided_at as string | null) ?? null,
-      executedAt: (r.executed_at as string | null) ?? null,
-    };
-  });
+  const raw = (data ?? []) as Record<string, unknown>[];
+  const rows: ApprovalRow[] = raw.map((r) => ({
+    id: r.id as string,
+    actionKind: r.action_kind as string,
+    status: r.status as string,
+    entityType: r.entity_type as string,
+    entityId: r.entity_id as string,
+    // Prefer the reason; fall back to the evidence note so the row is never contextless.
+    reason: (r.reason as string | null)?.trim() || (r.evidence_note as string | null) || '',
+    requestedAt: r.requested_at as string,
+    decidedAt: (r.decided_at as string | null) ?? null,
+    executedAt: (r.executed_at as string | null) ?? null,
+    orderNumber: null,
+    invoiceNumber: null,
+    customerName: null,
+    requestedBy: null,
+  }));
+
+  // Enrich with the order (number / invoice / customer) — the entity is an official
+  // order for most approval kinds. Best-effort; a failed read just leaves the fields null.
+  const orderIds = [...new Set(rows.map((r) => r.entityId).filter(Boolean))];
+  if (orderIds.length > 0) {
+    const { data: orders } = await supabase
+      .from('official_orders')
+      .select('id, order_number, invoice_number, customers ( display_name )')
+      .in('id', orderIds);
+    const byId = new Map<string, { on: string | null; inv: string | null; cust: string | null }>();
+    for (const o of (orders ?? []) as Record<string, unknown>[]) {
+      const c = o.customers as { display_name?: string } | { display_name?: string }[] | null;
+      const one = Array.isArray(c) ? c[0] : c;
+      byId.set(o.id as string, {
+        on: (o.order_number as string | null) ?? null,
+        inv: (o.invoice_number as string | null) ?? null,
+        cust: one?.display_name ?? null,
+      });
+    }
+    for (const r of rows) {
+      const o = byId.get(r.entityId);
+      if (o) {
+        r.orderNumber = o.on;
+        r.invoiceNumber = o.inv;
+        r.customerName = o.cust;
+      }
+    }
+  }
+
+  // Enrich with the requester's name.
+  const reqIdByApproval = new Map<string, string | null>();
+  raw.forEach((r) => reqIdByApproval.set(r.id as string, (r.requested_by as string | null) ?? null));
+  const staffIds = [...new Set([...reqIdByApproval.values()].filter((v): v is string => Boolean(v)))];
+  if (staffIds.length > 0) {
+    const { data: staff } = await supabase
+      .from('staff_profiles')
+      .select('id, full_name')
+      .in('id', staffIds);
+    const nameById = new Map<string, string>();
+    for (const s of (staff ?? []) as Record<string, unknown>[]) {
+      nameById.set(s.id as string, (s.full_name as string | null) ?? '');
+    }
+    for (const r of rows) {
+      const id = reqIdByApproval.get(r.id);
+      if (id) r.requestedBy = nameById.get(id) ?? null;
+    }
+  }
+
+  return rows;
 }
 
 export type FulfillmentRow = {
