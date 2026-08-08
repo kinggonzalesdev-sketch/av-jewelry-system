@@ -672,7 +672,7 @@ export function OrdersView({
                   <th className="px-3 py-2 text-right font-medium">Grand Total</th>
                   <th className="px-3 py-2 text-right font-medium">Balance</th>
                   <th className="px-3 py-2 font-medium">Account No.</th>
-                  <th className="px-3 py-2 text-right font-medium">Actions</th>
+                  <th className="col-actions px-3 py-2 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -690,7 +690,7 @@ export function OrdersView({
                       {k.balance ? <Money amount={k.balance} /> : '—'}
                     </td>
                     <td className="px-3 py-2 font-mono text-xs">{k.accountNo}</td>
-                    <td className="px-3 py-2 text-right">
+                    <td className="col-actions px-3 py-2">
                       {/* View opens the layaway account (these KEEP rows are layaway
                           ledger records, not official orders). From here it can be
                           transferred to Completed, which removes it from Keep. */}

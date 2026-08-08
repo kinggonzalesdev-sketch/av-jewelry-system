@@ -128,7 +128,7 @@ export function ArchivedItemsView({
               <th className="px-3 py-2.5 text-left">Archived By</th>
               <th className="px-3 py-2.5 text-center">Archived</th>
               <th className="px-3 py-2.5 text-center">Original Status</th>
-              <th className="px-3 py-2.5 text-right">Actions</th>
+              <th className="col-actions px-3 py-2.5">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -147,7 +147,7 @@ export function ArchivedItemsView({
                 <td className="px-3 py-2.5">{r.archivedByName ?? '—'}</td>
                 <td className="whitespace-nowrap px-3 py-2.5 text-center">{r.archivedAt.slice(0, 10)}</td>
                 <td className="px-3 py-2.5 text-center">{humanize(r.archivedFromStatus)}</td>
-                <td className="px-3 py-2.5 text-right">
+                <td className="col-actions px-3 py-2.5">
                   <div className="flex justify-end gap-1">
                     {canMonitor ? (
                       <button

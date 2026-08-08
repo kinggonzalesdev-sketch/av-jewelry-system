@@ -248,7 +248,7 @@ export function TeamMembersPanel({
                 <th className="px-3 py-2.5 text-left font-medium">Sign-in email</th>
                 <th className="px-3 py-2.5 text-center font-medium">Password</th>
                 <th className="px-3 py-2.5 text-left font-medium">Role &amp; Access</th>
-                <th className="px-3 py-2.5 text-right font-medium">Actions</th>
+                <th className="col-actions px-3 py-2.5 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -278,7 +278,7 @@ export function TeamMembersPanel({
                       superAdminSlotFree={superAdminSlotFree}
                     />
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="col-actions px-3 py-2.5">
                     <div className="flex items-center justify-end gap-2">
                       <SetPasswordCell member={m} />
                       {/* The Primary Super Admin can never be deleted. */}

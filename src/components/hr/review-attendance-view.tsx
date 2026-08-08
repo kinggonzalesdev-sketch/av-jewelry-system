@@ -164,7 +164,7 @@ export function ReviewAttendanceView({
                 <th className="px-3 py-2.5 text-right font-medium">Overtime</th>
                 <th className="px-3 py-2.5 text-center font-medium">Selfies</th>
                 {canManage ? (
-                  <th className="px-3 py-2.5 text-right font-medium">Actions</th>
+                  <th className="col-actions px-3 py-2.5 font-medium">Actions</th>
                 ) : null}
               </tr>
             </thead>
@@ -205,7 +205,7 @@ export function ReviewAttendanceView({
                     </div>
                   </td>
                   {canManage ? (
-                    <td className="px-3 py-2.5 text-right">
+                    <td className="col-actions px-3 py-2.5">
                       <ReviewRowDelete row={r} />
                     </td>
                   ) : null}

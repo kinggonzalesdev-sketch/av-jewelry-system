@@ -120,7 +120,7 @@ export function DeletionRequestsPanel({
                 <th className="px-3 py-2.5 text-center font-medium">Status</th>
                 <th className="px-3 py-2.5 text-left font-medium">Decided</th>
                 {isSuperAdmin && tab === 'pending' ? (
-                  <th className="px-3 py-2.5 text-right font-medium">Actions</th>
+                  <th className="col-actions px-3 py-2.5 font-medium">Actions</th>
                 ) : null}
               </tr>
             </thead>
@@ -157,7 +157,7 @@ export function DeletionRequestsPanel({
                     )}
                   </td>
                   {isSuperAdmin && tab === 'pending' ? (
-                    <td className="px-3 py-2.5 text-right">
+                    <td className="col-actions px-3 py-2.5">
                       <DecideActions row={r} />
                     </td>
                   ) : null}

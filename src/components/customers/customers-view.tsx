@@ -83,7 +83,7 @@ function CustomerList({
               <th className="px-3 py-2.5 text-left font-medium">Contact</th>
               <th className="px-3 py-2.5 text-center font-medium">Status</th>
               <th className="px-3 py-2.5 text-center font-medium">Stage</th>
-              <th className="px-3 py-2.5 text-right font-medium">Details</th>
+              <th className="col-actions px-3 py-2.5 font-medium">Details</th>
             </tr>
           </thead>
           <tbody>
@@ -107,7 +107,7 @@ function CustomerList({
                   />
                 </td>
                 <td className="px-3 py-2.5 text-center text-muted-foreground">{row.stage}</td>
-                <td className="px-3 py-2.5 text-right">
+                <td className="col-actions px-3 py-2.5">
                   <div className="flex items-center justify-end gap-1.5">
                     {canManage ? (
                       <CustomerRowActions

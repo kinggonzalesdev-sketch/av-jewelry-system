@@ -161,7 +161,7 @@ export function EmployeeRatesView({
             <th className="px-3 py-2.5 text-center font-medium">Pay Frequency</th>
             <th className="px-3 py-2.5 text-center font-medium">Effective Date</th>
             <th className="px-3 py-2.5 text-center font-medium">Last Updated</th>
-            {canManage ? <th className="px-3 py-2.5 text-right font-medium">Actions</th> : null}
+            {canManage ? <th className="col-actions px-3 py-2.5 font-medium">Actions</th> : null}
           </tr>
         </thead>
         <tbody>
@@ -187,7 +187,7 @@ export function EmployeeRatesView({
               <td className="whitespace-nowrap px-3 py-2.5 text-center">{r.effectiveDate ?? '—'}</td>
               <td className="whitespace-nowrap px-3 py-2.5 text-center">{fmtDate(r.lastUpdated)}</td>
               {canManage ? (
-                <td className="px-3 py-2.5 text-right">
+                <td className="col-actions px-3 py-2.5">
                   <EditRate row={r} />
                 </td>
               ) : null}

@@ -212,11 +212,16 @@
 .data-table > thead > tr > th {
   padding: 7px 13px;
   height: 38px;
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 700; /* BOLD header (Owner spec) */
   text-transform: uppercase;
   line-height: 1.15;
   white-space: nowrap;
+}
+/* Layaway tables get a slightly larger header (Owner spec). Scoped via `.lay-table`
+   on those tables so it never affects the other modules. */
+.data-table.lay-table > thead > tr > th {
+  font-size: 15px;
 }
 .data-table > tbody > tr > td {
   padding: 6px 12px;
@@ -245,9 +250,19 @@
 .data-table .col-center {
   text-align: center;
 }
+/* Actions column — header centered exactly above the button group, and the body
+   buttons centered on one line with even 8px gaps. The `> *` rule overrides each
+   table's own wrapper (flex/justify-end/gap-N) so every Actions cell matches, no
+   matter how its row was authored. */
 .data-table .col-actions {
-  text-align: right;
+  text-align: center;
   white-space: nowrap;
+}
+.data-table td.col-actions > * {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 /* The single column that should absorb leftover width (name / description / notes). */
 .data-table .col-grow {

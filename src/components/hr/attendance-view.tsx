@@ -164,7 +164,7 @@ export function AttendanceView({
                       <th className="min-w-[6rem] whitespace-nowrap px-3 py-2.5 text-center font-medium">
                         Status
                       </th>
-                      <th className="whitespace-nowrap px-3 py-2.5 text-right font-medium">
+                      <th className="col-actions whitespace-nowrap px-3 py-2.5 font-medium">
                         Actions
                       </th>
                     </tr>
@@ -294,7 +294,7 @@ export function AttendanceView({
                           {formatDuration(durationHours(r.timeIn, r.timeOut))}
                         </td>
                         {canManage ? (
-                          <td className="px-3 py-2.5 text-right">
+                          <td className="col-actions px-3 py-2.5">
                             <AttendanceRowDelete row={r} />
                           </td>
                         ) : null}

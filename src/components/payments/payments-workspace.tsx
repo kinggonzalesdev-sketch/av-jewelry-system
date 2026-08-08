@@ -1163,7 +1163,7 @@ function LayawayTable({
     <div>
     <div className="overflow-x-auto rounded-xl border border-border bg-card">
       <table
-        className="data-table data-roomy w-full min-w-[1000px] text-left text-xs"
+        className="data-table data-roomy lay-table w-full min-w-[1000px] text-left text-xs"
         data-testid="layaway-table"
       >
         {/* Owner width spec: Unique Code + Customer Name are the two widest; Code and
@@ -1339,7 +1339,7 @@ function CompletedLayawayTable({
   return (
     <div className="overflow-x-auto rounded-xl border border-border bg-card">
       <table
-        className="data-table w-full min-w-[1000px] text-left text-xs"
+        className="data-table lay-table w-full min-w-[1000px] text-left text-xs"
         data-testid="layaway-completed-table"
       >
         <thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -1354,7 +1354,7 @@ function CompletedLayawayTable({
             <th className="px-3 py-2 text-right">Total Payment</th>
             <th className="px-3 py-2">Completion Date</th>
             <th className="px-3 py-2">Order / Account No.</th>
-            <th className="px-3 py-2 text-right">Actions</th>
+            <th className="col-actions px-3 py-2">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y">
@@ -1396,7 +1396,7 @@ function CompletedLayawayTable({
                     <span className="text-muted-foreground">Not linked</span>
                   )}
                 </td>
-                <td className="px-3 py-2 text-right">
+                <td className="col-actions px-3 py-2">
                   {r.officialOrderId ? (
                     <button
                       type="button"
