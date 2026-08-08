@@ -49,10 +49,10 @@ const PAYMENT_LABEL: Record<PaymentStatus, string> = {
 };
 
 const PAYMENT_TONE: Record<PaymentStatus, BadgeTone> = {
-  paid_in_full: 'success',
-  partial: 'warning',
-  awaiting: 'neutral',
-  unavailable: 'danger',
+  paid_in_full: 'success', // green — settled
+  partial: 'warning', // amber — partially paid
+  awaiting: 'warning', // amber — awaiting payment (pending)
+  unavailable: 'danger', // red — balance unavailable
 };
 
 /**
@@ -68,11 +68,17 @@ const SHIP_CONFIRMED = new Set([
 ]);
 
 function fulfillmentTone(status: string): BadgeTone {
-  if (['for_shipping', 'for_pickup'].includes(status)) return 'gold';
-  if (['dispatched', 'picked_up', 'completed', 'approved_for_release'].includes(status)) {
-    return 'strong';
+  // Blue = active process / in transit (Owner colour spec).
+  if (
+    ['for_shipping', 'for_pickup', 'dispatched', 'picked_up', 'approved_for_release'].includes(
+      status,
+    )
+  ) {
+    return 'info';
   }
-  if (['held', 'failed_delivery', 'unclaimed_pickup'].includes(status)) return 'warning';
+  if (status === 'completed') return 'success'; // green — done
+  if (status === 'failed_delivery') return 'danger'; // red — failed
+  if (['held', 'unclaimed_pickup'].includes(status)) return 'warning'; // amber — attention
   return 'neutral';
 }
 
@@ -115,17 +121,17 @@ const CARD_DEFS: Array<{ key: CardKey; label: string; icon: string; tone: BadgeT
   // cards (Owner request 2026-08-05). Their CardKeys + matchesCard rules are kept
   // (like `for_confirm`, they remain valid for status logic) — they simply no longer
   // render a card or a flow-dropdown option.
-  { key: 'ship_confirm', label: 'Ship Confirm', icon: '➤', tone: 'strong' },
+  { key: 'ship_confirm', label: 'Ship Confirm', icon: '➤', tone: 'info' },
   // For-Prepare transfer destinations (Orders Workflow).
-  { key: 'delivery', label: 'For Delivery', icon: '🛵', tone: 'gold' },
-  { key: 'pickup', label: 'Pickup', icon: '🏬', tone: 'gold' },
+  { key: 'delivery', label: 'For Delivery', icon: '🛵', tone: 'info' },
+  { key: 'pickup', label: 'Pickup', icon: '🏬', tone: 'info' },
   { key: 'for_layaway', label: 'For Layaway', icon: '❐', tone: 'neutral' },
   { key: 'keep', label: 'Keep', icon: '❏', tone: 'neutral' },
   { key: 'cancelled', label: 'Cancelled', icon: '✕', tone: 'danger' },
   { key: 'unverified_pay', label: 'Pending Payment', icon: '⚠', tone: 'warning' },
   // Order SOURCE (not a status): filter to walk-in sales.
   { key: 'walk_in', label: 'Walk In', icon: '🚶', tone: 'gold' },
-  { key: 'completed', label: 'Completed', icon: '✓', tone: 'strong' },
+  { key: 'completed', label: 'Completed', icon: '✓', tone: 'success' },
 ];
 
 /** Order statuses that count as GENUINELY completed — the final item handoff is
