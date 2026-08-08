@@ -38,7 +38,8 @@ function humanizeStatus(value: string): string {
 }
 
 export type CustomersResult =
-  { ok: true; rows: CustomerListRow[] } | { ok: false; reason: string };
+  | { ok: true; rows: CustomerListRow[]; total: number; page: number; pageSize: number }
+  | { ok: false; reason: string };
 
 /** Strip characters that would break a PostgREST `or(...)` filter string. */
 function sanitizeSearch(query: string): string {
@@ -49,25 +50,36 @@ function sanitizeSearch(query: string): string {
  * Lists customers, alphabetical. Optional case-insensitive search over the
  * display name and contact number.
  */
-export async function listCustomers(query = '', limit = 100): Promise<CustomersResult> {
+export async function listCustomers(
+  query = '',
+  page = 1,
+  pageSize = 25,
+): Promise<CustomersResult> {
   const supabase = await createClient();
+  const size = Math.max(1, pageSize);
+  const current = Math.max(1, page);
+  const from = (current - 1) * size;
+  const to = from + size - 1;
 
   let builder = supabase
     .from('customers')
     // official_orders embed drives the STAGE column (latest order status). RLS
-    // scopes the embedded orders to what the caller may already see.
+    // scopes the embedded orders to what the caller may already see. `count: exact`
+    // returns the TOTAL matching rows so the pager knows how many pages exist —
+    // TRUE server-side pagination: only this page's rows are fetched.
     .select(
       'id, display_name, address, contact_number, is_active, created_at, official_orders ( status, created_at )',
+      { count: 'exact' },
     )
     .order('display_name', { ascending: true })
-    .limit(limit);
+    .range(from, to);
 
   const term = sanitizeSearch(query);
   if (term.length >= 2) {
     builder = builder.or(`display_name.ilike.%${term}%,contact_number.ilike.%${term}%`);
   }
 
-  const { data, error } = await builder;
+  const { data, error, count } = await builder;
   if (error) {
     return { ok: false, reason: error.message };
   }
@@ -90,7 +102,7 @@ export async function listCustomers(query = '', limit = 100): Promise<CustomersR
     };
   });
 
-  return { ok: true, rows };
+  return { ok: true, rows, total: count ?? rows.length, page: current, pageSize: size };
 }
 
 /**

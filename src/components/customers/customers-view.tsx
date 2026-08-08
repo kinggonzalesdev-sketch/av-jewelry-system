@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import { updateCustomerAction } from '@/lib/customers/actions';
 import type { CustomerListRow, CustomersResult } from '@/lib/customers/service';
@@ -43,19 +43,13 @@ function CustomerList({
   canManage: boolean;
   onView: (row: CustomerListRow) => void;
 }) {
-  // Render pagination — window to the current page (50). Resets on a new search.
-  const [page, setPage] = useState(1);
-  const CUST_PAGE_SIZE = 25;
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPage(1);
-  }, [query]);
+  const router = useRouter();
 
   if (!result.ok) {
     return <ReadError title="Customers could not be loaded" detail={result.reason} />;
   }
 
-  if (result.rows.length === 0) {
+  if (result.total === 0) {
     return query ? (
       <EmptyState title="No matches" description={`No customers match “${query}”.`} />
     ) : (
@@ -66,12 +60,16 @@ function CustomerList({
     );
   }
 
-  const custPageCount = Math.max(1, Math.ceil(result.rows.length / CUST_PAGE_SIZE));
-  const custPageSafe = Math.min(page, custPageCount);
-  const pagedCustomers = result.rows.slice(
-    (custPageSafe - 1) * CUST_PAGE_SIZE,
-    custPageSafe * CUST_PAGE_SIZE,
-  );
+  // TRUE server-side pagination: result.rows is already just this page. The pager
+  // navigates by URL (?page=N, preserving ?q=…) so the server fetches the next page.
+  const pageCount = Math.max(1, Math.ceil(result.total / result.pageSize));
+  const goToPage = (p: number) => {
+    const sp = new URLSearchParams();
+    if (query) sp.set('q', query);
+    if (p > 1) sp.set('page', String(p));
+    const qs = sp.toString();
+    router.push(`/customers${qs ? `?${qs}` : ''}`);
+  };
 
   return (
     <div className="space-y-3">
@@ -89,7 +87,7 @@ function CustomerList({
             </tr>
           </thead>
           <tbody>
-            {pagedCustomers.map((row) => (
+            {result.rows.map((row) => (
               <tr key={row.id} className="border-b border-border last:border-0">
                 <td className="px-3 py-2.5 font-medium">{row.displayName}</td>
                 <td className="px-3 py-2.5 text-muted-foreground">
@@ -134,12 +132,12 @@ function CustomerList({
         </table>
       </div>
     </div>
-    {result.rows.length > CUST_PAGE_SIZE ? (
+    {result.total > result.pageSize ? (
       <Pagination
-        page={custPageSafe}
-        pageCount={custPageCount}
-        total={result.rows.length}
-        onPageChange={setPage}
+        page={result.page}
+        pageCount={pageCount}
+        total={result.total}
+        onPageChange={goToPage}
       />
     ) : null}
     </div>

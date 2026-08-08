@@ -30,9 +30,10 @@ export default async function CustomersPage({
   if (!(await canOpenPage('nav_customers'))) notFound();
   const params = await searchParams;
   const query = typeof params.q === 'string' ? params.q : '';
+  const page = typeof params.page === 'string' ? Math.max(1, Number.parseInt(params.page, 10) || 1) : 1;
 
   const [result, staff] = await Promise.all([
-    listCustomers(query),
+    listCustomers(query, page, 25),
     requireActiveStaff(),
   ]);
   // Owner or Selected Admin may permanently delete an isolated customer.
