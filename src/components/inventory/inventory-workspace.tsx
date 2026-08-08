@@ -487,12 +487,12 @@ export function InventoryWorkspace({
               {/* Intentional column widths (Owner spec). HINTS, not table-fixed — a
                   column can still grow to fit a long code, nothing is clipped. */}
               <colgroup>
-                <col style={{ width: '30%' }} />
-                <col style={{ width: '15%' }} />
-                <col style={{ width: '10%' }} />
-                <col style={{ width: '13%' }} />
-                <col style={{ width: '14%' }} />
                 <col style={{ width: '18%' }} />
+                <col style={{ width: '17%' }} />
+                <col style={{ width: '18%' }} />
+                <col style={{ width: '17%' }} />
+                <col style={{ width: '15%' }} />
+                <col style={{ width: '15%' }} />
               </colgroup>
               <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                 <tr>
