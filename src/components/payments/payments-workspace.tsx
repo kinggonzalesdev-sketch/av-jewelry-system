@@ -1150,14 +1150,14 @@ function LayawayTable({
   // Render pagination — window to the current page (50) so a large account list doesn't
   // put every row in the DOM. Resets to page 1 when the filtered rows change.
   const [layPage, setLayPage] = useState(1);
-  const LAY_PAGE_SIZE = 25;
+  const [layPageSize, setLayPageSize] = useState(25);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLayPage(1);
   }, [rows]);
-  const layPageCount = Math.max(1, Math.ceil(rows.length / LAY_PAGE_SIZE));
+  const layPageCount = Math.max(1, Math.ceil(rows.length / layPageSize));
   const layPageSafe = Math.min(layPage, layPageCount);
-  const pagedRows = rows.slice((layPageSafe - 1) * LAY_PAGE_SIZE, layPageSafe * LAY_PAGE_SIZE);
+  const pagedRows = rows.slice((layPageSafe - 1) * layPageSize, layPageSafe * layPageSize);
 
   return (
     <div>
@@ -1298,12 +1298,17 @@ function LayawayTable({
         </tbody>
       </table>
     </div>
-    {rows.length > LAY_PAGE_SIZE ? (
+    {rows.length > 0 ? (
       <Pagination
         page={layPageSafe}
         pageCount={layPageCount}
         total={rows.length}
+        pageSize={layPageSize}
         onPageChange={setLayPage}
+        onPageSizeChange={(n) => {
+          setLayPageSize(n);
+          setLayPage(1);
+        }}
         className="mt-3"
       />
     ) : null}

@@ -42,16 +42,16 @@ export function ScrapView({
 
   // Render pagination (25/page) — windows the rendered rows; resets on a new date range.
   const [scrapPage, setScrapPage] = useState(1);
-  const SCRAP_PAGE_SIZE = 25;
+  const [scrapPageSize, setScrapPageSize] = useState(25);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setScrapPage(1);
   }, [sales]);
-  const scrapPageCount = Math.max(1, Math.ceil(sales.length / SCRAP_PAGE_SIZE));
+  const scrapPageCount = Math.max(1, Math.ceil(sales.length / scrapPageSize));
   const scrapPageSafe = Math.min(scrapPage, scrapPageCount);
   const pagedSales = sales.slice(
-    (scrapPageSafe - 1) * SCRAP_PAGE_SIZE,
-    scrapPageSafe * SCRAP_PAGE_SIZE,
+    (scrapPageSafe - 1) * scrapPageSize,
+    scrapPageSafe * scrapPageSize,
   );
 
   /**
@@ -216,12 +216,17 @@ export function ScrapView({
               )}
             </tbody>
           </DataTable>
-          {sales.length > SCRAP_PAGE_SIZE ? (
+          {sales.length > 0 ? (
             <Pagination
               page={scrapPageSafe}
               pageCount={scrapPageCount}
               total={sales.length}
+              pageSize={scrapPageSize}
               onPageChange={setScrapPage}
+              onPageSizeChange={(n) => {
+                setScrapPageSize(n);
+                setScrapPage(1);
+              }}
               className="mt-3"
             />
           ) : null}
