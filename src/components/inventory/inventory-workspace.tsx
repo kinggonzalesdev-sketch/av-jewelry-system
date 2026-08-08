@@ -19,7 +19,7 @@ import { downloadCsv } from '@/lib/export/csv';
 import { InventoryImportButton } from '@/components/inventory/inventory-import-modal';
 import { InventoryItemActions } from '@/components/inventory/inventory-item-actions';
 import { Button } from '@/components/ui/button';
-import { ReadError } from '@/components/ui/page-primitives';
+import { ReadError, StatusBadge, type BadgeTone } from '@/components/ui/page-primitives';
 import { Input } from '@/components/ui/input';
 import { SearchInput } from '@/components/ui/search-input';
 import { Select } from '@/components/ui/select';
@@ -41,26 +41,31 @@ import { Modal, ModalFieldFull, ModalFormGrid } from '@/components/ui/modal';
 
 type Tab = 'Active Inventory' | 'Completed Items';
 
-/** Payment-status pill for the Completed Items table. Null → an honest "—". */
-const PAYMENT_LABEL: Record<string, { label: string; cls: string }> = {
-  paid_in_full: { label: 'Paid in Full', cls: 'text-green-700' },
-  partial: { label: 'Partial', cls: 'text-amber-600' },
-  unpaid: { label: 'Unpaid', cls: 'text-destructive' },
-};
-function paymentText(status: string | null): { label: string; cls: string } {
-  return status ? (PAYMENT_LABEL[status] ?? { label: status, cls: '' }) : { label: '—', cls: 'text-muted-foreground' };
+/** Availability status → unified tone (Active Inventory table). Same colour
+ *  language as Orders: green = sellable stock, blue = returned to the pool. */
+function availabilityTone(status: string): BadgeTone {
+  if (status === 'available') return 'success'; // green
+  if (status === 'returned_to_available') return 'info'; // blue — back in stock
+  return 'neutral';
 }
 
-/** Colour for the Current Stage badge: settled, stopped, or still in flight. */
-function stageClass(stage: string): string {
-  if (stage === 'Completed' || stage === 'Released') {
-    return 'border-green-600/40 bg-green-600/10 text-green-700';
-  }
-  if (stage === 'Cancelled') {
-    return 'border-destructive/40 bg-destructive/10 text-destructive';
-  }
-  if (stage === '—') return 'border-border text-muted-foreground';
-  return 'border-gold/40 bg-gold/10 text-gold-strong';
+/** Payment-status pill for the Completed Items table (label + unified tone). */
+const PAYMENT_META: Record<string, { label: string; tone: BadgeTone }> = {
+  paid_in_full: { label: 'Paid in Full', tone: 'success' }, // green
+  partial: { label: 'Partial', tone: 'warning' }, // amber
+  unpaid: { label: 'Unpaid', tone: 'danger' }, // red
+};
+function paymentMeta(status: string | null): { label: string; tone: BadgeTone } {
+  if (!status) return { label: '—', tone: 'neutral' };
+  return PAYMENT_META[status] ?? { label: status.replace(/_/g, ' '), tone: 'neutral' };
+}
+
+/** Current Stage → unified tone: settled (green), stopped (red), or in flight (blue). */
+function stageTone(stage: string): BadgeTone {
+  if (stage === 'Completed' || stage === 'Released') return 'success'; // green
+  if (stage === 'Cancelled') return 'danger'; // red
+  if (stage === '—') return 'neutral';
+  return 'info'; // blue — still processing
 }
 
 
@@ -249,7 +254,7 @@ export function InventoryWorkspace({
         { header: 'Order Number', value: (c) => c.orderNumber ?? '' },
         { header: 'Invoice Number', value: (c) => c.invoiceNumber ?? '' },
         { header: 'Sale Amount', value: (c) => c.finalSale ?? '' },
-        { header: 'Payment', value: (c) => paymentText(c.paymentStatus).label },
+        { header: 'Payment', value: (c) => paymentMeta(c.paymentStatus).label },
         { header: 'Current Stage', value: (c) => c.currentStage },
         { header: 'Completion Type', value: (c) => c.completionType },
         { header: 'Courier', value: (c) => c.courier ?? '' },
@@ -504,8 +509,12 @@ export function InventoryWorkspace({
                     <td className="col-grow truncate px-3 py-2.5 font-mono" title={i.itemCode}>
                       {i.itemCode}
                     </td>
-                    <td className="px-3 py-2.5 text-left capitalize">
-                      {i.availabilityStatus.replace(/_/g, ' ')}
+                    <td className="px-3 py-2.5 text-left">
+                      <StatusBadge
+                        label={i.availabilityStatus.replace(/_/g, ' ')}
+                        tone={availabilityTone(i.availabilityStatus)}
+                        className="capitalize"
+                      />
                     </td>
                     <td className="col-num px-3 py-2.5">
                       {i.gramsPerPiece ?? parseInventoryCode(i.itemCode).grams ?? '—'}
@@ -641,24 +650,22 @@ export function InventoryWorkspace({
                             {c.finalSale ? <Money amount={c.finalSale} /> : '—'}
                           </td>
                           <td className="px-3 py-2.5 text-center">
-                            {(() => {
-                              const p = paymentText(c.paymentStatus);
-                              return (
-                                <span className={`whitespace-nowrap font-medium ${p.cls}`}>
-                                  {p.label}
-                                </span>
-                              );
-                            })()}
+                            {c.paymentStatus ? (
+                              (() => {
+                                const p = paymentMeta(c.paymentStatus);
+                                return <StatusBadge label={p.label} tone={p.tone} />;
+                              })()
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
                           </td>
                           {/* Current Stage — derived live from the linked order. */}
                           <td className="px-3 py-2.5 text-center">
-                            <span
-                              className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-medium ${stageClass(
-                                c.currentStage,
-                              )}`}
-                            >
-                              {c.currentStage}
-                            </span>
+                            {c.currentStage === '—' ? (
+                              <span className="text-muted-foreground">—</span>
+                            ) : (
+                              <StatusBadge label={c.currentStage} tone={stageTone(c.currentStage)} />
+                            )}
                           </td>
                           <td className="whitespace-nowrap px-3 py-2.5 text-center">
                             {c.completedDate ? c.completedDate.slice(0, 10) : '—'}

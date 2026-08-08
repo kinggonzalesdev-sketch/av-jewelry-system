@@ -103,7 +103,7 @@ function CustomerList({
                 <td className="px-3 py-2.5 text-center">
                   <StatusBadge
                     label={row.isActive ? 'Active' : 'Inactive'}
-                    tone={row.isActive ? 'strong' : 'warning'}
+                    tone={row.isActive ? 'success' : 'neutral'}
                   />
                 </td>
                 <td className="px-3 py-2.5 text-center text-muted-foreground">{row.stage}</td>

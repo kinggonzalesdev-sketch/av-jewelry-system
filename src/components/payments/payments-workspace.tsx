@@ -40,6 +40,7 @@ import { EmptyState } from '@/components/states/empty-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Pagination } from '@/components/ui/pagination';
+import { StatusBadge, type BadgeTone } from '@/components/ui/page-primitives';
 import { Input } from '@/components/ui/input';
 import { MoneyInput } from '@/components/ui/money-input';
 import { Label } from '@/components/ui/label';
@@ -71,26 +72,25 @@ export type Tab = (typeof TABS)[number];
 const RANGES: DateRangeKey[] = ['today', '7d', '14d', '30d', 'month', 'custom'];
 
 
-/** Spreadsheet-style status colours for layaway (§13). Colour + the written
- *  label — never colour alone. */
-function layawayStatusClass(rawStatus: string): string {
+/** Layaway status → unified tone (§13) — same colour language as Orders. Colour +
+ *  the written label, never colour alone. */
+function layawayStatusTone(rawStatus: string): BadgeTone {
   // Case-insensitive: an imported `COMPLETED` must colour like `completed`.
   const status = rawStatus.trim().toLowerCase();
   switch (status) {
     case 'completed':
-      return 'border-green-500/40 bg-green-500/10 text-green-600';
+      return 'success'; // green — settled
     case 'active':
-      return 'border-amber-500/40 bg-amber-500/10 text-amber-600';
+      return 'info'; // blue — in progress
     case 'grace_period':
-      return 'border-orange-500/40 bg-orange-500/10 text-orange-600';
+      return 'warning'; // amber — attention
     case 'overdue':
     case 'cancelled':
-      return 'border-red-500/40 bg-red-500/10 text-red-600';
     case 'forfeiture_eligible':
     case 'forfeited':
-      return 'border-red-800/50 bg-red-800/10 text-red-800';
+      return 'danger'; // red — overdue / stopped
     default:
-      return 'border-border text-muted-foreground';
+      return 'neutral';
   }
 }
 
@@ -1693,13 +1693,11 @@ function LayawayList({
                     · {l.invoiceNumber}
                   </p>
                 </div>
-                <span
-                  className={`rounded-full border px-2 py-0.5 text-xs capitalize ${layawayStatusClass(
-                    l.status,
-                  )}`}
-                >
-                  {l.status.replace(/_/g, ' ')}
-                </span>
+                <StatusBadge
+                  label={l.status.replace(/_/g, ' ')}
+                  tone={layawayStatusTone(l.status)}
+                  className="capitalize"
+                />
               </div>
 
               <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-4">

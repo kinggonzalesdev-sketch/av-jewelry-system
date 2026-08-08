@@ -19,7 +19,7 @@ import { formatPeso } from '@/lib/payments/format';
 import { CollectionRemittanceControls } from '@/components/fulfillment/collection-controls';
 import { PrepareFulfillmentForm } from '@/components/fulfillment/prepare-fulfillment-form';
 import { EmptyState } from '@/components/states/empty-state';
-import { ReadError } from '@/components/ui/page-primitives';
+import { ReadError, StatusBadge, type BadgeTone } from '@/components/ui/page-primitives';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -39,6 +39,31 @@ import { Label } from '@/components/ui/label';
 
 const TABS = ['Fulfillment Queue', 'Owner Approval Center'] as const;
 type Tab = (typeof TABS)[number];
+
+/** Fulfillment status → unified tone (same colour language as Orders): blue = in
+ *  transit / awaiting release, green = done, red = failed, amber = needs attention. */
+function fulfillmentTone(status: string): BadgeTone {
+  if (
+    ['for_shipping', 'for_pickup', 'dispatched', 'picked_up', 'approved_for_release'].includes(
+      status,
+    )
+  ) {
+    return 'info';
+  }
+  if (status === 'completed') return 'success';
+  if (status === 'failed_delivery') return 'danger';
+  if (['held', 'unclaimed_pickup'].includes(status)) return 'warning';
+  return 'neutral';
+}
+
+/** Owner-approval status → unified tone: amber = awaiting, green = approved/executed,
+ *  red = rejected. */
+function approvalTone(status: string): BadgeTone {
+  if (status === 'pending_owner_approval') return 'warning';
+  if (['approved', 'executed', 'approved_and_executed'].includes(status)) return 'success';
+  if (['rejected', 'denied', 'cancelled'].includes(status)) return 'danger';
+  return 'neutral';
+}
 
 export function FulfillmentWorkspace({
   fulfillments,
@@ -165,9 +190,11 @@ export function FulfillmentWorkspace({
                           {f.trackingNumber ? ` · ${f.trackingNumber}` : ''}
                         </p>
                       </div>
-                      <span className="rounded-full border px-2 py-0.5 text-xs">
-                        {f.status.replace(/_/g, ' ')}
-                      </span>
+                      <StatusBadge
+                        label={f.status.replace(/_/g, ' ')}
+                        tone={fulfillmentTone(f.status)}
+                        className="capitalize"
+                      />
                     </div>
 
                     {f.balanceUnavailable ? (
@@ -386,10 +413,11 @@ export function FulfillmentWorkspace({
                               {a.reason}
                             </p>
                           </div>
-                          <span className="rounded-full border px-2 py-0.5 text-xs">
-                            {a.status.replace(/_/g, ' ')}
-                            {a.executedAt ? ' · executed' : ''}
-                          </span>
+                          <StatusBadge
+                            label={`${a.status.replace(/_/g, ' ')}${a.executedAt ? ' · executed' : ''}`}
+                            tone={approvalTone(a.status)}
+                            className="capitalize"
+                          />
                         </div>
 
                         {isOwner && a.status === 'pending_owner_approval' ? (
