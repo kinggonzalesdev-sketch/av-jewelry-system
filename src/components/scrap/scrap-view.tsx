@@ -170,7 +170,7 @@ export function ScrapView({
           <DataTable
             minWidth="880px"
             spacious
-            columns={['26%', '10%', '8%', '8%', '12%', '12%', '14%', '10%']}
+            columns={['15%', '13%', '12%', '10%', '13%', '12%', '10%', '15%']}
           >
             <Thead>
               <Tr plain>
