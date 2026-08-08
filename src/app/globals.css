@@ -202,20 +202,22 @@
 .data-table {
   width: 100%;
 }
-/* Roomy density is now the BASE (Owner spec — every table matches the Orders
-   reference): 44px header, 48px rows, 16px horizontal / 10px vertical padding. The
-   `.data-roomy` modifier below is kept as a harmless alias so `<DataTable spacious>`
-   still resolves. */
+/* Roomy density is now the BASE (Owner spec 2026-08-08 — every table matches the
+   attached Inventory reference): 60px header, 76px rows, 22px horizontal / 18px
+   vertical padding. `height` on a cell acts as a MINIMUM, so every row lands at
+   the same 76px unless its content legitimately wraps taller — no compressed rows.
+   The `.data-roomy` modifier below is kept in sync as an alias so `<DataTable
+   spacious>` still resolves to the identical geometry. */
 .data-table > thead > tr > th {
-  padding: 0 16px;
-  height: 44px;
+  padding: 0 22px;
+  height: 60px;
   font-size: 11px;
   line-height: 1.15;
   white-space: nowrap;
 }
 .data-table > tbody > tr > td {
-  padding: 10px 16px;
-  height: 48px;
+  padding: 18px 22px;
+  height: 76px;
   line-height: 1.2;
   vertical-align: middle;
   /* One-line rule (Owner request): status/payment badges, codes, numbers, dates, and
@@ -249,18 +251,18 @@
 }
 
 /*
- * GLOBAL TABLE SPACING (Owner spec) — opt-in roomier density via `.data-roomy`
- * (DataTable `spacious`). 44px header, 48px rows, 16px horizontal / 10px vertical
- * padding. Higher specificity than the base `.data-table` rules, so it overrides
- * padding + height only, leaving alignment/colour/borders (the gold hairlines) intact.
+ * GLOBAL TABLE SPACING (Owner spec 2026-08-08) — `.data-roomy` (DataTable
+ * `spacious`) is kept identical to the base so both resolve to the reference
+ * geometry: 60px header, 76px rows, 22px horizontal / 18px vertical padding.
+ * Overrides padding + height only, leaving alignment/colour/borders intact.
  */
 .data-table.data-roomy > thead > tr > th {
-  padding: 0 16px;
-  height: 44px;
+  padding: 0 22px;
+  height: 60px;
 }
 .data-table.data-roomy > tbody > tr > td {
-  padding: 10px 16px;
-  height: 48px;
+  padding: 18px 22px;
+  height: 76px;
 }
 
 /*

@@ -67,21 +67,6 @@ const SHIP_CONFIRMED = new Set([
   'dispatched_or_picked_up',
 ]);
 
-function fulfillmentTone(status: string): BadgeTone {
-  // Blue = active process / in transit (Owner colour spec).
-  if (
-    ['for_shipping', 'for_pickup', 'dispatched', 'picked_up', 'approved_for_release'].includes(
-      status,
-    )
-  ) {
-    return 'info';
-  }
-  if (status === 'completed') return 'success'; // green — done
-  if (status === 'failed_delivery') return 'danger'; // red — failed
-  if (['held', 'unclaimed_pickup'].includes(status)) return 'warning'; // amber — attention
-  return 'neutral';
-}
-
 /**
  * The Owner-approved Orders status cards, in order:
  * Total · For Invoice · For Reminder · For Prepare · For Confirm · For Shipping ·
@@ -201,9 +186,6 @@ function OrderRow({
       <Td clip title={order.waybillNumber || order.orderNumber} className="font-mono text-xs">
         {order.waybillNumber || <span className="text-muted-foreground">—</span>}
       </Td>
-      <Td clip title={order.invoiceNumber || undefined} className="font-mono text-xs">
-        {order.invoiceNumber || <span className="text-muted-foreground">—</span>}
-      </Td>
       <Td clip title={order.customerDisplayName} className="font-medium">
         {order.customerDisplayName}
         {order.orderSource === 'walk_in' ? (
@@ -229,16 +211,6 @@ function OrderRow({
             <Money amount={order.outstandingBalance} /> due
           </span>
         ) : null}
-      </Td>
-      <Td kind="center">
-        {order.fulfillmentStatus ? (
-          <StatusBadge
-            label={humanize(order.fulfillmentStatus)}
-            tone={fulfillmentTone(order.fulfillmentStatus)}
-          />
-        ) : (
-          <span className="text-xs text-muted-foreground">—</span>
-        )}
       </Td>
       <Td kind="actions">
         <span className="inline-flex items-center gap-2">
@@ -631,19 +603,17 @@ export function OrdersView({
       ) : (
         <>
           <DataTable
-            minWidth="960px"
+            minWidth="760px"
             spacious
-            columns={['14%', '13%', '12%', '24%', '11%', '10%', '8%', '8%']}
+            columns={['14%', '13%', '44%', '11%', '10%', '8%']}
           >
             <Thead>
               <Tr plain>
                 <Th>Status</Th>
                 <Th>Waybill Number</Th>
-                <Th>Invoice No.</Th>
                 <Th>Customer</Th>
                 <Th kind="num">Amount</Th>
                 <Th kind="center">Payment</Th>
-                <Th kind="center">Fulfillment</Th>
                 <Th kind="actions">Actions</Th>
               </Tr>
             </Thead>
