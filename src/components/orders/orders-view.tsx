@@ -611,7 +611,7 @@ export function OrdersView({
               <Tr plain>
                 <Th>Status</Th>
                 <Th>Waybill Number</Th>
-                <Th>Customer</Th>
+                <Th>Customer Name</Th>
                 <Th kind="num">Amount</Th>
                 <Th kind="center">Payment</Th>
                 <Th kind="actions">Actions</Th>
