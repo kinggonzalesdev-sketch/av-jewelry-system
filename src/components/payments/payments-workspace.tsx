@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useActionState, useMemo, useState } from 'react';
+import { useActionState, useEffect, useMemo, useState } from 'react';
 
 import { OrderDetailsModal } from '@/components/orders/order-details-modal';
 import { Modal } from '@/components/ui/modal';
@@ -39,6 +39,7 @@ import { RecordPaymentForm } from '@/components/payments/record-payment-form';
 import { EmptyState } from '@/components/states/empty-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Pagination } from '@/components/ui/pagination';
 import { Input } from '@/components/ui/input';
 import { MoneyInput } from '@/components/ui/money-input';
 import { Label } from '@/components/ui/label';
@@ -1146,7 +1147,20 @@ function LayawayTable({
     return isOverdueRow(r, today) ? 'Yes' : 'No';
   };
 
+  // Render pagination — window to the current page (50) so a large account list doesn't
+  // put every row in the DOM. Resets to page 1 when the filtered rows change.
+  const [layPage, setLayPage] = useState(1);
+  const LAY_PAGE_SIZE = 50;
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLayPage(1);
+  }, [rows]);
+  const layPageCount = Math.max(1, Math.ceil(rows.length / LAY_PAGE_SIZE));
+  const layPageSafe = Math.min(layPage, layPageCount);
+  const pagedRows = rows.slice((layPageSafe - 1) * LAY_PAGE_SIZE, layPageSafe * LAY_PAGE_SIZE);
+
   return (
+    <div>
     <div className="overflow-x-auto rounded-xl border border-border bg-card">
       <table
         className="data-table data-roomy w-full min-w-[1000px] text-left text-xs"
@@ -1185,7 +1199,7 @@ function LayawayTable({
               </td>
             </tr>
           ) : (
-            rows.map((r) => (
+            pagedRows.map((r) => (
               <tr key={r.key} className="hover:bg-accent/40">
                 <td
                   className="truncate px-3 py-2 font-mono text-[11px]"
@@ -1283,6 +1297,16 @@ function LayawayTable({
           )}
         </tbody>
       </table>
+    </div>
+    {rows.length > LAY_PAGE_SIZE ? (
+      <Pagination
+        page={layPageSafe}
+        pageCount={layPageCount}
+        total={rows.length}
+        onPageChange={setLayPage}
+        className="mt-3"
+      />
+    ) : null}
     </div>
   );
 }
