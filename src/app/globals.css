@@ -210,7 +210,9 @@
    `.data-roomy` modifier below is kept in sync as an alias so `<DataTable spacious>`
    resolves to the same compact geometry. */
 .data-table > thead > tr > th {
-  padding: 8.5px 15px;
+  /* Horizontal padding MUST match the body cells (12px) or right/left-aligned
+     columns (Grams, Waybill, Customer Name, …) sit a few px off their header. */
+  padding: 8.5px 12px;
   height: 41px;
   font-size: 14px;
   font-weight: 700; /* BOLD header (Owner spec) */
@@ -285,7 +287,7 @@
  * Overrides padding + height only, leaving alignment/colour/borders intact.
  */
 .data-table.data-roomy > thead > tr > th {
-  padding: 8.5px 15px;
+  padding: 8.5px 12px;
   height: 41px;
 }
 /* Wrapper that turns a table into its OWN vertical scroller so the sticky header

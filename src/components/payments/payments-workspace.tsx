@@ -1247,7 +1247,7 @@ function LayawayTable({
                     );
                   })()}
                 </td>
-                <td className="px-3 py-2 text-right">
+                <td className="col-actions px-3 py-2">
                   {r.officialOrderId && r.layawayRow ? (
                     <div className="flex flex-wrap justify-end gap-2">
                       <button
