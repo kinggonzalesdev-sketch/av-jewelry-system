@@ -138,6 +138,7 @@ function CustomerList({
         pageCount={pageCount}
         total={result.total}
         onPageChange={goToPage}
+        sticky
       />
     ) : null}
     </div>

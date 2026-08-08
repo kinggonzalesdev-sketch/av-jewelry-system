@@ -18,6 +18,7 @@ export function Pagination({
   onPageChange,
   onPageSizeChange,
   pageSizes = [25, 50, 100, 250],
+  sticky = false,
   className,
 }: {
   page: number;
@@ -27,12 +28,23 @@ export function Pagination({
   onPageChange: (page: number) => void;
   onPageSizeChange?: ((size: number) => void) | undefined;
   pageSizes?: number[];
+  /** Pin the control to the bottom of the viewport while its table is scrolled,
+   *  settling into place at the very end of the list. */
+  sticky?: boolean | undefined;
   className?: string;
 }) {
   const last = Math.max(1, pageCount);
   return (
     <div
-      className={cn('flex flex-wrap items-center justify-between gap-3 text-sm', className)}
+      className={cn(
+        'flex flex-wrap items-center justify-between gap-3 text-sm',
+        // Sticky footer: floats at the viewport bottom over the scrolling table, then
+        // comes to rest at the list's end. A solid, blurred backdrop + top divider keep
+        // it readable while it overlaps rows; z-20 sits it above the table body.
+        sticky &&
+          'sticky bottom-0 z-20 mt-0 border-t border-border bg-background/90 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/70',
+        className,
+      )}
       data-testid="pagination"
     >
       <div className="text-muted-foreground">

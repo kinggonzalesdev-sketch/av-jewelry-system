@@ -227,7 +227,7 @@ export function ScrapView({
                 setScrapPageSize(n);
                 setScrapPage(1);
               }}
-              className="mt-3"
+              sticky
             />
           ) : null}
         </CardContent>

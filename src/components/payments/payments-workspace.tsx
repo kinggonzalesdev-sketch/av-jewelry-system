@@ -1309,7 +1309,7 @@ function LayawayTable({
           setLayPageSize(n);
           setLayPage(1);
         }}
-        className="mt-3"
+        sticky
       />
     ) : null}
     </div>

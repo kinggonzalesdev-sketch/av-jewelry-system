@@ -546,7 +546,7 @@ export function InventoryWorkspace({
                   setInvPageSize(n);
                   setInvPage(1);
                 }}
-                className="px-1"
+                sticky
               />
             ) : null}
           </div>
@@ -702,7 +702,7 @@ export function InventoryWorkspace({
                     setCompPageSize(n);
                     setCompPage(1);
                   }}
-                  className="px-3 py-2"
+                  sticky
                 />
               ) : null}
               <p className="px-3 py-2 text-[11px] text-muted-foreground">

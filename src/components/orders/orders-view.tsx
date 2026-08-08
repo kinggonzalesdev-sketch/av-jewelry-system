@@ -639,7 +639,7 @@ export function OrdersView({
                 setOrdPageSize(n);
                 setOrdPage(1);
               }}
-              className="mt-3"
+              sticky
             />
           ) : null}
         </>
