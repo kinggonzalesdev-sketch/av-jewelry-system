@@ -58,23 +58,18 @@ export type OrderBalanceResult =
  * so a caller can only read money for an order they are already allowed to see.
  * This module computes nothing.
  */
-export async function getOrderBalance(
-  officialOrderId: string,
-): Promise<OrderBalanceResult> {
-  const supabase = await createClient();
-  const response = await supabase.rpc('order_balance', { p_order_id: officialOrderId });
-
-  if (response.error) {
-    // Surfaces the database's own refusal rather than replacing it with a
-    // generic message — a denial and an outage are different facts.
-    return { ok: false, reason: response.error.message };
-  }
-
-  if (response.data === null || response.data === undefined) {
+/**
+ * Turns one order_balance() jsonb payload into an OrderBalanceResult, applying
+ * the "no zero on failure" rule. Shared by the single reader and the batch
+ * reader so both validate a balance identically — there is one parser, just as
+ * there is one SQL formula.
+ */
+function parseBalanceJson(data: unknown): OrderBalanceResult {
+  if (data === null || data === undefined) {
     return { ok: false, reason: 'That order has no balance record.' };
   }
 
-  const raw = response.data as Record<string, unknown>;
+  const raw = data as Record<string, unknown>;
 
   // A present row with a missing figure is still a failed read. Returning
   // String(undefined) === 'undefined' into a peso field, or silently coercing
@@ -103,6 +98,55 @@ export async function getOrderBalance(
       requiredDownPayment: String(raw.required_down_payment),
     },
   };
+}
+
+export async function getOrderBalance(
+  officialOrderId: string,
+): Promise<OrderBalanceResult> {
+  const supabase = await createClient();
+  const response = await supabase.rpc('order_balance', { p_order_id: officialOrderId });
+
+  if (response.error) {
+    // Surfaces the database's own refusal rather than replacing it with a
+    // generic message — a denial and an outage are different facts.
+    return { ok: false, reason: response.error.message };
+  }
+
+  return parseBalanceJson(response.data);
+}
+
+/**
+ * Reads the balances for MANY orders in a single round-trip.
+ *
+ * ⚠️  Performance-only. It calls the batch DB function order_balances(), which
+ *     itself calls order_balance() per id — so the formula is unchanged and RLS
+ *     still scopes every figure to the caller. This exists purely to replace the
+ *     "one RPC per row" pattern (up to 100 network round-trips on the Orders and
+ *     Layaway lists) with one, which is what made those pages take 4-5 seconds.
+ *
+ * Returns a Map keyed by order id. An id that is ABSENT from the map — because
+ * the whole call failed, the id came back with no balance, or its figures were
+ * incomplete — must be treated by the caller exactly like a failed single read:
+ * "unavailable", never zero. Callers already branch on `!balance || !balance.ok`.
+ */
+export async function getOrderBalances(
+  officialOrderIds: string[],
+): Promise<Map<string, OrderBalanceResult>> {
+  const out = new Map<string, OrderBalanceResult>();
+  if (officialOrderIds.length === 0) return out;
+
+  const supabase = await createClient();
+  const response = await supabase.rpc('order_balances', { p_order_ids: officialOrderIds });
+
+  // A whole-call failure leaves the map empty; every caller then renders each
+  // row as "unavailable" (the map.get() miss), never as a fabricated ₱0.00.
+  if (response.error || !Array.isArray(response.data)) return out;
+
+  for (const entry of response.data as Array<{ order_id: string; balance: unknown }>) {
+    if (typeof entry?.order_id !== 'string') continue;
+    out.set(entry.order_id, parseBalanceJson(entry.balance));
+  }
+  return out;
 }
 
 /**

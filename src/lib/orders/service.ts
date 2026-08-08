@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { listInventory } from '@/lib/inventory/service';
-import { getOrderBalance } from '@/lib/payments/balances';
+import { getOrderBalances } from '@/lib/payments/balances';
 import { createClient } from '@/lib/supabase/server';
 
 /**
@@ -101,12 +101,15 @@ export async function listOrders(limit = 100): Promise<OrdersResult> {
 
   const raw = (data ?? []) as unknown[];
 
-  // Money per order comes from the tested authoritative reader.
-  const balances = await Promise.all(
-    raw.map((row) => getOrderBalance((row as Record<string, unknown>).id as string)),
+  // Money per order comes from the tested authoritative reader — but batched into
+  // ONE round-trip (getOrderBalances) instead of one RPC per row. At ~100 orders
+  // the per-row pattern was ~100 network round-trips and made this page take
+  // several seconds; the batch call is a single trip with the identical formula.
+  const balanceById = await getOrderBalances(
+    raw.map((row) => (row as Record<string, unknown>).id as string),
   );
 
-  const rows: OrderListRow[] = raw.map((row, index) => {
+  const rows: OrderListRow[] = raw.map((row) => {
     const r = row as Record<string, unknown>;
     const customer = one<{ display_name: string; facebook_conversation_url: string | null }>(
       r.customers,
@@ -115,7 +118,8 @@ export async function listOrders(limit = 100): Promise<OrdersResult> {
       r.fulfillment_records,
     );
     const layaway = one<{ status: string }>(r.layaway_arrangements);
-    const balance = balances[index];
+    // A row absent from the map is treated exactly like a failed single read.
+    const balance = balanceById.get(r.id as string);
 
     let paymentStatus: PaymentStatus;
     let totalAmountPayable = '';

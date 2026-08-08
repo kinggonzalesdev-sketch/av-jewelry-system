@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { getOrderBalance } from '@/lib/payments/balances';
+import { getOrderBalances } from '@/lib/payments/balances';
 import { moneyString, type DateRangeKey } from '@/lib/payments/format';
 import { createClient } from '@/lib/supabase/server';
 
@@ -348,21 +348,22 @@ export async function listPayableOrders(limit = 50): Promise<PayableOrderRow[]> 
 
   const rows = (data ?? []) as unknown[];
 
-  // Reuses getOrderBalance() rather than calling order_balance() again here.
-  // The first draft of this function re-issued the RPC itself and silently
-  // rendered every figure as ₱0.00 — the shape it expected back was wrong, and
-  // moneyString()'s fallback turned that into a plausible-looking zero instead
-  // of an error. A balance that reads ₱0.00 when ₱6,000 is owed is the worst
-  // kind of wrong: it looks like an answer. The tested reader is the only
-  // reader.
-  const balances = await Promise.all(
-    rows.map((row) => getOrderBalance((row as Record<string, unknown>).id as string)),
+  // Reuses the authoritative order_balance() formula (via getOrderBalances) —
+  // never recomputes money here. The first draft re-issued the RPC itself and
+  // silently rendered every figure as ₱0.00 because the shape it expected back
+  // was wrong; the tested reader is the only reader. This now reads every row's
+  // balance in ONE round-trip instead of one RPC per row (what made the Layaway
+  // list slow), with the identical formula and the identical "unavailable, never
+  // zero" failure handling below.
+  const balanceById = await getOrderBalances(
+    rows.map((row) => (row as Record<string, unknown>).id as string),
   );
 
-  return rows.map((row, index) => {
+  return rows.map((row) => {
     const r = row as Record<string, unknown>;
     const customer = one<{ display_name: string }>(r.customers);
-    const result = balances[index];
+    // A row absent from the map is treated exactly like a failed single read.
+    const result = balanceById.get(r.id as string);
 
     const base = {
       officialOrderId: r.id as string,
