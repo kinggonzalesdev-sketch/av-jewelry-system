@@ -23,6 +23,7 @@ import { ReadError } from '@/components/ui/page-primitives';
 import { Input } from '@/components/ui/input';
 import { SearchInput } from '@/components/ui/search-input';
 import { Select } from '@/components/ui/select';
+import { Pagination } from '@/components/ui/pagination';
 import { MoneyInput } from '@/components/ui/money-input';
 import { Money } from '@/components/shell/privacy';
 import { Label } from '@/components/ui/label';
@@ -154,6 +155,13 @@ export function InventoryWorkspace({
   const [invSearch, setInvSearch] = useState('');
   const [invStatus, setInvStatus] = useState('all');
   const [invGroup, setInvGroup] = useState('all');
+  // Render pagination — only the current page of rows is put in the DOM (thousands of
+  // rows would otherwise bloat memory + slow the browser). Filtering/search is
+  // unchanged; the page just windows the already-filtered list.
+  const [invPage, setInvPage] = useState(1);
+  const [invPageSize, setInvPageSize] = useState(50);
+  const [compPage, setCompPage] = useState(1);
+  const [compPageSize, setCompPageSize] = useState(50);
 
   const invRows = useMemo(() => (inventory.ok ? inventory.rows : []), [inventory]);
   // Group counts (§16): BN / SB / HK ITEM / Other over the ACTIVE items, so a new or
@@ -212,6 +220,21 @@ export function InventoryWorkspace({
         .includes(q);
     });
   }, [completed, compSearch, compType]);
+
+  // Window the filtered lists to the current page (clamped so a filter that shrinks the
+  // list never strands the user past the last page).
+  const invPageCount = Math.max(1, Math.ceil(filteredInventory.length / invPageSize));
+  const invPageSafe = Math.min(invPage, invPageCount);
+  const pagedInventory = filteredInventory.slice(
+    (invPageSafe - 1) * invPageSize,
+    invPageSafe * invPageSize,
+  );
+  const compPageCount = Math.max(1, Math.ceil(filteredCompleted.length / compPageSize));
+  const compPageSafe = Math.min(compPage, compPageCount);
+  const pagedCompleted = filteredCompleted.slice(
+    (compPageSafe - 1) * compPageSize,
+    compPageSafe * compPageSize,
+  );
   const exportCompleted = () => {
     downloadCsv(
       `completed-items-${new Date().toISOString().slice(0, 10)}`,
@@ -404,7 +427,10 @@ export function InventoryWorkspace({
             <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3">
               <SearchInput
                 value={invSearch}
-                onChange={setInvSearch}
+                onChange={(v) => {
+                  setInvSearch(v);
+                  setInvPage(1);
+                }}
                 placeholder="Search code or item…"
                 aria-label="Search inventory"
                 data-testid="inventory-search"
@@ -412,7 +438,10 @@ export function InventoryWorkspace({
               />
               <Select
                 value={invGroup}
-                onChange={(e) => setInvGroup(e.target.value)}
+                onChange={(e) => {
+                  setInvGroup(e.target.value);
+                  setInvPage(1);
+                }}
                 aria-label="Filter by group"
                 data-testid="inventory-filter-group"
                 className="w-auto"
@@ -426,7 +455,10 @@ export function InventoryWorkspace({
               </Select>
               <Select
                 value={invStatus}
-                onChange={(e) => setInvStatus(e.target.value)}
+                onChange={(e) => {
+                  setInvStatus(e.target.value);
+                  setInvPage(1);
+                }}
                 aria-label="Filter by status"
                 data-testid="inventory-filter-status"
                 className="w-auto"
@@ -467,7 +499,7 @@ export function InventoryWorkspace({
                     </td>
                   </tr>
                 ) : (
-                  filteredInventory.map((i) => (
+                  pagedInventory.map((i) => (
                   <tr key={i.inventoryItemId}>
                     <td className="col-grow truncate px-3 py-2.5 font-mono" title={i.itemCode}>
                       {i.itemCode}
@@ -494,6 +526,20 @@ export function InventoryWorkspace({
               </tbody>
             </table>
             </div>
+            {filteredInventory.length > invPageSize ? (
+              <Pagination
+                page={invPageSafe}
+                pageCount={invPageCount}
+                total={filteredInventory.length}
+                pageSize={invPageSize}
+                onPageChange={setInvPage}
+                onPageSizeChange={(n) => {
+                  setInvPageSize(n);
+                  setInvPage(1);
+                }}
+                className="px-1"
+              />
+            ) : null}
           </div>
         )
       ) : null}
@@ -504,7 +550,10 @@ export function InventoryWorkspace({
             <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3">
               <SearchInput
                 value={compSearch}
-                onChange={setCompSearch}
+                onChange={(v) => {
+                  setCompSearch(v);
+                  setCompPage(1);
+                }}
                 placeholder="Search code, item, customer, order…"
                 aria-label="Search completed items"
                 data-testid="completed-search"
@@ -512,7 +561,10 @@ export function InventoryWorkspace({
               />
               <Select
                 value={compType}
-                onChange={(e) => setCompType(e.target.value)}
+                onChange={(e) => {
+                  setCompType(e.target.value);
+                  setCompPage(1);
+                }}
                 aria-label="Filter by completion type"
                 data-testid="completed-filter-type"
                 className="w-auto"
@@ -565,7 +617,7 @@ export function InventoryWorkspace({
                       </td>
                     </tr>
                   ) : (
-                    filteredCompleted.map((c) => {
+                    pagedCompleted.map((c) => {
                       const parsed = parseInventoryCode(c.itemCode);
                       return (
                         <tr key={c.inventoryItemId}>
@@ -632,6 +684,20 @@ export function InventoryWorkspace({
                   )}
                 </tbody>
               </table>
+              {filteredCompleted.length > compPageSize ? (
+                <Pagination
+                  page={compPageSafe}
+                  pageCount={compPageCount}
+                  total={filteredCompleted.length}
+                  pageSize={compPageSize}
+                  onPageChange={setCompPage}
+                  onPageSizeChange={(n) => {
+                    setCompPageSize(n);
+                    setCompPage(1);
+                  }}
+                  className="px-3 py-2"
+                />
+              ) : null}
               <p className="px-3 py-2 text-[11px] text-muted-foreground">
                 Historical sold/released inventory — one source of truth, split by status.
                 Records are never deleted or copied.
