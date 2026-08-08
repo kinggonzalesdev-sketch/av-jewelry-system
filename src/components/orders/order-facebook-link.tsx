@@ -249,16 +249,14 @@ export function OrderFacebookLink({
     }
   };
 
+  // State + colour from the unified status system: green = linked/confirmed,
+  // blue (info) = linked via the customer's default chat, gray = no link yet.
   const stateLabel = hasOrderLink
-    ? 'Confirmed for this order'
+    ? 'Linked'
     : usingDefault
-      ? "Using customer's default"
+      ? 'Linked · default'
       : 'Not linked';
-  const stateCls = hasOrderLink
-    ? 'bg-green-600/15 text-green-700'
-    : usingDefault
-      ? 'bg-gold/20 text-gold-strong'
-      : 'bg-muted text-muted-foreground';
+  const stateCls = hasOrderLink ? 'badge-green' : usingDefault ? 'badge-blue' : 'badge-gray';
 
   const shortConv = effConv ? `${effConv.slice(0, 22)}${effConv.length > 22 ? '…' : ''}` : null;
 
