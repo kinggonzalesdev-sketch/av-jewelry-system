@@ -21,6 +21,8 @@ import { InventoryItemActions } from '@/components/inventory/inventory-item-acti
 import { Button } from '@/components/ui/button';
 import { ReadError } from '@/components/ui/page-primitives';
 import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
+import { Select } from '@/components/ui/select';
 import { MoneyInput } from '@/components/ui/money-input';
 import { Money } from '@/components/shell/privacy';
 import { Label } from '@/components/ui/label';
@@ -400,20 +402,20 @@ export function InventoryWorkspace({
           <div className="space-y-3">
             {/* Spreadsheet-style search + filters over the loaded items. */}
             <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3">
-              <input
+              <SearchInput
                 value={invSearch}
-                onChange={(e) => setInvSearch(e.target.value)}
+                onChange={setInvSearch}
                 placeholder="Search code or item…"
                 aria-label="Search inventory"
                 data-testid="inventory-search"
-                className="h-9 flex-1 min-w-[10rem] rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+                className="flex-1 min-w-[10rem]"
               />
-              <select
+              <Select
                 value={invGroup}
                 onChange={(e) => setInvGroup(e.target.value)}
                 aria-label="Filter by group"
                 data-testid="inventory-filter-group"
-                className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+                className="w-auto"
               >
                 <option value="all">All groups</option>
                 {groupOptions.map((g) => (
@@ -421,13 +423,13 @@ export function InventoryWorkspace({
                     {g} ({groupCounts[g]})
                   </option>
                 ))}
-              </select>
-              <select
+              </Select>
+              <Select
                 value={invStatus}
                 onChange={(e) => setInvStatus(e.target.value)}
                 aria-label="Filter by status"
                 data-testid="inventory-filter-status"
-                className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+                className="w-auto"
               >
                 <option value="all">All statuses</option>
                 {statusOptions.map((s) => (
@@ -435,7 +437,7 @@ export function InventoryWorkspace({
                     {s.replace(/_/g, ' ')}
                   </option>
                 ))}
-              </select>
+              </Select>
               <span className="text-xs text-muted-foreground">
                 {filteredInventory.length} of {inventory.rows.length}
               </span>
@@ -500,20 +502,20 @@ export function InventoryWorkspace({
           <div className="space-y-3">
             {/* Search + completion-type filter + export (§12). */}
             <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3">
-              <input
+              <SearchInput
                 value={compSearch}
-                onChange={(e) => setCompSearch(e.target.value)}
+                onChange={setCompSearch}
                 placeholder="Search code, item, customer, order…"
                 aria-label="Search completed items"
                 data-testid="completed-search"
-                className="h-9 flex-1 min-w-[12rem] rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+                className="flex-1 min-w-[12rem]"
               />
-              <select
+              <Select
                 value={compType}
                 onChange={(e) => setCompType(e.target.value)}
                 aria-label="Filter by completion type"
                 data-testid="completed-filter-type"
-                className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+                className="w-auto"
               >
                 <option value="all">All completion types</option>
                 {completionTypeOptions.map((t) => (
@@ -521,7 +523,7 @@ export function InventoryWorkspace({
                     {t}
                   </option>
                 ))}
-              </select>
+              </Select>
               <span className="text-xs text-muted-foreground">
                 {filteredCompleted.length} of {completed.length}
               </span>

@@ -22,6 +22,7 @@ export function SearchInput({
   placeholder?: string | undefined;
   className?: string | undefined;
   id?: string | undefined;
+  'aria-label'?: string | undefined;
   'data-testid'?: string | undefined;
 }) {
   return (
