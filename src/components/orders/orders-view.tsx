@@ -180,12 +180,6 @@ function OrderRow({
       data-testid="order-row"
       className="cursor-pointer border-b border-border last:border-0 hover:bg-accent/60 focus:bg-accent/60 focus:outline-none"
     >
-      <Td kind="center">
-        <StatusBadge label={humanize(order.status)} tone="neutral" />
-      </Td>
-      <Td clip title={order.waybillNumber || order.orderNumber} className="font-mono text-xs">
-        {order.waybillNumber || <span className="text-muted-foreground">—</span>}
-      </Td>
       <Td clip title={order.customerDisplayName} className="font-medium">
         {order.customerDisplayName}
         {order.orderSource === 'walk_in' ? (
@@ -211,6 +205,12 @@ function OrderRow({
             <Money amount={order.outstandingBalance} /> due
           </span>
         ) : null}
+      </Td>
+      <Td clip title={order.waybillNumber || order.orderNumber} className="font-mono text-xs">
+        {order.waybillNumber || <span className="text-muted-foreground">—</span>}
+      </Td>
+      <Td kind="center">
+        <StatusBadge label={humanize(order.status)} tone="neutral" />
       </Td>
       <Td kind="actions">
         <span className="inline-flex items-center gap-2">
@@ -605,15 +605,15 @@ export function OrdersView({
           <DataTable
             minWidth="760px"
             spacious
-            columns={['17%', '18%', '20%', '15%', '15%', '15%']}
+            columns={['20%', '15%', '15%', '18%', '17%', '15%']}
           >
             <Thead>
               <Tr plain>
-                <Th kind="center">Status</Th>
-                <Th>Waybill Number</Th>
                 <Th>Customer Name</Th>
                 <Th kind="num">Amount</Th>
                 <Th kind="center">Payment</Th>
+                <Th>Waybill Number</Th>
+                <Th kind="center">Status</Th>
                 <Th kind="actions">Actions</Th>
               </Tr>
             </Thead>
