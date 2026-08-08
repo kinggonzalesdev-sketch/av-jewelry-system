@@ -2,11 +2,12 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { updateCustomerAction } from '@/lib/customers/actions';
 import type { CustomerListRow, CustomersResult } from '@/lib/customers/service';
 import { CustomerRowActions } from '@/components/customers/customer-row-actions';
+import { Pagination } from '@/components/ui/pagination';
 import { CustomerMatchHint } from '@/components/customers/customer-match-hint';
 import { EmptyState } from '@/components/states/empty-state';
 import { Sensitive, SensitivePhone } from '@/components/shell/privacy';
@@ -42,6 +43,14 @@ function CustomerList({
   canManage: boolean;
   onView: (row: CustomerListRow) => void;
 }) {
+  // Render pagination — window to the current page (50). Resets on a new search.
+  const [page, setPage] = useState(1);
+  const CUST_PAGE_SIZE = 50;
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPage(1);
+  }, [query]);
+
   if (!result.ok) {
     return <ReadError title="Customers could not be loaded" detail={result.reason} />;
   }
@@ -57,7 +66,15 @@ function CustomerList({
     );
   }
 
+  const custPageCount = Math.max(1, Math.ceil(result.rows.length / CUST_PAGE_SIZE));
+  const custPageSafe = Math.min(page, custPageCount);
+  const pagedCustomers = result.rows.slice(
+    (custPageSafe - 1) * CUST_PAGE_SIZE,
+    custPageSafe * CUST_PAGE_SIZE,
+  );
+
   return (
+    <div className="space-y-3">
     <div className="rounded-xl border border-border bg-card">
       <div className="overflow-x-auto">
         <table className="data-table w-full min-w-[640px] text-left text-sm">
@@ -72,7 +89,7 @@ function CustomerList({
             </tr>
           </thead>
           <tbody>
-            {result.rows.map((row) => (
+            {pagedCustomers.map((row) => (
               <tr key={row.id} className="border-b border-border last:border-0">
                 <td className="px-3 py-2.5 font-medium">{row.displayName}</td>
                 <td className="px-3 py-2.5 text-muted-foreground">
@@ -116,6 +133,15 @@ function CustomerList({
           </tbody>
         </table>
       </div>
+    </div>
+    {result.rows.length > CUST_PAGE_SIZE ? (
+      <Pagination
+        page={custPageSafe}
+        pageCount={custPageCount}
+        total={result.rows.length}
+        onPageChange={setPage}
+      />
+    ) : null}
     </div>
   );
 }
