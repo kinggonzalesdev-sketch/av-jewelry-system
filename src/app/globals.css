@@ -202,14 +202,20 @@
 .data-table {
   width: 100%;
 }
+/* Roomy density is now the BASE (Owner spec — every table matches the Orders
+   reference): 44px header, 48px rows, 16px horizontal / 10px vertical padding. The
+   `.data-roomy` modifier below is kept as a harmless alias so `<DataTable spacious>`
+   still resolves. */
 .data-table > thead > tr > th {
-  padding: 8px 11px;
+  padding: 0 16px;
+  height: 44px;
   font-size: 11px;
   line-height: 1.15;
   white-space: nowrap;
 }
 .data-table > tbody > tr > td {
-  padding: 6px 11px;
+  padding: 10px 16px;
+  height: 48px;
   line-height: 1.2;
   vertical-align: middle;
   /* One-line rule (Owner request): status/payment badges, codes, numbers, dates, and
