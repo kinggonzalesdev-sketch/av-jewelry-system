@@ -180,7 +180,7 @@ function OrderRow({
       data-testid="order-row"
       className="cursor-pointer border-b border-border last:border-0 hover:bg-accent/60 focus:bg-accent/60 focus:outline-none"
     >
-      <Td clip title={order.customerDisplayName} className="font-medium">
+      <Td kind="center" clip title={order.customerDisplayName} className="font-medium">
         {order.customerDisplayName}
         {order.orderSource === 'walk_in' ? (
           <span className="ml-1.5 rounded-full border border-gold/40 bg-gold/10 px-1.5 py-0.5 text-[10px] font-medium text-gold-strong">
@@ -609,7 +609,7 @@ export function OrdersView({
           >
             <Thead>
               <Tr plain>
-                <Th>Customer Name</Th>
+                <Th kind="center">Customer Name</Th>
                 <Th kind="num">Amount</Th>
                 <Th kind="center">Payment</Th>
                 <Th>Waybill Number</Th>
