@@ -1170,14 +1170,14 @@ function LayawayTable({
             Overdue stay compact; Actions pinned right. Width HINTS (no table-fixed), so
             a column can still grow to fit its content and nothing is clipped. */}
         <colgroup>
-          <col style={{ width: '20%' }} />
-          <col style={{ width: '22%' }} />
-          <col style={{ width: '7%' }} />
+          <col style={{ width: '17%' }} />
+          <col style={{ width: '18%' }} />
+          <col style={{ width: '8%' }} />
           <col style={{ width: '13%' }} />
           <col style={{ width: '12%' }} />
-          <col style={{ width: '11%' }} />
-          <col style={{ width: '7%' }} />
+          <col style={{ width: '12%' }} />
           <col style={{ width: '8%' }} />
+          <col style={{ width: '12%' }} />
         </colgroup>
         <thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
           <tr>
