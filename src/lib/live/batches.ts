@@ -262,15 +262,26 @@ export async function listLiveBatchItems(
 
   const rows = data as unknown[];
 
-  const availability = await Promise.all(
-    rows.map((row) =>
-      supabase.rpc('available_quantity_for', {
-        p_item_id: (row as Record<string, unknown>).inventory_item_id as string,
-      }),
-    ),
-  );
+  // Available stock for every item in ONE round-trip (available_quantities_for)
+  // instead of one available_quantity_for() RPC per row — the batch may hold many
+  // items, and per-row RPCs made this view slow. Same computation, same RLS; an
+  // item whose quantity can't be read is absent from the map → rendered as null.
+  const availResponse = await supabase.rpc('available_quantities_for', {
+    p_item_ids: rows.map((row) => (row as Record<string, unknown>).inventory_item_id as string),
+  });
+  const qtyById = new Map<string, number>();
+  if (Array.isArray(availResponse.data)) {
+    for (const a of availResponse.data as Array<{
+      item_id: string;
+      available_quantity: number | null;
+    }>) {
+      if (typeof a?.item_id === 'string' && typeof a.available_quantity === 'number') {
+        qtyById.set(a.item_id, a.available_quantity);
+      }
+    }
+  }
 
-  return rows.map((row, index) => {
+  return rows.map((row) => {
     const r = row as Record<string, unknown>;
     const item = Array.isArray(r.inventory_items)
       ? (r.inventory_items[0] as { item_code: string; item_name: string | null })
@@ -282,8 +293,7 @@ export async function listLiveBatchItems(
       itemCode: item?.item_code ?? '—',
       itemName: item?.item_name ?? null,
       isCurrentFlexItem: r.is_current_flex_item === true,
-      availableQuantity:
-        typeof availability[index]?.data === 'number' ? availability[index].data : null,
+      availableQuantity: qtyById.get(r.inventory_item_id as string) ?? null,
     };
   });
 }
