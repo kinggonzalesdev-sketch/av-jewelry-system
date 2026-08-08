@@ -100,9 +100,19 @@ export function PayrollSummaryButton({
 
           <div className="overflow-x-auto">
             <table className="data-table w-full min-w-[720px] text-left text-xs">
+              <colgroup>
+                <col style={{ width: '20%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '11%' }} />
+              </colgroup>
               <thead className="border-b border-neutral-300 text-[10px] uppercase text-neutral-500">
                 <tr>
-                  <th className="px-3 py-1.5">Employee</th>
+                  <th className="px-3 py-1.5 text-center">Employee</th>
                   <th className="px-3 py-1.5 text-right">Reg. hrs</th>
                   <th className="px-3 py-1.5 text-right">OT hrs</th>
                   <th className="px-3 py-1.5 text-right">Rate</th>
@@ -117,7 +127,7 @@ export function PayrollSummaryButton({
                   const snap = payslips[r.staffProfileId];
                   return (
                     <tr key={r.staffProfileId} className="border-b border-neutral-200">
-                      <td className="px-3 py-1.5">{r.fullName}</td>
+                      <td className="px-3 py-1.5 text-center">{r.fullName}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums">
                         {r.totalHours.toFixed(2)}
                       </td>

@@ -1181,7 +1181,7 @@ function LayawayTable({
         </colgroup>
         <thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
           <tr>
-            <th className="px-3 py-2 text-left">Unique Code</th>
+            <th className="col-center px-3 py-2">Unique Code</th>
             <th className="px-3 py-2 text-left">Customer Name</th>
             <th className="col-center px-3 py-2">Code</th>
             <th className="col-center px-3 py-2">Remarks / Financer</th>
@@ -1202,7 +1202,7 @@ function LayawayTable({
             pagedRows.map((r) => (
               <tr key={r.key} className="hover:bg-accent/40">
                 <td
-                  className="truncate px-3 py-2 font-mono text-[11px]"
+                  className="truncate px-3 py-2 text-center font-mono text-[11px]"
                   title={`Unique Code${r.uniqueCode ? `: ${r.uniqueCode}` : ' — not linked'} · Order/Account No. ${r.accountNo}`}
                 >
                   {r.officialOrderId ? (
@@ -1344,7 +1344,7 @@ function CompletedLayawayTable({
       >
         <thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
           <tr>
-            <th className="px-3 py-2">Code</th>
+            <th className="col-center px-3 py-2">Code</th>
             <th className="px-3 py-2">Customer Name</th>
             <th className="px-3 py-2">Remarks / Financer</th>
             <th className="px-3 py-2">Date Purchased</th>
@@ -1367,7 +1367,7 @@ function CompletedLayawayTable({
           ) : (
             rows.map((r) => (
               <tr key={r.key} className="hover:bg-accent/40">
-                <td className="px-3 py-2 font-mono font-semibold">{r.code ?? '—'}</td>
+                <td className="col-center px-3 py-2 font-mono font-semibold">{r.code ?? '—'}</td>
                 <td className="px-3 py-2 font-medium">{r.customerName}</td>
                 <td className="px-3 py-2 text-muted-foreground">
                   {[r.financer, r.remarks].filter(Boolean).join(' · ') || '—'}

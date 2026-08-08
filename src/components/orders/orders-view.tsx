@@ -180,7 +180,7 @@ function OrderRow({
       data-testid="order-row"
       className="cursor-pointer border-b border-border last:border-0 hover:bg-accent/60 focus:bg-accent/60 focus:outline-none"
     >
-      <Td>
+      <Td kind="center">
         <StatusBadge label={humanize(order.status)} tone="neutral" />
       </Td>
       <Td clip title={order.waybillNumber || order.orderNumber} className="font-mono text-xs">
@@ -609,7 +609,7 @@ export function OrdersView({
           >
             <Thead>
               <Tr plain>
-                <Th>Status</Th>
+                <Th kind="center">Status</Th>
                 <Th>Waybill Number</Th>
                 <Th>Customer Name</Th>
                 <Th kind="num">Amount</Th>

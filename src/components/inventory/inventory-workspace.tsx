@@ -496,7 +496,7 @@ export function InventoryWorkspace({
               </colgroup>
               <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                 <tr>
-                  <th className="px-3 py-2.5 text-left">Unique Code</th>
+                  <th className="px-3 py-2.5 text-center">Unique Code</th>
                   <th className="px-3 py-2.5 text-left">Status</th>
                   <th className="col-num px-3 py-2.5">Grams</th>
                   <th className="col-center px-3 py-2.5">Date Encoded</th>
@@ -516,7 +516,7 @@ export function InventoryWorkspace({
                 ) : (
                   pagedInventory.map((i) => (
                   <tr key={i.inventoryItemId}>
-                    <td className="truncate px-3 py-2.5 font-mono" title={i.itemCode}>
+                    <td className="truncate px-3 py-2.5 text-center font-mono" title={i.itemCode}>
                       {i.itemCode}
                     </td>
                     <td className="px-3 py-2.5 text-left">
@@ -613,7 +613,7 @@ export function InventoryWorkspace({
                     fixed equal percentages. */}
                 <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                   <tr>
-                    <th className="px-3 py-2.5 text-left">Inventory Code</th>
+                    <th className="px-3 py-2.5 text-center">Inventory Code</th>
                     <th className="col-center px-3 py-2.5">Type</th>
                     <th className="col-num px-3 py-2.5">Grams</th>
                     <th className="col-grow px-3 py-2.5 text-left">Customer</th>
@@ -640,7 +640,7 @@ export function InventoryWorkspace({
                       const parsed = parseInventoryCode(c.itemCode);
                       return (
                         <tr key={c.inventoryItemId}>
-                          <td className="truncate px-3 py-2.5 font-mono" title={c.itemCode}>
+                          <td className="truncate px-3 py-2.5 text-center font-mono" title={c.itemCode}>
                             {c.itemCode}
                           </td>
                           <td className="truncate px-3 py-2.5 text-center text-muted-foreground">
