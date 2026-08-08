@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { OrderDetailsModal } from '@/components/orders/order-details-modal';
 import { SendAllInvoices } from '@/components/orders/send-all-invoices';
@@ -15,6 +15,7 @@ import { Money } from '@/components/shell/privacy';
 import { EmptyState } from '@/components/states/empty-state';
 import { StatusBadge, ReadError, type BadgeTone } from '@/components/ui/page-primitives';
 import { DataTable, Thead, Tr, Th, Td } from '@/components/ui/data-table';
+import { Pagination } from '@/components/ui/pagination';
 import { cn } from '@/lib/utils';
 
 /**
@@ -422,6 +423,9 @@ export function OrdersView({
   const [query, setQuery] = useState('');
   const [orderDate, setOrderDate] = useState('');
   const [shipDate, setShipDate] = useState('');
+  // Render pagination — only the current page of rows goes in the DOM (default 50).
+  const [ordPage, setOrdPage] = useState(1);
+  const [ordPageSize, setOrdPageSize] = useState(50);
 
   /**
    * Fulfillment status — a SECOND, independent filter alongside the order-flow
@@ -460,6 +464,16 @@ export function OrdersView({
     // untouched — only the display order is applied here.
     return sortOrdersForCard(matched, card);
   }, [rows, card, query, orderDate, shipDate]);
+
+  // Reset to page 1 whenever the filters change, so results start at the top.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOrdPage(1);
+  }, [card, query, orderDate, shipDate]);
+
+  const ordPageCount = Math.max(1, Math.ceil(filtered.length / ordPageSize));
+  const ordPageSafe = Math.min(ordPage, ordPageCount);
+  const pagedOrders = filtered.slice((ordPageSafe - 1) * ordPageSize, ordPageSafe * ordPageSize);
 
   // A FAILED read is not "no orders" — say so loudly (the session's hard rule).
   if (!result.ok) {
@@ -609,34 +623,50 @@ export function OrdersView({
           </div>
         )
       ) : (
-        <DataTable
-          minWidth="960px"
-          spacious
-          columns={['14%', '13%', '12%', '24%', '11%', '10%', '8%', '8%']}
-        >
-          <Thead>
-            <Tr plain>
-              <Th>Status</Th>
-              <Th>Waybill Number</Th>
-              <Th>Invoice No.</Th>
-              <Th>Customer</Th>
-              <Th kind="num">Amount</Th>
-              <Th kind="center">Payment</Th>
-              <Th kind="center">Fulfillment</Th>
-              <Th kind="actions">Actions</Th>
-            </Tr>
-          </Thead>
-          <tbody>
-            {filtered.map((order) => (
-              <OrderRow
-                key={order.officialOrderId}
-                order={order}
-                onOpen={(o) => setSelectedId(o.officialOrderId)}
-                canManageOrders={canManageOrders}
-              />
-            ))}
-          </tbody>
-        </DataTable>
+        <>
+          <DataTable
+            minWidth="960px"
+            spacious
+            columns={['14%', '13%', '12%', '24%', '11%', '10%', '8%', '8%']}
+          >
+            <Thead>
+              <Tr plain>
+                <Th>Status</Th>
+                <Th>Waybill Number</Th>
+                <Th>Invoice No.</Th>
+                <Th>Customer</Th>
+                <Th kind="num">Amount</Th>
+                <Th kind="center">Payment</Th>
+                <Th kind="center">Fulfillment</Th>
+                <Th kind="actions">Actions</Th>
+              </Tr>
+            </Thead>
+            <tbody>
+              {pagedOrders.map((order) => (
+                <OrderRow
+                  key={order.officialOrderId}
+                  order={order}
+                  onOpen={(o) => setSelectedId(o.officialOrderId)}
+                  canManageOrders={canManageOrders}
+                />
+              ))}
+            </tbody>
+          </DataTable>
+          {filtered.length > ordPageSize ? (
+            <Pagination
+              page={ordPageSafe}
+              pageCount={ordPageCount}
+              total={filtered.length}
+              pageSize={ordPageSize}
+              onPageChange={setOrdPage}
+              onPageSizeChange={(n) => {
+                setOrdPageSize(n);
+                setOrdPage(1);
+              }}
+              className="mt-3"
+            />
+          ) : null}
+        </>
       )}
 
       {/* KEEP items from Layaway — surfaced under the Keep card so every KEEP item
