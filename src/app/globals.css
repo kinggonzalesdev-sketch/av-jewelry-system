@@ -210,9 +210,11 @@
    `.data-roomy` modifier below is kept in sync as an alias so `<DataTable spacious>`
    resolves to the same compact geometry. */
 .data-table > thead > tr > th {
-  padding: 6px 12px;
+  padding: 7px 13px;
   height: 38px;
-  font-size: 11px;
+  font-size: 13.5px;
+  font-weight: 700; /* BOLD header (Owner spec) */
+  text-transform: uppercase;
   line-height: 1.15;
   white-space: nowrap;
 }
@@ -259,7 +261,7 @@
  * Overrides padding + height only, leaving alignment/colour/borders intact.
  */
 .data-table.data-roomy > thead > tr > th {
-  padding: 6px 12px;
+  padding: 7px 13px;
   height: 38px;
 }
 .data-table.data-roomy > tbody > tr > td {
