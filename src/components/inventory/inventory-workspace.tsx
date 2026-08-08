@@ -483,8 +483,8 @@ export function InventoryWorkspace({
             {/* The table (headers + container) stays fixed even with no rows — the
                 empty message sits inside the body so the layout never collapses. */}
             <div className="overflow-x-auto rounded-xl border border-border bg-card">
-            <table className="data-table w-full min-w-[720px] text-left text-sm">
-              <thead className="border-b bg-muted/50 text-[11px] uppercase text-muted-foreground">
+            <table className="data-table w-full min-w-[720px] text-left text-xs">
+              <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                 <tr>
                   <th className="col-grow px-3 py-2.5 text-left">Unique Code</th>
                   <th className="px-3 py-2.5 text-left">Status</th>
@@ -595,13 +595,13 @@ export function InventoryWorkspace({
 
             <div className="overflow-x-auto rounded-xl border border-border bg-card">
               <table
-                className="data-table w-full min-w-[960px] text-left text-sm"
+                className="data-table w-full min-w-[960px] text-left text-xs"
                 data-testid="completed-items"
               >
                 {/* Content-based sizing: Customer absorbs the slack (col-grow); the many
                     short columns (Type, Grams, Payment, Stage, dates) stay narrow. No
                     fixed equal percentages. */}
-                <thead className="border-b bg-muted/50 text-[11px] uppercase text-muted-foreground">
+                <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2.5 text-left">Inventory Code</th>
                     <th className="col-center px-3 py-2.5">Type</th>

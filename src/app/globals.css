@@ -202,23 +202,25 @@
 .data-table {
   width: 100%;
 }
-/* Roomy density is now the BASE (Owner spec 2026-08-08 — every table matches the
-   attached Inventory reference): 60px header, 76px rows, 22px horizontal / 18px
-   vertical padding. `height` on a cell acts as a MINIMUM, so every row lands at
-   the same 76px unless its content legitimately wraps taller — no compressed rows.
-   The `.data-roomy` modifier below is kept in sync as an alias so `<DataTable
-   spacious>` still resolves to the identical geometry. */
+/* COMPACT is the GLOBAL DEFAULT for every MineFlow table (Owner spec 2026-08-08,
+   compact reference): 38px header, 36px rows, 6px vertical / 12px horizontal
+   padding, 13px body text. Set ONCE here so every existing and future `.data-table`
+   inherits the identical density — never configured per page. `height` on a cell is
+   a MINIMUM, so rows stay uniform unless content legitimately wraps. The
+   `.data-roomy` modifier below is kept in sync as an alias so `<DataTable spacious>`
+   resolves to the same compact geometry. */
 .data-table > thead > tr > th {
-  padding: 0 22px;
-  height: 60px;
+  padding: 6px 12px;
+  height: 38px;
   font-size: 11px;
   line-height: 1.15;
   white-space: nowrap;
 }
 .data-table > tbody > tr > td {
-  padding: 18px 22px;
-  height: 76px;
-  line-height: 1.2;
+  padding: 6px 12px;
+  height: 36px;
+  font-size: 13px;
+  line-height: 1.25;
   vertical-align: middle;
   /* One-line rule (Owner request): status/payment badges, codes, numbers, dates, and
      amounts stay on a single line. Long text uses the cell's own `truncate`; the
@@ -251,18 +253,18 @@
 }
 
 /*
- * GLOBAL TABLE SPACING (Owner spec 2026-08-08) — `.data-roomy` (DataTable
- * `spacious`) is kept identical to the base so both resolve to the reference
- * geometry: 60px header, 76px rows, 22px horizontal / 18px vertical padding.
+ * GLOBAL TABLE SPACING (Owner spec 2026-08-08, compact) — `.data-roomy` (DataTable
+ * `spacious`) is kept identical to the base so both resolve to the same compact
+ * geometry: 38px header, 36px rows, 6px vertical / 12px horizontal padding.
  * Overrides padding + height only, leaving alignment/colour/borders intact.
  */
 .data-table.data-roomy > thead > tr > th {
-  padding: 0 22px;
-  height: 60px;
+  padding: 6px 12px;
+  height: 38px;
 }
 .data-table.data-roomy > tbody > tr > td {
-  padding: 18px 22px;
-  height: 76px;
+  padding: 6px 12px;
+  height: 36px;
 }
 
 /*

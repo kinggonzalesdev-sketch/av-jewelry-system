@@ -152,7 +152,7 @@ export function Thead({ children, className }: { children: ReactNode; className?
   return (
     <thead
       className={cn(
-        'border-b bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground',
+        'border-b bg-muted/40 text-[10px] uppercase tracking-wide text-muted-foreground',
         className,
       )}
     >
