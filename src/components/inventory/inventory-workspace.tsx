@@ -484,9 +484,19 @@ export function InventoryWorkspace({
                 empty message sits inside the body so the layout never collapses. */}
             <div className="table-scroll rounded-xl border border-border bg-card">
             <table className="data-table w-full min-w-[720px] text-left text-xs">
+              {/* Intentional column widths (Owner spec). HINTS, not table-fixed — a
+                  column can still grow to fit a long code, nothing is clipped. */}
+              <colgroup>
+                <col style={{ width: '30%' }} />
+                <col style={{ width: '15%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '18%' }} />
+              </colgroup>
               <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                 <tr>
-                  <th className="col-grow px-3 py-2.5 text-left">Unique Code</th>
+                  <th className="px-3 py-2.5 text-left">Unique Code</th>
                   <th className="px-3 py-2.5 text-left">Status</th>
                   <th className="col-num px-3 py-2.5">Grams</th>
                   <th className="col-center px-3 py-2.5">Date Encoded</th>
@@ -506,7 +516,7 @@ export function InventoryWorkspace({
                 ) : (
                   pagedInventory.map((i) => (
                   <tr key={i.inventoryItemId}>
-                    <td className="col-grow truncate px-3 py-2.5 font-mono" title={i.itemCode}>
+                    <td className="truncate px-3 py-2.5 font-mono" title={i.itemCode}>
                       {i.itemCode}
                     </td>
                     <td className="px-3 py-2.5 text-left">
