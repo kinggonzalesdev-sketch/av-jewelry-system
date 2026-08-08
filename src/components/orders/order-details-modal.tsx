@@ -65,10 +65,10 @@ const PAYMENT_LABEL: Record<PaymentStatus, string> = {
 };
 
 const PAYMENT_TONE: Record<PaymentStatus, BadgeTone> = {
-  paid_in_full: 'gold',
-  partial: 'warning',
-  awaiting: 'neutral',
-  unavailable: 'danger',
+  paid_in_full: 'success', // green — settled (Owner colour spec)
+  partial: 'warning', // amber — partially paid
+  awaiting: 'warning', // amber — awaiting payment
+  unavailable: 'danger', // red — balance unavailable
 };
 
 const PRINT_CSS = `
