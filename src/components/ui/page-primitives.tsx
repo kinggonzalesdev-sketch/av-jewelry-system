@@ -76,42 +76,74 @@ export function MetricCard({
   );
 }
 
-export type BadgeTone = 'gold' | 'neutral' | 'strong' | 'warning' | 'danger' | 'success';
+export type BadgeTone =
+  | 'gold'
+  | 'neutral'
+  | 'strong'
+  | 'warning'
+  | 'danger'
+  | 'success'
+  | 'info';
 
+/**
+ * ONE colour per meaning across the whole system (Owner spec), via the `.badge-*`
+ * classes in globals.css (light + dark). Gold stays the BRAND accent only. Statuses
+ * map: success→green, warning→amber, info→blue, danger→red, neutral→gray.
+ */
 const TONE: Record<BadgeTone, string> = {
-  // Gold — active / selected / positive-in-progress (the brand accent).
+  // Gold — active / selected (the brand accent, NOT a status).
   gold: 'bg-gold/15 text-gold-strong border-gold/30',
-  // Neutral warm — pending / informational.
-  neutral: 'bg-secondary text-muted-foreground border-border',
+  // Gray — neutral / no-data / archived / informational-neutral.
+  neutral: 'badge-gray',
   // Strong — charcoal, for emphatic non-accent states.
   strong: 'bg-foreground/10 text-foreground border-foreground/15',
-  // Warm amber — caution (amber sits inside the warm brand family).
-  warning: 'bg-amber-100 text-amber-900 border-amber-200',
-  // Restrained red — a problem the operator must see.
-  danger: 'bg-destructive/10 text-destructive border-destructive/25',
-  // Green — a settled, fully-done positive (Paid in Full). Owner request.
-  success: 'bg-green-600/10 text-green-700 border-green-600/30',
+  // Amber — pending / waiting / needs attention.
+  warning: 'badge-amber',
+  // Red — error / danger / cancel / overdue.
+  danger: 'badge-red',
+  // Green — success / finished / available / paid.
+  success: 'badge-green',
+  // Blue — active process / information (delivery, processing, live).
+  info: 'badge-blue',
 };
 
-/** A brand status pill. Tone conveys meaning. */
+/** Default leading glyph per tone (colour + text + ICON — never a bare dot). */
+const TONE_ICON: Record<BadgeTone, string> = {
+  gold: '●',
+  neutral: '●',
+  strong: '●',
+  warning: '●',
+  danger: '✕',
+  success: '✓',
+  info: '●',
+};
+
+/** A status pill: colour + a leading icon + a readable label. */
 export function StatusBadge({
   label,
   tone = 'neutral',
+  icon,
   className,
 }: {
   label: string;
   tone?: BadgeTone;
+  /** Override the default leading glyph (e.g. '!' for Overdue). */
+  icon?: string;
   className?: string;
 }) {
+  const glyph = icon ?? TONE_ICON[tone];
   return (
     <span
       className={cn(
-        'inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium',
+        'inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium',
         TONE[tone],
         className,
       )}
     >
-      {label}
+      <span aria-hidden="true" className="text-[9px] leading-none opacity-80">
+        {glyph}
+      </span>
+      <span>{label}</span>
     </span>
   );
 }

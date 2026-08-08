@@ -159,6 +159,7 @@ const CARD_ICON_TONE: Record<BadgeTone, string> = {
   warning: 'bg-amber-100 text-amber-800',
   danger: 'bg-destructive/10 text-destructive',
   success: 'bg-green-600/10 text-green-700',
+  info: 'bg-blue-500/10 text-blue-600',
 };
 
 function OrderRow({

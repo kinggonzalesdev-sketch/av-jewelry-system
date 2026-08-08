@@ -256,6 +256,78 @@
   padding: 10px 16px;
   height: 48px;
 }
+
+/*
+ * STATUS COLOUR SYSTEM (Owner spec) — one meaning → one colour, everywhere.
+ * green=success/available · amber=pending/waiting · blue=active/processing ·
+ * red=error/overdue/cancel · gray=disabled/archived/no-data. Light uses solid pastel
+ * backgrounds; dark uses a translucent tint + a brighter foreground so text stays
+ * readable. Gold stays the BRAND accent only (never a status). Used by the shared
+ * <StatusBadge> (ui/page-primitives). Combine colour + text + icon — never a bare dot.
+ */
+:root {
+  --st-green: #16a34a;
+  --st-green-bg: #dcfce7;
+  --st-amber: #d97706;
+  --st-amber-bg: #fef3c7;
+  --st-blue: #2563eb;
+  --st-blue-bg: #dbeafe;
+  --st-red: #dc2626;
+  --st-red-bg: #fee2e2;
+  --st-gray: #6b7280;
+  --st-gray-bg: #f3f4f6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --st-green: #4ade80;
+    --st-green-bg: rgba(22, 163, 74, 0.16);
+    --st-amber: #fbbf24;
+    --st-amber-bg: rgba(217, 119, 6, 0.16);
+    --st-blue: #60a5fa;
+    --st-blue-bg: rgba(37, 99, 235, 0.16);
+    --st-red: #f87171;
+    --st-red-bg: rgba(220, 38, 38, 0.16);
+    --st-gray: #9ca3af;
+    --st-gray-bg: rgba(107, 114, 128, 0.16);
+  }
+}
+:root[data-theme='dark'] {
+  --st-green: #4ade80;
+  --st-green-bg: rgba(22, 163, 74, 0.16);
+  --st-amber: #fbbf24;
+  --st-amber-bg: rgba(217, 119, 6, 0.16);
+  --st-blue: #60a5fa;
+  --st-blue-bg: rgba(37, 99, 235, 0.16);
+  --st-red: #f87171;
+  --st-red-bg: rgba(220, 38, 38, 0.16);
+  --st-gray: #9ca3af;
+  --st-gray-bg: rgba(107, 114, 128, 0.16);
+}
+.badge-green {
+  color: var(--st-green);
+  background-color: var(--st-green-bg);
+  border-color: color-mix(in srgb, var(--st-green) 35%, transparent);
+}
+.badge-amber {
+  color: var(--st-amber);
+  background-color: var(--st-amber-bg);
+  border-color: color-mix(in srgb, var(--st-amber) 35%, transparent);
+}
+.badge-blue {
+  color: var(--st-blue);
+  background-color: var(--st-blue-bg);
+  border-color: color-mix(in srgb, var(--st-blue) 35%, transparent);
+}
+.badge-red {
+  color: var(--st-red);
+  background-color: var(--st-red-bg);
+  border-color: color-mix(in srgb, var(--st-red) 35%, transparent);
+}
+.badge-gray {
+  color: var(--st-gray);
+  background-color: var(--st-gray-bg);
+  border-color: color-mix(in srgb, var(--st-gray) 35%, transparent);
+}
 /* A content-heavy cell that must not balloon: caps its width and truncates. Pair with
    the cell's own `truncate` (title=… for the full value on hover). */
 .data-table .col-clip {
