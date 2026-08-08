@@ -74,7 +74,7 @@ function CustomerList({
   return (
     <div className="space-y-3">
     <div className="rounded-xl border border-border bg-card">
-      <div className="overflow-x-auto">
+      <div className="table-scroll">
         <table className="data-table w-full min-w-[640px] text-left text-sm">
           <thead>
             <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">

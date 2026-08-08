@@ -22,7 +22,7 @@ import { formatPeso } from '@/lib/payments/format';
  */
 
 /** Scroll container. Wraps the table so the PAGE never scrolls sideways. */
-export const tableWrap = 'overflow-x-auto rounded-xl border border-border bg-card';
+export const tableWrap = 'table-scroll rounded-xl border border-border bg-card';
 
 /** The table element. Pass a min-width so columns keep readable widths. */
 export const tableBase = 'w-full text-left text-xs';

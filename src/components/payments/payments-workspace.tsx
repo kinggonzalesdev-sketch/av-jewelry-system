@@ -1161,7 +1161,7 @@ function LayawayTable({
 
   return (
     <div>
-    <div className="overflow-x-auto rounded-xl border border-border bg-card">
+    <div className="table-scroll rounded-xl border border-border bg-card">
       <table
         className="data-table data-roomy lay-table w-full min-w-[1000px] text-left text-xs"
         data-testid="layaway-table"
@@ -1184,8 +1184,8 @@ function LayawayTable({
             <th className="px-3 py-2 text-left">Unique Code</th>
             <th className="px-3 py-2 text-left">Customer Name</th>
             <th className="col-center px-3 py-2">Code</th>
-            <th className="px-3 py-2 text-left">Remarks / Financer</th>
-            <th className="col-num px-3 py-2">Total Amount</th>
+            <th className="col-center px-3 py-2">Remarks / Financer</th>
+            <th className="col-center px-3 py-2">Total Amount</th>
             <th className="col-center px-3 py-2">Date Purchased</th>
             <th className="col-center px-3 py-2">Overdue</th>
             <th className="col-actions px-3 py-2">Actions</th>
@@ -1224,14 +1224,14 @@ function LayawayTable({
                   {r.code ?? '—'}
                 </td>
                 <td
-                  className="col-clip truncate px-3 py-2 text-muted-foreground"
+                  className="col-clip truncate px-3 py-2 text-center text-muted-foreground"
                   title={[r.financer, r.remarks].filter(Boolean).join(' · ') || undefined}
                 >
                   {[r.financer, r.remarks].filter(Boolean).join(' · ') || '—'}
                 </td>
                 {/* A Completed account is fully paid, so its Total Amount shows
                     nothing (Owner request). Full money detail stays in View. */}
-                <td className="col-num px-3 py-2">
+                <td className="col-center px-3 py-2 tabular-nums">
                   {isCompletedStatus(r.status) ? '—' : cash(r.item)}
                 </td>
                 <td className="col-center whitespace-nowrap px-3 py-2">
@@ -1337,7 +1337,7 @@ function CompletedLayawayTable({
   isSuperAdmin: boolean;
 }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-card">
+    <div className="table-scroll rounded-xl border border-border bg-card">
       <table
         className="data-table lay-table w-full min-w-[1000px] text-left text-xs"
         data-testid="layaway-completed-table"

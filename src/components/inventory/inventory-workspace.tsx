@@ -482,7 +482,7 @@ export function InventoryWorkspace({
 
             {/* The table (headers + container) stays fixed even with no rows — the
                 empty message sits inside the body so the layout never collapses. */}
-            <div className="overflow-x-auto rounded-xl border border-border bg-card">
+            <div className="table-scroll rounded-xl border border-border bg-card">
             <table className="data-table w-full min-w-[720px] text-left text-xs">
               <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                 <tr>
@@ -593,7 +593,7 @@ export function InventoryWorkspace({
               </Button>
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-border bg-card">
+            <div className="table-scroll rounded-xl border border-border bg-card">
               <table
                 className="data-table w-full min-w-[960px] text-left text-xs"
                 data-testid="completed-items"

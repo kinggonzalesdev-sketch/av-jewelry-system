@@ -210,13 +210,22 @@
    `.data-roomy` modifier below is kept in sync as an alias so `<DataTable spacious>`
    resolves to the same compact geometry. */
 .data-table > thead > tr > th {
-  padding: 7px 13px;
-  height: 38px;
+  padding: 8.5px 15px;
+  height: 41px;
   font-size: 14px;
   font-weight: 700; /* BOLD header (Owner spec) */
   text-transform: uppercase;
   line-height: 1.15;
   white-space: nowrap;
+  /* Sticky header: the column labels stay pinned to the top while a long table
+     scrolls. Needs an OPAQUE background so rows pass underneath cleanly, plus a
+     bottom hairline that travels with it. Works when the table's own wrapper is the
+     vertical scroller (see `.table-scroll` / max-height wrappers). */
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background-color: var(--muted);
+  box-shadow: inset 0 -1px 0 var(--border);
 }
 /* Layaway tables get a slightly larger header (Owner spec). Scoped via `.lay-table`
    on those tables so it never affects the other modules. */
@@ -276,8 +285,15 @@
  * Overrides padding + height only, leaving alignment/colour/borders intact.
  */
 .data-table.data-roomy > thead > tr > th {
-  padding: 7px 13px;
-  height: 38px;
+  padding: 8.5px 15px;
+  height: 41px;
+}
+/* Wrapper that turns a table into its OWN vertical scroller so the sticky header
+   works (page-level sticky is blocked by the horizontal-scroll wrapper). Applied to
+   the long, paginated tables. Short tables never hit the cap, so nothing changes. */
+.table-scroll {
+  max-height: 75vh;
+  overflow: auto;
 }
 .data-table.data-roomy > tbody > tr > td {
   padding: 6px 12px;
