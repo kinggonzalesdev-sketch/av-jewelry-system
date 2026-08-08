@@ -6,7 +6,7 @@ import {
   requireOwnerApprovalAuthority,
   requirePermission,
 } from '@/lib/authz/guard';
-import { getOrderBalance } from '@/lib/payments/balances';
+import { getOrderBalances } from '@/lib/payments/balances';
 import { createClient } from '@/lib/supabase/server';
 
 /**
@@ -839,18 +839,27 @@ export async function listFulfillments(): Promise<FulfillmentListResult> {
     return { ok: false, reason: error.message };
   }
 
-  const rows = await Promise.all(
-    ((data ?? []) as unknown[]).map(async (row) => {
+  const raw = (data ?? []) as unknown[];
+
+  // Reuses the authoritative reader — but batched into ONE round-trip
+  // (getOrderBalances) instead of one order_balance() RPC per row. This used to
+  // call order_balance() itself and fall back to '0.00' when the read failed —
+  // which made every order read "₱0.00 verified, below the deposit floor" while
+  // the database held the real figure. Fail-closed on release, but a lie on
+  // screen. The batch keeps the identical formula and the identical "unavailable,
+  // never zero" handling below.
+  const balanceById = await getOrderBalances(
+    raw.map((row) => (row as Record<string, unknown>).official_order_id as string),
+  );
+
+  const rows = raw.map((row) => {
       const r = row as Record<string, unknown>;
       const orderId = r.official_order_id as string;
       const order = one<{ order_number: string; customers: unknown }>(r.official_orders);
       const customer = one<{ display_name: string }>(order?.customers);
 
-      // Reuses the authoritative reader. This used to call order_balance()
-      // itself and fall back to '0.00' when the read failed — which made every
-      // order read "₱0.00 verified, below the deposit floor" while the database
-      // held the real figure. Fail-closed on release, but a lie on screen.
-      const result = await getOrderBalance(orderId);
+      // A row absent from the map is treated exactly like a failed single read.
+      const result = balanceById.get(orderId);
 
       const base = {
         officialOrderId: orderId,
@@ -869,7 +878,7 @@ export async function listFulfillments(): Promise<FulfillmentListResult> {
         remitted: r.remitted_at !== null,
       };
 
-      if (!result.ok) {
+      if (!result || !result.ok) {
         return {
           ...base,
           verifiedNetPayments: '',
@@ -877,7 +886,7 @@ export async function listFulfillments(): Promise<FulfillmentListResult> {
           // Unknown is NOT "met". The database decides at release time either
           // way, so this only governs what the operator is told.
           meetsDepositFloor: false,
-          balanceUnavailable: result.reason,
+          balanceUnavailable: result?.reason ?? 'The balance could not be read.',
         };
       }
 
@@ -891,8 +900,7 @@ export async function listFulfillments(): Promise<FulfillmentListResult> {
         meetsDepositFloor: toCentavos(verified) >= 100000n,
         balanceUnavailable: null,
       };
-    }),
-  );
+    });
 
   return { ok: true, rows };
 }
