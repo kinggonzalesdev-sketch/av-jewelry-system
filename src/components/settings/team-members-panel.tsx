@@ -295,11 +295,12 @@ export function TeamMembersPanel({
                   <td className="col-actions px-3 py-2.5">
                     <div className="flex items-center justify-end gap-2">
                       <SetPasswordCell member={m} />
-                      {/* The Primary Super Admin can never be deleted. */}
-                      {m.isPrimarySuperAdmin ? (
+                      {/* Super Admins are protected — no Delete button (Owner request
+                          2026-08-09); the database also blocks it. */}
+                      {m.roleKey === 'owner' ? (
                         <span
                           className="text-[11px] text-muted-foreground"
-                          title="The Primary Super Admin cannot be deleted."
+                          title="Super Admins are protected and cannot be deleted here."
                         >
                           Protected
                         </span>
