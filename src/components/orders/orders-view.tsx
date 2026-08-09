@@ -10,6 +10,7 @@ import { OrderEdit } from '@/components/orders/order-edit';
 import { LayawayLedgerViewModal } from '@/components/payments/layaway-ledger-view-modal';
 
 import type { OrderListRow, OrdersResult, PaymentStatus } from '@/lib/orders/service';
+import { TOGGLE_INCOMING_CAPTURES_EVENT } from '@/lib/capture/pending-types';
 import type { KeepLayawayRow } from '@/lib/payments/layaway-ledger';
 import { Money } from '@/components/shell/privacy';
 import { EmptyState } from '@/components/states/empty-state';
@@ -507,19 +508,18 @@ export function OrdersView({
         <div className="flex flex-wrap items-center gap-2">
           {newOrderAction}
           {/* Compact "Capture Pending" pill — amber, only when captures are waiting.
-              Lightweight COUNT only; clicking jumps to the existing Incoming Captures
-              station (kept mounted for its background auto-print). */}
+              Lightweight COUNT only; clicking OPENS the Incoming Captures station,
+              which stays hidden until then (Owner request 2026-08-09). The station is
+              still mounted the whole time for its background auto-print. */}
           {pendingCaptureCount > 0 ? (
             <button
               type="button"
               onClick={() =>
-                document
-                  .querySelector('[data-testid="incoming-captures"]')
-                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                window.dispatchEvent(new CustomEvent(TOGGLE_INCOMING_CAPTURES_EVENT))
               }
               className="inline-flex h-9 items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-500/20 dark:text-amber-400"
               data-testid="capture-pending-indicator"
-              title="Jump to the pending captures"
+              title="Show or hide the pending captures"
             >
               <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden="true" />
               Capture Pending

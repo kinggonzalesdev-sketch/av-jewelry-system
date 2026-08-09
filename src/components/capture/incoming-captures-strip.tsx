@@ -6,7 +6,10 @@ import {
   dismissPendingCaptureAction,
   loadPendingCapturesAction,
 } from '@/lib/capture/pending-actions';
-import type { PendingCaptureRow } from '@/lib/capture/pending-types';
+import {
+  TOGGLE_INCOMING_CAPTURES_EVENT,
+  type PendingCaptureRow,
+} from '@/lib/capture/pending-types';
 import {
   NewOrderModal,
   type CapturePrefill,
@@ -44,6 +47,11 @@ export function IncomingCapturesStrip({
   const { lastSyncedAt } = useDashboardSync();
   const { activeChannel, printLang } = usePrinter();
   const [rows, setRows] = useState<PendingCaptureRow[]>([]);
+  // Hidden until the operator clicks the "Capture Pending" pill (Owner request
+  // 2026-08-09) — the strip must not appear on its own. The component stays
+  // mounted regardless (all effects below keep running, so background auto-print
+  // is unaffected); only the visible panel is gated on `open`.
+  const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<PendingCaptureRow | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -95,6 +103,18 @@ export function IncomingCapturesStrip({
   useEffect(() => {
     const iv = setInterval(load, 2500);
     return () => clearInterval(iv);
+  }, [load]);
+
+  // Open/close when the "Capture Pending" pill (in OrdersView) is clicked. The
+  // pill dispatches a window event so the two siblings stay decoupled; clicking it
+  // toggles the panel, and a fresh load makes sure the latest captures show.
+  useEffect(() => {
+    const onToggle = () => {
+      setOpen((v) => !v);
+      load();
+    };
+    window.addEventListener(TOGGLE_INCOMING_CAPTURES_EVENT, onToggle);
+    return () => window.removeEventListener(TOGGLE_INCOMING_CAPTURES_EVENT, onToggle);
   }, [load]);
 
   // Build the sticker for a capture: Facebook Name / grams • ₱rate/g / Date. The rate
@@ -196,14 +216,25 @@ export function IncomingCapturesStrip({
       });
   };
 
-  const prefillFor = (r: PendingCaptureRow): CapturePrefill => ({
-    customerName: r.fbName ?? undefined,
-    itemQuery: r.itemQuery ?? undefined,
-    captureRecordId: r.captureRecordId,
-    screenshotUrl: r.screenshotUrl,
-  });
+  const prefillFor = (r: PendingCaptureRow): CapturePrefill => {
+    // A REAL claim is a pinned "<Facebook Name> / Mine <grams>" comment — its
+    // signal is a confident weight (the "Mine 10.5" number). Without it (a
+    // screenshot with no pinned claim, e.g. the app's own screen), we do NOT guess
+    // a customer name — the operator types it (Owner request 2026-08-09). The item
+    // is ALWAYS chosen by hand: the pinned comment never names one, so it is never
+    // pre-filled.
+    const hasClaim =
+      normalizeGrams(gramsEdits[r.captureRecordId] ?? r.grams ?? '') !== null;
+    return {
+      customerName: hasClaim ? (r.fbName ?? undefined) : undefined,
+      captureRecordId: r.captureRecordId,
+      screenshotUrl: r.screenshotUrl,
+    };
+  };
 
-  if (rows.length === 0) return null;
+  // Hidden until opened via the pill (all hooks above still run, so auto-print keeps
+  // working in the background even while the panel is closed).
+  if (rows.length === 0 || !open) return null;
 
   return (
     <section
@@ -211,9 +242,20 @@ export function IncomingCapturesStrip({
       data-testid="incoming-captures"
       aria-labelledby="incoming-captures-h"
     >
-      <h2 id="incoming-captures-h" className="text-sm font-semibold text-gold-strong">
-        Incoming Captures ({rows.length})
-      </h2>
+      <div className="flex items-start justify-between gap-2">
+        <h2 id="incoming-captures-h" className="text-sm font-semibold text-gold-strong">
+          Incoming Captures ({rows.length})
+        </h2>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          aria-label="Hide incoming captures"
+          data-testid="incoming-captures-close"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border text-sm text-muted-foreground hover:bg-accent"
+        >
+          ✕
+        </button>
+      </div>
       <p className="mb-3 mt-0.5 text-xs text-muted-foreground">
         Screenshots from the floating button. The label prints{' '}
         <strong>Name / grams • ₱rate/g / date</strong> — the rate comes from{' '}

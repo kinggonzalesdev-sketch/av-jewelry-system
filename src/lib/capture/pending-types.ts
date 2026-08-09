@@ -4,6 +4,16 @@
  * import the types without pulling server code into the browser bundle.
  */
 
+/**
+ * A window CustomEvent that toggles the Incoming Captures strip open/closed. The
+ * strip stays hidden until the operator clicks the "Capture Pending" pill beside
+ * + New Order (Owner request 2026-08-09 — it should not appear on its own). The
+ * pill (in OrdersView) dispatches this; the strip (a sibling component) listens.
+ * A plain window event keeps the two decoupled without a shared provider, and the
+ * strip stays mounted the whole time so its background auto-print keeps working.
+ */
+export const TOGGLE_INCOMING_CAPTURES_EVENT = 'mineflow:toggle-incoming-captures';
+
 /** A floating-screenshot capture waiting on the PC for the operator to turn into an
  *  order. The OCR fields are only a guess — the operator confirms/corrects them. */
 export type PendingCaptureRow = {
