@@ -243,11 +243,11 @@ export function TeamMembersPanel({
             data-testid="team-roster"
           >
             <colgroup>
-              <col style={{ width: '22%' }} />
-              <col style={{ width: '28%' }} />
-              <col style={{ width: '14%' }} />
-              <col style={{ width: '21%' }} />
-              <col style={{ width: '15%' }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '20%' }} />
             </colgroup>
             <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
               <tr>
