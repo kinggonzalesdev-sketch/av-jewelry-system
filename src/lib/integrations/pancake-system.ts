@@ -56,6 +56,18 @@ export async function syncPancakeConversationsSystem(): Promise<PancakeSyncResul
   }
 
   const matched = Number(data?.matched ?? 0);
+
+  // Refresh profile photos for the just-linked customers too (best-effort, fill-only).
+  const avatarPairs = conv.conversations
+    .filter((c) => c.avatar && c.avatar.trim())
+    .map((c) => ({ conversation_id: c.id, avatar: c.avatar }));
+  if (avatarPairs.length > 0) {
+    await admin.rpc('set_customer_pancake_avatars_system', { p_pairs: avatarPairs }).then(
+      () => undefined,
+      () => undefined,
+    );
+  }
+
   const { linked, total: totalCustomers } = await getPancakeLinkCoverage(admin);
   return {
     ok: true,
