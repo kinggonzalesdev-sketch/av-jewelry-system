@@ -106,7 +106,7 @@ function ChannelTile({
   money: (a: string) => string;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-card/60 p-3">
+    <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-card/60 p-3 text-center">
       <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className="mt-0.5 text-lg font-semibold tabular-nums">{money(amount)}</p>
       <p className="text-[11px] text-muted-foreground">

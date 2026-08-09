@@ -62,7 +62,9 @@ export function MetricCard({
   return (
     <div
       className={cn(
-        'rounded-xl border border-border bg-card p-4',
+        // Content centered (Owner request): label → value → hint stacked and centered,
+        // vertically balanced when the grid stretches cards to equal height.
+        'flex flex-col items-center justify-center rounded-xl border border-border bg-card p-4 text-center',
         accent && 'border-t-2 border-t-gold',
         className,
       )}

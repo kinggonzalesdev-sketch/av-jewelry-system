@@ -530,7 +530,9 @@ export function OrdersView({
               className={cn(
                 // Width comes from the responsive grid; the card just fills its
                 // cell and keeps a fixed min-height so every card is equal height.
-                'flex min-h-[92px] w-full flex-col items-start gap-1.5 rounded-xl border bg-card p-2.5 text-left transition-colors',
+                // Content is centered (Owner request): icon → label → value stacked
+                // and centered, vertically balanced.
+                'flex min-h-[92px] w-full flex-col items-center justify-center gap-1.5 rounded-xl border bg-card p-2.5 text-center transition-colors',
                 active
                   ? 'border-gold ring-1 ring-gold'
                   : 'border-border hover:border-gold/40',

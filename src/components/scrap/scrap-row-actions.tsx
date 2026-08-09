@@ -181,7 +181,7 @@ export function ScrapRowActions({
             setConfirming(true);
           }}
           data-testid={`scrap-delete-${sale.id}`}
-          className="rounded-md px-2 py-1 text-xs font-medium text-destructive hover:bg-destructive/10"
+          className="rounded-md border border-destructive/40 px-2 py-1 text-xs font-medium text-destructive hover:bg-destructive/10"
         >
           Delete
         </button>
