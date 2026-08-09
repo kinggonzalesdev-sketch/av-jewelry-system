@@ -18,6 +18,7 @@ import type { OrderDetail, OrderDetailResult } from '@/lib/orders/detail-types';
 import type { CustomerMatchInfo } from '@/lib/orders/customer-match-types';
 import type { PaymentStatus } from '@/lib/orders/service';
 import { OrderDestinationTransfer } from '@/components/orders/order-destination-transfer';
+import { OrderItemEditControls } from '@/components/orders/order-item-edit';
 import { FbChatButton } from '@/components/orders/fb-chat-button';
 import { OrderFacebookLink } from '@/components/orders/order-facebook-link';
 import { OrderCancelAction } from '@/components/orders/order-cancel-action';
@@ -1431,6 +1432,16 @@ function DetailBody({
               </table>
             </div>
           )}
+
+          {/* Edit Items (Super Admin) — Remove a piece or Split it to a new order.
+              Self-hides for non-owners, locked statuses, and the last item. */}
+          <OrderItemEditControls
+            orderId={detail.officialOrderId}
+            status={detail.status}
+            items={detail.items}
+            isOwner={detail.permissions.isOwner}
+            onRefresh={onRefresh}
+          />
 
           {/* ------------------------------ HISTORY ------------------------- */}
           <div className="space-y-3">

@@ -4,6 +4,12 @@ import { revalidatePath } from 'next/cache';
 
 import { getOrderDetail } from '@/lib/orders/detail';
 import {
+  removeOrderItem,
+  splitOrderItem,
+  type EditItemResult,
+  type SplitItemResult,
+} from '@/lib/orders/edit-items';
+import {
   markOrderDone,
   transferOrderToCompleted,
   type CompletionResult,
@@ -111,6 +117,36 @@ export async function loadOrderDetailAction(
     return { ok: false, reason: 'No order was specified.' };
   }
   return getOrderDetail(officialOrderId);
+}
+
+/**
+ * Edit Items — SUPER ADMIN (owner) only, re-checked in the DB. Remove a piece
+ * (returns it to Active stock, order total drops) or Split it into its own new
+ * For-Invoice order. Revalidates Orders + Inventory so the cards, the item list,
+ * and Active Inventory all reflect the change.
+ */
+export async function removeOrderItemAction(
+  officialOrderId: string,
+  claimId: string,
+): Promise<EditItemResult> {
+  const result = await removeOrderItem(officialOrderId, claimId);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/inventory');
+  }
+  return result;
+}
+
+export async function splitOrderItemAction(
+  officialOrderId: string,
+  claimId: string,
+): Promise<SplitItemResult> {
+  const result = await splitOrderItem(officialOrderId, claimId);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/inventory');
+  }
+  return result;
 }
 
 /** Transfer an order to another section (§6). Guarded in the domain module + DB,

@@ -79,6 +79,8 @@ export type OrderActivityEntry = {
 };
 
 export type OrderLineItemDetail = {
+  /** The claim uuid — targets this line for Edit Items (Remove / Split). */
+  claimId: string;
   claimReference: string;
   itemName: string | null;
   itemCode: string | null;

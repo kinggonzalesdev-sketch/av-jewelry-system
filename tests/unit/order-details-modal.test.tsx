@@ -85,6 +85,7 @@ function detail(over: Partial<OrderDetail> = {}): OrderDetail {
     orderFacebook: { conversationId: null, url: null, status: null },
     items: [
       {
+        claimId: 'claim-1',
         claimReference: 'CLM-1',
         itemName: 'Gold Ring',
         itemCode: 'PL-1',

@@ -327,6 +327,8 @@ export async function listWalkInItems(): Promise<WalkInItem[]> {
 /** One line of an Official Order — the claimed item, its weight, quantity, and
  *  catalogue unit price. Money/weight stay authoritative strings (never floats). */
 export type OrderLineItem = {
+  /** The claim uuid — targets this line for Edit Items (Remove / Split). */
+  claimId: string;
   claimReference: string;
   itemName: string | null;
   itemCode: string | null;
@@ -371,10 +373,13 @@ export async function getOrderLineItems(
     inventory_items: ItemShape | ItemShape[] | null;
   };
 
-  return (data as Array<{ claims: ClaimShape | ClaimShape[] | null }>).map((row) => {
+  return (
+    data as Array<{ claim_id: string; claims: ClaimShape | ClaimShape[] | null }>
+  ).map((row) => {
     const claim = one<ClaimShape>(row.claims);
     const item = one<ItemShape>(claim?.inventory_items);
     return {
+      claimId: row.claim_id,
       claimReference: claim?.claim_reference ?? '—',
       itemName: item?.item_name ?? null,
       itemCode: item?.item_code ?? null,
