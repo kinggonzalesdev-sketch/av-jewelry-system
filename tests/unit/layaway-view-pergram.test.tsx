@@ -55,6 +55,7 @@ function detail(over: Partial<LayawayLedgerDetail> = {}): LayawayLedgerDetail {
     },
     installments: [],
     payments: [],
+    items: [],
     ...over,
   };
 }

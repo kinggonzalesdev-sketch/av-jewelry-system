@@ -8,6 +8,7 @@ import {
   loadLayawayLedgerDetailAction,
 } from '@/lib/payments/actions';
 import type { LayawayLedgerDetail } from '@/lib/payments/layaway-ledger';
+import { LayawayEditItems } from '@/components/payments/layaway-edit-items';
 import { formatPeso } from '@/lib/payments/format';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
@@ -168,6 +169,18 @@ export function LayawayLedgerViewModal({
     }
     setConfirming(false);
     setOpen(false);
+    router.refresh();
+  };
+
+  // Re-fetch the account detail in place (after Edit Items) — keeps the modal open
+  // and refreshes the money + item list without a full-page reload.
+  const reload = async () => {
+    try {
+      const d = await loadLayawayLedgerDetailAction(ledgerId);
+      if (d) setDetail(d);
+    } catch {
+      /* keep the current view */
+    }
     router.refresh();
   };
 
@@ -381,6 +394,16 @@ export function LayawayLedgerViewModal({
                 </div>
               </div>
             ) : null}
+
+            {/* Edit Items (Owner/Admin) — Add Item / Remove / Split, right below the
+                Monthly Interest section (Owner request 2026-08-09). Multi-item: the
+                money recomputes from the item list on every change. */}
+            <LayawayEditItems
+              ledgerId={ledgerId}
+              items={detail.items}
+              canManage={canTransfer}
+              onRefresh={() => void reload()}
+            />
 
             {/* Payment History — stays at the bottom (Owner request). */}
             <SectionCard icon="₱" title="Payment History">

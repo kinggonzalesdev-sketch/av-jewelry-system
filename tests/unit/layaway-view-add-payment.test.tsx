@@ -57,6 +57,7 @@ function detail(over: Partial<LayawayLedgerDetail> = {}): LayawayLedgerDetail {
       { sequence: 1, paymentDate: '2026-06-12', amount: '5000.00', mop: 'BPI', reference: null, receivedBy: null },
       { sequence: 2, paymentDate: '2026-06-24', amount: '6280.00', mop: 'BPI', reference: null, receivedBy: null },
     ],
+    items: [],
     ...over,
   };
 }

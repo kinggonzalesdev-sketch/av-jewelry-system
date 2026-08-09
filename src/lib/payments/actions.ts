@@ -34,6 +34,7 @@ import {
 } from '@/lib/payments/layaway-entry';
 import { completeOrderForPaymentIfPaidInFull } from '@/lib/orders/complete-on-payment';
 import {
+  addLayawayItem,
   addLayawayLedgerPayment,
   addLayawayPaymentAndTransfer,
   cancelLayawayLedger,
@@ -42,9 +43,13 @@ import {
   deleteLayawayLedgerRow,
   getLayawayLedgerDetail,
   importLayawayLedger,
+  removeLayawayItem,
+  splitLayawayItemToOrder,
   transferLayawayToDestination,
   updateLayawayLedgerAccount,
   type AddLedgerPaymentInput,
+  type LayawayItemResult,
+  type LayawaySplitResult,
   type LayawayLedgerDetail,
   type LayawayLedgerInput,
   type LedgerDeleteResult,
@@ -227,6 +232,52 @@ export async function completeLayawayLedgerAction(
     revalidatePath('/orders');
     revalidatePath('/orders/payments');
     revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+/**
+ * Multi-item layaway editing (Owner/Admin, re-checked in the DB). Each mutation
+ * recomputes the account's money from its items and revalidates Payments +
+ * Inventory (Add commits / Remove releases stock) + the Dashboard.
+ */
+export async function addLayawayItemAction(
+  ledgerId: string,
+  inventoryItemId: string,
+  pricingType: string,
+  price: string,
+): Promise<LayawayItemResult> {
+  const result = await addLayawayItem(ledgerId, inventoryItemId, pricingType, price);
+  if (result.ok) {
+    revalidatePath('/orders/payments');
+    revalidatePath('/orders/inventory');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+export async function removeLayawayItemAction(
+  ledgerId: string,
+  itemId: string,
+): Promise<LayawayItemResult> {
+  const result = await removeLayawayItem(ledgerId, itemId);
+  if (result.ok) {
+    revalidatePath('/orders/payments');
+    revalidatePath('/orders/inventory');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+export async function splitLayawayItemToOrderAction(
+  ledgerId: string,
+  itemId: string,
+): Promise<LayawaySplitResult> {
+  const result = await splitLayawayItemToOrder(ledgerId, itemId);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/payments');
+    revalidatePath('/orders/inventory');
   }
   return result;
 }

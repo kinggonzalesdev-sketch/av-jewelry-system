@@ -101,6 +101,18 @@ export type LayawayLedgerDetail = {
     /** Staff who recorded the payment (Received By), when known. */
     receivedBy: string | null;
   }>;
+  /** The layaway's items (multi-item, 2026-08-09). A row `id` is null when it is
+   *  SYNTHESIZED from the account's single stored item (no layaway_ledger_items row
+   *  yet) — such an item is the last one, so it cannot be removed/split until a real
+   *  Add Item seeds the rows. */
+  items: Array<{
+    id: string | null;
+    itemCode: string | null;
+    itemName: string | null;
+    grams: string | null;
+    unitPrice: string | null;
+    itemAmount: string | null;
+  }>;
 };
 
 export type LayawayLedgerInstallmentInput = {
@@ -363,6 +375,99 @@ export async function completeLayawayLedger(
 }
 
 /**
+ * Multi-item layaway editing (Owner request 2026-08-09). Owner / Selected Admin,
+ * re-checked in the DB. Each mutation recomputes the account's grams → interest →
+ * grand total → balance from the item list (grams × ₱150 × term).
+ */
+export type LayawayItemResult = { ok: true } | { ok: false; error: string };
+export type LayawaySplitResult =
+  | { ok: true; orderNumber: string }
+  | { ok: false; error: string };
+
+export async function addLayawayItem(
+  ledgerId: string,
+  inventoryItemId: string,
+  pricingType: string,
+  price: string,
+): Promise<LayawayItemResult> {
+  if (!ledgerId || !inventoryItemId) return { ok: false, error: 'An item is required.' };
+  try {
+    await requireOwnerOrAdmin();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
+    throw cause;
+  }
+  const supabase = await createClient();
+  const res = (await supabase.rpc('add_layaway_item', {
+    p_ledger: ledgerId,
+    p_inventory_item_id: inventoryItemId,
+    p_pricing_type: pricingType,
+    p_price: price,
+  })) as { error: { message: string } | null };
+  if (res.error) return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  await recordAuditEvent({
+    action: 'layaway.add_item',
+    entityType: 'layaway_ledger',
+    entityId: ledgerId,
+    context: { inventoryItemId },
+  });
+  return { ok: true };
+}
+
+export async function removeLayawayItem(
+  ledgerId: string,
+  itemId: string,
+): Promise<LayawayItemResult> {
+  if (!ledgerId || !itemId) return { ok: false, error: 'An item is required.' };
+  try {
+    await requireOwnerOrAdmin();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
+    throw cause;
+  }
+  const supabase = await createClient();
+  const res = (await supabase.rpc('remove_layaway_item', {
+    p_ledger: ledgerId,
+    p_item_id: itemId,
+  })) as { error: { message: string } | null };
+  if (res.error) return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  await recordAuditEvent({
+    action: 'layaway.remove_item',
+    entityType: 'layaway_ledger',
+    entityId: ledgerId,
+    context: { itemId },
+  });
+  return { ok: true };
+}
+
+export async function splitLayawayItemToOrder(
+  ledgerId: string,
+  itemId: string,
+): Promise<LayawaySplitResult> {
+  if (!ledgerId || !itemId) return { ok: false, error: 'An item is required.' };
+  try {
+    await requireOwnerOrAdmin();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
+    throw cause;
+  }
+  const supabase = await createClient();
+  const res = (await supabase.rpc('split_layaway_item_to_order', {
+    p_ledger: ledgerId,
+    p_item_id: itemId,
+  })) as { data: { order_number?: string } | null; error: { message: string } | null };
+  if (res.error) return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  const orderNumber = res.data?.order_number ?? '—';
+  await recordAuditEvent({
+    action: 'layaway.split_item',
+    entityType: 'layaway_ledger',
+    entityId: ledgerId,
+    context: { itemId, newOrderNumber: orderNumber },
+  });
+  return { ok: true, orderNumber };
+}
+
+/**
  * Cancel a layaway ledger account (Owner/Admin). Sets status='cancelled' and
  * releases the code back to the pool — the DB refuses an already-cancelled,
  * completed, or forfeited account. Payment history is never touched.
@@ -453,11 +558,11 @@ export async function getLayawayLedgerDetail(
   id: string,
 ): Promise<LayawayLedgerDetail | null> {
   const supabase = await createClient();
-  const [acct, inst, pay] = await Promise.all([
+  const [acct, inst, pay, itemRows] = await Promise.all([
     supabase
       .from('layaway_ledger')
       .select(
-        'id, layaway_code, account_no, customer_name, status, remarks, date_purchased, item_amount, interest, grand_total, payment, balance, balance_mismatch, next_due_date, monthly_interest, total_installment_interest, last_payment_date, mode_of_payment, latest_payment_dp, resize, screw, notes, interest_type, layaway_term, interest_rate, fixed_interest, inventory:inventory_items!layaway_ledger_inventory_item_id_fkey ( item_code )',
+        'id, layaway_code, account_no, customer_name, status, remarks, date_purchased, item_amount, interest, grand_total, payment, balance, balance_mismatch, next_due_date, monthly_interest, total_installment_interest, last_payment_date, mode_of_payment, latest_payment_dp, resize, screw, notes, interest_type, layaway_term, interest_rate, fixed_interest, grams, inventory:inventory_items!layaway_ledger_inventory_item_id_fkey ( item_code )',
       )
       .eq('id', id)
       .maybeSingle(),
@@ -471,6 +576,11 @@ export async function getLayawayLedgerDetail(
       .select('sequence, payment_date, amount, mode_of_payment, reference, received_by')
       .eq('ledger_id', id)
       .order('sequence', { ascending: true }),
+    supabase
+      .from('layaway_ledger_items')
+      .select('id, item_code, item_name, grams, unit_price, item_amount')
+      .eq('ledger_id', id)
+      .order('created_at', { ascending: true }),
   ]);
 
   const r = acct.data as Record<string, unknown> | null;
@@ -511,6 +621,34 @@ export async function getLayawayLedgerDetail(
       receiverNames.set(s.id as string, (s.full_name as string) ?? '');
     }
   }
+
+  // Items — the real layaway_ledger_items rows, or a SINGLE synthesized item from the
+  // account's stored values when no rows exist yet (imported single-item accounts).
+  const realItems = (itemRows.data ?? []) as Array<Record<string, unknown>>;
+  const storedCode = (r.inventory as { item_code?: string } | null)?.item_code ?? null;
+  const storedAmount = toStr(r.item_amount);
+  const items: LayawayLedgerDetail['items'] =
+    realItems.length > 0
+      ? realItems.map((it) => ({
+          id: it.id as string,
+          itemCode: (it.item_code as string | null) ?? null,
+          itemName: (it.item_name as string | null) ?? null,
+          grams: toStr(it.grams),
+          unitPrice: toStr(it.unit_price),
+          itemAmount: toStr(it.item_amount),
+        }))
+      : storedCode || storedAmount
+        ? [
+            {
+              id: null,
+              itemCode: storedCode,
+              itemName: null,
+              grams: toStr(r.grams),
+              unitPrice: storedAmount,
+              itemAmount: storedAmount,
+            },
+          ]
+        : [];
 
   return {
     id: r.id as string,
@@ -559,6 +697,7 @@ export async function getLayawayLedgerDetail(
           ? (receiverNames.get(p.received_by) ?? null)
           : null,
     })),
+    items,
   };
 }
 
