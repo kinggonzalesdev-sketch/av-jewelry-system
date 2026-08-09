@@ -182,7 +182,10 @@ function AddInfoForm({
   const itemCentavos = source ? centavos(source.itemAmount) : 0n;
   const monthlyInterest =
     noInterest || !source?.grams ? 0n : perGramCentavos(source.grams, '150');
-  const grandTotal = itemCentavos + monthlyInterest; // item + month 1 only
+  // Interest is FIXED per month (grams × ₱150); the grand total includes the WHOLE
+  // term — item + monthly × term — matching add_layaway_info + the New Entry form
+  // (Owner report 2026-08-09; it previously added only one month).
+  const grandTotal = itemCentavos + monthlyInterest * BigInt(term);
   const paidCentavos = centavos(payment);
   const balance = grandTotal - paidCentavos;
 
