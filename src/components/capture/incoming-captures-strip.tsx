@@ -5,13 +5,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   dismissPendingCaptureAction,
   loadPendingCapturesAction,
+  resolveCaptureLinkAction,
   sendCaptureToMessengerAction,
 } from '@/lib/capture/pending-actions';
 import {
   CAPTURE_COUNT_EVENT,
   TOGGLE_INCOMING_CAPTURES_EVENT,
+  type CaptureLinkResult,
   type PendingCaptureRow,
 } from '@/lib/capture/pending-types';
+import { CaptureLinkPanel, type EffectiveCaptureLink } from '@/components/capture/capture-link-panel';
 import {
   NewOrderModal,
   type CapturePrefill,
@@ -64,6 +67,11 @@ export function IncomingCapturesStrip({
   // and a short per-row status note ("Printed ✓").
   const [gramsEdits, setGramsEdits] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
+  // Client cache of the resolved Facebook link per capture (overrides the row until
+  // the next server load reflects the persisted status).
+  const [linkOverrides, setLinkOverrides] = useState<Record<string, CaptureLinkResult>>({});
+  // Captures we've already kicked a resolution for, so each resolves exactly once.
+  const resolvedRef = useRef<Set<string>>(new Set());
 
   // The capture ids already printed on THIS station, persisted so a reload/re-poll
   // never reprints. Seeded on mount (ref mutation only — no re-render).
@@ -126,6 +134,25 @@ export function IncomingCapturesStrip({
     window.addEventListener(TOGGLE_INCOMING_CAPTURES_EVENT, onToggle);
     return () => window.removeEventListener(TOGGLE_INCOMING_CAPTURES_EVENT, onToggle);
   }, [load]);
+
+  // Capture-time linking: the first time we see an UNRESOLVED capture (link_status
+  // null), resolve WHO it is (customer + Pancake conversation) and — when it uniquely
+  // resolves — auto-send the screenshot. Runs exactly once per capture (resolvedRef),
+  // never guesses an ambiguous name (the server returns needs_confirmation instead).
+  useEffect(() => {
+    for (const r of rows) {
+      const id = r.captureRecordId;
+      if (r.linkStatus !== null || linkOverrides[id] || resolvedRef.current.has(id)) continue;
+      resolvedRef.current.add(id);
+      resolveCaptureLinkAction(id)
+        .then((res) => {
+          if (!res.ok) return;
+          setLinkOverrides((cur) => ({ ...cur, [id]: res }));
+          if (res.sent) setNotes((cur) => ({ ...cur, [id]: 'Sent to Messenger ✓' }));
+        })
+        .catch(() => undefined);
+    }
+  }, [rows, linkOverrides]);
 
   // Build the sticker for a capture: Facebook Name / grams • ₱rate/g / Date. The rate
   // ALWAYS comes from Sticker Settings (the pinned comment never carries a price); the
@@ -265,6 +292,27 @@ export function IncomingCapturesStrip({
     };
   };
 
+  // The link to show for a row: the client override (a fresh resolve/change) wins,
+  // else the persisted values from the server load.
+  const effectiveLink = (r: PendingCaptureRow): EffectiveCaptureLink => {
+    const o = linkOverrides[r.captureRecordId];
+    return o
+      ? {
+          linkStatus: o.linkStatus,
+          linkedCustomerName: o.linkedCustomerName,
+          conversationAvailable: o.conversationAvailable,
+          fbUrl: o.fbUrl,
+          matchCount: o.matchCount,
+        }
+      : {
+          linkStatus: r.linkStatus,
+          linkedCustomerName: r.linkedCustomerName,
+          conversationAvailable: r.conversationAvailable,
+          fbUrl: r.fbUrl,
+          matchCount: 0,
+        };
+  };
+
   // The strip is a POPUP: it renders nothing until the operator opens it from the
   // "Capture Pending" pill (Owner request 2026-08-09 — it must never appear on its
   // own). The component stays mounted the whole time (every hook above keeps
@@ -395,6 +443,19 @@ export function IncomingCapturesStrip({
                 {busy === r.captureRecordId ? '…' : 'Dismiss'}
               </Button>
             </div>
+            {/* Linked Facebook Customer — resolved from the detected name. Full width
+                on its own line (the li is flex-wrap). Not shown for a Test capture. */}
+            {!r.isTest ? (
+              <div className="w-full">
+                <CaptureLinkPanel
+                  captureRecordId={r.captureRecordId}
+                  link={effectiveLink(r)}
+                  onChanged={(res) =>
+                    setLinkOverrides((cur) => ({ ...cur, [r.captureRecordId]: res }))
+                  }
+                />
+              </div>
+            ) : null}
           </li>
         ))}
             </ul>

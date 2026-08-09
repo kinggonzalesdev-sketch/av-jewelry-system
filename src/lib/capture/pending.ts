@@ -50,7 +50,9 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
 
   const { data, error } = await supabase
     .from('capture_records')
-    .select('id, captured_at, screenshot_path, ocr, is_test')
+    .select(
+      'id, captured_at, screenshot_path, ocr, is_test, link_status, customer_id, pancake_conversation_id, message_status, customers ( display_name, facebook_conversation_url )',
+    )
     .eq('source', 'floating')
     .is('official_order_id', null)
     .is('confirmed', null)
@@ -59,12 +61,18 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
 
   if (error || !data) return [];
 
+  type CustJoin = { display_name?: string | null; facebook_conversation_url?: string | null };
   const rows = data as Array<{
     id: string;
     captured_at: string;
     screenshot_path: string | null;
     ocr: unknown;
     is_test: boolean | null;
+    link_status: string | null;
+    customer_id: string | null;
+    pancake_conversation_id: string | null;
+    message_status: string | null;
+    customers: CustJoin | CustJoin[] | null;
   }>;
 
   const signed = await Promise.all(
@@ -79,17 +87,27 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
     ),
   );
 
-  return rows.map((r, i) => ({
-    captureRecordId: r.id,
-    capturedAt: r.captured_at,
-    screenshotUrl: signed[i] ?? null,
-    fbName: ocrStr(r.ocr, 'fbName', 'fb_name', 'name'),
-    itemQuery: ocrStr(r.ocr, 'itemQuery', 'item_query', 'item'),
-    // Prefer the dedicated grams field; fall back to the mined number (older builds
-    // put the pinned weight in itemQuery). normalizeGrams also rejects non-weights.
-    grams: normalizeGrams(
-      ocrStr(r.ocr, 'grams', 'weight') ?? ocrStr(r.ocr, 'itemQuery', 'item_query', 'item'),
-    ),
-    isTest: r.is_test === true,
-  }));
+  return rows.map((r, i) => {
+    const cust = Array.isArray(r.customers) ? r.customers[0] : r.customers;
+    const linkStatus = (r.link_status ?? null) as PendingCaptureRow['linkStatus'];
+    return {
+      captureRecordId: r.id,
+      capturedAt: r.captured_at,
+      screenshotUrl: signed[i] ?? null,
+      fbName: ocrStr(r.ocr, 'fbName', 'fb_name', 'name'),
+      itemQuery: ocrStr(r.ocr, 'itemQuery', 'item_query', 'item'),
+      // Prefer the dedicated grams field; fall back to the mined number (older builds
+      // put the pinned weight in itemQuery). normalizeGrams also rejects non-weights.
+      grams: normalizeGrams(
+        ocrStr(r.ocr, 'grams', 'weight') ?? ocrStr(r.ocr, 'itemQuery', 'item_query', 'item'),
+      ),
+      isTest: r.is_test === true,
+      linkStatus,
+      linkedCustomerId: r.customer_id ?? null,
+      linkedCustomerName: (cust?.display_name ?? '').trim() || null,
+      conversationAvailable: Boolean((r.pancake_conversation_id ?? '').trim()),
+      fbUrl: (cust?.facebook_conversation_url ?? '').trim() || null,
+      messageStatus: r.message_status ?? null,
+    };
+  });
 }

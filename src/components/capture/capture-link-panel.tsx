@@ -1,0 +1,195 @@
+'use client';
+
+import { useState } from 'react';
+
+import {
+  clearCaptureLinkAction,
+  listCaptureCandidatesAction,
+  setCaptureCustomerAction,
+} from '@/lib/capture/pending-actions';
+import type {
+  CaptureCandidateOption,
+  CaptureLinkResult,
+  CaptureLinkStatus,
+} from '@/lib/capture/pending-types';
+
+/**
+ * "Linked Facebook Customer" panel for one pending capture (Capture-time linking,
+ * 2026-08-09). Shows who the capture resolved to and lets the operator confirm /
+ * change / remove the link — the wrong-customer safety valve. When 2+ people share
+ * the name, it shows a picker instead of guessing. Purely presentational + a few
+ * server-action calls; the parent owns the resolve-once-per-capture trigger.
+ */
+export type EffectiveCaptureLink = {
+  linkStatus: CaptureLinkStatus;
+  linkedCustomerName: string | null;
+  conversationAvailable: boolean;
+  fbUrl: string | null;
+  matchCount: number;
+};
+
+const DOT: Record<string, string> = {
+  linked: 'bg-emerald-500',
+  customer_no_chat: 'bg-amber-500',
+  needs_confirmation: 'bg-amber-500',
+  no_match: 'bg-muted-foreground',
+};
+
+export function CaptureLinkPanel({
+  captureRecordId,
+  link,
+  onChanged,
+}: {
+  captureRecordId: string;
+  link: EffectiveCaptureLink;
+  onChanged: (result: CaptureLinkResult) => void;
+}) {
+  const [picking, setPicking] = useState(false);
+  const [candidates, setCandidates] = useState<CaptureCandidateOption[] | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const status = link.linkStatus;
+  const resolving = status === null;
+
+  const openPicker = async () => {
+    setPicking(true);
+    if (candidates === null) {
+      const list = await listCaptureCandidatesAction(captureRecordId);
+      setCandidates(list);
+    }
+  };
+
+  const choose = async (customerId: string) => {
+    if (busy) return;
+    setBusy(true);
+    const res = await setCaptureCustomerAction(captureRecordId, customerId);
+    setBusy(false);
+    if (res.ok) {
+      onChanged(res);
+      setPicking(false);
+    }
+  };
+
+  const remove = async () => {
+    if (busy) return;
+    setBusy(true);
+    const res = await clearCaptureLinkAction(captureRecordId);
+    setBusy(false);
+    if (res.ok) {
+      onChanged(res);
+      setPicking(false);
+    }
+  };
+
+  const dot = DOT[status ?? ''] ?? 'bg-muted-foreground';
+
+  const label = resolving ? (
+    <span className="text-muted-foreground">Resolving Facebook customer…</span>
+  ) : status === 'linked' ? (
+    <span>
+      <span className="font-medium text-foreground">
+        {link.linkedCustomerName ?? 'Facebook customer'}
+      </span>{' '}
+      <span className="text-emerald-600">· chat ready</span>
+    </span>
+  ) : status === 'customer_no_chat' ? (
+    <span>
+      <span className="font-medium text-foreground">{link.linkedCustomerName ?? 'Customer'}</span>{' '}
+      <span className="text-amber-700">· no chat linked yet</span>
+    </span>
+  ) : status === 'needs_confirmation' ? (
+    <span className="text-amber-800">
+      {link.matchCount > 1 ? `${link.matchCount} people share this name` : 'Same name shared'} — pick
+      the right one
+    </span>
+  ) : (
+    <span className="text-muted-foreground">No Facebook match</span>
+  );
+
+  return (
+    <div
+      className="mt-1 rounded-md border border-border bg-background/60 px-2 py-1 text-[11px]"
+      data-testid={`capture-link-${captureRecordId}`}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${dot}`} />
+        <span className="min-w-0 flex-1 break-words">{label}</span>
+        {!resolving ? (
+          <div className="flex items-center gap-1.5">
+            {status === 'linked' && link.fbUrl ? (
+              <a
+                href={link.fbUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded border border-border px-1.5 py-0.5 hover:bg-accent"
+              >
+                Open chat
+              </a>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void openPicker()}
+              disabled={busy}
+              data-testid={`capture-link-change-${captureRecordId}`}
+              className="rounded border border-border px-1.5 py-0.5 font-medium hover:bg-accent"
+            >
+              {status === 'needs_confirmation' || status === 'no_match' ? 'Pick customer' : 'Change'}
+            </button>
+            {status === 'linked' || status === 'customer_no_chat' ? (
+              <button
+                type="button"
+                onClick={() => void remove()}
+                disabled={busy}
+                className="rounded border border-border px-1.5 py-0.5 text-muted-foreground hover:bg-accent"
+              >
+                Remove
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      {picking ? (
+        <div className="mt-1.5 space-y-1 border-t border-border pt-1.5">
+          {candidates === null ? (
+            <p className="text-muted-foreground">Loading customers…</p>
+          ) : candidates.length === 0 ? (
+            <p className="text-muted-foreground">No same-name customers found.</p>
+          ) : (
+            <ul className="space-y-0.5">
+              {candidates.map((c) => (
+                <li key={c.customerId}>
+                  <button
+                    type="button"
+                    onClick={() => void choose(c.customerId)}
+                    disabled={busy}
+                    data-testid={`capture-link-pick-${captureRecordId}-${c.customerId}`}
+                    className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left hover:bg-accent"
+                  >
+                    <span className="font-medium">{c.displayName}</span>
+                    {c.contactNumber ? (
+                      <span className="text-muted-foreground">· {c.contactNumber}</span>
+                    ) : null}
+                    {c.hasConversation ? (
+                      <span className="text-emerald-600">· chat</span>
+                    ) : (
+                      <span className="text-muted-foreground">· no chat</span>
+                    )}
+                    <span className="ml-auto font-semibold text-gold">Use →</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button
+            type="button"
+            onClick={() => setPicking(false)}
+            className="text-[10px] text-muted-foreground hover:text-foreground"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}

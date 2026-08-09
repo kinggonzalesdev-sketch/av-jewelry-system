@@ -9,8 +9,19 @@ import {
   sendPendingCaptureToMessenger,
   type SendCaptureToMessengerResult,
 } from '@/lib/capture/pc-send';
+import {
+  resolveAndPersistCaptureLink,
+  persistCaptureLink,
+  listCaptureCandidates,
+  resolveChosenCustomer,
+  type CaptureLink,
+} from '@/lib/capture/pending-link';
 import { autoSendCaptureForOrder } from '@/lib/orders/for-invoice';
-import type { PendingCaptureRow } from '@/lib/capture/pending-types';
+import type {
+  CaptureCandidateOption,
+  CaptureLinkResult,
+  PendingCaptureRow,
+} from '@/lib/capture/pending-types';
 
 /** Load the floating captures waiting to be turned into orders (realtime-refreshed). */
 export async function loadPendingCapturesAction(): Promise<PendingCaptureRow[]> {
@@ -52,6 +63,178 @@ export async function sendCaptureToMessengerAction(
   const result = await sendPendingCaptureToMessenger(captureRecordId);
   if (result.ok) revalidatePath('/orders');
   return result;
+}
+
+/** OCR'd Facebook name off a capture's stored OCR JSON. */
+function ocrName(ocr: unknown): string {
+  if (ocr && typeof ocr === 'object') {
+    const o = ocr as Record<string, unknown>;
+    for (const k of ['fbName', 'fb_name', 'name']) {
+      const v = o[k];
+      if (typeof v === 'string' && v.trim()) return v.trim();
+    }
+  }
+  return '';
+}
+
+const FAIL_LINK: CaptureLinkResult = {
+  ok: false,
+  linkStatus: null,
+  linkedCustomerId: null,
+  linkedCustomerName: null,
+  conversationAvailable: false,
+  fbUrl: null,
+  matchCount: 0,
+  sent: false,
+};
+
+function toLinkResult(link: CaptureLink, sent: boolean): CaptureLinkResult {
+  return {
+    ok: true,
+    linkStatus: link.linkStatus,
+    linkedCustomerId: link.customerId,
+    linkedCustomerName: link.customerName,
+    conversationAvailable: link.conversationAvailable,
+    fbUrl: link.fbUrl,
+    matchCount: link.matchCount,
+    sent,
+  };
+}
+
+type PendingCaptureLite = {
+  is_test?: boolean | null;
+  message_status?: string | null;
+  source?: string | null;
+  official_order_id?: string | null;
+  ocr?: unknown;
+  pancake_conversation_id?: string | null;
+};
+
+/**
+ * Auto-send the screenshot for a freshly-'linked' capture — ONLY when a unique
+ * customer + conversation is confirmed (never an ambiguous name), never for a Test
+ * capture, and never twice (idempotent on message_status). Best-effort: the manual
+ * 📨 Send button always remains.
+ */
+async function maybeAutoSend(
+  captureRecordId: string,
+  link: CaptureLink,
+  cap: PendingCaptureLite,
+): Promise<boolean> {
+  if (link.linkStatus !== 'linked' || cap.is_test === true || cap.message_status === 'sent') {
+    return false;
+  }
+  try {
+    const res = await sendPendingCaptureToMessenger(captureRecordId);
+    return res.ok && res.code === 'sent';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Capture-time linking: resolve WHO this capture is (customer + Pancake conversation)
+ * from the detected Facebook name, persist it on the pending capture, and — when it
+ * uniquely resolves — auto-send the screenshot. Called once per capture by the strip
+ * the first time it sees an unresolved one. Never guesses an ambiguous name.
+ */
+export async function resolveCaptureLinkAction(
+  captureRecordId: string,
+): Promise<CaptureLinkResult> {
+  if (!captureRecordId) return { ...FAIL_LINK, error: 'Missing capture.' };
+  await requirePermission('claim_capture');
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('capture_records')
+    .select('id, ocr, pancake_conversation_id, is_test, message_status, source, official_order_id')
+    .eq('id', captureRecordId)
+    .maybeSingle();
+  const cap = (data as PendingCaptureLite | null) ?? null;
+  if (!cap || cap.source !== 'floating' || cap.official_order_id) {
+    return { ...FAIL_LINK, error: 'That capture is no longer pending.' };
+  }
+
+  const link = await resolveAndPersistCaptureLink(
+    supabase,
+    captureRecordId,
+    ocrName(cap.ocr),
+    cap.pancake_conversation_id ?? null,
+  );
+  const sent = await maybeAutoSend(captureRecordId, link, cap);
+  revalidatePath('/orders');
+  return toLinkResult(link, sent);
+}
+
+/** The operator explicitly links this capture to a chosen customer (confirm / Change). */
+export async function setCaptureCustomerAction(
+  captureRecordId: string,
+  customerId: string,
+): Promise<CaptureLinkResult> {
+  if (!captureRecordId || !customerId) return { ...FAIL_LINK, error: 'Missing ids.' };
+  await requirePermission('claim_capture');
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('capture_records')
+    .select('id, is_test, message_status, source, official_order_id')
+    .eq('id', captureRecordId)
+    .maybeSingle();
+  const cap = (data as PendingCaptureLite | null) ?? null;
+  if (!cap || cap.source !== 'floating' || cap.official_order_id) {
+    return { ...FAIL_LINK, error: 'That capture is no longer pending.' };
+  }
+  const link = await resolveChosenCustomer(supabase, customerId);
+  await persistCaptureLink(supabase, captureRecordId, link);
+  const sent = await maybeAutoSend(captureRecordId, link, cap);
+  revalidatePath('/orders');
+  return toLinkResult(link, sent);
+}
+
+/** Remove the customer link from a capture (operator says "not this person"). */
+export async function clearCaptureLinkAction(
+  captureRecordId: string,
+): Promise<CaptureLinkResult> {
+  if (!captureRecordId) return { ...FAIL_LINK, error: 'Missing capture.' };
+  await requirePermission('claim_capture');
+  const supabase = await createClient();
+  await persistCaptureLink(supabase, captureRecordId, {
+    linkStatus: 'no_match',
+    customerId: null,
+    conversationId: null,
+  });
+  revalidatePath('/orders');
+  return {
+    ok: true,
+    linkStatus: 'no_match',
+    linkedCustomerId: null,
+    linkedCustomerName: null,
+    conversationAvailable: false,
+    fbUrl: null,
+    matchCount: 0,
+    sent: false,
+  };
+}
+
+/** Same-name customers the operator can pick from (needs-confirmation / Change). */
+export async function listCaptureCandidatesAction(
+  captureRecordId: string,
+): Promise<CaptureCandidateOption[]> {
+  if (!captureRecordId) return [];
+  await requirePermission('claim_capture');
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('capture_records')
+    .select('ocr')
+    .eq('id', captureRecordId)
+    .maybeSingle();
+  const name = ocrName((data as { ocr?: unknown } | null)?.ocr);
+  if (!name) return [];
+  const candidates = await listCaptureCandidates(supabase, name);
+  return candidates.map((c) => ({
+    customerId: c.customerId,
+    displayName: c.displayName,
+    contactNumber: c.contactNumber,
+    hasConversation: c.hasConversation,
+  }));
 }
 
 /** Discard a junk pending capture (no order created from it). */

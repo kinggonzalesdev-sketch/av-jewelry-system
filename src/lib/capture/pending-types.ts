@@ -23,6 +23,38 @@ export const TOGGLE_INCOMING_CAPTURES_EVENT = 'mineflow:toggle-incoming-captures
  */
 export const CAPTURE_COUNT_EVENT = 'mineflow:capture-count';
 
+/** The resolved-customer state of a pending capture (Capture-time linking, 2026-08-09).
+ *  Mirrors capture_records.link_status; null = not resolved yet. */
+export type CaptureLinkStatus =
+  | 'linked'
+  | 'needs_confirmation'
+  | 'customer_no_chat'
+  | 'no_match'
+  | null;
+
+/** What a resolve/change/remove link action returns to the strip (client-safe). */
+export type CaptureLinkResult = {
+  ok: boolean;
+  linkStatus: CaptureLinkStatus;
+  linkedCustomerId: string | null;
+  linkedCustomerName: string | null;
+  conversationAvailable: boolean;
+  fbUrl: string | null;
+  matchCount: number;
+  /** True when this resolve also auto-sent the screenshot. */
+  sent: boolean;
+  error?: string;
+};
+
+/** One customer the operator can pick in the needs-confirmation / Change picker. */
+export type CaptureCandidateOption = {
+  customerId: string;
+  displayName: string;
+  contactNumber: string | null;
+  /** Has a messageable conversation on the active page. */
+  hasConversation: boolean;
+};
+
 /** A floating-screenshot capture waiting on the PC for the operator to turn into an
  *  order. The OCR fields are only a guess — the operator confirms/corrects them. */
 export type PendingCaptureRow = {
@@ -40,4 +72,17 @@ export type PendingCaptureRow = {
   grams: string | null;
   /** True when captured during a Test Mode session. */
   isTest: boolean;
+  // --- Capture-time customer link (resolved from fbName) ----------------------
+  /** Resolution outcome; null until the PC resolves it on first sight. */
+  linkStatus: CaptureLinkStatus;
+  /** The linked MineFlow customer's name, when one was matched. */
+  linkedCustomerName: string | null;
+  /** The linked MineFlow customer's id, when one was matched. */
+  linkedCustomerId: string | null;
+  /** True when a messageable Pancake conversation is attached (auto-send is possible). */
+  conversationAvailable: boolean;
+  /** The linked customer's saved Messenger URL, for "Open Conversation". */
+  fbUrl: string | null;
+  /** Whether this capture's screenshot has already been sent ('sent'/'failed'/other). */
+  messageStatus: string | null;
 };
