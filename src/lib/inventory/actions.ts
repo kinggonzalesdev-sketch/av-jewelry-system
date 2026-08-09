@@ -7,6 +7,7 @@ import {
   archiveInventoryItem,
   deleteAllInventoryItems,
   deleteInventoryItemDirect,
+  forceDeleteInventoryItem,
   editInventoryItemDetails,
   getItemDependencies,
   permanentlyDeleteInventoryItem,
@@ -317,6 +318,30 @@ export async function deleteInventoryItemAction(
 
   revalidatePath('/orders/inventory');
   return { error: null, success: 'Item permanently deleted. The audit trail is preserved.' };
+}
+
+/**
+ * SUPER ADMIN (owner) force-delete — removes an item blocked only by resolved
+ * records (a closed return review, a released reservation, a past live-batch
+ * row). The database still refuses an item tied to a real order, payment, active
+ * hold, layaway, or sale. Owner-only + type-DELETE gated. Revalidates.
+ */
+export async function forceDeleteInventoryItemAction(
+  _prev: InventoryActionState,
+  formData: FormData,
+): Promise<InventoryActionState> {
+  const itemId = text(formData, 'inventoryItemId');
+  const confirm = text(formData, 'confirm');
+  if (!itemId) return { error: 'An item is required.', success: null };
+  if (confirm !== 'DELETE') {
+    return { error: 'Type DELETE to permanently delete this item.', success: null };
+  }
+
+  const result = await forceDeleteInventoryItem(itemId);
+  if (!result.ok) return { error: result.error, success: null };
+
+  revalidatePath('/orders/inventory');
+  return { error: null, success: 'Item force-deleted. The audit trail is preserved.' };
 }
 
 /** Bulk permanent delete of Active Inventory (Owner/Admin, type-DELETE gated in the

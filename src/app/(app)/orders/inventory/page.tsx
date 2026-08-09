@@ -55,6 +55,9 @@ export default async function InventoryPage() {
         canEdit={permissions.has('inventory_edit')}
         canDelete={permissions.has('inventory_delete')}
         canDeleteAll={canDeleteAll}
+        // SUPER ADMIN (owner) only — the per-row "Force delete" override for an
+        // item held only by resolved records; the DB still protects real links.
+        canForceDelete={canDeleteAll}
         // Per-row "return to inventory" on Completed Items is the Super Admin's
         // mistake-fix tool (removes order info, keeps the item; money-protected in
         // the DB); never shown to an Admin or Staff.

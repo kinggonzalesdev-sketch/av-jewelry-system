@@ -353,6 +353,64 @@ export async function deleteInventoryItemDirect(
   return { ok: true };
 }
 
+/**
+ * SUPER ADMIN (owner) force-delete (Owner request 2026-08-09).
+ *
+ * The normal delete refuses an item linked to ANY business record — including
+ * resolved ones (an approved/rejected return review, a released reservation, a
+ * past live-batch row). Those are just clutter once the item is back in
+ * available stock, but they left the Owner unable to remove the item. This path
+ * clears that clutter and deletes the item — while the database function still
+ * REFUSES the moment a real or active link exists (a claim → order/capture, a
+ * committed/provisional hold, an OPEN return review, a layaway ledger line, a
+ * miner position, or an item that was itself sold/released). Owner only, and the
+ * SECURITY DEFINER function re-checks the role — the database is the real gate.
+ * Irreversible; the audit row survives the delete (no FK to the item).
+ */
+export async function forceDeleteInventoryItem(
+  inventoryItemId: string,
+): Promise<InventoryMutationResult> {
+  try {
+    await requireOwner();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) {
+      await recordAuditEvent({
+        action: 'inventory_item.force_delete',
+        entityType: 'inventory_item',
+        entityId: inventoryItemId,
+        outcome: 'denied',
+        reason: cause.message,
+      });
+      return { ok: false, error: cause.message };
+    }
+    throw cause;
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('delete_inventory_item_force', {
+    p_item_id: inventoryItemId,
+  });
+
+  if (error) {
+    await recordAuditEvent({
+      action: 'inventory_item.force_delete',
+      entityType: 'inventory_item',
+      entityId: inventoryItemId,
+      outcome: 'failed',
+      reason: error.message,
+    });
+    return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+
+  await recordAuditEvent({
+    action: 'inventory_item.force_delete',
+    entityType: 'inventory_item',
+    entityId: inventoryItemId,
+    context: { permanent: true, forced: true },
+  });
+  return { ok: true };
+}
+
 export type DeleteAllInventoryResult =
   | { ok: true; deleted: number; skipped: number }
   | { ok: false; error: string };

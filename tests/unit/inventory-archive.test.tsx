@@ -17,8 +17,20 @@ import type { ArchivedInventoryRow } from '@/lib/inventory/archive';
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 const emptyState = () => Promise.resolve({ error: null, success: null });
+// Controllable delete result so a test can simulate the DB's "linked to a business
+// record" refusal — that refusal is what reveals the Super Admin force-delete.
+const h = vi.hoisted(() => ({ deleteLinked: false }));
 vi.mock('@/lib/inventory/actions', () => ({
-  deleteInventoryItemAction: () => emptyState(),
+  deleteInventoryItemAction: () =>
+    Promise.resolve(
+      h.deleteLinked
+        ? {
+            error: 'This item is linked to 1 business record(s) and cannot be deleted.',
+            success: null,
+          }
+        : { error: null, success: null },
+    ),
+  forceDeleteInventoryItemAction: () => emptyState(),
   editInventoryItemAction: () => emptyState(),
   restoreInventoryItemAction: () => emptyState(),
   permanentlyDeleteInventoryItemAction: () => emptyState(),
@@ -89,6 +101,36 @@ describe('InventoryItemActions — per-permission Edit / Delete', () => {
       target: { value: 'DELETE' },
     });
     expect(button).toBeEnabled();
+  });
+
+  it('reveals the Super Admin force-delete ONLY after a blocked delete', async () => {
+    h.deleteLinked = true;
+    render(
+      <InventoryItemActions row={row({})} canEdit={true} canDelete={true} canForceDelete={true} />,
+    );
+    fireEvent.click(screen.getByTestId('inventory-delete-item-1'));
+    // Not shown before an attempt — the override is a response to the DB refusal.
+    expect(screen.queryByTestId('inventory-force-delete-item-1')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText('DELETE'), { target: { value: 'DELETE' } });
+    fireEvent.click(screen.getByRole('button', { name: /Delete permanently/i }));
+
+    // After the refusal, the Super Admin override appears.
+    expect(await screen.findByTestId('inventory-force-delete-item-1')).toBeInTheDocument();
+  });
+
+  it('never reveals force-delete for a non-Super-Admin, even when blocked', async () => {
+    h.deleteLinked = true;
+    render(
+      <InventoryItemActions row={row({})} canEdit={true} canDelete={true} canForceDelete={false} />,
+    );
+    fireEvent.click(screen.getByTestId('inventory-delete-item-1'));
+    fireEvent.change(screen.getByPlaceholderText('DELETE'), { target: { value: 'DELETE' } });
+    fireEvent.click(screen.getByRole('button', { name: /Delete permanently/i }));
+
+    // The refusal message still surfaces, but there is no override for a non-owner.
+    expect(await screen.findByRole('alert')).toHaveTextContent(/linked to/i);
+    expect(screen.queryByTestId('inventory-force-delete-item-1')).not.toBeInTheDocument();
   });
 });
 

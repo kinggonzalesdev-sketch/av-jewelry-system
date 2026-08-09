@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 
 import {
   deleteInventoryItemAction,
+  forceDeleteInventoryItemAction,
   editInventoryItemAction,
 } from '@/lib/inventory/actions';
 import { EMPTY_INVENTORY_STATE, type InventoryActionState } from '@/lib/inventory/action-state';
@@ -42,12 +43,16 @@ export function InventoryItemActions({
   row,
   canEdit,
   canDelete,
+  canForceDelete = false,
 }: {
   row: InventoryRow;
   /** Holds `inventory_edit` — shows the Edit action. */
   canEdit: boolean;
   /** Holds `inventory_delete` — shows the Delete action. */
   canDelete: boolean;
+  /** SUPER ADMIN (owner) only — reveals the "Force delete" override inside the
+   *  Delete modal when the normal delete is blocked by resolved records only. */
+  canForceDelete?: boolean;
 }) {
   const router = useRouter();
   const parsed = parseInventoryCode(row.itemCode);
@@ -84,6 +89,26 @@ export function InventoryItemActions({
       router.refresh();
     }
   }, [delState.success, router]);
+
+  // --- Force delete (Super Admin override; same type-DELETE confirm) ----------
+  const [forceState, forceAction, forcing] = useActionState<InventoryActionState, FormData>(
+    forceDeleteInventoryItemAction,
+    EMPTY_INVENTORY_STATE,
+  );
+  const lastForce = useRef<string | null>(null);
+  useEffect(() => {
+    if (forceState.success && forceState.success !== lastForce.current) {
+      lastForce.current = forceState.success;
+      setDel(false);
+      router.refresh();
+    }
+  }, [forceState.success, router]);
+
+  // The override appears only when the normal delete was refused because the item
+  // is linked to records — and only for a Super Admin. The DB still refuses a real
+  // order / payment / active hold / sale, so this can only clear resolved clutter.
+  const showForce =
+    canForceDelete && !!delState.error && /linked to/i.test(delState.error);
 
   const dateEncoded = row.createdAt
     ? new Date(row.createdAt).toLocaleDateString()
@@ -285,6 +310,39 @@ export function InventoryItemActions({
             </p>
           ) : null}
         </form>
+
+        {/* Super Admin override — only after a normal delete is refused because the
+            item is linked to records. The database still protects a real order,
+            payment, active hold, layaway, or sale, so this only clears resolved
+            clutter (e.g. a completed return review, a released reservation). */}
+        {showForce ? (
+          <div className="mt-3 space-y-2 rounded-md border border-destructive/40 bg-destructive/5 p-2.5">
+            <p className="text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">Super Admin override.</span>{' '}
+              This item is held only by resolved records. You can force-delete it —
+              items tied to a real order, payment, active hold, layaway, or sale stay
+              protected.
+            </p>
+            <form id={`inventory-force-delete-form-${row.inventoryItemId}`} action={forceAction}>
+              <input type="hidden" name="inventoryItemId" value={row.inventoryItemId} />
+              <input type="hidden" name="confirm" value={confirm} />
+            </form>
+            <Button
+              type="submit"
+              variant="destructive"
+              form={`inventory-force-delete-form-${row.inventoryItemId}`}
+              disabled={forcing || confirm !== 'DELETE'}
+              data-testid={`inventory-force-delete-${row.inventoryItemId}`}
+            >
+              {forcing ? 'Force deleting…' : 'Force delete (Super Admin)'}
+            </Button>
+            {forceState.error ? (
+              <p role="alert" className="text-sm text-destructive">
+                {forceState.error}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </Modal>
     </div>
   );

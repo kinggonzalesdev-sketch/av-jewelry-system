@@ -101,6 +101,7 @@ export function InventoryWorkspace({
   canEdit = false,
   canDelete = false,
   canDeleteAll = false,
+  canForceDelete = false,
   canReturnCompleted = false,
   canImportExport = false,
 }: {
@@ -116,6 +117,9 @@ export function InventoryWorkspace({
   canDelete?: boolean;
   /** SUPER ADMIN (owner) only — shows the bulk "Delete All" control. */
   canDeleteAll?: boolean;
+  /** SUPER ADMIN (owner) only — enables the per-row "Force delete" override for an
+   *  item blocked by resolved records (the DB still protects real/active links). */
+  canForceDelete?: boolean;
   /** SUPER ADMIN (owner) only — per-row "return to inventory" on Completed Items
    *  (mistake fix: removes the order info, keeps the item as available stock). */
   canReturnCompleted?: boolean;
@@ -537,7 +541,12 @@ export function InventoryWorkspace({
                       {i.isForfeited ? ' · forfeited (excluded from auto-return)' : ''}
                     </td>
                     <td className="col-actions px-3 py-2.5">
-                      <InventoryItemActions row={i} canEdit={canEdit} canDelete={canDelete} />
+                      <InventoryItemActions
+                        row={i}
+                        canEdit={canEdit}
+                        canDelete={canDelete}
+                        canForceDelete={canForceDelete}
+                      />
                     </td>
                   </tr>
                   ))
