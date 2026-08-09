@@ -25,6 +25,25 @@ function ocrStr(ocr: unknown, ...keys: string[]): string | null {
  * guess (name + item) so the operator can confirm/correct it into a New Order.
  * Newest first. An empty list is a normal "nothing waiting", never an error.
  */
+/**
+ * Lightweight COUNT of floating captures still waiting on the PC — for the compact
+ * "Capture Pending" pill beside + New Order. `head: true` fetches NO rows (no
+ * screenshots, no OCR), only the count. RLS scopes it to claim_capture holders, so
+ * it returns 0 for anyone who cannot see captures (no throw — safe to call for any
+ * Orders viewer). Realtime: capture_records is in the publication, so the shell's
+ * DashboardSync router.refresh() re-runs this and the pill updates without a reload.
+ */
+export async function countPendingCaptures(): Promise<number> {
+  const supabase = await createClient();
+  const { count } = await supabase
+    .from('capture_records')
+    .select('id', { count: 'exact', head: true })
+    .eq('source', 'floating')
+    .is('official_order_id', null)
+    .is('confirmed', null);
+  return count ?? 0;
+}
+
 export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
   await requirePermission('claim_capture');
   const supabase = await createClient();

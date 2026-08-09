@@ -376,11 +376,15 @@ export function OrdersView({
   keepLayaways = [],
   newOrderAction,
   canManageOrders = false,
+  pendingCaptureCount = 0,
 }: {
   result: OrdersResult;
   /** The + New Order control, rendered in the top action row so Send All Invoices
    *  can sit beside it — the active-card state that gates it lives HERE. */
   newOrderAction?: React.ReactNode;
+  /** Count of floating captures waiting on the PC — renders a compact amber pill
+   *  beside + New Order (0 hides it). Realtime via the shell's DashboardSync. */
+  pendingCaptureCount?: number;
   /** Open on the For Invoice card (e.g. arriving from the old /orders/invoice). */
   openForInvoice?: boolean;
   /** Layaway accounts marked KEEP — surfaced under the Keep card (Owner request). */
@@ -467,9 +471,31 @@ export function OrdersView({
     <div className="space-y-4">
       {/* Top action row: + New Order, then Send All Invoices while For Invoice is
           the active card. Hidden otherwise, with no leftover gap. */}
-      {newOrderAction || card === 'for_invoice' ? (
+      {newOrderAction || card === 'for_invoice' || pendingCaptureCount > 0 ? (
         <div className="flex flex-wrap items-center gap-2">
           {newOrderAction}
+          {/* Compact "Capture Pending" pill — amber, only when captures are waiting.
+              Lightweight COUNT only; clicking jumps to the existing Incoming Captures
+              station (kept mounted for its background auto-print). */}
+          {pendingCaptureCount > 0 ? (
+            <button
+              type="button"
+              onClick={() =>
+                document
+                  .querySelector('[data-testid="incoming-captures"]')
+                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }
+              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-500/20 dark:text-amber-400"
+              data-testid="capture-pending-indicator"
+              title="Jump to the pending captures"
+            >
+              <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden="true" />
+              Capture Pending
+              <span className="rounded-full bg-amber-500/20 px-1.5 text-xs font-semibold tabular-nums">
+                {pendingCaptureCount}
+              </span>
+            </button>
+          ) : null}
           {card === 'for_invoice' ? <SendAllInvoices /> : null}
         </div>
       ) : null}

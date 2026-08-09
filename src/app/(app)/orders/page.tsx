@@ -9,6 +9,7 @@ import { canOpenPage, getCurrentStaffProfile, getGrantedPermissions } from '@/li
 import { getAdminNameContext } from '@/lib/authz/admin-name';
 import { listCaptureCustomers } from '@/lib/live/batches';
 import { listPendingCaptureReviews } from '@/lib/capture/review';
+import { countPendingCaptures } from '@/lib/capture/pending';
 import { listCaptureItems, listOrders, listWalkInItems } from '@/lib/orders/service';
 import { listKeepLayawayAccounts } from '@/lib/payments/layaway-ledger';
 import { PageHeader } from '@/components/ui/page-primitives';
@@ -54,6 +55,7 @@ export default async function OrdersPage({
     keepLayaways,
     admins,
     pendingReviews,
+    pendingCaptureCount,
   ] = await Promise.all([
     listOrders(),
     getGrantedPermissions(),
@@ -64,6 +66,7 @@ export default async function OrdersPage({
     listKeepLayawayAccounts(),
     getAdminNameContext(),
     listPendingCaptureReviews(),
+    countPendingCaptures(),
   ]);
 
   return (
@@ -94,6 +97,9 @@ export default async function OrdersPage({
           openForInvoice={openForInvoice}
           keepLayaways={keepLayaways}
           canManageOrders={profile.roleKey === 'owner'}
+          // Compact "Capture Pending" pill beside + New Order — only for capture
+          // holders (the strip is theirs), 0 otherwise so it never shows.
+          pendingCaptureCount={permissions.has('claim_capture') ? pendingCaptureCount : 0}
           // Passed as a slot so Send All Invoices can sit beside it: the active-card
           // state that decides when to show that button lives inside OrdersView.
           newOrderAction={
