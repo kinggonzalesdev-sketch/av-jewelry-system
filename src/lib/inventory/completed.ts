@@ -52,7 +52,7 @@ function stageFromOrder(
   };
   const byStatus: Record<string, string> = {
     invoiced: 'For Invoice',
-    awaiting_required_payment: 'For Reminder',
+    awaiting_required_payment: 'For Invoice',
     required_payment_verified: 'For Confirm',
     for_preparation: 'For Prepare',
     for_shipping_or_pickup: 'For Shipping',

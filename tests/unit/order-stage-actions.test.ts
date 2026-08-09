@@ -24,7 +24,8 @@ function payable(over: Partial<Parameters<typeof canOfferPayment>[0]> = {}) {
 describe('stage → actions configuration', () => {
   it('labels every stage the Orders workflow can be in', () => {
     expect(stageConfig('invoiced').label).toBe('For Invoice');
-    expect(stageConfig('awaiting_required_payment').label).toBe('For Reminder');
+    // "For Reminder" was folded into For Invoice (Owner request 2026-08-09).
+    expect(stageConfig('awaiting_required_payment').label).toBe('For Invoice');
     expect(stageConfig('required_payment_verified').label).toBe('For Confirm');
     expect(stageConfig('for_preparation').label).toBe('For Prepare');
     expect(stageConfig('for_layaway').label).toBe('For Layaway');

@@ -297,10 +297,17 @@ function matchesCard(order: OrderListRow, key: CardKey): boolean {
       // Order SOURCE filter — every walk-in sale, regardless of its status.
       return order.orderSource === 'walk_in';
     case 'for_invoice':
-      // Leaves this card once routed to a destination (Transfer to Destination is
-      // now available from For Invoice) — it then shows under that destination.
-      return order.status === 'invoiced' && !order.fulfillmentDestination;
+      // "For Reminder" (awaiting_required_payment) was folded INTO For Invoice
+      // (Owner request 2026-08-09 — the reminder stage is gone). Both statuses show
+      // here until routed to a destination (Transfer to Destination), after which
+      // the order shows under that destination.
+      return (
+        (order.status === 'invoiced' || order.status === 'awaiting_required_payment') &&
+        !order.fulfillmentDestination
+      );
     case 'for_reminder':
+      // Retained CardKey (no longer a rendered card) — its orders now live under
+      // For Invoice, above.
       return (
         order.status === 'awaiting_required_payment' && !order.fulfillmentDestination
       );

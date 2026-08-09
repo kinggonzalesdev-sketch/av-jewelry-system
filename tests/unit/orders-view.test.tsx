@@ -140,9 +140,10 @@ describe('OrdersView — the approved status cards over real data', () => {
     expect(
       within(screen.getByTestId('orders-card-all')).getByText('5'),
     ).toBeInTheDocument();
-    // ORD-1 + ORD-5 are 'invoiced'.
+    // ORD-1 + ORD-5 are 'invoiced'; ORD-2 ('awaiting_required_payment') is now
+    // folded INTO For Invoice (the old "For Reminder" stage was removed) → 3.
     expect(
-      within(screen.getByTestId('orders-card-for_invoice')).getByText('2'),
+      within(screen.getByTestId('orders-card-for_invoice')).getByText('3'),
     ).toBeInTheDocument();
     expect(
       within(screen.getByTestId('orders-card-cancelled')).getByText('1'),
@@ -163,10 +164,13 @@ describe('OrdersView — the approved status cards over real data', () => {
   it('filters the table when a status card is clicked', () => {
     render(<OrdersView result={ok(sample)} />);
     fireEvent.click(screen.getByTestId('orders-card-for_invoice'));
-    // Only the invoiced orders (ORD-1 Maria Santos, ORD-5 Lito Uy) remain.
+    // For Invoice now covers 'invoiced' (ORD-1 Maria Santos, ORD-5 Lito Uy) AND the
+    // folded-in 'awaiting_required_payment' (ORD-2 Jose Cruz). ORD-3 (for_preparation)
+    // and ORD-4 (cancelled) stay out.
     expect(screen.getByText('Maria Santos')).toBeInTheDocument();
     expect(screen.getByText('Lito Uy')).toBeInTheDocument();
-    expect(screen.queryByText('Jose Cruz')).not.toBeInTheDocument();
+    expect(screen.getByText('Jose Cruz')).toBeInTheDocument();
+    expect(screen.queryByText('Ana Reyes')).not.toBeInTheDocument();
   });
 });
 

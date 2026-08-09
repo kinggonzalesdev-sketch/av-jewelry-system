@@ -77,12 +77,17 @@ export const STAGE_ACTIONS: Record<OrderStage, StageConfig> = {
     actions: [],
     tabs: [...BASE_TABS],
   },
+  // "For Reminder" was removed as a stage (Owner request 2026-08-09 — "di na tayo
+  // dadaan for reminder"). The status still exists in the DB (existing orders are
+  // untouched), but it is now PRESENTED as For Invoice: same label, grouped under
+  // the For Invoice card, and it offers Transfer to Destination so an order here is
+  // never stuck without a forward action.
   awaiting_required_payment: {
-    label: 'For Reminder',
+    label: 'For Invoice',
     allowsPayment: true,
     allowsCancel: true,
     readOnly: false,
-    actions: [],
+    actions: ['transfer_destination'],
     tabs: [...BASE_TABS],
   },
   // For Confirm: confirmation or transfer only — no handover actions, because

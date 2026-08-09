@@ -912,7 +912,7 @@ export function NewOrderModal({
       if (!transfer.ok) {
         setError(
           `Saved as ${res.orderNumber}, but moving it to ${
-            fullyPaid ? 'Completed' : 'For Reminder'
+            fullyPaid ? 'Completed' : 'For Invoice'
           } failed: ${transfer.error}. You can move it from the Orders list.`,
         );
         destination = fullyPaid ? 'completed' : 'reminder';
@@ -972,7 +972,7 @@ export function NewOrderModal({
               {saved.walkIn
                 ? saved.destination === 'completed'
                   ? 'Walk-in saved and completed'
-                  : 'Walk-in saved and moved to For Reminder'
+                  : 'Walk-in saved and moved to For Invoice'
                 : 'Order saved to For Invoice'}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -1177,7 +1177,7 @@ export function NewOrderModal({
             data-testid="walkin-review-destination"
           >
             On save, this Walk-In will be moved to{' '}
-            <strong>{fullyPaid ? 'Completed' : 'For Reminder'}</strong>
+            <strong>{fullyPaid ? 'Completed' : 'For Invoice'}</strong>
             {fullyPaid ? ' (fully paid).' : ' with its remaining balance.'}
           </p>
 
@@ -1406,7 +1406,7 @@ export function NewOrderModal({
               <p className="mt-1 text-[11px] text-muted-foreground">
                 {balanceCentavos <= 0n && totalCentavos > 0n
                   ? 'Fully paid — this will be saved and moved to Completed.'
-                  : 'With a balance, this will be saved and moved to For Reminder.'}
+                  : 'With a balance, this will be saved and moved to For Invoice.'}
               </p>
             </div>
           </div>

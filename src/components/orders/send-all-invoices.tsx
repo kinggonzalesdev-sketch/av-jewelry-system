@@ -110,7 +110,7 @@ export function SendAllInvoices() {
           if (!processing) setOpen(false);
         }}
         title="Send All Invoices"
-        description="Moves eligible For Invoice orders to For Reminder."
+        description="Sends the invoice message to eligible For Invoice orders."
         size="md"
         footer={
           progress?.done ? (
@@ -199,8 +199,8 @@ export function SendAllInvoices() {
               </li>
             </ul>
             <p className="text-[11px] text-muted-foreground">
-              Each send uses the saved invoice message + FB connection and moves the order to
-              For Reminder, recording who and when. Failed or skipped orders are not moved.
+              Each send uses the saved invoice message + FB connection and records who and
+              when. The order stays in For Invoice. Failed or skipped orders are not sent.
             </p>
             {eligible.length === 0 ? (
               <p className="text-xs text-amber-600">

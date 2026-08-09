@@ -1168,9 +1168,10 @@ function DetailBody({
       <ForInvoiceView detail={detail} section={section} onDone={onRefresh} onClose={onClose} />
     );
   }
-  // Owner: For Reminder ('awaiting_required_payment') no longer has a special view with
-  // reminder / Confirm-for-Preparation actions — those are removed. It falls through to
-  // the general modal (summary + Transfer to Destination), like every other stage.
+  // Owner (2026-08-09): the "For Reminder" stage was removed. An
+  // 'awaiting_required_payment' order is now presented as For Invoice — same label
+  // and card — and falls through to the general modal (summary + payments + Transfer
+  // to Destination) so it is never stuck without a forward action.
   // Keep orders get the dedicated, stripped-down Keep view (Owner request
   // 2026-07-30): summary + Add Payment / Cancel (header) + Transfer to Completed +
   // Save, and nothing else.
