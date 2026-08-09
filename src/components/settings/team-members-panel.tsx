@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useState } from 'react';
+import { useActionState, useState, type ReactNode } from 'react';
 
 import {
   addTeamMemberAction,
@@ -14,6 +14,8 @@ import { MemberAccessControls } from '@/components/settings/member-access-contro
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Modal } from '@/components/ui/modal';
+import { StatusBadge } from '@/components/ui/page-primitives';
 
 const ROLE_LABEL: Record<string, string> = {
   owner: 'Super Admin',
@@ -170,8 +172,10 @@ export function TeamMembersPanel({
     EMPTY_TEAM_STATE,
   );
 
-  const error = addState.error;
-  const onTemp = members.filter((m) => m.passwordIsTemp).length;
+  const [search, setSearch] = useState('');
+  const [showAdd, setShowAdd] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
   // The cap counts ACTIVE Super Admins; the database re-checks it on every save.
   const activeSuperAdmins = members.filter(
     (m) => m.roleKey === 'owner' && m.isActive,
@@ -179,142 +183,274 @@ export function TeamMembersPanel({
   const superAdminSlotFree = activeSuperAdmins < MAX_SUPER_ADMINS;
 
   // Super Admins (role 'owner') pinned to the top; everyone else keeps their existing
-  // order (Array.sort is stable, so the rest is untouched). Display order only — the
-  // counts above and every action still key off the permanent staffProfileId.
+  // order (Array.sort is stable). Display order only — every action keys off the
+  // permanent staffProfileId.
   const sortedMembers = [...members].sort(
     (a, b) => (a.roleKey === 'owner' ? 0 : 1) - (b.roleKey === 'owner' ? 0 : 1),
   );
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? sortedMembers.filter((m) =>
+        `${m.fullName} ${m.email ?? ''}`.toLowerCase().includes(q),
+      )
+    : sortedMembers;
+  const selected = selectedId
+    ? members.find((m) => m.staffProfileId === selectedId) ?? null
+    : null;
 
   return (
-    <div className="space-y-3">
-      {/* Count cards */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-xl border border-border bg-card p-3">
-          <div className="text-2xl font-bold tabular-nums">{members.length}</div>
-          <div className="text-xs text-muted-foreground">Team members</div>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-3">
-          <div className="text-2xl font-bold tabular-nums">{onTemp}</div>
-          <div className="text-xs text-muted-foreground">On a temp password</div>
-        </div>
+    <div className="mt-3 space-y-3">
+      {/* One compact row: hint · Add Member · search. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="flex-1 text-xs text-muted-foreground">
+          Click a member to view details and manage access.
+        </p>
+        <button
+          type="button"
+          onClick={() => setShowAdd(true)}
+          data-testid="add-member-open"
+          className="h-9 whitespace-nowrap rounded-md border border-border px-3 text-sm font-medium hover:bg-accent"
+        >
+          ＋ Add Member
+        </button>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search members…"
+          aria-label="Search members"
+          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold sm:w-56"
+        />
       </div>
 
-      {/* Add a team member */}
-      <form
-        action={add}
-        className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-card p-3"
-      >
-        <div className="min-w-[8rem] flex-1">
-          <Label htmlFor="tm-name" className="text-xs">
-            Name
-          </Label>
-          <Input
-            id="tm-name"
-            name="fullName"
-            required
-            placeholder="Full name"
-            className="h-9"
-          />
-        </div>
-        <div className="min-w-[10rem] flex-1">
-          <Label htmlFor="tm-email" className="text-xs">
-            Sign-in email
-          </Label>
-          <Input
-            id="tm-email"
-            name="email"
-            type="email"
-            required
-            placeholder="name@email.com"
-            className="h-9"
-          />
-        </div>
-        <Button type="submit" disabled={adding} className="font-semibold">
-          {adding ? 'Adding…' : '＋ Add member'}
-        </Button>
-      </form>
-
-      {error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
-
-      {/* Roster */}
+      {/* Roster — Name · Role · Status · chevron. The whole row opens the member
+          drawer; password / role / access / delete controls all live there. */}
       {members.length === 0 ? (
         <p className="text-sm text-muted-foreground">No team members yet.</p>
+      ) : filtered.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No members match “{search}”.</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border">
           <table
-            className="data-table w-full min-w-[520px] text-left text-sm"
+            className="data-table w-full min-w-[420px] text-left text-sm"
             data-testid="team-roster"
           >
             <colgroup>
-              <col style={{ width: '20%' }} />
-              <col style={{ width: '20%' }} />
-              <col style={{ width: '20%' }} />
-              <col style={{ width: '20%' }} />
-              <col style={{ width: '20%' }} />
+              <col style={{ width: '54%' }} />
+              <col style={{ width: '22%' }} />
+              <col style={{ width: '18%' }} />
+              <col style={{ width: '6%' }} />
             </colgroup>
             <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="px-3 py-2.5 text-center font-medium">Team member</th>
-                <th className="px-3 py-2.5 text-left font-medium">Sign-in email</th>
-                <th className="px-3 py-2.5 text-center font-medium">Password</th>
-                <th className="px-3 py-2.5 text-center font-medium">Role &amp; Access</th>
-                <th className="col-actions px-3 py-2.5 font-medium">Actions</th>
+                <th className="px-3 py-2.5 text-left font-medium">Name</th>
+                <th className="px-3 py-2.5 text-center font-medium">Role</th>
+                <th className="px-3 py-2.5 text-center font-medium">Status</th>
+                <th className="px-3 py-2.5" aria-hidden="true" />
               </tr>
             </thead>
             <tbody>
-              {sortedMembers.map((m) => (
-                <tr key={m.staffProfileId} className="border-b last:border-0">
-                  <td className="px-3 py-2.5 text-center">
-                    <div className="font-medium">{m.fullName}</div>
-                    <div className="text-[11px] text-muted-foreground">
-                      {ROLE_LABEL[m.roleKey] ?? m.roleKey}
-                      {m.isActive ? '' : ' · disabled'}
+              {filtered.map((m) => (
+                <tr
+                  key={m.staffProfileId}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedId(m.staffProfileId)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedId(m.staffProfileId);
+                    }
+                  }}
+                  data-testid={`member-row-${m.staffProfileId}`}
+                  className="cursor-pointer border-b last:border-0 hover:bg-accent/60 focus:bg-accent/60 focus:outline-none"
+                >
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-semibold text-muted-foreground">
+                        {initials(m.fullName)}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">{m.fullName}</div>
+                        <div className="truncate text-[11px] text-muted-foreground">
+                          {m.email ?? '—'}
+                        </div>
+                      </div>
                     </div>
                   </td>
-                  <td className="px-3 py-2.5">{m.email ?? '—'}</td>
+                  <td className="px-3 py-2.5 text-center">
+                    {ROLE_LABEL[m.roleKey] ?? m.roleKey}
+                  </td>
                   <td className="px-3 py-2.5 text-center">
                     {m.passwordIsTemp ? (
-                      <span className="whitespace-nowrap rounded-md bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
-                        Temp (Not Changed)
-                      </span>
+                      <StatusBadge label="Temp Password" tone="warning" />
+                    ) : m.isActive ? (
+                      <StatusBadge label="Active" tone="success" />
                     ) : (
-                      <span className="whitespace-nowrap text-xs text-gold-strong">Changed by them</span>
+                      <StatusBadge label="Inactive" tone="neutral" />
                     )}
                   </td>
-                  <td className="px-3 py-2.5">
-                    <MemberAccessControls
-                      member={m}
-                      isPrimary={isPrimary}
-                      superAdminSlotFree={superAdminSlotFree}
-                    />
-                  </td>
-                  <td className="col-actions px-3 py-2.5">
-                    <div className="flex items-center justify-end gap-2">
-                      <SetPasswordCell member={m} />
-                      {/* Super Admins are protected — no Delete button (Owner request
-                          2026-08-09); the database also blocks it. */}
-                      {m.roleKey === 'owner' ? (
-                        <span
-                          className="text-[11px] text-muted-foreground"
-                          title="Super Admins are protected and cannot be deleted here."
-                        >
-                          Protected
-                        </span>
-                      ) : (
-                        <DeleteMemberCell member={m} />
-                      )}
-                    </div>
-                  </td>
+                  <td className="px-3 py-2.5 text-right text-muted-foreground">›</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      {/* Add Member — a compact modal (was an always-visible form). */}
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Add Member" size="sm">
+        <form action={add} className="space-y-3">
+          <div>
+            <Label htmlFor="tm-name" className="text-xs">
+              Full Name
+            </Label>
+            <Input
+              id="tm-name"
+              name="fullName"
+              required
+              placeholder="Full name"
+              className="mt-1 h-9"
+            />
+          </div>
+          <div>
+            <Label htmlFor="tm-email" className="text-xs">
+              Sign-in Email
+            </Label>
+            <Input
+              id="tm-email"
+              name="email"
+              type="email"
+              required
+              placeholder="name@email.com"
+              className="mt-1 h-9"
+            />
+          </div>
+          {addState.error ? (
+            <p role="alert" className="text-sm text-destructive">
+              {addState.error}
+            </p>
+          ) : null}
+          <div className="flex justify-end">
+            <Button type="submit" disabled={adding} className="font-semibold">
+              {adding ? 'Adding…' : '＋ Add Member'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Member details — info + every access/password/delete action in one place. */}
+      <Modal open={selected !== null} onClose={() => setSelectedId(null)} title="Member" size="sm">
+        {selected ? (
+          <MemberDetail
+            member={selected}
+            isPrimary={isPrimary}
+            superAdminSlotFree={superAdminSlotFree}
+          />
+        ) : null}
+      </Modal>
+    </div>
+  );
+}
+
+/** Two-letter initials for the roster avatar. */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  const first = parts[0]?.[0] ?? '';
+  const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : '';
+  return (first + last).toUpperCase() || '?';
+}
+
+/** A label/value row in the member drawer. */
+function DetailRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="flex justify-between gap-3 border-b border-border py-1.5 last:border-0">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-right font-medium">{value}</span>
+    </div>
+  );
+}
+
+/**
+ * Member details drawer body — account info + the SAME guarded controls that used
+ * to sit in the table row (MemberAccessControls, SetPasswordCell, DeleteMemberCell).
+ * Nothing about the actions changed; they only moved here so the roster stays clean.
+ */
+function MemberDetail({
+  member,
+  isPrimary,
+  superAdminSlotFree,
+}: {
+  member: TeamMemberRow;
+  isPrimary: boolean;
+  superAdminSlotFree: boolean;
+}) {
+  const isSuperAdmin = member.roleKey === 'owner';
+  return (
+    <div className="space-y-4" data-testid="member-detail">
+      <div className="flex items-center gap-3 border-b border-border pb-3">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-semibold text-muted-foreground">
+          {initials(member.fullName)}
+        </span>
+        <div className="min-w-0">
+          <p className="truncate font-semibold">{member.fullName}</p>
+          <p className="text-xs text-muted-foreground">
+            {ROLE_LABEL[member.roleKey] ?? member.roleKey}
+          </p>
+        </div>
+      </div>
+
+      <div>
+        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Account Information
+        </p>
+        <dl className="text-sm">
+          <DetailRow label="Email" value={member.email ?? '—'} />
+          <DetailRow label="Sign-in method" value="Email" />
+          <DetailRow
+            label="Status"
+            value={
+              member.passwordIsTemp ? (
+                <StatusBadge label="Temp Password" tone="warning" />
+              ) : member.isActive ? (
+                <StatusBadge label="Active" tone="success" />
+              ) : (
+                <StatusBadge label="Inactive" tone="neutral" />
+              )
+            }
+          />
+        </dl>
+      </div>
+
+      <div>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Access &amp; Role
+        </p>
+        <MemberAccessControls
+          member={member}
+          isPrimary={isPrimary}
+          superAdminSlotFree={superAdminSlotFree}
+        />
+      </div>
+
+      <div>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Actions
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <SetPasswordCell member={member} />
+          {isSuperAdmin ? (
+            <span
+              className="text-[11px] text-muted-foreground"
+              title="Super Admins are protected and cannot be deleted here."
+            >
+              Protected — cannot be deleted
+            </span>
+          ) : (
+            <DeleteMemberCell member={member} />
+          )}
+        </div>
+      </div>
     </div>
   );
 }
