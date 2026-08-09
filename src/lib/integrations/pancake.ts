@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { AuthorizationError, requirePrimarySuperAdmin } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
+import { nameKey, normalizeName } from '@/lib/customers/matching';
 
 /**
  * Pancake (pages.fm) integration — server-only. The User/Page access tokens are
@@ -1152,6 +1153,90 @@ export async function findRecentPancakeConversationByName(
     return { conversationId: null, matchCount: fl.size };
   }
   return { conversationId: null, matchCount: 0 };
+}
+
+export type ResolvedConversation = {
+  conversationId: string | null;
+  /** How many candidates matched — >1 means ambiguous, so the id is null. */
+  matchCount: number;
+  source: 'customer' | 'customer_first_last' | 'pancake_live' | 'none';
+};
+
+/**
+ * Resolve the Pancake conversation for a Facebook name — the one source of truth for
+ * "who do we message" (the /api/mobile/customer/conversation route AND the PC's
+ * Incoming Captures "Send to Messenger" both use this).
+ *
+ * Two tiers, and NEVER a guess when ambiguous:
+ *   1. A pre-linked ACTIVE customer with that unique name (exact, then first+last).
+ *   2. LIVE fallback — the person may have just commented and not be a saved customer
+ *      yet; look the name up in the recent Pancake conversations. A name shared by 2+
+ *      people returns null (never guessed).
+ *
+ * Takes an RLS-scoped supabase client so the caller's row-level security is the
+ * boundary (a mobile Bearer client or the PC server client both work).
+ */
+export async function resolveConversationForName(
+  supabase: SupabaseClient,
+  rawName: string,
+  opts?: { sinceDays?: number; maxPages?: number },
+): Promise<ResolvedConversation> {
+  const name = (rawName ?? '').trim();
+  if (name.length < 2) return { conversationId: null, matchCount: 0, source: 'none' };
+
+  const norm = normalizeName(name);
+  const firstToken = name.split(/\s+/)[0] ?? name;
+  const { data } = await supabase
+    .from('customers')
+    .select('display_name, pancake_conversation_id')
+    .eq('is_active', true)
+    .ilike('display_name', `%${firstToken.replace(/[%,]/g, ' ')}%`)
+    .limit(50);
+
+  const rows = (data ?? []) as Array<{
+    display_name: string | null;
+    pancake_conversation_id: string | null;
+  }>;
+
+  // Tier 1a — EXACT full-name; a unique linked customer wins.
+  const exact = rows.filter((c) => normalizeName(c.display_name ?? '') === norm);
+  const exactLinked = exact.filter((c) => c.pancake_conversation_id);
+  if (exactLinked.length === 1) {
+    return {
+      conversationId: exactLinked[0]?.pancake_conversation_id ?? null,
+      matchCount: exact.length,
+      source: 'customer',
+    };
+  }
+  // A name shared by 2+ known customers is ambiguous — never guess.
+  if (exact.length > 1) return { conversationId: null, matchCount: exact.length, source: 'none' };
+
+  // Tier 1b — FIRST+LAST (middle-name tolerant), unique linked customer only.
+  const key = nameKey(name);
+  const flLinked = rows.filter(
+    (c) => nameKey(c.display_name ?? '') === key && c.pancake_conversation_id,
+  );
+  if (flLinked.length === 1) {
+    return {
+      conversationId: flLinked[0]?.pancake_conversation_id ?? null,
+      matchCount: 1,
+      source: 'customer_first_last',
+    };
+  }
+  if (flLinked.length > 1) {
+    return { conversationId: null, matchCount: flLinked.length, source: 'none' };
+  }
+
+  // Tier 2 — LIVE lookup (returns a single unambiguous conversation, else null).
+  const live = await findRecentPancakeConversationByName(name, {
+    sinceDays: opts?.sinceDays ?? 7,
+    maxPages: opts?.maxPages ?? 8,
+  });
+  return {
+    conversationId: live.conversationId,
+    matchCount: exact.length || live.matchCount,
+    source: live.conversationId ? 'pancake_live' : 'none',
+  };
 }
 
 export async function syncPancakeConversationsToCustomers(): Promise<PancakeSyncResult> {

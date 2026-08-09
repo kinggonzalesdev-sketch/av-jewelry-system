@@ -5,6 +5,10 @@ import { revalidatePath } from 'next/cache';
 import { requirePermission } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 import { listPendingCaptures } from '@/lib/capture/pending';
+import {
+  sendPendingCaptureToMessenger,
+  type SendCaptureToMessengerResult,
+} from '@/lib/capture/pc-send';
 import { autoSendCaptureForOrder } from '@/lib/orders/for-invoice';
 import type { PendingCaptureRow } from '@/lib/capture/pending-types';
 
@@ -34,6 +38,20 @@ export async function linkCaptureToOrderAction(
   await autoSendCaptureForOrder(orderId).catch(() => undefined);
   revalidatePath('/orders');
   return { ok: true };
+}
+
+/**
+ * Manually send a pending capture's screenshot to the customer's Messenger from the
+ * PC station. Resolves the conversation from the OCR'd Facebook name, sends through
+ * the backend (token stays server-side), and is idempotent. The operator's click is
+ * the authorization for this one send.
+ */
+export async function sendCaptureToMessengerAction(
+  captureRecordId: string,
+): Promise<SendCaptureToMessengerResult> {
+  const result = await sendPendingCaptureToMessenger(captureRecordId);
+  if (result.ok) revalidatePath('/orders');
+  return result;
 }
 
 /** Discard a junk pending capture (no order created from it). */

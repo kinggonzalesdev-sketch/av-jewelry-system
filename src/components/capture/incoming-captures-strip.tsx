@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   dismissPendingCaptureAction,
   loadPendingCapturesAction,
+  sendCaptureToMessengerAction,
 } from '@/lib/capture/pending-actions';
 import {
   CAPTURE_COUNT_EVENT,
@@ -56,6 +57,8 @@ export function IncomingCapturesStrip({
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<PendingCaptureRow | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  // The capture whose screenshot is mid-send to Messenger (per-row spinner).
+  const [sendingId, setSendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Operator's grams correction per capture (for the review case + manual reprint),
   // and a short per-row status note ("Printed ✓").
@@ -204,6 +207,29 @@ export function IncomingCapturesStrip({
     }
   };
 
+  // Manual "Send to Messenger": push THIS capture's screenshot to the customer's
+  // Pancake chat. The backend resolves the conversation from the OCR'd name (never a
+  // guess) and holds the token; the operator's click authorizes this one send. A
+  // clear inline note reports sent / already-sent, and a failure explains why (no
+  // token, unlinked customer, ambiguous name) so it can be fixed and retried.
+  const sendToMessenger = async (r: PendingCaptureRow) => {
+    if (sendingId) return;
+    setSendingId(r.captureRecordId);
+    setError(null);
+    try {
+      const res = await sendCaptureToMessengerAction(r.captureRecordId);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setNotes((cur) => ({ ...cur, [r.captureRecordId]: res.message }));
+    } catch {
+      setError('Could not send to Messenger.');
+    } finally {
+      setSendingId(null);
+    }
+  };
+
   const dismiss = (id: string) => {
     if (busy) return;
     setBusy(id);
@@ -257,9 +283,10 @@ export function IncomingCapturesStrip({
             Screenshots from the floating button. The label prints{' '}
             <strong>Name / grams • ₱rate/g / date</strong> — the rate comes from{' '}
             <strong>Sticker Settings</strong>. Confirm the grams and tap{' '}
-            <strong>Print</strong> for the label, <strong>Use</strong> to create the
-            order, or Dismiss to discard. Auto-print (set in Sticker Settings) prints on
-            its own only when the weight was read confidently.
+            <strong>Print</strong> for the label, <strong>Send</strong> to push the
+            screenshot to the customer&apos;s Messenger, <strong>Use</strong> to create
+            the order, or Dismiss to discard. Auto-print (set in Sticker Settings) prints
+            on its own only when the weight was read confidently.
           </p>
           {error ? (
             <p role="alert" className="text-sm text-destructive">
@@ -334,6 +361,18 @@ export function IncomingCapturesStrip({
                 data-testid={`incoming-print-${r.captureRecordId}`}
               >
                 🖨 Print
+              </Button>
+              {/* Send the screenshot to the pinned customer's Messenger. Disabled for a
+                  Test capture — a test must never message a real customer. */}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={sendingId === r.captureRecordId || r.isTest}
+                onClick={() => void sendToMessenger(r)}
+                data-testid={`incoming-send-${r.captureRecordId}`}
+              >
+                {sendingId === r.captureRecordId ? 'Sending…' : '📨 Send'}
               </Button>
               <Button
                 type="button"
