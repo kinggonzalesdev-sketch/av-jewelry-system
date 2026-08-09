@@ -29,7 +29,7 @@ import { Modal } from '@/components/ui/modal';
 function fmtDate(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso.slice(0, 10) : d.toLocaleDateString();
+  return Number.isNaN(d.getTime()) ? iso.slice(0, 10) : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 function CustomerList({

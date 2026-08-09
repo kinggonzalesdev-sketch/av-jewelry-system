@@ -48,7 +48,7 @@ export function AttachmentGallery({ attachments }: { attachments: AttachmentRow[
               {humanFileSize(a.byteSize)}
             </p>
             <p className="truncate text-[10px] text-muted-foreground">
-              {new Date(a.uploadedAt).toLocaleString()}
+              {new Date(a.uploadedAt).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
             </p>
           </div>
         </li>

@@ -90,7 +90,7 @@ export default async function WaybillPage({
             label="Dispatched"
             value={
               w.dispatchedAt
-                ? new Date(w.dispatchedAt).toLocaleString()
+                ? new Date(w.dispatchedAt).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })
                 : 'Not dispatched'
             }
           />
@@ -115,7 +115,7 @@ export default async function WaybillPage({
         </div>
 
         <div className="mt-3 border-t border-border pt-2 text-[10px] text-muted-foreground">
-          Generated {new Date(w.generatedAt).toLocaleString()}. This waybill reflects the
+          Generated {new Date(w.generatedAt).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}. This waybill reflects the
           record at generation time.
         </div>
       </div>

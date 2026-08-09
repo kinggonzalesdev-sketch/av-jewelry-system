@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 
 function fmtWhen(iso: string): string {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 /** Humanise "layaway_ledger.add_payment" → "Layaway ledger add payment". */

@@ -113,7 +113,7 @@ export function SystemCheckPanel() {
       } else {
         setItems([...server.items, ...client]);
       }
-      setRanAt(new Date().toLocaleString());
+      setRanAt(new Date().toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' }));
     } catch {
       setError('The system check could not complete. Please try again.');
     } finally {

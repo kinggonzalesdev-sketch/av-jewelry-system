@@ -140,7 +140,7 @@ function lineTotal(unitPrice: string | null, quantity: number): string | null {
 
 function fmtDateTime(iso: string): string {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 /** A compact key-value cell for the summary blocks. */
@@ -455,7 +455,7 @@ function ForInvoiceView({
     const iso = detail.layaway?.finalDueDate;
     if (!iso) return null;
     const dt = new Date(iso);
-    return Number.isNaN(dt.getTime()) ? iso : dt.toLocaleDateString();
+    return Number.isNaN(dt.getTime()) ? iso : dt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   })();
 
   // Price per gram = Total Price ÷ Total Grams (display only). Money stays exact

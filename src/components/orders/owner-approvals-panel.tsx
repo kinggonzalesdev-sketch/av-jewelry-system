@@ -38,7 +38,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 function fmtWhen(iso: string | null): string {
   if (!iso) return '';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString();
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 export function OwnerApprovalsPanel({

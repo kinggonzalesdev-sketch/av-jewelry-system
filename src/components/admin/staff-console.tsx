@@ -338,7 +338,7 @@ function AccountCard({
                 {auditTrail.map((e, i) => (
                   <li key={i} className="flex flex-wrap gap-2 border-b pb-1">
                     <span className="text-muted-foreground">
-                      {new Date(e.occurredAt).toLocaleString()}
+                      {new Date(e.occurredAt).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                     </span>
                     <span className="font-medium">{e.action}</span>
                     <span className="text-muted-foreground">{e.entityType}</span>

@@ -529,7 +529,7 @@ function ManagedPagesCard({
                 Selected
                 {selectedPage.selectedByName ? ` by ${selectedPage.selectedByName}` : ''}
                 {selectedPage.selectedAt
-                  ? ` on ${new Date(selectedPage.selectedAt).toLocaleString()}`
+                  ? ` on ${new Date(selectedPage.selectedAt).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`
                   : ''}
                 .
               </p>

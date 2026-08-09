@@ -24,7 +24,7 @@ import { EmptyState } from '@/components/states/empty-state';
 function fmtDate(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString();
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 const FREQ_LABEL: Record<string, string> = {

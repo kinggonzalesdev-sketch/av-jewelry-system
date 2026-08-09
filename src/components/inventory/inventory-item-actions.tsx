@@ -111,7 +111,7 @@ export function InventoryItemActions({
     canForceDelete && !!delState.error && /linked to/i.test(delState.error);
 
   const dateEncoded = row.createdAt
-    ? new Date(row.createdAt).toLocaleDateString()
+    ? new Date(row.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
     : '—';
 
   return (

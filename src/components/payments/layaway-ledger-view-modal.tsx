@@ -30,7 +30,7 @@ import {
 function fmtDate(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString();
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 function peso(v: string | null): string {
   return v ? formatPeso(v) : '—';

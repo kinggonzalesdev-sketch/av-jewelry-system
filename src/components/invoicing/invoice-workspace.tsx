@@ -68,7 +68,7 @@ function DraftCard({
               <p className="truncate font-mono text-xs">
                 {draft.orderNumber} · {draft.invoiceNumber}
                 {draft.holdExpiresAt
-                  ? ` · hold until ${new Date(draft.holdExpiresAt).toLocaleDateString()}`
+                  ? ` · hold until ${new Date(draft.holdExpiresAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`
                   : ''}
               </p>
             ) : null}

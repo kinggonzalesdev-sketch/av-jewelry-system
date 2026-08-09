@@ -698,7 +698,7 @@ export function PaymentsWorkspace({
                           {p.provider ? ` · ${p.provider}` : ''}
                         </p>
                         <p className="truncate text-xs text-muted-foreground">
-                          Submitted {new Date(p.recordedAt).toLocaleString()} ·{' '}
+                          Submitted {new Date(p.recordedAt).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })} ·{' '}
                           <span className="font-medium">
                             {p.status.replace(/_/g, ' ')}
                           </span>

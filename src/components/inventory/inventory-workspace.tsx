@@ -82,7 +82,7 @@ const ACTIVE_INVENTORY_STATUSES = new Set(['available', 'returned_to_available']
 function fmtEncoded(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso.slice(0, 10) : d.toLocaleDateString();
+  return Number.isNaN(d.getTime()) ? iso.slice(0, 10) : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 /** Today as YYYY-MM-DD, for the New Entry date default. */

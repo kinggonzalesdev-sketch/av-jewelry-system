@@ -24,7 +24,7 @@ type PancakeMsg = { id: string; fromPage: boolean; from: string | null; text: st
 function fmtWhen(iso: string | null | undefined): string {
   if (!iso) return '';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString();
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 /** Loose name normalize for filtering (mirrors the SQL/auto-link normalizer). */

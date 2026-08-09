@@ -127,7 +127,7 @@ export function OrderDestinationTransfer({
         <p className="mt-1 text-[11px] text-muted-foreground" data-testid="order-destination-current">
           Currently in {DESTINATION_LABEL[current] ?? current}
           {destinationSetByName ? ` · moved by ${destinationSetByName}` : ''}
-          {destinationSetAt ? ` · ${new Date(destinationSetAt).toLocaleString()}` : ''}
+          {destinationSetAt ? ` · ${new Date(destinationSetAt).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ''}
         </p>
       ) : null}
       {error && !confirmOpen ? (
