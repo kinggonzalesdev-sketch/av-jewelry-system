@@ -555,10 +555,10 @@ export function OrdersView({
           );
         })}
       </div>
-      </div>
 
       {/* Search + filters — operate on the loaded set (client-side), honestly
-          labelled. Search spans order no., invoice no., and customer name. */}
+          labelled. Search spans order no., invoice no., and customer name. Part of
+          the sticky top section (Owner request) so it pins with the cards. */}
       <div className="rounded-xl border border-border bg-card p-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <input
@@ -622,6 +622,7 @@ export function OrdersView({
           <span className="tabular-nums">{rows.length}</span> loaded Official Orders.
           Filtering and counts apply to the orders loaded on this page.
         </p>
+      </div>
       </div>
 
       {/* Table region: honest empty state at zero, "no matches" when filters
