@@ -534,7 +534,10 @@ export function PaymentsWorkspace({
           and the date-range filters stay pinned while the layaway table scrolls
           beneath them. Opaque background bled to the content edges; z-20 above the
           table's sticky header. */}
-      <div className="sticky top-0 z-20 -mx-3 space-y-4 border-b border-border bg-background px-3 pb-3 pt-3 sm:-mx-5 sm:px-5">
+      {/* Sticky only from `sm` up (Owner request) — matches Orders: on mobile the
+          whole top section (title + summary cards + filters) scrolls normally so it
+          never eats the small screen; on desktop it pins as before. */}
+      <div className="space-y-4 sm:sticky sm:top-0 sm:z-20 sm:-mx-5 sm:border-b sm:border-border sm:bg-background sm:px-5 sm:py-3">
       {title ? <PageHeader title={title} /> : null}
       {/* Financial summary for the selected section + date range (Owner request
           2026-07-27). Totals are computed from the rows currently shown. */}
