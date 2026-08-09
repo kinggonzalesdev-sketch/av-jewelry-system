@@ -133,8 +133,14 @@ describe('the shell shows REAL authenticated identity, never hardcoded', () => {
     expect(settings).not.toMatch(/ChangePasswordForm/);
     // The team roster is gated on the Owner (the service-role admin path).
     expect(settings).toMatch(/isOwner/);
-    // Administration keeps only the Integrations link; the removed links stay gone.
-    expect(settings).toMatch(/href="\/admin\/integrations"/);
+    // Owner request 2026-08-09: the collapsible sections are now ONLY Live
+    // Operations (Test Print + Sticker Settings inline) and Message Templates.
+    // System Diagnostics + the Integration link were removed from this view
+    // (integrations stays reachable at /admin/integrations by URL).
+    expect(settings).toMatch(/PrinterTestCard/);
+    expect(settings).toMatch(/StickerSettingsCard/);
+    expect(settings).toMatch(/href="\/settings\/messages"/);
+    expect(settings).not.toMatch(/href="\/admin\/integrations"/);
     expect(settings).not.toMatch(/href="\/admin\/staff"/);
     expect(settings).not.toMatch(/href="\/admin\/capabilities"/);
     expect(settings).not.toMatch(/href="\/security"/);

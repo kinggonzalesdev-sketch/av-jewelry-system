@@ -3,18 +3,12 @@ import type { ReactNode } from 'react';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 
-import { SystemDiagnostics } from '@/components/settings/system-diagnostics';
+import { PrinterTestCard } from '@/components/print/printer-test-card';
+import { StickerSettingsCard } from '@/components/print/sticker-settings-card';
 import { TeamMembersPanel } from '@/components/settings/team-members-panel';
 import { PageHeader } from '@/components/ui/page-primitives';
 import { canOpenPage, isPrimarySuperAdmin, requireActiveStaff } from '@/lib/authz/guard';
 import { listTeamMembers } from '@/lib/authz/team-accounts';
-
-/** Mask a Supabase project ref (keeps the first 3 + last 4, hides the middle). */
-function maskProject(url: string | undefined): string {
-  const ref = (url ?? '').match(/https?:\/\/([a-z0-9]+)\.supabase\.co/i)?.[1];
-  if (!ref) return '—';
-  return ref.length > 8 ? `${ref.slice(0, 3)}…${ref.slice(-4)}` : ref;
-}
 
 /** Compact top summary card (Settings redesign): icon, big number, label, supporting
  *  text. Presentation only. */
@@ -117,16 +111,6 @@ export default async function SettingsPage() {
   const adminCount = members.filter((m) => m.roleKey === 'selected_admin').length;
   const superAdminCount = members.filter((m) => m.roleKey === 'owner').length;
 
-  const diagnostics = isPrimary
-    ? {
-        env: process.env.VERCEL_ENV ?? 'development',
-        commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? '').slice(0, 7) || 'local',
-        projectMasked: maskProject(process.env.NEXT_PUBLIC_SUPABASE_URL),
-        accountId: staff.staffProfileId,
-        business: 'A.V. Jewelry (single-tenant)',
-      }
-    : null;
-
   return (
     <div className="space-y-3">
       <PageHeader
@@ -166,33 +150,22 @@ export default async function SettingsPage() {
         </section>
       ) : null}
 
-      {/* Collapsed-by-default sections (progressive disclosure). */}
-      {diagnostics ? (
-        <SettingsSection
-          icon="⌁"
-          title="System Diagnostics"
-          subtitle="Environment, deployment, and sync status"
-        >
-          <SystemDiagnostics {...diagnostics} />
-        </SettingsSection>
-      ) : null}
-
+      {/* Collapsed-by-default sections at the bottom — ONLY Live Operations and
+          Message Templates (Owner request 2026-08-09). System Diagnostics and
+          Integration were removed from this view; /admin/integrations is still
+          reachable by URL for the Primary Super Admin. */}
       {isOwner ? (
         <SettingsSection
           icon="▶"
           title="Live Operations"
-          subtitle="Run system checks and operational tools"
+          subtitle="Test Print and Sticker Settings"
         >
-          <Link
-            href="/settings/live-operations"
-            className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium text-foreground hover:bg-accent"
-            data-testid="settings-live-operations"
-          >
-            <span aria-hidden="true" className="w-4 text-center text-xs">
-              ✓
-            </span>
-            Run System Check
-          </Link>
+          {/* Expanding shows Test Print + Sticker Settings directly — no separate
+              page. They render inside the app-wide PrinterProvider. */}
+          <div className="space-y-4" data-testid="settings-live-operations">
+            <PrinterTestCard />
+            <StickerSettingsCard />
+          </div>
         </SettingsSection>
       ) : null}
 
@@ -214,27 +187,6 @@ export default async function SettingsPage() {
           </Link>
         </SettingsSection>
       ) : null}
-
-      {/* Integration — renamed from "Administration" (Owner request). PRIMARY Super
-          Admin only; /admin/integrations re-checks the rule itself. */}
-      {isPrimary ? (
-        <SettingsSection
-          icon="⇄"
-          title="Integration"
-          subtitle="Data connections and system integrations"
-        >
-          <Link
-            href="/admin/integrations"
-            className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium text-foreground hover:bg-accent"
-          >
-            <span aria-hidden="true" className="w-4 text-center text-xs">
-              ⇄
-            </span>
-            Integration (Pancake)
-          </Link>
-        </SettingsSection>
-      ) : null}
-
     </div>
   );
 }
