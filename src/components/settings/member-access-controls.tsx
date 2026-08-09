@@ -234,7 +234,9 @@ export function MemberAccessControls({
       {/* Change Role */}
       <select
         value={member.roleKey}
-        disabled={roleLocked || roleBusy}
+        // Super Admin rows are non-editable here (Owner request): the role dropdown
+        // is disabled (not clickable) and Manage Access is hidden below.
+        disabled={isSuperAdmin || roleLocked || roleBusy}
         onChange={(e) => void changeRole(e.target.value)}
         aria-label={`Change role for ${member.fullName}`}
         data-testid={`member-role-${member.staffProfileId}`}
@@ -257,14 +259,16 @@ export function MemberAccessControls({
         ))}
       </select>
 
-      <button
-        type="button"
-        onClick={() => void openModal()}
-        data-testid={`member-access-${member.staffProfileId}`}
-        className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
-      >
-        Manage Access
-      </button>
+      {!isSuperAdmin ? (
+        <button
+          type="button"
+          onClick={() => void openModal()}
+          data-testid={`member-access-${member.staffProfileId}`}
+          className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+        >
+          Manage Access
+        </button>
+      ) : null}
 
       <Modal
         open={open}

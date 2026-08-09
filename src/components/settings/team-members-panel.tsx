@@ -178,6 +178,13 @@ export function TeamMembersPanel({
   ).length;
   const superAdminSlotFree = activeSuperAdmins < MAX_SUPER_ADMINS;
 
+  // Super Admins (role 'owner') pinned to the top; everyone else keeps their existing
+  // order (Array.sort is stable, so the rest is untouched). Display order only — the
+  // counts above and every action still key off the permanent staffProfileId.
+  const sortedMembers = [...members].sort(
+    (a, b) => (a.roleKey === 'owner' ? 0 : 1) - (b.roleKey === 'owner' ? 0 : 1),
+  );
+
   return (
     <div className="space-y-3">
       {/* Count cards */}
@@ -259,7 +266,7 @@ export function TeamMembersPanel({
               </tr>
             </thead>
             <tbody>
-              {members.map((m) => (
+              {sortedMembers.map((m) => (
                 <tr key={m.staffProfileId} className="border-b last:border-0">
                   <td className="px-3 py-2.5 text-center">
                     <div className="font-medium">{m.fullName}</div>

@@ -91,13 +91,12 @@ describe('Change Role — Super Admin authority', () => {
 });
 
 describe('Manage Access — module-based permission toggles', () => {
-  it('refuses to edit a Super Admin — they hold every permission', async () => {
+  it('a Super Admin is non-editable here: no Manage Access button, role dropdown disabled', () => {
     renderControls({ roleKey: 'owner' });
-    fireEvent.click(screen.getByTestId('member-access-sp1'));
-    expect(await screen.findByTestId('member-access-locked')).toHaveTextContent(
-      /holds every permission/i,
-    );
-    expect(screen.queryByTestId('member-access-save')).not.toBeInTheDocument();
+    // Owner request 2026-08-09: Super Admins hold every permission, so the row hides
+    // Manage Access entirely and their role dropdown is not clickable.
+    expect(screen.queryByTestId('member-access-sp1')).not.toBeInTheDocument();
+    expect(screen.getByTestId('member-role-sp1')).toBeDisabled();
   });
 
   it('refuses to edit your own permissions', async () => {
