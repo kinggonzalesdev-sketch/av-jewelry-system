@@ -9,6 +9,7 @@ import type { CustomersResult } from '@/lib/customers/service';
 vi.mock('@/lib/customers/actions', () => ({
   deactivateCustomerAction: vi.fn(),
   permanentlyDeleteCustomerAction: vi.fn(),
+  requestCustomerDeletionAction: vi.fn(() => Promise.resolve({ ok: true })),
 }));
 
 // The row's Delete modal + the detail modal refresh use the router.
@@ -65,6 +66,18 @@ describe('CustomersView list states', () => {
     expect(screen.getByText('Ana Reyes')).toBeInTheDocument();
     expect(screen.getByText('Bea Lim')).toBeInTheDocument();
     expect(screen.getByTestId('customer-view-c1')).toBeInTheDocument();
+  });
+
+  it('an OWNER gets a direct Delete; a non-owner Admin gets Request delete (Approvals Phase 2)', () => {
+    const { rerender } = render(
+      <CustomersView result={rows} query="" canManage={true} isOwner={true} />,
+    );
+    expect(screen.getByTestId('customer-delete-c1')).toBeInTheDocument();
+    expect(screen.queryByTestId('customer-request-delete-c1')).not.toBeInTheDocument();
+
+    rerender(<CustomersView result={rows} query="" canManage={true} isOwner={false} />);
+    expect(screen.getByTestId('customer-request-delete-c1')).toBeInTheDocument();
+    expect(screen.queryByTestId('customer-delete-c1')).not.toBeInTheDocument();
   });
 });
 

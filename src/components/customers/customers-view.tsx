@@ -36,11 +36,13 @@ function CustomerList({
   result,
   query,
   canManage,
+  isOwner,
   onView,
 }: {
   result: CustomersResult;
   query: string;
   canManage: boolean;
+  isOwner: boolean;
   onView: (row: CustomerListRow) => void;
 }) {
   const router = useRouter();
@@ -114,6 +116,7 @@ function CustomerList({
                         customerId={row.id}
                         customerName={row.displayName}
                         canManage={canManage}
+                        isOwner={isOwner}
                       />
                     ) : null}
                     <button
@@ -344,11 +347,14 @@ export function CustomersView({
   result,
   query,
   canManage,
+  isOwner = false,
   canEdit = false,
 }: {
   result: CustomersResult;
   query: string;
   canManage: boolean;
+  /** Owner deletes a customer directly; a non-owner Admin requests Owner approval. */
+  isOwner?: boolean;
   canEdit?: boolean;
 }) {
   const [selected, setSelected] = useState<CustomerListRow | null>(null);
@@ -392,6 +398,7 @@ export function CustomersView({
         result={result}
         query={query}
         canManage={canManage}
+        isOwner={isOwner}
         onView={setSelected}
       />
 

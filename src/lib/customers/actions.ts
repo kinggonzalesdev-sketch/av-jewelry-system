@@ -9,6 +9,9 @@ import {
   updateCustomer,
   type UpdateCustomerResult,
 } from '@/lib/customers/service';
+import { requestOwnerApproval } from '@/lib/fulfillment/service';
+
+export type RequestDeletionResult = { ok: true } | { ok: false; error: string };
 
 /**
  * Customer actions (transport only). Authority (Owner-only) and the soft-delete
@@ -75,4 +78,31 @@ export async function permanentlyDeleteCustomerAction(
 
   revalidatePath('/customers');
   return { error: null, success: 'Customer permanently deleted.' };
+}
+
+/**
+ * Approvals Phase 2 (2026-08-09): a NON-owner asks the Owner to approve deleting a
+ * customer. Creates a pending Owner-approval request — it deletes NOTHING. The Owner
+ * approves + executes it in /approvals, and only then is the customer removed (still
+ * blocked by the DB if the customer has any linked record). Requesting needs the
+ * initiate_high_risk_action permission (re-checked in requestOwnerApproval + the DB).
+ * Owners never take this path — they delete directly.
+ */
+export async function requestCustomerDeletionAction(
+  customerId: string,
+  customerName: string,
+  reason: string,
+): Promise<RequestDeletionResult> {
+  if (!customerId) return { ok: false, error: 'A customer is required.' };
+  const trimmed = (reason ?? '').trim();
+  if (trimmed.length === 0) {
+    return { ok: false, error: 'Add a reason for the Owner.' };
+  }
+  // Carry the customer name in the reason so the Owner sees WHO in /approvals.
+  const full = `Delete customer "${customerName}": ${trimmed}`;
+  const result = await requestOwnerApproval('customer_delete', 'customer', customerId, full);
+  if (!result.ok) return { ok: false, error: result.error };
+
+  revalidatePath('/customers');
+  return { ok: true };
 }

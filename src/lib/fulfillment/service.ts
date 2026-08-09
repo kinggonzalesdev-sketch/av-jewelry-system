@@ -27,7 +27,9 @@ import { createClient } from '@/lib/supabase/server';
 
 export type FulfillmentResult = { ok: true } | { ok: false; error: string };
 
-/** The six non-delegable Owner approvals (§5.13). */
+/** The non-delegable Owner approvals (§5.13). `customer_delete` (Approvals Phase 2,
+ *  2026-08-09) routes a NON-owner's Delete Customer through Owner approval — the
+ *  Owner still deletes directly. */
 export const OWNER_APPROVAL_KINDS = [
   'official_order_cancellation',
   'layaway_forfeiture',
@@ -35,6 +37,7 @@ export const OWNER_APPROVAL_KINDS = [
   'exceptional_fulfillment_release',
   'live_batch_reopen',
   'wrong_payment_to_order_correction',
+  'customer_delete',
 ] as const;
 
 export type OwnerApprovalKind = (typeof OWNER_APPROVAL_KINDS)[number];
@@ -662,6 +665,27 @@ export async function executeOwnerApproval(
       ok: false,
       error: 'That approval was already executed. It executes exactly once.',
     };
+  }
+
+  // Approvals Phase 2: for a deletion request, PERFORM the actual delete now —
+  // BEFORE marking executed, so a refused delete (e.g. the customer still has
+  // linked orders/payments) never marks the request done. The Owner is executing,
+  // so the delete function's owner/admin gate passes. Non-deletion kinds skip this
+  // branch entirely, so their behaviour is unchanged.
+  if (request.action_kind === 'customer_delete') {
+    const { error: delError } = await supabase.rpc('permanently_delete_customer', {
+      p_customer_id: request.entity_id as string,
+    });
+    if (delError) {
+      await recordAuditEvent({
+        action: 'owner_approval.execute',
+        entityType: 'owner_approval_request',
+        entityId: requestId,
+        outcome: 'failed',
+        reason: delError.message,
+      });
+      return { ok: false, error: delError.message.replace(/^ERROR:\s*/i, '').trim() };
+    }
   }
 
   const { error } = await supabase

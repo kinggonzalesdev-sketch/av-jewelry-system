@@ -44,7 +44,13 @@ export default async function CustomersPage({
   return (
     <div>
       <PageHeader title="Customers" />
-      <CustomersView result={result} query={query} canManage={canManage} canEdit={canEdit} />
+      <CustomersView
+        result={result}
+        query={query}
+        canManage={canManage}
+        isOwner={staff.roleKey === 'owner'}
+        canEdit={canEdit}
+      />
     </div>
   );
 }

@@ -18,8 +18,8 @@ const read = (...p: string[]) => readFileSync(join(projectRoot, ...p), 'utf8');
 const codeOnly = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
-describe('the six Owner approvals', () => {
-  it('lists exactly the six non-delegable approvals', () => {
+describe('the Owner approvals', () => {
+  it('lists the non-delegable approvals (incl. customer_delete — Approvals Phase 2)', () => {
     expect(OWNER_APPROVAL_KINDS).toEqual([
       'official_order_cancellation',
       'layaway_forfeiture',
@@ -27,11 +27,13 @@ describe('the six Owner approvals', () => {
       'exceptional_fulfillment_release',
       'live_batch_reopen',
       'wrong_payment_to_order_correction',
+      // Approvals Phase 2 (2026-08-09): a non-owner's Delete Customer routes here.
+      'customer_delete',
     ]);
   });
 
-  it('has exactly six — no seventh may be smuggled in', () => {
-    expect(OWNER_APPROVAL_KINDS).toHaveLength(6);
+  it('has exactly seven — nothing else may be smuggled in', () => {
+    expect(OWNER_APPROVAL_KINDS).toHaveLength(7);
   });
 });
 
