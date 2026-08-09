@@ -164,8 +164,20 @@ export function CaptureLinkPanel({
                     onClick={() => void choose(c.customerId)}
                     disabled={busy}
                     data-testid={`capture-link-pick-${captureRecordId}-${c.customerId}`}
-                    className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left hover:bg-accent"
+                    className="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left hover:bg-accent"
                   >
+                    {c.avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={c.avatarUrl}
+                        alt=""
+                        className="h-6 w-6 shrink-0 rounded-full object-cover"
+                      />
+                    ) : (
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[9px] text-muted-foreground">
+                        ?
+                      </span>
+                    )}
                     <span className="font-medium">{c.displayName}</span>
                     {c.contactNumber ? (
                       <span className="text-muted-foreground">· {c.contactNumber}</span>

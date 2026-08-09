@@ -76,7 +76,10 @@ describe('privileged Supabase client isolation', () => {
     //   - lib/integrations/pancake-system.ts — the daily Pancake link sync; it has no
     //     user session, so its authority is the CRON_SECRET check in its only caller,
     //     the /api/cron/pancake-sync route.
-    const sanctioned = [/team-accounts\.ts$/, /pancake-system\.ts$/];
+    //   - lib/integrations/pancake-webhook.ts — realtime Pancake identity ingest; no
+    //     user session, so its authority is the PANCAKE_WEBHOOK_SECRET check in its only
+    //     caller, the /api/webhooks/pancake route. The write is strictly fill-only.
+    const sanctioned = [/team-accounts\.ts$/, /pancake-system\.ts$/, /pancake-webhook\.ts$/];
 
     const sourceFiles = collectSourceFiles(srcDir).filter(
       (file) => file !== adminModulePath,
@@ -105,6 +108,14 @@ describe('privileged Supabase client isolation', () => {
       'utf8',
     );
     expect(cronRoute).toMatch(/CRON_SECRET/);
+
+    // ... and the Pancake webhook ingest is reachable only through the
+    // PANCAKE_WEBHOOK_SECRET-gated route (its authority, since it has no user session).
+    const webhookRoute = readFileSync(
+      join(srcDir, 'app', 'api', 'webhooks', 'pancake', 'route.ts'),
+      'utf8',
+    );
+    expect(webhookRoute).toMatch(/PANCAKE_WEBHOOK_SECRET/);
   });
 });
 

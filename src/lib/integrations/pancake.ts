@@ -1321,6 +1321,19 @@ export async function syncPancakeConversationsToCustomers(): Promise<PancakeSync
   }
 
   const matched = Number(data?.matched ?? 0);
+
+  // Fill the profile photo for the just-linked customers (best-effort, fill-only —
+  // never resets a link). Powers the capture confirm-picker's photo.
+  const avatarPairs = conv.conversations
+    .filter((c) => c.avatar && c.avatar.trim())
+    .map((c) => ({ conversation_id: c.id, avatar: c.avatar }));
+  if (avatarPairs.length > 0) {
+    await supabase.rpc('set_customer_pancake_avatars', { p_pairs: avatarPairs }).then(
+      () => undefined,
+      () => undefined,
+    );
+  }
+
   const { linked, total: totalCustomers } = await getPancakeLinkCoverage(supabase);
   return {
     ok: true,

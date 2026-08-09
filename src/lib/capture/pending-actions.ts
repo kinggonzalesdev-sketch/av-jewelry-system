@@ -234,6 +234,7 @@ export async function listCaptureCandidatesAction(
     displayName: c.displayName,
     contactNumber: c.contactNumber,
     hasConversation: c.hasConversation,
+    avatarUrl: c.avatarUrl,
   }));
 }
 

@@ -43,6 +43,8 @@ export type CaptureCandidate = {
   /** True when this customer has a conversation ON the active send page. */
   hasConversation: boolean;
   fbUrl: string | null;
+  /** Pancake profile photo, for wrong-customer prevention in the picker. */
+  avatarUrl: string | null;
 };
 
 type Row = {
@@ -51,9 +53,11 @@ type Row = {
   pancake_conversation_id: string | null;
   contact_number: string | null;
   facebook_conversation_url: string | null;
+  avatar_url: string | null;
 };
 
-const SELECT = 'id, display_name, pancake_conversation_id, contact_number, facebook_conversation_url';
+const SELECT =
+  'id, display_name, pancake_conversation_id, contact_number, facebook_conversation_url, avatar_url';
 
 /** Narrow an untyped Supabase result to our Row shape (params are `unknown`, so the
  *  assertion genuinely narrows — no `any`-cast lint noise). */
@@ -242,6 +246,7 @@ export async function listCaptureCandidates(
     contactNumber: (c.contact_number ?? '').trim() || null,
     hasConversation: conversationBelongsToPage(c.pancake_conversation_id, activePage),
     fbUrl: (c.facebook_conversation_url ?? '').trim() || null,
+    avatarUrl: (c.avatar_url ?? '').trim() || null,
   }));
 }
 

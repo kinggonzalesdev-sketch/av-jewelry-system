@@ -53,6 +53,8 @@ export type CaptureCandidateOption = {
   contactNumber: string | null;
   /** Has a messageable conversation on the active page. */
   hasConversation: boolean;
+  /** Pancake profile photo, to confirm the right person by face. */
+  avatarUrl: string | null;
 };
 
 /** A floating-screenshot capture waiting on the PC for the operator to turn into an
