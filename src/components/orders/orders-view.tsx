@@ -323,7 +323,19 @@ function matchesCard(order: OrderListRow, key: CardKey): boolean {
           order.fulfillmentDestination === 'shipping')
       );
     case 'ship_confirm':
-      return SHIP_CONFIRMED.has(order.status);
+      // A ship-confirmed order belongs to THIS card only when it is not routed to
+      // a non-shipping destination. Delivery / Pickup / For Layaway / Keep each
+      // have their own card, and an order keeps its SHIP_CONFIRMED status after
+      // being released — so without this guard a released delivery/pickup order
+      // was counted twice (here AND under its destination), which is why the
+      // cards over-counted the Total (Owner report 2026-08-09).
+      return (
+        SHIP_CONFIRMED.has(order.status) &&
+        order.fulfillmentDestination !== 'delivery' &&
+        order.fulfillmentDestination !== 'pickup' &&
+        order.fulfillmentDestination !== 'layaway' &&
+        order.fulfillmentDestination !== 'keep'
+      );
     case 'delivery':
       // A cancelled / for-cancel / completed order leaves the Delivery card and
       // shows under its true status, matching the modal's status badge.
@@ -624,8 +636,8 @@ export function OrdersView({
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
           Showing <span className="tabular-nums">{filtered.length}</span> of{' '}
-          <span className="tabular-nums">{rows.length}</span> loaded Official Orders.
-          Filtering and counts apply to the orders loaded on this page.
+          <span className="tabular-nums">{rows.length}</span> Official Orders. The
+          status cards count every order in the store.
         </p>
       </div>
       </div>

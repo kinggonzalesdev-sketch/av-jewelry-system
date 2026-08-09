@@ -71,35 +71,49 @@ export type OrdersResult =
  * Returns an explicit failure rather than an empty array on a read error — an
  * unreadable list must never look like "no orders" (the session's rule).
  */
-export async function listOrders(limit = 100): Promise<OrdersResult> {
+export async function listOrders(): Promise<OrdersResult> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
-    .from('official_orders')
-    .select(
-      // fulfillment_records has a single FK back to official_orders, so this
-      // embed is unambiguous. official_orders → customers is likewise single.
-      // layaway_arrangements is UNIQUE(official_order_id) — one per order.
-      `id, order_number, invoice_number, status, created_at, updated_at, completed_at,
-       fulfillment_destination, order_source, converted_to_layaway, waybill_number,
-       customers ( display_name, facebook_conversation_url ),
-       fulfillment_records ( status, dispatched_at ),
-       layaway_arrangements ( status )`,
-    )
-    // Latest activity first (Owner request): updated_at is bumped by every real
-    // action, so the most recently touched order sits on top. created_at + id are
-    // the stable fallbacks when updated_at ties or is null. Opening/viewing writes
-    // nothing, so it never reorders the list.
-    .order('updated_at', { ascending: false, nullsFirst: false })
-    .order('created_at', { ascending: false })
-    .order('id', { ascending: false })
-    .limit(limit);
+  // Load EVERY order, not just the first page. The status cards summarise the
+  // whole store (Total, Ship Confirm, Pending Payment, …); when this capped at
+  // the latest 100 rows the Owner saw "Total 100" while the store held far more,
+  // and every card counted only within that 100-row window (Owner report
+  // 2026-08-09). PostgREST returns at most 1000 rows per request, so page
+  // through with .range() until a short page signals the end. The table still
+  // paginates these rows client-side. (When the store grows into the thousands
+  // this becomes the server-side-count/pagination refactor already flagged.)
+  const PAGE = 1000;
+  const raw: unknown[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from('official_orders')
+      .select(
+        // fulfillment_records has a single FK back to official_orders, so this
+        // embed is unambiguous. official_orders → customers is likewise single.
+        // layaway_arrangements is UNIQUE(official_order_id) — one per order.
+        `id, order_number, invoice_number, status, created_at, updated_at, completed_at,
+         fulfillment_destination, order_source, converted_to_layaway, waybill_number,
+         customers ( display_name, facebook_conversation_url ),
+         fulfillment_records ( status, dispatched_at ),
+         layaway_arrangements ( status )`,
+      )
+      // Latest activity first (Owner request): updated_at is bumped by every real
+      // action, so the most recently touched order sits on top. created_at + id are
+      // the stable fallbacks when updated_at ties or is null. Opening/viewing writes
+      // nothing, so it never reorders the list.
+      .order('updated_at', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(from, from + PAGE - 1);
 
-  if (error) {
-    return { ok: false, reason: error.message };
+    if (error) {
+      return { ok: false, reason: error.message };
+    }
+
+    const batch = (data ?? []) as unknown[];
+    raw.push(...batch);
+    if (batch.length < PAGE) break;
   }
-
-  const raw = (data ?? []) as unknown[];
 
   // Money per order comes from the tested authoritative reader — but batched into
   // ONE round-trip (getOrderBalances) instead of one RPC per row. At ~100 orders
