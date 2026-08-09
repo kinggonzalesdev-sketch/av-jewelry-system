@@ -477,7 +477,10 @@ export function OrdersView({
           cards stay pinned at the top while the orders table scrolls beneath them.
           Negative margins bleed the opaque background to the content edges so rows
           pass cleanly underneath; z-20 keeps it above the table's sticky header. */}
-      <div className="sticky top-0 z-20 -mx-3 space-y-3 border-b border-border bg-background px-3 pb-3 pt-3 sm:-mx-5 sm:px-5">
+      {/* Sticky only from `sm` up (Owner request): on mobile the whole top section —
+          including the search/filter row — scrolls normally so it never eats the
+          small screen; on desktop it pins as before. */}
+      <div className="space-y-3 sm:sticky sm:top-0 sm:z-20 sm:-mx-5 sm:border-b sm:border-border sm:bg-background sm:px-5 sm:py-3">
       {title ? <PageHeader title={title} /> : null}
       {/* Top action row: + New Order, then Send All Invoices while For Invoice is
           the active card. Hidden otherwise, with no leftover gap. */}
