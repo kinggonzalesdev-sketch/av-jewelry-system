@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import type { ReactNode } from 'react';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 
@@ -13,6 +14,75 @@ function maskProject(url: string | undefined): string {
   const ref = (url ?? '').match(/https?:\/\/([a-z0-9]+)\.supabase\.co/i)?.[1];
   if (!ref) return '—';
   return ref.length > 8 ? `${ref.slice(0, 3)}…${ref.slice(-4)}` : ref;
+}
+
+/** Compact top summary card (Settings redesign): icon, big number, label, supporting
+ *  text. Presentation only. */
+function SummaryCard({
+  icon,
+  value,
+  label,
+  hint,
+}: {
+  icon: string;
+  value: number;
+  label: string;
+  hint: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
+      <span
+        aria-hidden="true"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gold/10 text-lg text-gold-strong"
+      >
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <p className="text-2xl font-bold leading-none tabular-nums text-foreground">{value}</p>
+        <p className="mt-1 text-sm font-medium text-foreground">{label}</p>
+        <p className="truncate text-xs text-muted-foreground">{hint}</p>
+      </div>
+    </div>
+  );
+}
+
+/** A collapsed-by-default settings section (progressive disclosure). Native
+ *  <details>, so it needs no client JS and stays keyboard-accessible; the chevron
+ *  rotates on open. */
+function SettingsSection({
+  icon,
+  title,
+  subtitle,
+  children,
+}: {
+  icon: string;
+  title: string;
+  subtitle: string;
+  children: ReactNode;
+}) {
+  return (
+    <details className="group rounded-xl border border-border bg-card">
+      <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+        <span
+          aria-hidden="true"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-sm text-muted-foreground"
+        >
+          {icon}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-foreground">{title}</p>
+          <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
+        </div>
+        <span
+          aria-hidden="true"
+          className="text-muted-foreground transition-transform group-open:rotate-180"
+        >
+          ⌄
+        </span>
+      </summary>
+      <div className="border-t border-border px-4 py-3">{children}</div>
+    </details>
+  );
 }
 
 export const metadata: Metadata = {
@@ -45,6 +115,10 @@ export default async function SettingsPage() {
   // must be able to see the answer. Only a Super Admin can DECIDE one.
   const isAdminOrAbove = isOwner || staff.roleKey === 'selected_admin';
   const members = isOwner ? await listTeamMembers() : [];
+  // Summary-card counts — all derived from the already-loaded roster.
+  const tempPasswordCount = members.filter((m) => m.passwordIsTemp).length;
+  const adminCount = members.filter((m) => m.roleKey === 'selected_admin').length;
+  const superAdminCount = members.filter((m) => m.roleKey === 'owner').length;
 
   const diagnostics = isPrimary
     ? {
@@ -57,36 +131,64 @@ export default async function SettingsPage() {
     : null;
 
   return (
-    <div className="space-y-4">
-      <PageHeader title="Settings" description="Portal & access and integrations." />
+    <div className="space-y-3">
+      <PageHeader
+        title="Settings"
+        description="Manage portal access, teams, and system configuration."
+      />
 
-      {/* System Diagnostics — Super Admin only. Sanitized (no keys/tokens); proves
-          every device is on the same deployment + database, with Refresh Official Data. */}
-      {diagnostics ? (
-        <section
-          className="rounded-xl border border-border bg-card p-4"
-          aria-labelledby="diagnostics-h"
-        >
-          <h2 id="diagnostics-h" className="mb-2 text-sm font-semibold text-foreground">
-            System Diagnostics
-          </h2>
-          <SystemDiagnostics {...diagnostics} />
-        </section>
+      {/* Top summary cards — 3 compact KPIs derived from the team roster. */}
+      {isOwner ? (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <SummaryCard icon="👥" value={members.length} label="Team Members" hint="Active members" />
+          <SummaryCard
+            icon="🔑"
+            value={tempPasswordCount}
+            label="Temp Passwords"
+            hint="Need attention"
+          />
+          <SummaryCard
+            icon="🛡"
+            value={adminCount}
+            label="Admins"
+            hint={`${superAdminCount} Super Admin${superAdminCount === 1 ? '' : 's'}`}
+          />
+        </div>
       ) : null}
 
-      {/* Live Operations — SUPER ADMIN only. The pre-live system check (and, in
-          later phases, Test Mode + live-session controls). */}
+      {/* Team Members — the primary visible section. */}
       {isOwner ? (
         <section
           className="rounded-xl border border-border bg-card p-4"
-          aria-labelledby="live-ops-h"
+          aria-labelledby="portal-h"
         >
-          <h2 id="live-ops-h" className="text-sm font-semibold text-foreground">
-            Live Operations
+          <h2 id="portal-h" className="text-sm font-semibold text-foreground">
+            Team Members
           </h2>
+          <TeamMembersPanel members={members} isPrimary={isPrimary} />
+        </section>
+      ) : null}
+
+      {/* Collapsed-by-default sections (progressive disclosure). */}
+      {diagnostics ? (
+        <SettingsSection
+          icon="⌁"
+          title="System Diagnostics"
+          subtitle="Environment, deployment, and sync status"
+        >
+          <SystemDiagnostics {...diagnostics} />
+        </SettingsSection>
+      ) : null}
+
+      {isOwner ? (
+        <SettingsSection
+          icon="▶"
+          title="Live Operations"
+          subtitle="Run system checks and operational tools"
+        >
           <Link
             href="/settings/live-operations"
-            className="mt-2 flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium text-foreground hover:bg-accent"
+            className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium text-foreground hover:bg-accent"
             data-testid="settings-live-operations"
           >
             <span aria-hidden="true" className="w-4 text-center text-xs">
@@ -94,32 +196,15 @@ export default async function SettingsPage() {
             </span>
             Run System Check
           </Link>
-        </section>
+        </SettingsSection>
       ) : null}
 
-      {/* Portal & Access — Team Members (Owner-only). */}
       {isOwner ? (
-        <section
-          className="rounded-xl border border-border bg-card p-4"
-          aria-labelledby="portal-h"
+        <SettingsSection
+          icon="💬"
+          title="Message Templates"
+          subtitle="Manage system and notification templates"
         >
-          <h2 id="portal-h" className="text-sm font-semibold text-foreground">
-            Portal &amp; Access — Team Members
-          </h2>
-          <TeamMembersPanel members={members} isPrimary={isPrimary} />
-        </section>
-      ) : null}
-
-      {/* Message Templates — SUPER ADMIN only. Admins may SEND the messages from
-          Orders but never see or change the wording; the page enforces that itself. */}
-      {isOwner ? (
-        <section
-          className="rounded-xl border border-border bg-card p-4"
-          aria-labelledby="messages-h"
-        >
-          <h2 id="messages-h" className="text-sm font-semibold text-foreground">
-            Message Templates
-          </h2>
           <Link
             href="/settings/messages"
             className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium text-foreground hover:bg-accent"
@@ -130,12 +215,31 @@ export default async function SettingsPage() {
             </span>
             Edit Message Templates
           </Link>
-        </section>
+        </SettingsSection>
       ) : null}
 
-      {/* Deletion Requests (§2) — the register of every requested and performed
-          deletion. Admins see it to follow their own requests; the Approve /
-          Reject controls, and the SQL behind them, are Super-Admin only. */}
+      {/* Integration — renamed from "Administration" (Owner request). PRIMARY Super
+          Admin only; /admin/integrations re-checks the rule itself. */}
+      {isPrimary ? (
+        <SettingsSection
+          icon="⇄"
+          title="Integration"
+          subtitle="Data connections and system integrations"
+        >
+          <Link
+            href="/admin/integrations"
+            className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium text-foreground hover:bg-accent"
+          >
+            <span aria-hidden="true" className="w-4 text-center text-xs">
+              ⇄
+            </span>
+            Integration (Pancake)
+          </Link>
+        </SettingsSection>
+      ) : null}
+
+      {/* Administration — Deletion Requests. Kept as its own section (Owner: leave
+          this one out of the accordion redesign). */}
       {isAdminOrAbove ? (
         <section
           className="rounded-xl border border-border bg-card p-4"
@@ -154,33 +258,6 @@ export default async function SettingsPage() {
                   ⚠
                 </span>
                 Deletion Requests
-              </Link>
-            </li>
-          </ul>
-        </section>
-      ) : null}
-
-      {/* Administration — PRIMARY Super Admin only (Owner request). A second Super
-          Admin does not see it; /admin/integrations enforces the same rule itself,
-          so hiding the link is convenience, not the control. */}
-      {isPrimary ? (
-        <section
-          className="rounded-xl border border-border bg-card p-4"
-          aria-labelledby="admin-h"
-        >
-          <h2 id="admin-h" className="text-sm font-semibold text-foreground">
-            Administration
-          </h2>
-          <ul className="mt-2 space-y-1.5">
-            <li>
-              <Link
-                href="/admin/integrations"
-                className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium text-foreground hover:bg-accent"
-              >
-                <span aria-hidden="true" className="w-4 text-center text-xs">
-                  ⇄
-                </span>
-                Integration (Pancake)
               </Link>
             </li>
           </ul>
