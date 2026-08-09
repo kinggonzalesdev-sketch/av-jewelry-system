@@ -1274,8 +1274,14 @@ export function NewOrderModal({
               options={customers.map((c) => c.displayName)}
             />
             {/* Shared match hint: as you type, surfaces an existing customer (and its
-                Facebook-linked state) so you reuse it instead of creating a duplicate. */}
-            <CustomerMatchHint name={customerInput} className="mt-1" />
+                Facebook-linked state) so you reuse it instead of creating a duplicate.
+                Picking one fills its EXACT name, so `matchedCustomer` links the order to
+                that existing customer (no duplicate). */}
+            <CustomerMatchHint
+              name={customerInput}
+              className="mt-1"
+              onPick={(m) => setCustomerInput(m.displayName)}
+            />
           </label>
           <label className="block">
             <L>Admin Name</L>

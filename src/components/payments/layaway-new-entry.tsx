@@ -414,8 +414,12 @@ function EntryForm({
               options={customers}
             />
             {/* Shared match hint — reuse an existing customer (and see its FB-linked
-                state) instead of creating a duplicate. */}
-            <CustomerMatchHint name={customer} className="mt-1" />
+                state) instead of creating a duplicate. Picking one fills its exact name. */}
+            <CustomerMatchHint
+              name={customer}
+              className="mt-1"
+              onPick={(m) => setCustomer(m.displayName)}
+            />
           </label>
           <label className="block">
             <L>Admin Name</L>
