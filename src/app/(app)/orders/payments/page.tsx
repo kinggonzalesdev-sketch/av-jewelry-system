@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { PageHeader } from '@/components/ui/page-primitives';
 
 import { PaymentsWorkspace } from '@/components/payments/payments-workspace';
 import { canOpenPage, getGrantedPermissions, requireActiveStaff } from '@/lib/authz/guard';
@@ -128,9 +127,10 @@ export default async function PaymentsPage({
 
   return (
     <div>
-      <PageHeader title="Layaway" />
-
+      {/* The "Layaway" title renders INSIDE the workspace's sticky top section so it
+          pins with the summary cards + date filters (Owner request). */}
       <PaymentsWorkspace
+        title="Layaway"
         cards={mergedCards}
         initialSection={initialSection}
         queue={queue.ok ? queue.rows : []}

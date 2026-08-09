@@ -12,7 +12,6 @@ import { listPendingCaptureReviews } from '@/lib/capture/review';
 import { countPendingCaptures } from '@/lib/capture/pending';
 import { listCaptureItems, listOrders, listWalkInItems } from '@/lib/orders/service';
 import { listKeepLayawayAccounts } from '@/lib/payments/layaway-ledger';
-import { PageHeader } from '@/components/ui/page-primitives';
 
 export const metadata: Metadata = {
 };
@@ -71,8 +70,8 @@ export default async function OrdersPage({
 
   return (
     <div>
-      <PageHeader title="Orders" />
-
+      {/* The "Orders" title is rendered INSIDE OrdersView's sticky top section so it
+          pins with the + New Order button and status cards (Owner request). */}
       <div className="space-y-4">
         {/* The non-delegable Owner approvals moved to their own /approvals module
             (2026-08-09). Orders stays focused on order management. */}
@@ -93,6 +92,7 @@ export default async function OrdersPage({
           />
         ) : null}
         <OrdersView
+          title="Orders"
           result={result}
           openForInvoice={openForInvoice}
           keepLayaways={keepLayaways}

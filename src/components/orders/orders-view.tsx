@@ -13,7 +13,7 @@ import type { OrderListRow, OrdersResult, PaymentStatus } from '@/lib/orders/ser
 import type { KeepLayawayRow } from '@/lib/payments/layaway-ledger';
 import { Money } from '@/components/shell/privacy';
 import { EmptyState } from '@/components/states/empty-state';
-import { StatusBadge, ReadError, type BadgeTone } from '@/components/ui/page-primitives';
+import { PageHeader, StatusBadge, ReadError, type BadgeTone } from '@/components/ui/page-primitives';
 import { DataTable, Thead, Tr, Th, Td } from '@/components/ui/data-table';
 import { Pagination } from '@/components/ui/pagination';
 import { cn } from '@/lib/utils';
@@ -377,8 +377,12 @@ export function OrdersView({
   newOrderAction,
   canManageOrders = false,
   pendingCaptureCount = 0,
+  title,
 }: {
   result: OrdersResult;
+  /** Page title rendered INSIDE the sticky top section (so it pins with the
+   *  + New Order button and status cards). When set, the page omits its own header. */
+  title?: string;
   /** The + New Order control, rendered in the top action row so Send All Invoices
    *  can sit beside it — the active-card state that gates it lives HERE. */
   newOrderAction?: React.ReactNode;
@@ -469,6 +473,12 @@ export function OrdersView({
 
   return (
     <div className="space-y-4">
+      {/* Sticky top section (Owner request): the title, + New Order, and the status
+          cards stay pinned at the top while the orders table scrolls beneath them.
+          Negative margins bleed the opaque background to the content edges so rows
+          pass cleanly underneath; z-20 keeps it above the table's sticky header. */}
+      <div className="sticky top-0 z-20 -mx-3 space-y-3 border-b border-border bg-background px-3 pb-3 pt-3 sm:-mx-5 sm:px-5">
+      {title ? <PageHeader title={title} /> : null}
       {/* Top action row: + New Order, then Send All Invoices while For Invoice is
           the active card. Hidden otherwise, with no leftover gap. */}
       {newOrderAction || card === 'for_invoice' || pendingCaptureCount > 0 ? (
@@ -544,6 +554,7 @@ export function OrdersView({
             </button>
           );
         })}
+      </div>
       </div>
 
       {/* Search + filters — operate on the loaded set (client-side), honestly

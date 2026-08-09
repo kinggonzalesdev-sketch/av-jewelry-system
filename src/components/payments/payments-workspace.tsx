@@ -40,7 +40,7 @@ import { EmptyState } from '@/components/states/empty-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Pagination } from '@/components/ui/pagination';
-import { StatusBadge, type BadgeTone } from '@/components/ui/page-primitives';
+import { PageHeader, StatusBadge, type BadgeTone } from '@/components/ui/page-primitives';
 import { Input } from '@/components/ui/input';
 import { MoneyInput } from '@/components/ui/money-input';
 import { Label } from '@/components/ui/label';
@@ -332,8 +332,12 @@ export function PaymentsWorkspace({
   detectedFinancers,
   canCreateLayaway,
   initialSection,
+  title,
 }: {
   cards: OverviewCards;
+  /** Page title rendered inside the sticky top section (so it pins with the
+   *  financial summary + date filters). When set, the page omits its own header. */
+  title?: string;
   queue: EvidenceQueueRow[];
   /** Set when the queue read FAILED. An empty list and a failed read differ. */
   queueUnavailable: string | null;
@@ -526,6 +530,12 @@ export function PaymentsWorkspace({
 
   return (
     <div className="space-y-4">
+      {/* Sticky top section (Owner request): the title, the financial summary cards,
+          and the date-range filters stay pinned while the layaway table scrolls
+          beneath them. Opaque background bled to the content edges; z-20 above the
+          table's sticky header. */}
+      <div className="sticky top-0 z-20 -mx-3 space-y-4 border-b border-border bg-background px-3 pb-3 pt-3 sm:-mx-5 sm:px-5">
+      {title ? <PageHeader title={title} /> : null}
       {/* Financial summary for the selected section + date range (Owner request
           2026-07-27). Totals are computed from the rows currently shown. */}
       <div
@@ -588,6 +598,7 @@ export function PaymentsWorkspace({
           ) : null}
         </CardContent>
       </Card>
+      </div>
 
       {notices.map((n, i) =>
         n.error ? (
