@@ -11,6 +11,7 @@ import {
   EMPTY_CUSTOMER_STATE,
   type CustomerActionState,
 } from '@/lib/customers/action-state';
+import { CustomerMergeButton } from '@/components/customers/customer-merge-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -161,9 +162,10 @@ export function CustomerRowActions({
     );
   }
 
-  // Owner: direct permanent delete (unchanged).
+  // Owner: merge duplicates + direct permanent delete.
   return (
     <>
+      <CustomerMergeButton survivorId={customerId} survivorName={customerName} />
       <button
         type="button"
         onClick={() => {

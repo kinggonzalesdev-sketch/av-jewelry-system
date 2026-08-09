@@ -194,6 +194,82 @@ export async function permanentlyDeleteCustomer(
   return { ok: true };
 }
 
+export type MergeCustomersResult =
+  | { ok: true; ordersMoved: number; layawaysMoved: number; claimsMoved: number }
+  | { ok: false; error: string };
+
+/**
+ * Merge a DUPLICATE customer into the SURVIVING (correct) one — Owner only. The
+ * DEFINER function reassigns every order/layaway/claim/capture/message/invoice/
+ * waitlist/alias reference to the survivor, keeps the old name as a searchable
+ * alias, fills only the survivor's empty fields, and DEACTIVATES the duplicate
+ * (never a hard delete — reversible). Nothing is destroyed.
+ */
+export async function mergeCustomers(
+  survivorId: string,
+  duplicateId: string,
+): Promise<MergeCustomersResult> {
+  try {
+    await requireOwner();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) {
+      await recordAuditEvent({
+        action: 'customer.merge',
+        entityType: 'customer',
+        entityId: survivorId,
+        outcome: 'denied',
+        reason: cause.message,
+      });
+      return { ok: false, error: cause.message };
+    }
+    throw cause;
+  }
+
+  if (!survivorId || !duplicateId) return { ok: false, error: 'Two customers are required.' };
+  if (survivorId === duplicateId) {
+    return { ok: false, error: 'A customer cannot be merged into itself.' };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = (await supabase.rpc('merge_customers', {
+    p_survivor: survivorId,
+    p_duplicate: duplicateId,
+  })) as {
+    data: {
+      orders_moved?: number;
+      layaways_moved?: number;
+      claims_moved?: number;
+    } | null;
+    error: { message: string } | null;
+  };
+
+  if (error) {
+    await recordAuditEvent({
+      action: 'customer.merge',
+      entityType: 'customer',
+      entityId: survivorId,
+      outcome: 'failed',
+      reason: error.message,
+      context: { duplicateId },
+    });
+    return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+
+  const counts = data ?? {};
+  await recordAuditEvent({
+    action: 'customer.merge',
+    entityType: 'customer',
+    entityId: survivorId,
+    context: { duplicateId, ...counts },
+  });
+  return {
+    ok: true,
+    ordersMoved: counts.orders_moved ?? 0,
+    layawaysMoved: counts.layaways_moved ?? 0,
+    claimsMoved: counts.claims_moved ?? 0,
+  };
+}
+
 export type UpdateCustomerInput = {
   id: string;
   displayName: string;

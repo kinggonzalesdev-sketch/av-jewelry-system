@@ -5,8 +5,10 @@ import { revalidatePath } from 'next/cache';
 import type { CustomerActionState } from '@/lib/customers/action-state';
 import {
   deactivateCustomer,
+  mergeCustomers,
   permanentlyDeleteCustomer,
   updateCustomer,
+  type MergeCustomersResult,
   type UpdateCustomerResult,
 } from '@/lib/customers/service';
 import { requestOwnerApproval } from '@/lib/fulfillment/service';
@@ -78,6 +80,23 @@ export async function permanentlyDeleteCustomerAction(
 
   revalidatePath('/customers');
   return { error: null, success: 'Customer permanently deleted.' };
+}
+
+/**
+ * Merge a duplicate customer into the surviving (correct) record — Owner only. Moves
+ * every order/layaway/claim/etc. onto the survivor, keeps the old name as an alias,
+ * and deactivates the duplicate (reversible). Nothing is destroyed.
+ */
+export async function mergeCustomerAction(
+  survivorId: string,
+  duplicateId: string,
+): Promise<MergeCustomersResult> {
+  const result = await mergeCustomers(survivorId, duplicateId);
+  if (result.ok) {
+    revalidatePath('/customers');
+    revalidatePath('/dashboard');
+  }
+  return result;
 }
 
 /**
