@@ -254,7 +254,7 @@ export function TeamMembersPanel({
                 <th className="px-3 py-2.5 text-left font-medium">Team member</th>
                 <th className="px-3 py-2.5 text-left font-medium">Sign-in email</th>
                 <th className="px-3 py-2.5 text-center font-medium">Password</th>
-                <th className="px-3 py-2.5 text-left font-medium">Role &amp; Access</th>
+                <th className="px-3 py-2.5 text-center font-medium">Role &amp; Access</th>
                 <th className="col-actions px-3 py-2.5 font-medium">Actions</th>
               </tr>
             </thead>
