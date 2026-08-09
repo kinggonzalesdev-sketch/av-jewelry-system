@@ -31,6 +31,7 @@ export async function recordScrapAction(
     grams: text(formData, 'grams'),
     amount: text(formData, 'amount'),
     buyer: text(formData, 'buyer'),
+    contact: text(formData, 'contact'),
     soldOn: text(formData, 'soldOn'),
     note: text(formData, 'note'),
   });
@@ -45,6 +46,7 @@ export async function recordScrapAction(
  *  structured payload from the client form, not FormData. */
 export async function recordScrapSalesAction(input: {
   buyer: string | null;
+  contact: string | null;
   soldOn: string | null;
   note: string | null;
   items: ScrapItemInput[];

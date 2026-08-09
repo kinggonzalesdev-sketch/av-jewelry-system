@@ -21,6 +21,8 @@ export type ScrapSaleRow = {
   amount: string;
   /** Customer name (stored in the buyer column). */
   buyer: string | null;
+  /** Seller's contact number. Null when not entered. */
+  contact: string | null;
   /** Karat / purity, e.g. "18K" / "925". Null when not entered. */
   karat: string | null;
   /** Price per gram used to auto-compute the amount. Null when not entered. */
@@ -52,6 +54,7 @@ export async function recordScrapSale(input: {
   grams: string | null;
   amount: string | null;
   buyer: string | null;
+  contact: string | null;
   soldOn: string | null;
   note: string | null;
 }): Promise<RecordScrapResult> {
@@ -77,6 +80,7 @@ export async function recordScrapSale(input: {
     grams: input.grams,
     amount: input.amount,
     buyer: input.buyer?.trim() || null,
+    contact_number: input.contact?.trim() || null,
     sold_on: input.soldOn || undefined,
     note: input.note?.trim() || null,
     recorded_by: staff.staffProfileId,
@@ -119,6 +123,7 @@ export type ScrapItemInput = {
  */
 export async function recordScrapSales(input: {
   buyer: string | null;
+  contact: string | null;
   soldOn: string | null;
   note: string | null;
   items: ScrapItemInput[];
@@ -128,6 +133,7 @@ export async function recordScrapSales(input: {
 
   const staff = await requireActiveStaff();
   const buyer = input.buyer?.trim() || null;
+  const contact = input.contact?.trim() || null;
   const note = input.note?.trim() || null;
   const soldOn = input.soldOn || undefined;
 
@@ -156,6 +162,7 @@ export async function recordScrapSales(input: {
       per_gram: it.perGram && it.perGram !== '' ? it.perGram : null,
       karat: it.karat?.trim() || null,
       buyer,
+      contact_number: contact,
       sold_on: soldOn,
       note,
       recorded_by: staff.staffProfileId,
@@ -187,6 +194,7 @@ export type ScrapEditInput = {
   grams: string | null;
   amount: string | null;
   buyer: string | null;
+  contact: string | null;
   karat: string | null;
   perGram: string | null;
   soldOn: string | null;
@@ -225,6 +233,7 @@ export async function updateScrapSale(
     p_grams: input.grams,
     p_amount: input.amount,
     p_buyer: input.buyer?.trim() || null,
+    p_contact: input.contact?.trim() || null,
     p_karat: input.karat?.trim() || null,
     p_per_gram: input.perGram && input.perGram !== '' ? input.perGram : null,
     p_sold_on: input.soldOn || null,
@@ -251,7 +260,7 @@ export async function listScrapSales(
   const base = supabase
     .from('scrap_sales')
     .select(
-      'id, material, grams, amount, buyer, karat, per_gram, sold_on, note, created_at, recorded_by, staff_profiles!scrap_sales_recorded_by_fkey ( full_name )',
+      'id, material, grams, amount, buyer, contact_number, karat, per_gram, sold_on, note, created_at, recorded_by, staff_profiles!scrap_sales_recorded_by_fkey ( full_name )',
     )
     .order('sold_on', { ascending: false })
     .limit(limit);
@@ -278,6 +287,7 @@ export async function listScrapSales(
       grams: String(r.grams),
       amount: String(r.amount),
       buyer: (r.buyer as string | null) ?? null,
+      contact: (r.contact_number as string | null) ?? null,
       karat: (r.karat as string | null) ?? null,
       perGram: pg === null || pg === undefined ? null : String(pg),
       soldOn: r.sold_on as string,

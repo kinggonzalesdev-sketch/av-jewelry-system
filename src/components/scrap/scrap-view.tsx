@@ -46,16 +46,30 @@ export function ScrapView({
   // Order. The per-material income totals above are unchanged (still summed per row).
   const groups = useMemo(() => groupScrapSales(sales), [sales]);
 
-  // Render pagination (25/page) — windows the rendered GROUPS; resets on a new range.
+  // Search the grouped transactions by Customer Name or Contact Number (client-side
+  // over the loaded rows, honestly labelled).
+  const [search, setSearch] = useState('');
+  const filteredGroups = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return groups;
+    return groups.filter(
+      (g) =>
+        (g.buyer ?? '').toLowerCase().includes(q) ||
+        (g.contact ?? '').toLowerCase().includes(q),
+    );
+  }, [groups, search]);
+
+  // Render pagination (25/page) — windows the rendered GROUPS; resets on a new range
+  // or search.
   const [scrapPage, setScrapPage] = useState(1);
   const [scrapPageSize, setScrapPageSize] = useState(25);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setScrapPage(1);
-  }, [sales]);
-  const scrapPageCount = Math.max(1, Math.ceil(groups.length / scrapPageSize));
+  }, [sales, search]);
+  const scrapPageCount = Math.max(1, Math.ceil(filteredGroups.length / scrapPageSize));
   const scrapPageSafe = Math.min(scrapPage, scrapPageCount);
-  const pagedGroups = groups.slice(
+  const pagedGroups = filteredGroups.slice(
     (scrapPageSafe - 1) * scrapPageSize,
     scrapPageSafe * scrapPageSize,
   );
@@ -79,6 +93,7 @@ export function ScrapView({
           { header: 'Per Gram', value: (s) => s.perGram ?? '' },
           { header: 'Amount', value: (s) => s.amount },
           { header: 'Customer Name', value: (s) => s.buyer ?? '' },
+          { header: 'Contact Number', value: (s) => s.contact ?? '' },
           { header: 'Sold On', value: (s) => s.soldOn },
           { header: 'Note', value: (s) => s.note ?? '' },
         ],
@@ -168,19 +183,28 @@ export function ScrapView({
 
       {/* Recent scrap sales */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
           <CardTitle className="text-base">Recent scrap sales</CardTitle>
+          <Input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by customer name or contact number"
+            className="h-9 w-full sm:w-72"
+            data-testid="scrap-search"
+          />
         </CardHeader>
         <CardContent>
           {/* Built from the shared table components (the reference migration). */}
           <DataTable
-            minWidth="880px"
+            minWidth="960px"
             spacious
-            columns={['20%', '14%', '13%', '15%', '14%', '12%', '12%']}
+            columns={['17%', '14%', '12%', '11%', '13%', '12%', '10%', '11%']}
           >
             <Thead>
               <Tr plain>
                 <Th kind="center">Customer Name</Th>
+                <Th kind="center">Contact Number</Th>
                 <Th kind="center">Material</Th>
                 <Th kind="center">Grams</Th>
                 <Th kind="center">Amount</Th>
@@ -190,13 +214,18 @@ export function ScrapView({
               </Tr>
             </Thead>
             <tbody>
-              {groups.length === 0 ? (
-                <EmptyRow colSpan={7}>No scrap sales recorded.</EmptyRow>
+              {filteredGroups.length === 0 ? (
+                <EmptyRow colSpan={8}>
+                  {search.trim() ? 'No scrap sales match your search.' : 'No scrap sales recorded.'}
+                </EmptyRow>
               ) : (
                 pagedGroups.map((g) => (
                   <Tr key={g.key}>
                     <Td kind="center" clip title={g.buyer ?? undefined}>
                       {g.buyer ?? '—'}
+                    </Td>
+                    <Td kind="center" clip title={g.contact ?? undefined}>
+                      {g.contact ?? '—'}
                     </Td>
                     <Td kind="center">{g.materialsLabel}</Td>
                     <Td kind="center">{g.totalGrams}</Td>
@@ -218,11 +247,11 @@ export function ScrapView({
               )}
             </tbody>
           </DataTable>
-          {groups.length > 0 ? (
+          {filteredGroups.length > 0 ? (
             <Pagination
               page={scrapPageSafe}
               pageCount={scrapPageCount}
-              total={groups.length}
+              total={filteredGroups.length}
               pageSize={scrapPageSize}
               onPageChange={setScrapPage}
               onPageSizeChange={(n) => {

@@ -43,6 +43,7 @@ type EditState = {
   perGram: string;
   amount: string;
   buyer: string;
+  contact: string;
   soldOn: string;
   note: string;
 };
@@ -85,6 +86,7 @@ export function ScrapRowActions({
     perGram: sale.perGram ?? '',
     amount: sale.amount,
     buyer: sale.buyer ?? '',
+    contact: sale.contact ?? '',
     soldOn: sale.soldOn,
     note: sale.note ?? '',
   }));
@@ -99,6 +101,7 @@ export function ScrapRowActions({
       perGram: sale.perGram ?? '',
       amount: sale.amount,
       buyer: sale.buyer ?? '',
+      contact: sale.contact ?? '',
       soldOn: sale.soldOn,
       note: sale.note ?? '',
     });
@@ -123,6 +126,7 @@ export function ScrapRowActions({
       grams: ed.grams,
       amount: ed.amount,
       buyer: ed.buyer.trim() || null,
+      contact: ed.contact.trim() || null,
       karat: ed.karat.trim() || null,
       perGram: ed.perGram || null,
       soldOn: ed.soldOn || null,
@@ -246,7 +250,7 @@ export function ScrapRowActions({
         }
       >
         <div className="grid gap-3 sm:grid-cols-2" onClick={(e) => e.stopPropagation()}>
-          <div className="sm:col-span-2">
+          <div>
             <Label htmlFor={`ed-customer-${sale.id}`} className="text-xs">
               Customer Name
             </Label>
@@ -255,6 +259,20 @@ export function ScrapRowActions({
               value={ed.buyer}
               onChange={(e) => setEd((s) => ({ ...s, buyer: e.target.value }))}
               autoComplete="off"
+              className="mt-1 h-9"
+            />
+          </div>
+          <div>
+            <Label htmlFor={`ed-contact-${sale.id}`} className="text-xs">
+              Contact Number
+            </Label>
+            <Input
+              id={`ed-contact-${sale.id}`}
+              value={ed.contact}
+              onChange={(e) => setEd((s) => ({ ...s, contact: e.target.value }))}
+              placeholder="e.g. 0917 123 4567"
+              autoComplete="off"
+              inputMode="tel"
               className="mt-1 h-9"
             />
           </div>

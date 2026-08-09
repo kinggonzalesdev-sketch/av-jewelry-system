@@ -51,6 +51,7 @@ export function ScrapEntryModal({
 }) {
   const router = useRouter();
   const [customer, setCustomer] = useState('');
+  const [contact, setContact] = useState('');
   const [soldOn, setSoldOn] = useState(soldOnDefault);
   const [note, setNote] = useState('');
   const [items, setItems] = useState<Item[]>([blankItem()]);
@@ -70,6 +71,7 @@ export function ScrapEntryModal({
 
   const reset = () => {
     setCustomer('');
+    setContact('');
     setSoldOn(soldOnDefault);
     setNote('');
     setItems([blankItem()]);
@@ -98,11 +100,13 @@ export function ScrapEntryModal({
     setError(null);
     const payload: {
       buyer: string | null;
+      contact: string | null;
       soldOn: string | null;
       note: string | null;
       items: ScrapItemInput[];
     } = {
       buyer: customer.trim() || null,
+      contact: contact.trim() || null,
       soldOn: soldOn || null,
       note: note.trim() || null,
       items: items.map((it) => ({
@@ -148,7 +152,7 @@ export function ScrapEntryModal({
       }
     >
       <div className="space-y-4">
-        {/* Shared header — Customer Name + Sold On. */}
+        {/* Shared header — Customer Name + Contact Number + Sold On. */}
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <Label htmlFor="scrap-customer" className="text-xs">
@@ -160,6 +164,20 @@ export function ScrapEntryModal({
               onChange={(e) => setCustomer(e.target.value)}
               placeholder="Customer / buyer name"
               autoComplete="off"
+              className="mt-1 h-9"
+            />
+          </div>
+          <div>
+            <Label htmlFor="scrap-contact" className="text-xs">
+              Contact Number
+            </Label>
+            <Input
+              id="scrap-contact"
+              value={contact}
+              onChange={(e) => setContact(e.target.value)}
+              placeholder="e.g. 0917 123 4567"
+              autoComplete="off"
+              inputMode="tel"
               className="mt-1 h-9"
             />
           </div>
