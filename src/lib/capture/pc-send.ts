@@ -3,6 +3,8 @@ import 'server-only';
 import { requirePermission } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 import {
+  conversationBelongsToPage,
+  getActivePancakePageId,
   resolveConversationForName,
   sendPancakeConversationMessage,
 } from '@/lib/integrations/pancake';
@@ -76,9 +78,14 @@ export async function sendPendingCaptureToMessenger(
 
   const fbName = ocrStr(row.ocr, 'fbName', 'fb_name', 'name');
 
-  // Resolve the conversation: prefer one already stored on the capture; otherwise
-  // resolve it from the OCR'd Facebook name (never guessing an ambiguous name).
+  // Resolve the conversation: prefer one already stored on the capture — but ONLY if it
+  // lives on the active send page (a link on another page is undeliverable). Otherwise
+  // resolve from the OCR'd Facebook name (page-aware, never guessing an ambiguous name).
+  const activePage = await getActivePancakePageId();
   let conversationId = (row.pancake_conversation_id ?? '').trim() || null;
+  if (conversationId && !conversationBelongsToPage(conversationId, activePage)) {
+    conversationId = null;
+  }
   if (!conversationId) {
     if (!fbName) {
       return {

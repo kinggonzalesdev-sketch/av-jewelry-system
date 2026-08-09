@@ -2,7 +2,11 @@ import 'server-only';
 
 import { recordAuditEvent } from '@/lib/audit/log';
 import { AuthorizationError, requireActiveStaff, requireOwnerOrAdmin } from '@/lib/authz/guard';
-import { sendPancakeConversationMessage } from '@/lib/integrations/pancake';
+import {
+  conversationBelongsToPage,
+  getActivePancakePageId,
+  sendPancakeConversationMessage,
+} from '@/lib/integrations/pancake';
 import { renderOrderMessage } from '@/lib/messaging/templates';
 import { createClient } from '@/lib/supabase/server';
 import type { CustomerMatchInfo } from '@/lib/orders/customer-match-types';
@@ -93,16 +97,24 @@ async function deliverOrderMessageViaPancake(
     // Prefer the ORDER's OWN confirmed conversation (spec §6/§7) — it is the exact chat
     // for this transaction and survives customer-profile edits — then fall back to the
     // customer's default link.
-    const orderConv = response.data?.fb_pancake_conversation_id;
-    const conversationId =
-      orderConv && orderConv.trim() ? orderConv : one?.pancake_conversation_id;
-    if (!conversationId || !conversationId.trim()) {
+    // Only a link on the ACTIVE send page can be delivered — a wrong-page link would be
+    // rejected ("conversation_id not found"), so skip it and report "no chat linked yet"
+    // honestly instead of a cryptic failure.
+    const activePage = await getActivePancakePageId();
+    const orderConv = (response.data?.fb_pancake_conversation_id ?? '').trim();
+    const custConv = (one?.pancake_conversation_id ?? '').trim();
+    const conversationId = conversationBelongsToPage(orderConv, activePage)
+      ? orderConv
+      : conversationBelongsToPage(custConv, activePage)
+        ? custConv
+        : '';
+    if (!conversationId) {
       return { attempted: false, delivered: false, error: null };
     }
     // Attach the item screenshot/photo when the order has one (best-effort).
     const attachmentUrl = await findOrderImageUrl(supabase, officialOrderId).catch(() => null);
     const res = await sendPancakeConversationMessage({
-      conversationId: conversationId.trim(),
+      conversationId,
       message,
       attachmentUrl,
     });
@@ -759,10 +771,17 @@ export async function autoSendCaptureForOrder(orderId: string): Promise<void> {
     type Cust = { pancake_conversation_id?: string | null };
     const cust = data?.customers as Cust | Cust[] | null | undefined;
     const one = Array.isArray(cust) ? cust[0] : cust;
-    const orderConv = data?.fb_pancake_conversation_id;
-    const conv =
-      orderConv && orderConv.trim() ? orderConv.trim() : (one?.pancake_conversation_id ?? '').trim();
-    if (!conv) return; // not linked yet — the on-link hook will fire when it is
+    // Only a link on the active send page is deliverable (a wrong-page link is rejected);
+    // skip it so the on-link hook can set a correct one later.
+    const activePage = await getActivePancakePageId();
+    const orderConv = (data?.fb_pancake_conversation_id ?? '').trim();
+    const custConv = (one?.pancake_conversation_id ?? '').trim();
+    const conv = conversationBelongsToPage(orderConv, activePage)
+      ? orderConv
+      : conversationBelongsToPage(custConv, activePage)
+        ? custConv
+        : '';
+    if (!conv) return; // not linked on this page yet — the on-link hook will fire when it is
     await autoSendCaptureScreenshotOnLink(supabase, orderId, conv);
   } catch {
     /* best-effort — never blocks the caller */

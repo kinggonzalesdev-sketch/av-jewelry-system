@@ -266,6 +266,43 @@ export async function getSelectedPancakePage(): Promise<SelectedPancakePage | nu
   };
 }
 
+/**
+ * The Facebook Page every send goes out from. pages.fm conversation ids are
+ * `{page_id}_{psid}`, so a conversation only exists on ITS page — a message to a
+ * conversation on any other page is rejected ("conversation_id not found", code 120).
+ *
+ * ENV is primary (the send has always used `PANCAKE_PAGE_ID`, and it is validated in
+ * prod), with the UI-selected Page as a fallback for environments that never set the
+ * env. The SAME id is used by both the sender and the conversation resolver below, so
+ * the page-filter can only ever skip a link the send could not have delivered anyway.
+ */
+export async function getActivePancakePageId(): Promise<string> {
+  const fromEnv = (process.env.PANCAKE_PAGE_ID || '').trim();
+  if (fromEnv) return fromEnv;
+  try {
+    const selected = await getSelectedPancakePage();
+    return (selected?.pageId ?? '').trim();
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * True when `conversationId` belongs to `pageId` (i.e. we can actually message it).
+ * Pure + exported so it is unit-testable. When the active page is unknown ('') we do
+ * NOT filter — being permissive there preserves the old behaviour rather than dropping
+ * every link. A null/empty conversation id is never usable.
+ */
+export function conversationBelongsToPage(
+  conversationId: string | null | undefined,
+  pageId: string,
+): boolean {
+  const id = (conversationId ?? '').trim();
+  if (!id) return false;
+  if (!pageId) return true;
+  return id.startsWith(`${pageId}_`);
+}
+
 /** How many active customers already have a Pancake conversation linked. This is the
  *  PERSISTENT proof that Send Invoice / Reminder can auto-deliver — the links live in
  *  the database, so they survive refreshes and never need re-linking unless customers
@@ -446,8 +483,8 @@ export async function sendPancakeConversationMessage(input: {
       pancakeMessageId: null,
     };
   }
-  const pageId = process.env.PANCAKE_PAGE_ID;
-  if (!pageId || !pageId.trim()) {
+  const pageId = await getActivePancakePageId();
+  if (!pageId) {
     return {
       ok: false,
       code: 'page_missing',
@@ -1084,7 +1121,7 @@ export async function findRecentPancakeConversationByName(
   const token = (pageToken || process.env.PANCAKE_USER_ACCESS_TOKEN || '').trim();
   const tokenParam =
     process.env.PANCAKE_SEND_TOKEN_PARAM || (pageToken ? 'page_access_token' : 'access_token');
-  const pageId = (process.env.PANCAKE_PAGE_ID || '').trim();
+  const pageId = await getActivePancakePageId();
   if (!token || !pageId) return { conversationId: null, matchCount: 0 };
 
   const base = resolvePancakeApiBase();
@@ -1198,33 +1235,43 @@ export async function resolveConversationForName(
     pancake_conversation_id: string | null;
   }>;
 
-  // Tier 1a — EXACT full-name; a unique linked customer wins.
+  // A stored link can only be messaged if it lives on the ACTIVE send page — a link on
+  // ANOTHER page is rejected by Pancake ("conversation_id not found", code 120). So a
+  // wrong-page link is treated as UNLINKED: it never wins tier 1 and never blocks the
+  // correct on-page match; the name falls through to the live lookup, which searches
+  // the active page. This is the fix for multi-page link clutter from earlier syncs.
+  const activePage = await getActivePancakePageId();
+  const usable = (id: string | null) => conversationBelongsToPage(id, activePage);
+
+  // Tier 1a — EXACT full-name; a unique link ON THE ACTIVE PAGE wins.
   const exact = rows.filter((c) => normalizeName(c.display_name ?? '') === norm);
-  const exactLinked = exact.filter((c) => c.pancake_conversation_id);
-  if (exactLinked.length === 1) {
+  const exactUsable = exact.filter((c) => usable(c.pancake_conversation_id));
+  if (exactUsable.length === 1) {
     return {
-      conversationId: exactLinked[0]?.pancake_conversation_id ?? null,
+      conversationId: exactUsable[0]?.pancake_conversation_id ?? null,
       matchCount: exact.length,
       source: 'customer',
     };
   }
-  // A name shared by 2+ known customers is ambiguous — never guess.
-  if (exact.length > 1) return { conversationId: null, matchCount: exact.length, source: 'none' };
+  // 2+ DIFFERENT on-page links for the same name is genuinely ambiguous — never guess.
+  if (exactUsable.length > 1) {
+    return { conversationId: null, matchCount: exactUsable.length, source: 'none' };
+  }
 
-  // Tier 1b — FIRST+LAST (middle-name tolerant), unique linked customer only.
+  // Tier 1b — FIRST+LAST (middle-name tolerant), unique on-page link only.
   const key = nameKey(name);
-  const flLinked = rows.filter(
-    (c) => nameKey(c.display_name ?? '') === key && c.pancake_conversation_id,
+  const flUsable = rows.filter(
+    (c) => nameKey(c.display_name ?? '') === key && usable(c.pancake_conversation_id),
   );
-  if (flLinked.length === 1) {
+  if (flUsable.length === 1) {
     return {
-      conversationId: flLinked[0]?.pancake_conversation_id ?? null,
+      conversationId: flUsable[0]?.pancake_conversation_id ?? null,
       matchCount: 1,
       source: 'customer_first_last',
     };
   }
-  if (flLinked.length > 1) {
-    return { conversationId: null, matchCount: flLinked.length, source: 'none' };
+  if (flUsable.length > 1) {
+    return { conversationId: null, matchCount: flUsable.length, source: 'none' };
   }
 
   // Tier 2 — LIVE lookup (returns a single unambiguous conversation, else null).
