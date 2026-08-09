@@ -146,7 +146,7 @@ export function ApprovalsView({
         >
           <Thead>
             <Tr plain>
-              <Th>Type</Th>
+              <Th kind="center">Type</Th>
               <Th>Reference</Th>
               <Th>Customer / Item</Th>
               <Th>Requested By</Th>
@@ -159,7 +159,7 @@ export function ApprovalsView({
           <tbody>
             {rows.map((a) => (
               <Tr key={a.id}>
-                <Td clip title={humanize(a.actionKind)} className="font-medium capitalize">
+                <Td kind="center" clip title={humanize(a.actionKind)} className="font-medium capitalize">
                   {humanize(a.actionKind)}
                 </Td>
                 <Td clip className="font-mono text-xs">

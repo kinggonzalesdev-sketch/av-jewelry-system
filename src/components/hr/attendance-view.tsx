@@ -155,7 +155,7 @@ export function AttendanceView({
                   </colgroup>
                   <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
                     <tr>
-                      <th className="whitespace-nowrap px-3 py-2.5 text-left font-medium">Employee</th>
+                      <th className="whitespace-nowrap px-3 py-2.5 text-center font-medium">Employee</th>
                       <th className="whitespace-nowrap px-3 py-2.5 text-center font-medium">Role</th>
                       <th className="min-w-[7rem] whitespace-nowrap px-3 py-2.5 text-right font-medium">
                         Regular Hours
@@ -186,7 +186,7 @@ export function AttendanceView({
                       const paid = snap?.paymentStatus === 'paid';
                       return (
                       <tr key={r.staffProfileId} className="border-b last:border-0">
-                        <td className="whitespace-nowrap px-3 py-2.5 font-medium">{r.fullName}</td>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-center font-medium">{r.fullName}</td>
                         <td className="whitespace-nowrap px-3 py-2.5 text-center capitalize text-muted-foreground">
                           {r.roleKey.replace(/_/g, ' ')}
                         </td>
