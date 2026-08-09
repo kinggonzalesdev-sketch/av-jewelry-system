@@ -23,6 +23,7 @@ import { readStickerFields, readStickerPricePerGram } from '@/lib/print/sticker-
 import type { CaptureItem, WalkInItem } from '@/lib/orders/service';
 import type { AdminNameContext } from '@/lib/authz/admin-name';
 import { Button } from '@/components/ui/button';
+import { Modal } from '@/components/ui/modal';
 
 /**
  * Incoming Captures — the PC's live station. Floating-screenshot captures uploaded
@@ -232,45 +233,40 @@ export function IncomingCapturesStrip({
     };
   };
 
-  // Hidden until opened via the pill (all hooks above still run, so auto-print keeps
-  // working in the background even while the panel is closed).
-  if (rows.length === 0 || !open) return null;
-
+  // The strip is a POPUP: it renders nothing until the operator opens it from the
+  // "Capture Pending" pill (Owner request 2026-08-09 — it must never appear on its
+  // own). The component stays mounted the whole time (every hook above keeps
+  // running), so background auto-print is unaffected; a CLOSED Modal renders
+  // nothing at all (it portals only when open), so it cannot show on page load.
   return (
-    <section
-      className="rounded-xl border border-gold/40 bg-gold/5 p-4"
-      data-testid="incoming-captures"
-      aria-labelledby="incoming-captures-h"
-    >
-      <div className="flex items-start justify-between gap-2">
-        <h2 id="incoming-captures-h" className="text-sm font-semibold text-gold-strong">
-          Incoming Captures ({rows.length})
-        </h2>
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          aria-label="Hide incoming captures"
-          data-testid="incoming-captures-close"
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border text-sm text-muted-foreground hover:bg-accent"
-        >
-          ✕
-        </button>
-      </div>
-      <p className="mb-3 mt-0.5 text-xs text-muted-foreground">
-        Screenshots from the floating button. The label prints{' '}
-        <strong>Name / grams • ₱rate/g / date</strong> — the rate comes from{' '}
-        <strong>Sticker Settings</strong>. Confirm the grams and tap <strong>Print</strong>{' '}
-        for the label, <strong>Use</strong> to create the order, or Dismiss to discard.
-        Auto-print (set in Sticker Settings) prints on its own only when the weight was
-        read confidently.
-      </p>
-      {error ? (
-        <p role="alert" className="mb-2 text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
-      <ul className="space-y-2">
-        {rows.map((r) => (
+    <>
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title={`Incoming Captures${rows.length ? ` (${rows.length})` : ''}`}
+        size="lg"
+      >
+        <div data-testid="incoming-captures" className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Screenshots from the floating button. The label prints{' '}
+            <strong>Name / grams • ₱rate/g / date</strong> — the rate comes from{' '}
+            <strong>Sticker Settings</strong>. Confirm the grams and tap{' '}
+            <strong>Print</strong> for the label, <strong>Use</strong> to create the
+            order, or Dismiss to discard. Auto-print (set in Sticker Settings) prints on
+            its own only when the weight was read confidently.
+          </p>
+          {error ? (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
+          {rows.length === 0 ? (
+            <p className="rounded-md border border-border bg-card/60 px-3 py-6 text-center text-sm text-muted-foreground">
+              No incoming captures right now.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {rows.map((r) => (
           <li
             key={r.captureRecordId}
             className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-card/60 px-3 py-2 text-sm"
@@ -336,7 +332,10 @@ export function IncomingCapturesStrip({
               <Button
                 type="button"
                 size="sm"
-                onClick={() => setSelected(r)}
+                onClick={() => {
+                  setSelected(r);
+                  setOpen(false);
+                }}
                 data-testid={`incoming-use-${r.captureRecordId}`}
               >
                 Use
@@ -353,7 +352,10 @@ export function IncomingCapturesStrip({
             </div>
           </li>
         ))}
-      </ul>
+            </ul>
+          )}
+        </div>
+      </Modal>
 
       {selected ? (
         <NewOrderModal
@@ -368,6 +370,6 @@ export function IncomingCapturesStrip({
           }}
         />
       ) : null}
-    </section>
+    </>
   );
 }
