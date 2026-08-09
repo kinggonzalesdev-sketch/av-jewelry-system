@@ -52,10 +52,7 @@ export default async function PayrollPage({
 
   return (
     <div>
-      <PageHeader
-        title="Payroll"
-        description="Derived from attendance in SQL. You see your own; the Owner and authorized Admin see all, set rates, and mark payroll paid."
-      />
+      <PageHeader title="Payroll" />
       <PayrollTabs
         payroll={payroll}
         payslips={payslips}

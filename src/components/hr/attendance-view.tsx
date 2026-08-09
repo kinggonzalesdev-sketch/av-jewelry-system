@@ -236,12 +236,6 @@ export function AttendanceView({
                     })}
                   </tbody>
                 </table>
-                {isOwner ? (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Set a rate below to compute salary — clear it to blank the salary
-                    again.
-                  </p>
-                ) : null}
               </div>
             )}
           </CardContent>
