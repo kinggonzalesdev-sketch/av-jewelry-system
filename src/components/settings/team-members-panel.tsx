@@ -242,9 +242,16 @@ export function TeamMembersPanel({
             className="data-table w-full min-w-[520px] text-left text-sm"
             data-testid="team-roster"
           >
+            <colgroup>
+              <col style={{ width: '22%' }} />
+              <col style={{ width: '28%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '21%' }} />
+              <col style={{ width: '15%' }} />
+            </colgroup>
             <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="col-grow px-3 py-2.5 text-left font-medium">Team member</th>
+                <th className="px-3 py-2.5 text-left font-medium">Team member</th>
                 <th className="px-3 py-2.5 text-left font-medium">Sign-in email</th>
                 <th className="px-3 py-2.5 text-center font-medium">Password</th>
                 <th className="px-3 py-2.5 text-left font-medium">Role &amp; Access</th>

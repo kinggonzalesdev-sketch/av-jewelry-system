@@ -142,9 +142,20 @@ export function AttendanceView({
                   className="data-table w-full min-w-[900px] text-left text-sm"
                   data-testid="payroll"
                 >
+                  <colgroup>
+                    <col style={{ width: '20%' }} />
+                    <col style={{ width: '11%' }} />
+                    <col style={{ width: '10%' }} />
+                    <col style={{ width: '10%' }} />
+                    <col style={{ width: '10%' }} />
+                    <col style={{ width: '10%' }} />
+                    <col style={{ width: '8%' }} />
+                    <col style={{ width: '8%' }} />
+                    <col style={{ width: '13%' }} />
+                  </colgroup>
                   <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
                     <tr>
-                      <th className="col-grow whitespace-nowrap px-3 py-2.5 text-left font-medium">Employee</th>
+                      <th className="whitespace-nowrap px-3 py-2.5 text-left font-medium">Employee</th>
                       <th className="whitespace-nowrap px-3 py-2.5 text-center font-medium">Role</th>
                       <th className="min-w-[7rem] whitespace-nowrap px-3 py-2.5 text-right font-medium">
                         Regular Hours
