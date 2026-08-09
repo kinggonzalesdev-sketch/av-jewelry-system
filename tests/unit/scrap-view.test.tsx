@@ -28,6 +28,7 @@ const sales: ScrapSaleRow[] = [
     amount: '12000.00',
     buyer: 'Buyer A',
     contact: '0917 123 4567',
+    paymentMethod: 'GCash',
     karat: '18K',
     perGram: '2000.00',
     soldOn: '2026-07-18',

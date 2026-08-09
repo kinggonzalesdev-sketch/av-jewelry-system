@@ -94,6 +94,7 @@ export function ScrapView({
           { header: 'Amount', value: (s) => s.amount },
           { header: 'Customer Name', value: (s) => s.buyer ?? '' },
           { header: 'Contact Number', value: (s) => s.contact ?? '' },
+          { header: 'Mode of Payment', value: (s) => s.paymentMethod ?? '' },
           { header: 'Sold On', value: (s) => s.soldOn },
           { header: 'Note', value: (s) => s.note ?? '' },
         ],
@@ -183,18 +184,19 @@ export function ScrapView({
 
       {/* Recent scrap sales */}
       <Card>
-        <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
+        <CardHeader>
           <CardTitle className="text-base">Recent scrap sales</CardTitle>
-          <Input
-            type="search"
+        </CardHeader>
+        <CardContent>
+          {/* Full-width search — same length + style as the Orders search bar. */}
+          <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by customer name or contact number"
-            className="h-9 w-full sm:w-72"
+            aria-label="Search scrap sales"
             data-testid="scrap-search"
+            className="mb-3 h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold"
           />
-        </CardHeader>
-        <CardContent>
           {/* Built from the shared table components (the reference migration). */}
           <DataTable
             minWidth="960px"

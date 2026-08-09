@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { recordScrapSalesAction } from '@/lib/scrap/actions';
 import type { ScrapItemInput } from '@/lib/scrap/service';
 import { formatPeso } from '@/lib/payments/format';
+import { PAYMENT_METHOD_OPTIONS, DEFAULT_PAYMENT_METHOD } from '@/lib/payments/methods';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -52,6 +53,7 @@ export function ScrapEntryModal({
   const router = useRouter();
   const [customer, setCustomer] = useState('');
   const [contact, setContact] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<string>(DEFAULT_PAYMENT_METHOD);
   const [soldOn, setSoldOn] = useState(soldOnDefault);
   const [note, setNote] = useState('');
   const [items, setItems] = useState<Item[]>([blankItem()]);
@@ -72,6 +74,7 @@ export function ScrapEntryModal({
   const reset = () => {
     setCustomer('');
     setContact('');
+    setPaymentMethod(DEFAULT_PAYMENT_METHOD);
     setSoldOn(soldOnDefault);
     setNote('');
     setItems([blankItem()]);
@@ -101,12 +104,14 @@ export function ScrapEntryModal({
     const payload: {
       buyer: string | null;
       contact: string | null;
+      paymentMethod: string | null;
       soldOn: string | null;
       note: string | null;
       items: ScrapItemInput[];
     } = {
       buyer: customer.trim() || null,
       contact: contact.trim() || null,
+      paymentMethod: paymentMethod || null,
       soldOn: soldOn || null,
       note: note.trim() || null,
       items: items.map((it) => ({
@@ -192,6 +197,23 @@ export function ScrapEntryModal({
               onChange={(e) => setSoldOn(e.target.value)}
               className="mt-1 h-9"
             />
+          </div>
+          <div>
+            <Label htmlFor="scrap-mop" className="text-xs">
+              Mode of Payment
+            </Label>
+            <select
+              id="scrap-mop"
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value)}
+              className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
+            >
+              {PAYMENT_METHOD_OPTIONS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 

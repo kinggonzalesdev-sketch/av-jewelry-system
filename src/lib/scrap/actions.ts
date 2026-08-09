@@ -32,6 +32,7 @@ export async function recordScrapAction(
     amount: text(formData, 'amount'),
     buyer: text(formData, 'buyer'),
     contact: text(formData, 'contact'),
+    paymentMethod: text(formData, 'paymentMethod'),
     soldOn: text(formData, 'soldOn'),
     note: text(formData, 'note'),
   });
@@ -47,6 +48,7 @@ export async function recordScrapAction(
 export async function recordScrapSalesAction(input: {
   buyer: string | null;
   contact: string | null;
+  paymentMethod: string | null;
   soldOn: string | null;
   note: string | null;
   items: ScrapItemInput[];

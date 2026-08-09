@@ -6,6 +6,7 @@ import { useRef, useState } from 'react';
 import { deleteScrapSaleAction, updateScrapSaleAction } from '@/lib/scrap/actions';
 import type { ScrapSaleRow } from '@/lib/scrap/service';
 import { formatPeso } from '@/lib/payments/format';
+import { PAYMENT_METHOD_OPTIONS } from '@/lib/payments/methods';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -44,6 +45,7 @@ type EditState = {
   amount: string;
   buyer: string;
   contact: string;
+  paymentMethod: string;
   soldOn: string;
   note: string;
 };
@@ -87,6 +89,7 @@ export function ScrapRowActions({
     amount: sale.amount,
     buyer: sale.buyer ?? '',
     contact: sale.contact ?? '',
+    paymentMethod: sale.paymentMethod ?? '',
     soldOn: sale.soldOn,
     note: sale.note ?? '',
   }));
@@ -102,6 +105,7 @@ export function ScrapRowActions({
       amount: sale.amount,
       buyer: sale.buyer ?? '',
       contact: sale.contact ?? '',
+      paymentMethod: sale.paymentMethod ?? '',
       soldOn: sale.soldOn,
       note: sale.note ?? '',
     });
@@ -127,6 +131,7 @@ export function ScrapRowActions({
       amount: ed.amount,
       buyer: ed.buyer.trim() || null,
       contact: ed.contact.trim() || null,
+      paymentMethod: ed.paymentMethod || null,
       karat: ed.karat.trim() || null,
       perGram: ed.perGram || null,
       soldOn: ed.soldOn || null,
@@ -275,6 +280,24 @@ export function ScrapRowActions({
               inputMode="tel"
               className="mt-1 h-9"
             />
+          </div>
+          <div>
+            <Label htmlFor={`ed-mop-${sale.id}`} className="text-xs">
+              Mode of Payment
+            </Label>
+            <select
+              id={`ed-mop-${sale.id}`}
+              value={ed.paymentMethod}
+              onChange={(e) => setEd((s) => ({ ...s, paymentMethod: e.target.value }))}
+              className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
+            >
+              <option value="">—</option>
+              {PAYMENT_METHOD_OPTIONS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <Label htmlFor={`ed-material-${sale.id}`} className="text-xs">

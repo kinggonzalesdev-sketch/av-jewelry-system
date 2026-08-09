@@ -7,8 +7,8 @@ import type { OrderLineItemDetail } from '@/lib/orders/detail-types';
 const remove = vi.fn(() => Promise.resolve({ ok: true as const }));
 const split = vi.fn(() => Promise.resolve({ ok: true as const, orderNumber: 'ORD-2026-000999' }));
 vi.mock('@/lib/orders/actions', () => ({
-  removeOrderItemAction: (...a: unknown[]) => remove(...a),
-  splitOrderItemAction: (...a: unknown[]) => split(...a),
+  removeOrderItemAction: () => remove(),
+  splitOrderItemAction: () => split(),
 }));
 
 function item(over: Partial<OrderLineItemDetail> = {}): OrderLineItemDetail {
