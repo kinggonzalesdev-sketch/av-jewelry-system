@@ -70,16 +70,24 @@ describe('ScrapView', () => {
     expect(screen.getByTestId('scrap-item-1')).toBeInTheDocument();
   });
 
-  it('shows an Edit action on a row when allowed', () => {
+  it('groups a customer into one row; the View lists the pieces with Edit/Delete', () => {
     render(
       <ScrapView income={income} sales={sales} from="2026-07-01" to="2026-07-18" canDelete />,
     );
+    // One grouped row for Buyer A (key = "<buyer> <soldOn>").
+    expect(screen.getByText('Buyer A')).toBeInTheDocument();
+    // Per-item Edit / Delete live INSIDE the grouped View, not on the table row.
+    expect(screen.queryByTestId('scrap-edit-s1')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    expect(screen.getByTestId('scrap-group-body')).toBeInTheDocument();
     expect(screen.getByTestId('scrap-edit-s1')).toBeInTheDocument();
     expect(screen.getByTestId('scrap-delete-s1')).toBeInTheDocument();
   });
 
-  it('hides Edit / Delete when not allowed', () => {
+  it('hides per-item Edit / Delete inside the View when not allowed', () => {
     render(<ScrapView income={income} sales={sales} from="2026-07-01" to="2026-07-18" />);
+    fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    expect(screen.getByTestId('scrap-group-body')).toBeInTheDocument();
     expect(screen.queryByTestId('scrap-edit-s1')).not.toBeInTheDocument();
     expect(screen.queryByTestId('scrap-delete-s1')).not.toBeInTheDocument();
   });

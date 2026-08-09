@@ -59,10 +59,14 @@ export function ScrapRowActions({
   sale,
   canDelete,
   canEdit = false,
+  compact = false,
 }: {
   sale: ScrapSaleRow;
   canDelete: boolean;
   canEdit?: boolean;
+  /** Inside the grouped View popup the row is already being viewed, so the "View"
+   *  button is hidden and only Edit / Delete remain. */
+  compact?: boolean;
 }) {
   const router = useRouter();
   const [viewing, setViewing] = useState(false);
@@ -154,14 +158,16 @@ export function ScrapRowActions({
 
   return (
     <div className="flex flex-nowrap items-center justify-center gap-2">
-      <button
-        type="button"
-        onClick={() => setViewing(true)}
-        data-testid={`scrap-view-${sale.id}`}
-        className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
-      >
-        View
-      </button>
+      {!compact ? (
+        <button
+          type="button"
+          onClick={() => setViewing(true)}
+          data-testid={`scrap-view-${sale.id}`}
+          className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+        >
+          View
+        </button>
+      ) : null}
       {canEdit ? (
         <button
           type="button"

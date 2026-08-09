@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
 import { formatPeso } from '@/lib/payments/format';
+import { formatDate } from '@/lib/format/date';
 
 /**
  * ONE table style for every data table in MineFlow (Orders, Customers, Inventory,
@@ -247,11 +248,12 @@ export function MoneyCell({
   );
 }
 
-/** A date cell — centered, ISO date (YYYY-MM-DD), em dash when empty. */
+/** A date cell — centered, long "Month Day, Year" (Owner request 2026-08-09), em
+ *  dash when empty. */
 export function DateCell({ value, className }: { value: string | null | undefined; className?: string }) {
   return (
     <Td kind="center" className={className}>
-      {value ? String(value).slice(0, 10) : '—'}
+      {value ? formatDate(value) : '—'}
     </Td>
   );
 }

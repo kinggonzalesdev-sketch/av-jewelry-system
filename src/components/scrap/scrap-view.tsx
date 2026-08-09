@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import type { ScrapIncomeResult, ScrapSaleRow } from '@/lib/scrap/service';
-import { ScrapRowActions } from '@/components/scrap/scrap-row-actions';
+import { ScrapGroupView, groupScrapSales } from '@/components/scrap/scrap-group-view';
 import { ScrapEntryModal } from '@/components/scrap/scrap-entry-modal';
 import { downloadCsv } from '@/lib/export/csv';
 import { formatPeso } from '@/lib/payments/format';
@@ -40,16 +40,22 @@ export function ScrapView({
   // Guards a repeat Export click while the file is being built.
   const [exporting, setExporting] = useState(false);
 
-  // Render pagination (25/page) — windows the rendered rows; resets on a new date range.
+  // Group the per-piece rows into ONE row per transaction — same Customer Name +
+  // Sold On date — so a customer's whole sale is a single row even with many pieces
+  // (Owner request 2026-08-09); the View popup lists the pieces like a multi-item
+  // Order. The per-material income totals above are unchanged (still summed per row).
+  const groups = useMemo(() => groupScrapSales(sales), [sales]);
+
+  // Render pagination (25/page) — windows the rendered GROUPS; resets on a new range.
   const [scrapPage, setScrapPage] = useState(1);
   const [scrapPageSize, setScrapPageSize] = useState(25);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setScrapPage(1);
   }, [sales]);
-  const scrapPageCount = Math.max(1, Math.ceil(sales.length / scrapPageSize));
+  const scrapPageCount = Math.max(1, Math.ceil(groups.length / scrapPageSize));
   const scrapPageSafe = Math.min(scrapPage, scrapPageCount);
-  const pagedSales = sales.slice(
+  const pagedGroups = groups.slice(
     (scrapPageSafe - 1) * scrapPageSize,
     scrapPageSafe * scrapPageSize,
   );
@@ -170,13 +176,12 @@ export function ScrapView({
           <DataTable
             minWidth="880px"
             spacious
-            columns={['15%', '13%', '12%', '10%', '13%', '12%', '10%', '15%']}
+            columns={['20%', '14%', '13%', '15%', '14%', '12%', '12%']}
           >
             <Thead>
               <Tr plain>
                 <Th kind="center">Customer Name</Th>
                 <Th kind="center">Material</Th>
-                <Th kind="center">Karat</Th>
                 <Th kind="center">Grams</Th>
                 <Th kind="center">Amount</Th>
                 <Th kind="center">Sold On</Th>
@@ -185,42 +190,39 @@ export function ScrapView({
               </Tr>
             </Thead>
             <tbody>
-              {sales.length === 0 ? (
-                <EmptyRow colSpan={8}>No scrap sales recorded.</EmptyRow>
+              {groups.length === 0 ? (
+                <EmptyRow colSpan={7}>No scrap sales recorded.</EmptyRow>
               ) : (
-                pagedSales.map((s) => (
-                  <Tr key={s.id}>
-                    <Td kind="center" clip title={s.buyer ?? undefined}>
-                      {s.buyer ?? '—'}
+                pagedGroups.map((g) => (
+                  <Tr key={g.key}>
+                    <Td kind="center" clip title={g.buyer ?? undefined}>
+                      {g.buyer ?? '—'}
                     </Td>
-                    <Td kind="center" className="capitalize">
-                      {s.material}
-                    </Td>
-                    <Td kind="center">{s.karat ?? '—'}</Td>
-                    <Td kind="center">{s.grams}</Td>
-                    <Td kind="center">{formatPeso(s.amount)}</Td>
-                    <DateCell value={s.soldOn} />
+                    <Td kind="center">{g.materialsLabel}</Td>
+                    <Td kind="center">{g.totalGrams}</Td>
+                    <Td kind="center">{formatPeso(g.totalAmount)}</Td>
+                    <DateCell value={g.soldOn} />
                     <Td
                       kind="center"
                       clip
-                      title={s.note ?? undefined}
+                      title={g.note ?? undefined}
                       className="text-muted-foreground"
                     >
-                      {s.note ?? '—'}
+                      {g.note ?? '—'}
                     </Td>
                     <Td kind="center">
-                      <ScrapRowActions sale={s} canDelete={canDelete} canEdit={canDelete} />
+                      <ScrapGroupView group={g} canManage={canDelete} />
                     </Td>
                   </Tr>
                 ))
               )}
             </tbody>
           </DataTable>
-          {sales.length > 0 ? (
+          {groups.length > 0 ? (
             <Pagination
               page={scrapPageSafe}
               pageCount={scrapPageCount}
-              total={sales.length}
+              total={groups.length}
               pageSize={scrapPageSize}
               onPageChange={setScrapPage}
               onPageSizeChange={(n) => {

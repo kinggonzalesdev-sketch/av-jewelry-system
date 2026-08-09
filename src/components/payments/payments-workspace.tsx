@@ -16,6 +16,7 @@ import {
 import type { PaymentActionState } from '@/lib/payments/action-state';
 import { EMPTY_PAYMENT_STATE } from '@/lib/payments/action-state';
 import { RANGE_LABEL, type DateRangeKey } from '@/lib/payments/format';
+import { formatDate } from '@/lib/format/date';
 import { usePrivacyMoney } from '@/components/shell/privacy';
 import type {
   EvidenceQueueRow,
@@ -1249,7 +1250,7 @@ function LayawayTable({
                   {isCompletedStatus(r.status) ? '—' : cash(r.item)}
                 </td>
                 <td className="col-center whitespace-nowrap px-3 py-2">
-                  {r.datePurchased ?? '—'}
+                  {r.datePurchased ? formatDate(r.datePurchased) : '—'}
                 </td>
                 <td className="col-center px-3 py-2">
                   {(() => {
@@ -1386,7 +1387,9 @@ function CompletedLayawayTable({
                 <td className="px-3 py-2 text-muted-foreground">
                   {[r.financer, r.remarks].filter(Boolean).join(' · ') || '—'}
                 </td>
-                <td className="px-3 py-2 whitespace-nowrap">{r.datePurchased ?? '—'}</td>
+                <td className="px-3 py-2 whitespace-nowrap">
+                  {r.datePurchased ? formatDate(r.datePurchased) : '—'}
+                </td>
                 {/* Completed = fully paid: money columns are intentionally blank
                     (Owner request). */}
                 <td className="px-3 py-2 text-right tabular-nums">—</td>

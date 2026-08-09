@@ -10,7 +10,10 @@ import { OrderEdit } from '@/components/orders/order-edit';
 import { LayawayLedgerViewModal } from '@/components/payments/layaway-ledger-view-modal';
 
 import type { OrderListRow, OrdersResult, PaymentStatus } from '@/lib/orders/service';
-import { TOGGLE_INCOMING_CAPTURES_EVENT } from '@/lib/capture/pending-types';
+import {
+  CAPTURE_COUNT_EVENT,
+  TOGGLE_INCOMING_CAPTURES_EVENT,
+} from '@/lib/capture/pending-types';
 import type { KeepLayawayRow } from '@/lib/payments/layaway-ledger';
 import { Money } from '@/components/shell/privacy';
 import { EmptyState } from '@/components/states/empty-state';
@@ -423,6 +426,18 @@ export function OrdersView({
 
   const router = useRouter();
   const [card, setCard] = useState<CardKey>(openForInvoice ? 'for_invoice' : 'all');
+  // The "Capture Pending" badge starts at the server-rendered count, then tracks the
+  // Incoming Captures strip's LIVE count (same query) so the pill always matches the
+  // popup's "(N)" — the strip broadcasts its count after every load.
+  const [liveCaptureCount, setLiveCaptureCount] = useState(pendingCaptureCount);
+  useEffect(() => {
+    const onCount = (e: Event) => {
+      const n = (e as CustomEvent<number>).detail;
+      if (typeof n === 'number') setLiveCaptureCount(n);
+    };
+    window.addEventListener(CAPTURE_COUNT_EVENT, onCount);
+    return () => window.removeEventListener(CAPTURE_COUNT_EVENT, onCount);
+  }, []);
   // The order whose details modal is open (null = closed). Opening it navigates
   // nowhere, so search/filters/scroll are preserved automatically.
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -504,14 +519,14 @@ export function OrdersView({
       {title ? <PageHeader title={title} /> : null}
       {/* Top action row: + New Order, then Send All Invoices while For Invoice is
           the active card. Hidden otherwise, with no leftover gap. */}
-      {newOrderAction || card === 'for_invoice' || pendingCaptureCount > 0 ? (
+      {newOrderAction || card === 'for_invoice' || liveCaptureCount > 0 ? (
         <div className="flex flex-wrap items-center gap-2">
           {newOrderAction}
           {/* Compact "Capture Pending" pill — amber, only when captures are waiting.
               Lightweight COUNT only; clicking OPENS the Incoming Captures station,
               which stays hidden until then (Owner request 2026-08-09). The station is
               still mounted the whole time for its background auto-print. */}
-          {pendingCaptureCount > 0 ? (
+          {liveCaptureCount > 0 ? (
             <button
               type="button"
               onClick={() =>
@@ -524,7 +539,7 @@ export function OrdersView({
               <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden="true" />
               Capture Pending
               <span className="rounded-full bg-amber-500/20 px-1.5 text-xs font-semibold tabular-nums">
-                {pendingCaptureCount}
+                {liveCaptureCount}
               </span>
             </button>
           ) : null}

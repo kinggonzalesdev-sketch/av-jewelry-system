@@ -14,6 +14,15 @@
  */
 export const TOGGLE_INCOMING_CAPTURES_EVENT = 'mineflow:toggle-incoming-captures';
 
+/**
+ * A window CustomEvent (`detail: number`) the Incoming Captures strip fires after
+ * every load with its CURRENT number of pending captures. The "Capture Pending"
+ * pill listens and shows exactly this, so the pill's badge always matches the
+ * popup's "(N)" — the server-rendered count is only the first-paint placeholder
+ * until the strip's live count arrives (Owner request 2026-08-09).
+ */
+export const CAPTURE_COUNT_EVENT = 'mineflow:capture-count';
+
 /** A floating-screenshot capture waiting on the PC for the operator to turn into an
  *  order. The OCR fields are only a guess — the operator confirms/corrects them. */
 export type PendingCaptureRow = {

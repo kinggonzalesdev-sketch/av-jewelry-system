@@ -7,6 +7,7 @@ import {
   loadPendingCapturesAction,
 } from '@/lib/capture/pending-actions';
 import {
+  CAPTURE_COUNT_EVENT,
   TOGGLE_INCOMING_CAPTURES_EVENT,
   type PendingCaptureRow,
 } from '@/lib/capture/pending-types';
@@ -87,7 +88,12 @@ export function IncomingCapturesStrip({
 
   const load = useCallback(() => {
     loadPendingCapturesAction()
-      .then((data) => setRows(data))
+      .then((data) => {
+        setRows(data);
+        // Tell the "Capture Pending" pill the exact live count so its badge always
+        // matches this popup's "(N)" — same query, one source of truth.
+        window.dispatchEvent(new CustomEvent(CAPTURE_COUNT_EVENT, { detail: data.length }));
+      })
       .catch(() => undefined);
   }, []);
 
