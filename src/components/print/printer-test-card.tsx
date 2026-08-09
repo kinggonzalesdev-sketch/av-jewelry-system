@@ -84,8 +84,12 @@ export function PrinterTestCard() {
         )}
       </div>
 
-      {/* Link the printer (Bluetooth) — same shared connection the live uses. */}
-      {supported && !printer ? (
+      {/* Link the printer (Bluetooth) — same shared connection the live uses. Always
+          shown when no printer is linked (Owner report 2026-08-09: the button went
+          missing on mobile). On a browser without Web Bluetooth — an in-app WebView,
+          iPhone/Safari — tapping it surfaces a clear "use Chrome on Android" message
+          rather than silently hiding the button. */}
+      {!printer ? (
         <Button type="button" size="sm" onClick={() => void connect()} disabled={connecting}>
           {connecting ? 'Connecting…' : 'Connect printer'}
         </Button>
