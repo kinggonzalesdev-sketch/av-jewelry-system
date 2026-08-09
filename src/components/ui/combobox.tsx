@@ -53,9 +53,15 @@ export function Combobox({
 
   const q = value.trim().toLowerCase();
   const exact = options.some((o) => o.toLowerCase() === q);
-  // Show everything when empty or when a full selection is in place; otherwise
-  // filter by what the user is typing.
-  const filtered = q === '' || exact ? options : options.filter((o) => o.toLowerCase().includes(q));
+  // Filter by what the user is typing (show all when empty / a full selection is in
+  // place). The MATCH set searches EVERY option, so any item is findable; only the
+  // RENDERED list is capped so a large catalogue (thousands of items) never paints
+  // thousands of DOM nodes at once — the operator narrows by typing.
+  const MAX_VISIBLE = 50;
+  const matched =
+    q === '' || exact ? options : options.filter((o) => o.toLowerCase().includes(q));
+  const filtered = matched.slice(0, MAX_VISIBLE);
+  const hiddenCount = matched.length - filtered.length;
 
   return (
     <div ref={wrapRef} className="relative">
@@ -115,6 +121,14 @@ export function Combobox({
               {opt}
             </li>
           ))}
+          {hiddenCount > 0 ? (
+            <li
+              className="px-3 py-1.5 text-xs text-muted-foreground"
+              aria-hidden="true"
+            >
+              +{hiddenCount} more — keep typing to narrow…
+            </li>
+          ) : null}
         </ul>
       ) : null}
     </div>

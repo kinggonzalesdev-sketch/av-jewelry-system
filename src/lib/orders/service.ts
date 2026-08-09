@@ -184,38 +184,43 @@ export type CaptureItem = {
 export async function listCaptureItems(): Promise<CaptureItem[]> {
   const supabase = await createClient();
 
-  // SCALES to 20k+ items: load only the most-recent AVAILABLE items for the picker's
-  // INITIAL list; the picker searches the rest server-side (searchCaptureItems) as the
-  // operator types. Recent stock is what's actively sold, so this covers the common
-  // case without ever shipping the whole catalogue to the browser (the old code paged
-  // through EVERY available item). Archived / committed / sold items are never offered.
-  const INITIAL = 500;
-  const { data, error } = await supabase
-    .from('inventory_items')
-    .select(
-      'id, item_code, item_name, total_price_per_piece, grams_per_piece, availability_status',
-    )
-    .eq('is_archived', false)
-    .in('availability_status', ['available', 'returned_to_available'])
-    .order('created_at', { ascending: false })
-    .limit(INITIAL);
-  if (error || !data) return [];
-
-  return (data as Array<Record<string, unknown>>).map((r) => ({
-    id: r.id as string,
-    itemCode: (r.item_code as string | null) ?? '—',
-    itemName: (r.item_name as string | null) ?? null,
-    // Money stays a string end-to-end — never coerced to a float here.
-    unitPrice:
-      r.total_price_per_piece === null || r.total_price_per_piece === undefined
-        ? null
-        : String(r.total_price_per_piece as string | number),
-    gramsPerPiece:
-      r.grams_per_piece === null || r.grams_per_piece === undefined
-        ? null
-        : String(r.grams_per_piece as string | number),
-    availabilityStatus: (r.availability_status as string | null) ?? 'unknown',
-  }));
+  // Loads EVERY available item so the New Order + Layaway pickers always detect all
+  // active inventory. A previous 500-most-recent cap silently dropped the older
+  // stock (2,400+ items on the live catalogue), so items genuinely in Active
+  // Inventory were "sometimes not found". PostgREST caps a single response at ~1000
+  // rows, so we page through in 1000s (same pattern as listInventory). Archived /
+  // committed / sold items are never offered. searchCaptureItems remains for very
+  // large future catalogues; here the picker gets the complete list.
+  const PAGE = 1000;
+  const out: CaptureItem[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from('inventory_items')
+      .select(
+        'id, item_code, item_name, total_price_per_piece, grams_per_piece, availability_status',
+      )
+      .eq('is_archived', false)
+      .in('availability_status', ['available', 'returned_to_available'])
+      .order('created_at', { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (error || !data || data.length === 0) break;
+    for (const r of data as Array<Record<string, unknown>>) {
+      // Cast to the concrete numeric/string type BEFORE stringifying so lint knows
+      // it's a real value (not an object), while money stays a string end-to-end.
+      const price = r.total_price_per_piece as string | number | null | undefined;
+      const grams = r.grams_per_piece as string | number | null | undefined;
+      out.push({
+        id: r.id as string,
+        itemCode: (r.item_code as string | null) ?? '—',
+        itemName: (r.item_name as string | null) ?? null,
+        unitPrice: price === null || price === undefined ? null : String(price),
+        gramsPerPiece: grams === null || grams === undefined ? null : String(grams),
+        availabilityStatus: (r.availability_status as string | null) ?? 'unknown',
+      });
+    }
+    if (data.length < PAGE) break;
+  }
+  return out;
 }
 
 /**
