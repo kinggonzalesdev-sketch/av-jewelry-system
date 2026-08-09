@@ -111,9 +111,6 @@ export default async function SettingsPage() {
   const isOwner = staff.roleKey === 'owner';
   // Administration is reserved to the PRIMARY Super Admin — not every Super Admin.
   const isPrimary = await isPrimarySuperAdmin();
-  // Deletion Requests is visible to Admins too: an Admin who asked for a deletion
-  // must be able to see the answer. Only a Super Admin can DECIDE one.
-  const isAdminOrAbove = isOwner || staff.roleKey === 'selected_admin';
   const members = isOwner ? await listTeamMembers() : [];
   // Summary-card counts — all derived from the already-loaded roster.
   const tempPasswordCount = members.filter((m) => m.passwordIsTemp).length;
@@ -238,31 +235,6 @@ export default async function SettingsPage() {
         </SettingsSection>
       ) : null}
 
-      {/* Administration — Deletion Requests. Kept as its own section (Owner: leave
-          this one out of the accordion redesign). */}
-      {isAdminOrAbove ? (
-        <section
-          className="rounded-xl border border-border bg-card p-4"
-          aria-labelledby="deletions-h"
-        >
-          <h2 id="deletions-h" className="text-sm font-semibold text-foreground">
-            Administration
-          </h2>
-          <ul className="mt-2 space-y-1.5">
-            <li>
-              <Link
-                href="/admin/deletions"
-                className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium text-foreground hover:bg-accent"
-              >
-                <span aria-hidden="true" className="w-4 text-center text-xs">
-                  ⚠
-                </span>
-                Deletion Requests
-              </Link>
-            </li>
-          </ul>
-        </section>
-      ) : null}
     </div>
   );
 }
