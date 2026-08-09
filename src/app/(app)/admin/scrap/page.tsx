@@ -50,6 +50,7 @@ export default async function ScrapPage({
         from={from}
         to={to}
         canDelete={staff.roleKey === 'owner' || staff.roleKey === 'selected_admin'}
+        isOwner={staff.roleKey === 'owner'}
       />
     </div>
   );

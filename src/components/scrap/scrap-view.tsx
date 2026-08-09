@@ -28,6 +28,7 @@ export function ScrapView({
   from,
   to,
   canDelete = false,
+  isOwner = false,
 }: {
   income: ScrapIncomeResult;
   sales: ScrapSaleRow[];
@@ -35,6 +36,8 @@ export function ScrapView({
   to: string;
   /** Owner / Selected Admin — shows the per-row Edit + Delete. */
   canDelete?: boolean;
+  /** Owner deletes directly; a non-owner Admin requests Owner approval. */
+  isOwner?: boolean;
 }) {
   const [showRecord, setShowRecord] = useState(false);
   // Guards a repeat Export click while the file is being built.
@@ -242,7 +245,7 @@ export function ScrapView({
                       {g.note ?? '—'}
                     </Td>
                     <Td kind="center">
-                      <ScrapGroupView group={g} canManage={canDelete} />
+                      <ScrapGroupView group={g} canManage={canDelete} isOwner={isOwner} />
                     </Td>
                   </Tr>
                 ))

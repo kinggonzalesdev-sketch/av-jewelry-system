@@ -13,6 +13,10 @@ import {
   type RecordScrapResult,
 } from '@/lib/scrap/service';
 import type { ScrapActionState } from '@/lib/scrap/action-state';
+import {
+  requestOwnerDeletion,
+  type RequestDeletionResult,
+} from '@/lib/authz/request-deletion';
 
 /** Scrap server action (Bible §G). Transport only — validation, self-attribution,
  *  and audit live in the domain module and the database. */
@@ -68,6 +72,21 @@ export async function updateScrapSaleAction(
     revalidatePath('/admin/scrap');
     revalidatePath('/dashboard');
   }
+  return result;
+}
+
+/**
+ * Approvals Phase 2: a non-owner Admin asks the Owner to approve deleting a scrap
+ * sale. Creates a pending Owner-approval request — deletes nothing until the Owner
+ * approves + executes it in /approvals (which then runs delete_scrap_sale).
+ */
+export async function requestScrapDeletionAction(
+  scrapId: string,
+  label: string,
+  reason: string,
+): Promise<RequestDeletionResult> {
+  const result = await requestOwnerDeletion('scrap_sale_delete', 'scrap_sale', scrapId, `scrap sale (${label})`, reason);
+  if (result.ok) revalidatePath('/admin/scrap');
   return result;
 }
 

@@ -38,6 +38,9 @@ export const OWNER_APPROVAL_KINDS = [
   'live_batch_reopen',
   'wrong_payment_to_order_correction',
   'customer_delete',
+  'inventory_item_delete',
+  'scrap_sale_delete',
+  'attendance_delete',
 ] as const;
 
 export type OwnerApprovalKind = (typeof OWNER_APPROVAL_KINDS)[number];
@@ -668,24 +671,37 @@ export async function executeOwnerApproval(
   }
 
   // Approvals Phase 2: for a deletion request, PERFORM the actual delete now —
-  // BEFORE marking executed, so a refused delete (e.g. the customer still has
-  // linked orders/payments) never marks the request done. The Owner is executing,
-  // so the delete function's owner/admin gate passes. Non-deletion kinds skip this
-  // branch entirely, so their behaviour is unchanged.
-  if (request.action_kind === 'customer_delete') {
-    const { error: delError } = await supabase.rpc('permanently_delete_customer', {
-      p_customer_id: request.entity_id as string,
+  // BEFORE marking executed, so a refused delete (e.g. the target still has linked
+  // records) never marks the request done. The Owner is executing, so each delete
+  // function's owner/admin gate passes. Non-deletion kinds skip this switch
+  // entirely, so their behaviour is unchanged.
+  const eid = request.entity_id as string;
+  let delError: { message: string } | null = null;
+  switch (request.action_kind) {
+    case 'customer_delete':
+      ({ error: delError } = await supabase.rpc('permanently_delete_customer', { p_customer_id: eid }));
+      break;
+    case 'inventory_item_delete':
+      ({ error: delError } = await supabase.rpc('delete_inventory_item_direct', { p_item_id: eid }));
+      break;
+    case 'scrap_sale_delete':
+      ({ error: delError } = await supabase.rpc('delete_scrap_sale', { p_id: eid }));
+      break;
+    case 'attendance_delete':
+      ({ error: delError } = await supabase.rpc('delete_attendance_record', { p_record_id: eid }));
+      break;
+    default:
+      break;
+  }
+  if (delError) {
+    await recordAuditEvent({
+      action: 'owner_approval.execute',
+      entityType: 'owner_approval_request',
+      entityId: requestId,
+      outcome: 'failed',
+      reason: delError.message,
     });
-    if (delError) {
-      await recordAuditEvent({
-        action: 'owner_approval.execute',
-        entityType: 'owner_approval_request',
-        entityId: requestId,
-        outcome: 'failed',
-        reason: delError.message,
-      });
-      return { ok: false, error: delError.message.replace(/^ERROR:\s*/i, '').trim() };
-    }
+    return { ok: false, error: delError.message.replace(/^ERROR:\s*/i, '').trim() };
   }
 
   const { error } = await supabase

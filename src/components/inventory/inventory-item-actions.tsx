@@ -7,7 +7,9 @@ import {
   deleteInventoryItemAction,
   forceDeleteInventoryItemAction,
   editInventoryItemAction,
+  requestInventoryItemDeletionAction,
 } from '@/lib/inventory/actions';
+import { RequestDeletionButton } from '@/components/approvals/request-deletion-button';
 import { EMPTY_INVENTORY_STATE, type InventoryActionState } from '@/lib/inventory/action-state';
 import type { InventoryRow } from '@/lib/inventory/service';
 import { parseInventoryCode } from '@/lib/inventory/code-parser';
@@ -134,18 +136,32 @@ export function InventoryItemActions({
           Edit
         </button>
       ) : null}
+      {/* Owner deletes directly; a non-owner Admin requests Owner approval (Approvals
+          Phase 2). canForceDelete is the owner-only signal (both come from the page's
+          owner check), so it doubles as "is the Owner". */}
       {canDelete ? (
-        <button
-          type="button"
-          onClick={() => {
-            setConfirm('');
-            setDel(true);
-          }}
-          data-testid={`inventory-delete-${row.inventoryItemId}`}
-          className="rounded-md border border-destructive/40 px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
-        >
-          Delete
-        </button>
+        canForceDelete ? (
+          <button
+            type="button"
+            onClick={() => {
+              setConfirm('');
+              setDel(true);
+            }}
+            data-testid={`inventory-delete-${row.inventoryItemId}`}
+            className="rounded-md border border-destructive/40 px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
+          >
+            Delete
+          </button>
+        ) : (
+          <RequestDeletionButton
+            label={row.itemCode}
+            entityNoun="item"
+            testIdBase={`inventory-request-delete-${row.inventoryItemId}`}
+            onRequest={(reason) =>
+              requestInventoryItemDeletionAction(row.inventoryItemId, row.itemCode, reason)
+            }
+          />
+        )
       ) : null}
 
       {/* View — compact read-only detail. */}

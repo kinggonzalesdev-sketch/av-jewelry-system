@@ -4,6 +4,11 @@ import type { InventoryActionState } from '@/lib/inventory/action-state';
 import { revalidatePath } from 'next/cache';
 
 import {
+  requestOwnerDeletion,
+  type RequestDeletionResult,
+} from '@/lib/authz/request-deletion';
+
+import {
   archiveInventoryItem,
   deleteAllInventoryItems,
   deleteInventoryItemDirect,
@@ -326,6 +331,27 @@ export async function deleteInventoryItemAction(
  * row). The database still refuses an item tied to a real order, payment, active
  * hold, layaway, or sale. Owner-only + type-DELETE gated. Revalidates.
  */
+/**
+ * Approvals Phase 2: a non-owner Admin asks the Owner to approve deleting an item.
+ * Creates a pending Owner-approval request — deletes nothing until the Owner
+ * approves + executes it in /approvals (which then runs delete_inventory_item_direct).
+ */
+export async function requestInventoryItemDeletionAction(
+  itemId: string,
+  itemLabel: string,
+  reason: string,
+): Promise<RequestDeletionResult> {
+  const result = await requestOwnerDeletion(
+    'inventory_item_delete',
+    'inventory_item',
+    itemId,
+    `inventory item "${itemLabel}"`,
+    reason,
+  );
+  if (result.ok) revalidatePath('/orders/inventory');
+  return result;
+}
+
 export async function forceDeleteInventoryItemAction(
   _prev: InventoryActionState,
   formData: FormData,

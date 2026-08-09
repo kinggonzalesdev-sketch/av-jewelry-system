@@ -3,7 +3,12 @@
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 
-import { deleteScrapSaleAction, updateScrapSaleAction } from '@/lib/scrap/actions';
+import {
+  deleteScrapSaleAction,
+  updateScrapSaleAction,
+  requestScrapDeletionAction,
+} from '@/lib/scrap/actions';
+import { RequestDeletionButton } from '@/components/approvals/request-deletion-button';
 import type { ScrapSaleRow } from '@/lib/scrap/service';
 import { formatPeso } from '@/lib/payments/format';
 import { PAYMENT_METHOD_OPTIONS } from '@/lib/payments/methods';
@@ -63,6 +68,7 @@ export function ScrapRowActions({
   canDelete,
   canEdit = false,
   compact = false,
+  isOwner = false,
 }: {
   sale: ScrapSaleRow;
   canDelete: boolean;
@@ -70,6 +76,9 @@ export function ScrapRowActions({
   /** Inside the grouped View popup the row is already being viewed, so the "View"
    *  button is hidden and only Edit / Delete remain. */
   compact?: boolean;
+  /** Owner deletes directly; a non-owner Admin requests Owner approval (Approvals
+   *  Phase 2). */
+  isOwner?: boolean;
 }) {
   const router = useRouter();
   const [viewing, setViewing] = useState(false);
@@ -187,19 +196,31 @@ export function ScrapRowActions({
           Edit
         </button>
       ) : null}
+      {/* Owner deletes directly; a non-owner Admin requests Owner approval. */}
       {canDelete ? (
-        <button
-          type="button"
-          onClick={() => {
-            setConfirm('');
-            setError(null);
-            setConfirming(true);
-          }}
-          data-testid={`scrap-delete-${sale.id}`}
-          className="rounded-md border border-destructive/40 px-2 py-1 text-xs font-medium text-destructive hover:bg-destructive/10"
-        >
-          Delete
-        </button>
+        isOwner ? (
+          <button
+            type="button"
+            onClick={() => {
+              setConfirm('');
+              setError(null);
+              setConfirming(true);
+            }}
+            data-testid={`scrap-delete-${sale.id}`}
+            className="rounded-md border border-destructive/40 px-2 py-1 text-xs font-medium text-destructive hover:bg-destructive/10"
+          >
+            Delete
+          </button>
+        ) : (
+          <RequestDeletionButton
+            label={`${sale.material} ${sale.grams}g`}
+            entityNoun="scrap sale"
+            testIdBase={`scrap-request-delete-${sale.id}`}
+            onRequest={(reason) =>
+              requestScrapDeletionAction(sale.id, `${sale.material} ${sale.grams}g`, reason)
+            }
+          />
+        )
       ) : null}
 
       {/* ---- View (read-only) ---- */}

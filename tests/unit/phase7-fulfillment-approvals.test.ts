@@ -27,13 +27,16 @@ describe('the Owner approvals', () => {
       'exceptional_fulfillment_release',
       'live_batch_reopen',
       'wrong_payment_to_order_correction',
-      // Approvals Phase 2 (2026-08-09): a non-owner's Delete Customer routes here.
+      // Approvals Phase 2 (2026-08-09): a non-owner's destructive deletes route here.
       'customer_delete',
+      'inventory_item_delete',
+      'scrap_sale_delete',
+      'attendance_delete',
     ]);
   });
 
-  it('has exactly seven — nothing else may be smuggled in', () => {
-    expect(OWNER_APPROVAL_KINDS).toHaveLength(7);
+  it('has exactly ten — nothing else may be smuggled in', () => {
+    expect(OWNER_APPROVAL_KINDS).toHaveLength(10);
   });
 });
 

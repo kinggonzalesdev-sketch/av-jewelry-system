@@ -4,7 +4,12 @@ import { useActionState, useEffect, useRef, useState } from 'react';
 
 import { useRouter } from 'next/navigation';
 
-import { deleteAttendanceRecordAction, setHourlyRateAction } from '@/lib/hr/actions';
+import {
+  deleteAttendanceRecordAction,
+  requestAttendanceDeletionAction,
+  setHourlyRateAction,
+} from '@/lib/hr/actions';
+import { RequestDeletionButton } from '@/components/approvals/request-deletion-button';
 import { EMPTY_HR_STATE, type HrActionState } from '@/lib/hr/action-state';
 import type { AttendanceRow } from '@/lib/hr/attendance';
 import { durationHours, formatDuration } from '@/lib/hr/format';
@@ -300,7 +305,7 @@ export function AttendanceView({
                         </td>
                         {canManage ? (
                           <td className="col-actions px-3 py-2.5">
-                            <AttendanceRowDelete row={r} />
+                            <AttendanceRowDelete row={r} isOwner={isOwner} />
                           </td>
                         ) : null}
                       </tr>
@@ -321,7 +326,7 @@ export function AttendanceView({
  * that requires typing DELETE (irreversible), then removes the record; payroll,
  * being derived, recomputes on the next read.
  */
-function AttendanceRowDelete({ row }: { row: AttendanceRow }) {
+function AttendanceRowDelete({ row, isOwner = false }: { row: AttendanceRow; isOwner?: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState('');
@@ -340,6 +345,20 @@ function AttendanceRowDelete({ row }: { row: AttendanceRow }) {
   }, [state.success, router]);
 
   const formId = `attendance-delete-form-${row.id}`;
+
+  // A non-owner Admin can't delete directly — they request Owner approval (Approvals
+  // Phase 2). The Owner keeps the immediate type-DELETE flow below.
+  if (!isOwner) {
+    const label = `${row.staffName ?? 'staff'} · ${row.workDate}`;
+    return (
+      <RequestDeletionButton
+        label={label}
+        entityNoun="attendance record"
+        testIdBase={`attendance-request-delete-${row.id}`}
+        onRequest={(reason) => requestAttendanceDeletionAction(row.id, label, reason)}
+      />
+    );
+  }
 
   return (
     <>

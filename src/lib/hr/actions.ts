@@ -3,6 +3,10 @@
 import { revalidatePath } from 'next/cache';
 
 import { deleteAttendanceRecord, kioskClockIn, kioskClockOut } from '@/lib/hr/attendance';
+import {
+  requestOwnerDeletion,
+  type RequestDeletionResult,
+} from '@/lib/authz/request-deletion';
 import { registerThisDevice, revokeDevice } from '@/lib/hr/devices';
 import { setSalaryRate } from '@/lib/hr/rate';
 import type { HrActionState } from '@/lib/hr/action-state';
@@ -91,6 +95,27 @@ export async function deleteAttendanceRecordAction(
   revalidatePath('/admin/attendance/review');
   revalidatePath('/admin/payroll');
   return { error: null, success: 'Attendance record permanently deleted.' };
+}
+
+/**
+ * Approvals Phase 2: a non-owner Admin asks the Owner to approve deleting an
+ * attendance record. Creates a pending Owner-approval request — deletes nothing
+ * until the Owner approves + executes it in /approvals (delete_attendance_record).
+ */
+export async function requestAttendanceDeletionAction(
+  recordId: string,
+  label: string,
+  reason: string,
+): Promise<RequestDeletionResult> {
+  const result = await requestOwnerDeletion(
+    'attendance_delete',
+    'attendance_record',
+    recordId,
+    `attendance record (${label})`,
+    reason,
+  );
+  if (result.ok) revalidatePath('/admin/attendance');
+  return result;
 }
 
 /**
