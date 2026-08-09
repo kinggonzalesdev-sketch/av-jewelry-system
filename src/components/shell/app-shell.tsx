@@ -19,6 +19,7 @@ export function AppShell({
   fullName,
   roleKey,
   allowedPages,
+  pendingApprovals = 0,
   children,
 }: {
   userEmail: string;
@@ -26,6 +27,8 @@ export function AppShell({
   roleKey?: string | undefined;
   /** Page permissions the member holds — the sidebar hides the rest. */
   allowedPages?: readonly string[] | undefined;
+  /** Pending Owner-approval count for the sidebar badge (0 hides it). */
+  pendingApprovals?: number | undefined;
   children: ReactNode;
 }) {
   return (
@@ -42,6 +45,7 @@ export function AppShell({
             roleKey={roleKey}
             userEmail={userEmail}
             allowedPages={allowedPages}
+            pendingApprovals={pendingApprovals}
           >
             {children}
           </AppSidebar>

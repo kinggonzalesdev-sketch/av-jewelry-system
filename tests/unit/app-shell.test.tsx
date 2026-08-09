@@ -42,6 +42,7 @@ describe('approved navigation model (navigation.ts is the source of truth)', () 
       'Inventory',
       'Layaway',
       'Scrap',
+      'Approvals',
       // Team Management collapsible group (Owner request 2026-07-22). Settings moved
       // to the fixed footer, so it is no longer a PRIMARY_NAV item.
       'Attendance',
@@ -62,6 +63,7 @@ describe('approved navigation model (navigation.ts is the source of truth)', () 
       'Inventory',
       'Layaway',
       'Scrap',
+      'Approvals',
       'Attendance',
       'Review Attendance',
       'Payroll',
@@ -110,7 +112,9 @@ describe('AppSidebar renders the approved shell', () => {
     const teamBtn = within(sidebar).getByRole('button', { name: /team management/i });
     expect(teamBtn).toHaveAttribute('aria-expanded', 'false');
     // The flat (non-group) items render as links inside the primary nav, in order.
-    const flat = PRIMARY_NAV.filter((i) => !i.section);
+    // Owner-only items (Approvals) are hidden from a staff member, so exclude them
+    // from the expectation just as the sidebar excludes them from the render.
+    const flat = PRIMARY_NAV.filter((i) => !i.section && !i.ownerOnly);
     const nav = within(sidebar).getByRole('navigation', { name: /primary/i });
     const labels = within(nav)
       .getAllByRole('link')

@@ -146,6 +146,7 @@ export function AppSidebar({
   roleKey,
   userEmail,
   allowedPages,
+  pendingApprovals = 0,
   children,
 }: {
   fullName: string;
@@ -153,6 +154,8 @@ export function AppSidebar({
   userEmail: string;
   /** The member's granted page keys (undefined = do not filter). */
   allowedPages?: readonly string[] | undefined;
+  /** Pending Owner-approval count — renders an amber badge on the Approvals item. */
+  pendingApprovals?: number | undefined;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -190,6 +193,16 @@ export function AppSidebar({
         </span>
         <span className="truncate">{item.label}</span>
         {item.available ? null : <SoonTag />}
+        {/* Live pending-approval badge (amber). Only on the Approvals item, only
+            when > 0; DashboardSync realtime keeps the count fresh. */}
+        {item.href === '/approvals' && pendingApprovals > 0 ? (
+          <span
+            className="ml-auto rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
+            data-testid="approvals-badge"
+          >
+            {pendingApprovals}
+          </span>
+        ) : null}
       </Link>
     </li>
   );

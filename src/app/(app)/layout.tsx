@@ -11,6 +11,7 @@ import {
 } from '@/lib/authz/guard';
 import { getTestMode } from '@/lib/live/test-mode';
 import { getLivePausedState } from '@/lib/live/live-session';
+import { countPendingApprovals } from '@/lib/fulfillment/service';
 
 /**
  * Protected application route boundary.
@@ -39,13 +40,17 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // request. A deactivated account is redirected to /account-disabled: its
   // credentials are valid, but the account is not (Bible §30.6).
   await requireActiveStaff();
-  const [profile, user, permissions, testMode, livePaused] = await Promise.all([
-    getCurrentStaffProfile(),
-    requireUser(),
-    getGrantedPermissions(),
-    getTestMode(),
-    getLivePausedState(),
-  ]);
+  const [profile, user, permissions, testMode, livePaused, pendingApprovals] =
+    await Promise.all([
+      getCurrentStaffProfile(),
+      requireUser(),
+      getGrantedPermissions(),
+      getTestMode(),
+      getLivePausedState(),
+      // Lightweight COUNT for the sidebar Approvals badge. Re-runs on every
+      // DashboardSync realtime refresh, so the badge is live without a reload.
+      countPendingApprovals(),
+    ]);
 
   return (
     <AppShell
@@ -55,6 +60,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       // The sidebar hides links this member cannot open. Each PAGE re-checks the
       // same key, so hiding is convenience — never the authorization control.
       allowedPages={[...permissions]}
+      pendingApprovals={pendingApprovals}
     >
       {/* Persistent TEST MODE banner when a test session is active (Owner request). */}
       {testMode.active ? <TestModeBanner startedByName={testMode.startedByName} /> : null}

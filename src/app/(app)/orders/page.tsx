@@ -3,12 +3,10 @@ import { notFound } from 'next/navigation';
 
 import { NewOrderWorkflow } from '@/components/orders/new-order-workflow';
 import { OrdersView } from '@/components/orders/orders-view';
-import { OwnerApprovalsPanel } from '@/components/orders/owner-approvals-panel';
 import { CaptureReviewPanel } from '@/components/capture/capture-review-panel';
 import { IncomingCapturesStrip } from '@/components/capture/incoming-captures-strip';
 import { canOpenPage, getCurrentStaffProfile, getGrantedPermissions } from '@/lib/authz/guard';
 import { getAdminNameContext } from '@/lib/authz/admin-name';
-import { listOwnerApprovals } from '@/lib/fulfillment/service';
 import { listCaptureCustomers } from '@/lib/live/batches';
 import { listPendingCaptureReviews } from '@/lib/capture/review';
 import { listCaptureItems, listOrders, listWalkInItems } from '@/lib/orders/service';
@@ -54,7 +52,6 @@ export default async function OrdersPage({
     walkInItems,
     profile,
     keepLayaways,
-    approvals,
     admins,
     pendingReviews,
   ] = await Promise.all([
@@ -65,7 +62,6 @@ export default async function OrdersPage({
     listWalkInItems(),
     getCurrentStaffProfile(),
     listKeepLayawayAccounts(),
-    listOwnerApprovals(),
     getAdminNameContext(),
     listPendingCaptureReviews(),
   ]);
@@ -75,10 +71,8 @@ export default async function OrdersPage({
       <PageHeader title="Orders" />
 
       <div className="space-y-4">
-        {/* The six non-delegable Owner approvals. They used to live on the retired
-            /orders/fulfillment page; this panel is why that page could not simply be
-            deleted. It renders only when something is actually waiting. */}
-        <OwnerApprovalsPanel approvals={approvals} isOwner={profile.roleKey === 'owner'} />
+        {/* The non-delegable Owner approvals moved to their own /approvals module
+            (2026-08-09). Orders stays focused on order management. */}
         {/* Review Mode queue — captures awaiting approval before they become orders.
             Only a capture-permitted member sees the approve/reject controls; the
             panel self-hides when the queue is empty. */}

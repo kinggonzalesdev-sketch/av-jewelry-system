@@ -30,6 +30,8 @@ describe('LOCKED: desktop sidebar (exact order, labels, routes, icons)', () => {
       { label: 'Inventory', href: '/orders/inventory', icon: '◈' },
       { label: 'Layaway', href: '/orders/payments', icon: '₱' },
       { label: 'Scrap', href: '/admin/scrap', icon: '♻' },
+      // Approvals — dedicated Owner approval queue (Owner request 2026-08-09).
+      { label: 'Approvals', href: '/approvals', icon: '✓' },
       // Team Management collapsible group (Owner request 2026-07-22). Settings moved
       // to the fixed footer (SETTINGS_ITEM), so it is no longer in PRIMARY_NAV.
       { label: 'Attendance', href: '/admin/attendance', icon: '⏱' },
@@ -53,6 +55,7 @@ describe('LOCKED: mobile navigation', () => {
       'Inventory',
       'Layaway',
       'Scrap',
+      'Approvals',
       'Attendance',
       'Review Attendance',
       'Payroll',

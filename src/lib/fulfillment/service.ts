@@ -711,6 +711,21 @@ export type ApprovalRow = {
   requestedBy: string | null;
 };
 
+/**
+ * Lightweight COUNT of approvals still awaiting an Owner decision — for the sidebar
+ * badge. `head: true` fetches no rows, only the count (never the screenshots or
+ * enriched context). Realtime: any change to owner_approval_requests triggers the
+ * shell's router.refresh(), which re-runs this and updates the badge.
+ */
+export async function countPendingApprovals(): Promise<number> {
+  const supabase = await createClient();
+  const { count } = await supabase
+    .from('owner_approval_requests')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending_owner_approval');
+  return count ?? 0;
+}
+
 /** The Owner Approval Center queue, enriched with order + requester context so the
  *  Owner can see exactly WHAT each Accept/Reject decides. */
 export async function listOwnerApprovals(): Promise<ApprovalRow[]> {

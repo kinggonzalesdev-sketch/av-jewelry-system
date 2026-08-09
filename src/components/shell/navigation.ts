@@ -130,6 +130,17 @@ export const PRIMARY_NAV: readonly NavItem[] = [
     mobilePrimary: false,
     available: true,
   },
+  // Approvals — the dedicated home for the non-delegable Owner approval queue
+  // (moved out of Orders 2026-08-09). Owner-only; the sidebar shows a live pending
+  // badge (count wired from the layout, refreshed by DashboardSync realtime).
+  {
+    href: '/approvals',
+    label: 'Approvals',
+    icon: '✓',
+    ownerOnly: true,
+    mobilePrimary: false,
+    available: true,
+  },
   // Team Management — a collapsible group (Owner request 2026-07-22). The
   // /admin/attendance route is preserved (the Attendance page); Payroll and
   // Review Attendance are their own routes. Review Attendance is admin-only.
