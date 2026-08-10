@@ -38,6 +38,26 @@ class SecureStore private constructor(private val prefs: SharedPreferences) {
             return id
         }
 
+    // ---- Bluetooth printer (native, on THIS device) ---------------------------
+    /** MAC address of the selected active printer, or null. Remembered per device. */
+    var printerAddress: String?
+        get() = prefs.getString(KEY_PRINTER_ADDR, null)
+        set(value) = prefs.edit().putString(KEY_PRINTER_ADDR, value).apply()
+
+    var printerName: String?
+        get() = prefs.getString(KEY_PRINTER_NAME, null)
+        set(value) = prefs.edit().putString(KEY_PRINTER_NAME, value).apply()
+
+    /** Printer language: TSPL (label printers like the XP-236B) vs ESC/POS. Default TSPL. */
+    var printerTspl: Boolean
+        get() = prefs.getBoolean(KEY_PRINTER_TSPL, true)
+        set(value) = prefs.edit().putBoolean(KEY_PRINTER_TSPL, value).apply()
+
+    /** Price-per-gram rate printed on the sticker (Sticker Settings parity), or null. */
+    var pricePerGram: String?
+        get() = prefs.getString(KEY_PRICE_PER_GRAM, null)
+        set(value) = prefs.edit().putString(KEY_PRICE_PER_GRAM, value).apply()
+
     // Signed in while we hold EITHER a live access token OR a refresh token: an access
     // token expires after ~1h (shorter than a live), but the refresh token lets us mint
     // a new one silently. Only a real logout / a failed refresh clears both.
@@ -53,6 +73,10 @@ class SecureStore private constructor(private val prefs: SharedPreferences) {
         private const val KEY_REFRESH = "refresh_token"
         private const val KEY_NAME = "staff_name"
         private const val KEY_DEVICE = "device_installation_id"
+        private const val KEY_PRINTER_ADDR = "printer_address"
+        private const val KEY_PRINTER_NAME = "printer_name"
+        private const val KEY_PRINTER_TSPL = "printer_tspl"
+        private const val KEY_PRICE_PER_GRAM = "price_per_gram"
 
         @Volatile private var instance: SecureStore? = null
 

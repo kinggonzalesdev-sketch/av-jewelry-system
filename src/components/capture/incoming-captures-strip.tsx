@@ -3,8 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
+  claimCaptureStickerAction,
   dismissPendingCaptureAction,
   loadPendingCapturesAction,
+  markCaptureStickerPrintedAction,
+  releaseCaptureStickerAction,
   resolveCaptureLinkAction,
   sendCaptureToMessengerAction,
 } from '@/lib/capture/pending-actions';
@@ -174,40 +177,63 @@ export function IncomingCapturesStrip({
   // or uncertain capture waits for the operator to confirm the grams and print. Skips
   // test captures; each capture prints at most once per station (the poll never
   // reprints). Marked printed BEFORE the write so a flaky printer can't reprint-storm.
+  // SHARED PC+phone auto-print (Owner 2026-08-10 "both PC and phone pwedi"): instead of
+  // a per-device localStorage dedup, we CLAIM the next capture sticker from the server
+  // queue and print it. The DB hands each capture to ONE device (FOR UPDATE SKIP LOCKED),
+  // so a PC and a phone can both be set up and each sticker prints EXACTLY ONCE —
+  // whoever is active takes it. Runs on an interval while a printer is connected +
+  // auto-print is enabled; a print failure releases the claim for the other device.
   useEffect(() => {
     if (!activeChannel) return;
-    // Read the shared toggle live (set in Sticker Settings), so enabling it there
-    // takes effect on the next capture without needing to reopen this page.
-    let autoPrint = false;
-    try {
-      autoPrint = localStorage.getItem('mineflow.captureAutoPrint') === '1';
-    } catch {
-      /* storage unavailable — treat as off */
-    }
-    if (!autoPrint) return;
-    const pending = rows.filter(
-      (r) =>
-        !r.isTest &&
-        (r.fbName ?? '').trim().length >= 2 &&
-        normalizeGrams(r.grams) !== null && // needs a confident weight, else review
-        !printedRef.current.has(r.captureRecordId),
-    );
-    if (pending.length === 0) return;
-    void (async () => {
-      for (const r of pending) {
-        rememberPrinted(r.captureRecordId);
-        try {
-          await writeToChannel(
-            activeChannel,
-            encodeReceipt(stickerFor(r), printLang, readStickerFields()),
-          );
-          setNotes((cur) => ({ ...cur, [r.captureRecordId]: 'Auto-printed ✓' }));
-        } catch {
-          /* keep it marked printed to avoid a reprint storm on a flaky link */
-        }
+    let alive = true;
+    let draining = false;
+    const tick = async () => {
+      if (!alive || draining) return;
+      let autoPrint = false;
+      try {
+        autoPrint = localStorage.getItem('mineflow.captureAutoPrint') === '1';
+      } catch {
+        /* storage unavailable — treat as off */
       }
-    })();
-  }, [rows, activeChannel, printLang]);
+      if (!autoPrint) return;
+      draining = true;
+      try {
+        // Drain up to a few per tick so a burst prints promptly without hogging.
+        for (let i = 0; i < 5 && alive; i += 1) {
+          const claim = await claimCaptureStickerAction();
+          if (!claim.claimed) break;
+          const data: OrderReceiptData = {
+            customerName: claim.fbName || '—',
+            itemName: '',
+            grams: normalizeGrams(claim.grams),
+            quantity: 1,
+            unitPrice: null,
+            pricePerGram: readStickerPricePerGram() || null,
+            date: stickerDate(),
+          };
+          try {
+            await writeToChannel(activeChannel, encodeReceipt(data, printLang, readStickerFields()));
+            await markCaptureStickerPrintedAction(claim.captureRecordId);
+            setNotes((cur) => ({ ...cur, [claim.captureRecordId]: 'Auto-printed ✓' }));
+          } catch {
+            // Printer trouble — hand the claim back so the phone (or a retry) can take it.
+            await releaseCaptureStickerAction(claim.captureRecordId).catch(() => undefined);
+            break;
+          }
+        }
+      } catch {
+        /* ignore a transient claim error */
+      } finally {
+        draining = false;
+      }
+    };
+    const iv = setInterval(() => void tick(), 2500);
+    void tick();
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
+  }, [activeChannel, printLang]);
 
   // Manual print (review / reprint): print THIS capture's label with the operator's
   // confirmed grams. Used when the weight needed review, or to reprint deliberately.
@@ -228,6 +254,8 @@ export function IncomingCapturesStrip({
         encodeReceipt(stickerFor(r, g), printLang, readStickerFields()),
       );
       rememberPrinted(r.captureRecordId);
+      // Claim it in the shared queue so no other device (phone/auto) reprints it.
+      await markCaptureStickerPrintedAction(r.captureRecordId).catch(() => undefined);
       setNotes((cur) => ({ ...cur, [r.captureRecordId]: 'Printed ✓' }));
     } catch {
       setError('Print failed — check the printer link.');

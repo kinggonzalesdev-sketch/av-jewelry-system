@@ -256,6 +256,46 @@ class ApiClient(context: Context) {
         return post("/api/mobile/capture/send", payload)
     }
 
+    /**
+     * Claim the next pending label job for this device. The DB hands out each job to
+     * ONE device (FOR UPDATE SKIP LOCKED), so a label is never printed twice. Returns
+     * the job JSON with `claimed=true` + the sticker fields, or `claimed=false` when the
+     * queue is empty. Requires the confirm_claim_print_label permission (checked in DB).
+     */
+    fun claimLabelJob(): JSONObject {
+        val payload = JSONObject().put("deviceInstallationId", store.deviceInstallationId)
+        val res = post("/api/mobile/print/claim", payload)
+        return if (res.ok) res.body else JSONObject().put("claimed", false)
+    }
+
+    /** Report a claimed label job as printed or failed (failed re-queues it). */
+    fun reportLabelJob(labelJobId: String, printed: Boolean, reason: String? = null): Boolean {
+        val payload = JSONObject()
+            .put("labelJobId", labelJobId)
+            .put("outcome", if (printed) "printed" else "failed")
+            .putOpt("reason", reason)
+        return post("/api/mobile/print/result", payload).ok
+    }
+
+    /**
+     * Claim the next LIVE capture sticker from the shared PC+phone queue. The DB hands
+     * each eligible capture to ONE device (SKIP LOCKED), so a PC and this phone can both
+     * be set up and each sticker prints exactly once. Returns the claim JSON.
+     */
+    fun claimCaptureSticker(): JSONObject {
+        val payload = JSONObject().put("deviceInstallationId", store.deviceInstallationId)
+        val res = post("/api/mobile/print/capture-claim", payload)
+        return if (res.ok) res.body else JSONObject().put("claimed", false)
+    }
+
+    /** Report a claimed capture sticker printed, or failed (releases it for the PC). */
+    fun reportCaptureSticker(captureRecordId: String, printed: Boolean): Boolean {
+        val payload = JSONObject()
+            .put("captureRecordId", captureRecordId)
+            .put("outcome", if (printed) "printed" else "failed")
+        return post("/api/mobile/print/capture-result", payload).ok
+    }
+
     // ---- Low-level ------------------------------------------------------------
 
     private fun get(path: String): Result = execute(

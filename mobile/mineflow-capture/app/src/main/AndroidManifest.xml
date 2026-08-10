@@ -19,6 +19,18 @@
     <!-- The persistent capture notification (runtime-requested on Android 13+). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Native Bluetooth for the thermal/label printer (Classic SPP/RFCOMM). Legacy
+         permissions are capped at API 30; Android 12+ uses the runtime SCAN/CONNECT
+         permissions. neverForLocation on SCAN means no location permission is needed. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+
     <application
         android:name=".App"
         android:allowBackup="false"
@@ -38,6 +50,7 @@
 
         <activity android:name=".ui.LoginActivity" android:exported="false" />
         <activity android:name=".ui.SetupActivity" android:exported="false" />
+        <activity android:name=".ui.BluetoothPrinterActivity" android:exported="false" />
 
         <!-- Phase 1 capture: screenshot preview (Retake / Save Draft / Discard) and
              the local Capture History of drafts. -->

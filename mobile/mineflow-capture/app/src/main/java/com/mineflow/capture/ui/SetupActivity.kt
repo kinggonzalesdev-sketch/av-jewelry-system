@@ -20,6 +20,7 @@ import androidx.core.content.ContextCompat
 import com.mineflow.capture.capture.OverlayCaptureService
 import com.mineflow.capture.data.ApiClient
 import com.mineflow.capture.data.SecureStore
+import com.mineflow.capture.printer.PrintJobPoller
 import kotlin.concurrent.thread
 
 /**
@@ -109,6 +110,7 @@ class SetupActivity : AppCompatActivity() {
                 Toast.LENGTH_LONG,
             ).show()
         }
+        val printerBtn = outlineButton("Bluetooth Printer") { BluetoothPrinterActivity.open(this) }
         val historyBtn = outlineButton("Capture History") { CaptureHistoryActivity.open(this) }
         val stopBtn = outlineButton("Stop capture service") {
             OverlayCaptureService.stop(this); refreshStatus()
@@ -120,7 +122,7 @@ class SetupActivity : AppCompatActivity() {
             finish()
         }
 
-        listOf(overlayBtn, notifyBtn, startBtn, showBtn, historyBtn, stopBtn, logoutBtn)
+        listOf(overlayBtn, notifyBtn, startBtn, showBtn, printerBtn, historyBtn, stopBtn, logoutBtn)
             .forEach { root.addView(it, wide().apply { topMargin = dp(8) }) }
         setContentView(root)
     }
@@ -132,6 +134,10 @@ class SetupActivity : AppCompatActivity() {
         // System Check shows "Registered Screenshot Device" + "Floating Screenshot
         // App" as Ready while the app is open. Best-effort, off the UI thread.
         thread { ApiClient(this).pingSession() }
+        // Start the print pump so label jobs print to the selected Bluetooth printer
+        // while the operator works — no PC needed. Idempotent; only acts once a printer
+        // is selected + signed in. The always-on capture service also keeps it running.
+        if (!SecureStore.get(this).printerAddress.isNullOrBlank()) PrintJobPoller.start(this)
     }
 
     private fun refreshStatus() {

@@ -238,6 +238,48 @@ export async function listCaptureCandidatesAction(
   }));
 }
 
+/** One claimed capture sticker to print (shared PC+phone queue), or nothing waiting. */
+export type CaptureStickerClaim =
+  | { claimed: true; captureRecordId: string; fbName: string; grams: string | null }
+  | { claimed: false };
+
+/**
+ * Claim the next capture sticker for THIS PC (shared PC+phone print queue). The DB
+ * hands each eligible capture to ONE device (FOR UPDATE SKIP LOCKED), so a PC and a
+ * phone can both be set up and whoever is active prints each sticker exactly once —
+ * never twice. The caller prints it via Bluetooth, then marks it printed / released.
+ */
+export async function claimCaptureStickerAction(): Promise<CaptureStickerClaim> {
+  await requirePermission('claim_capture');
+  const supabase = await createClient();
+  const { data } = (await supabase.rpc('claim_next_capture_sticker', { p_device: 'pc-web' })) as {
+    data: { claimed?: boolean; capture_record_id?: string; fb_name?: string; grams?: string } | null;
+  };
+  if (!data || data.claimed !== true || !data.capture_record_id) return { claimed: false };
+  return {
+    claimed: true,
+    captureRecordId: data.capture_record_id,
+    fbName: (data.fb_name ?? '').trim(),
+    grams: (data.grams ?? '').trim() || null,
+  };
+}
+
+/** Mark a claimed capture sticker printed (so no device reprints it). */
+export async function markCaptureStickerPrintedAction(captureRecordId: string): Promise<void> {
+  if (!captureRecordId) return;
+  await requirePermission('claim_capture');
+  const supabase = await createClient();
+  await supabase.rpc('mark_capture_sticker_printed', { p_capture_record_id: captureRecordId });
+}
+
+/** Release a claimed capture sticker (print failed) so another device can take it. */
+export async function releaseCaptureStickerAction(captureRecordId: string): Promise<void> {
+  if (!captureRecordId) return;
+  await requirePermission('claim_capture');
+  const supabase = await createClient();
+  await supabase.rpc('release_capture_sticker', { p_capture_record_id: captureRecordId });
+}
+
 /** Discard a junk pending capture (no order created from it). */
 export async function dismissPendingCaptureAction(
   captureRecordId: string,

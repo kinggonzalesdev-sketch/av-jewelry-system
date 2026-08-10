@@ -85,6 +85,10 @@ class OverlayCaptureService : Service() {
         // starting as mediaProjection here is exactly what crashed the app.
         startAsForeground(mediaProjection = false)
         addButton()
+        // Keep the print pump alive with the always-on service, so label jobs print to
+        // the Bluetooth printer even while the operator is in the Facebook app (idempotent;
+        // only acts once a printer is selected + signed in).
+        com.mineflow.capture.printer.PrintJobPoller.start(this)
     }
 
     /**
@@ -531,6 +535,7 @@ class OverlayCaptureService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
+        com.mineflow.capture.printer.PrintJobPoller.stop()
         hideQuickMenu()
         button?.let { runCatching { windowManager.removeView(it) } }
         button = null
