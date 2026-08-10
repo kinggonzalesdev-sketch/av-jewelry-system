@@ -7,6 +7,7 @@ import {
   previewLayawayCodeAction,
 } from '@/lib/payments/actions';
 import { formatPeso } from '@/lib/payments/format';
+import { layawaySetupFigures } from '@/lib/payments/layaway-math';
 import { DEFAULT_PAYMENT_METHOD, PAYMENT_METHOD_OPTIONS } from '@/lib/payments/methods';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
@@ -155,9 +156,15 @@ function SetupForm({
   const itemCentavos = centavos(itemAmount);
   const hasGrams = Boolean(grams && Number(grams) > 0);
   const monthlyInterest = noInterest || !hasGrams ? 0n : perGramCentavos(grams, '150');
-  const grandTotal = itemCentavos + monthlyInterest;
   const paidCentavos = centavos(payment);
-  const balance = grandTotal - paidCentavos;
+  // Interest is charged for the WHOLE term (total = monthly × term), via the one
+  // shared formula the database also applies — so this preview matches the saved record.
+  const { totalInterest, grandTotal, balance } = layawaySetupFigures({
+    itemCentavos,
+    monthlyInterestCentavos: monthlyInterest,
+    term,
+    paymentCentavos: paidCentavos,
+  });
 
   const validate = (): string | null => {
     if (itemCentavos <= 0n) return 'This order has no amount to place on layaway.';
@@ -417,10 +424,11 @@ function SetupForm({
           <Fig label="Monthly interest" value={noInterest ? '0' : toStr(monthlyInterest)} />
           <div className="flex items-center justify-between gap-2 py-0.5">
             <dt className="text-xs text-muted-foreground">Term</dt>
-            <dd className="font-medium tabular-nums">
+            <dd className="font-medium tabular-nums" data-testid="setup-term-label">
               {term} {term === 1 ? 'month' : 'months'}
             </dd>
           </div>
+          <Fig label="Total interest" value={noInterest ? '0' : toStr(totalInterest)} />
           <Fig label="Payment" value={toStr(paidCentavos)} />
           <Fig label="Grand total (now)" value={toStr(grandTotal)} strong />
           <Fig label="Remaining balance" value={toStr(balance)} strong />
@@ -470,6 +478,7 @@ function SetupForm({
           <Line label="Item Total" value={formatPeso(toStr(itemCentavos))} />
           <Line label="Monthly Interest" value={noInterest ? '₱0' : formatPeso(toStr(monthlyInterest))} />
           <Line label="Term" value={`${term} ${term === 1 ? 'month' : 'months'}`} />
+          <Line label="Total Interest" value={noInterest ? '₱0' : formatPeso(toStr(totalInterest))} />
           <Line label="Payment" value={formatPeso(toStr(paidCentavos))} />
           <Line label="Grand Total" value={formatPeso(toStr(grandTotal))} strong />
           <Line label="Remaining Balance" value={formatPeso(toStr(balance))} strong />
