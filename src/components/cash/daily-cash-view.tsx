@@ -9,6 +9,7 @@ import {
   addRemittanceAction,
   deleteCashRecordAction,
   loadCashDetailAction,
+  loadCashExportAction,
   saveActualCashCountAction,
   updateCashMovementAction,
   updateExpenseAction,
@@ -29,7 +30,7 @@ import {
 } from '@/lib/cash/types';
 import { formatPeso } from '@/lib/payments/format';
 import { formatDateTime } from '@/lib/format/date';
-import { downloadCsv } from '@/lib/export/csv';
+import { toCsv, downloadCsvText } from '@/lib/export/csv';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -136,27 +137,121 @@ export function DailyCashView({
     if (next) router.push(`/cash/daily?date=${next}`);
   };
 
-  // --- Export ---------------------------------------------------------------
-  const exportCsv = () => {
-    downloadCsv(
-      `Daily-Cash-Summary-${date}`,
-      [
-        { header: 'Field', value: (r) => r.k },
-        { header: 'Amount', value: (r) => r.v },
-      ],
-      [
-        { k: 'Date', v: date },
-        { k: 'Cash Sales', v: summary.cashSales },
-        { k: 'Previous Cash', v: summary.previousCash },
-        { k: 'Other Cash In', v: summary.otherCashIn },
-        { k: 'Expenses / Deductions', v: summary.expenses },
-        { k: 'Remittance', v: summary.remittance },
-        { k: 'Other Cash Out', v: summary.otherCashOut },
-        { k: 'Expected Cash on Hand', v: summary.expected },
-        { k: 'Actual Cash Count', v: actual || '' },
-        { k: 'Difference', v: diff === null ? '' : (diff < 0n ? '-' : '') + (String((diff < 0n ? -diff : diff) / 100n) + '.' + String((diff < 0n ? -diff : diff) % 100n).padStart(2, '0')) },
-      ],
-    );
+  // --- Export (§23: summary + detailed transactions) ------------------------
+  const [exporting, setExporting] = useState(false);
+  const diffSigned =
+    diff === null
+      ? ''
+      : (diff < 0n ? '-' : '') +
+        `${(diff < 0n ? -diff : diff) / 100n}.${String((diff < 0n ? -diff : diff) % 100n).padStart(2, '0')}`;
+
+  const exportCsv = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const d = await loadCashExportAction(date);
+      const sections: string[] = [];
+      sections.push(
+        toCsv<{ k: string; v: string }>(
+          [
+            { header: 'Field', value: (r) => r.k },
+            { header: 'Amount', value: (r) => r.v },
+          ],
+          [
+            { k: 'Date', v: date },
+            { k: 'Cash Sales', v: summary.cashSales },
+            { k: 'Previous Cash', v: summary.previousCash },
+            { k: 'Other Cash In', v: summary.otherCashIn },
+            { k: 'Expenses / Deductions', v: summary.expenses },
+            { k: 'Remittance', v: summary.remittance },
+            { k: 'Other Cash Out', v: summary.otherCashOut },
+            { k: 'Expected Cash on Hand', v: summary.expected },
+            { k: 'Actual Cash Count', v: actual || '' },
+            { k: 'Difference', v: diffSigned },
+          ],
+        ),
+      );
+      const section = (title: string, csv: string) => sections.push(`${title}\r\n${csv}`);
+      section(
+        'SALES WALK-INS',
+        toCsv<WalkInRow>(
+          [
+            { header: 'Order', value: (r) => r.orderNumber },
+            { header: 'Name', value: (r) => r.name },
+            { header: 'Purchased Amount', value: (r) => r.purchased },
+            { header: 'Depo/Bank/CC', value: (r) => r.nonCash },
+            { header: 'Trade Deductions', value: (r) => r.tradeDeductions },
+            { header: 'Cash Payments', value: (r) => r.cash },
+          ],
+          d.walkIns,
+        ),
+      );
+      section(
+        'CASH PAYMENTS',
+        toCsv<CashPaymentRow>(
+          [
+            { header: 'Name', value: (r) => r.name },
+            { header: 'Order', value: (r) => r.orderNumber },
+            { header: 'Amount', value: (r) => r.amount },
+            { header: 'Date / Time', value: (r) => r.at },
+            { header: 'Reference', value: (r) => r.reference ?? '' },
+          ],
+          d.cashPayments,
+        ),
+      );
+      section(
+        'TRADE DEDUCTIONS',
+        toCsv<TradeDeductionRow>(
+          [
+            { header: 'Name', value: (r) => r.name },
+            { header: 'Order', value: (r) => r.orderNumber },
+            { header: 'Label', value: (r) => r.label },
+            { header: 'Amount', value: (r) => r.amount },
+            { header: 'Date / Time', value: (r) => r.at },
+          ],
+          d.tradeDeductions,
+        ),
+      );
+      section(
+        'EXPENSES',
+        toCsv<ExpenseRow>(
+          [
+            { header: 'Name / Payee', value: (r) => r.payee },
+            { header: 'Amount', value: (r) => r.amount },
+            { header: 'Category', value: (r) => r.category ?? '' },
+            { header: 'Remarks', value: (r) => r.remarks ?? '' },
+            { header: 'Date / Time', value: (r) => r.createdAt },
+            { header: 'Created By', value: (r) => r.createdByName },
+          ],
+          d.expenses,
+        ),
+      );
+      section(
+        'REMITTANCE',
+        toCsv<RemittanceRow>(
+          [
+            { header: 'Amount', value: (r) => r.amount },
+            { header: 'Reference / Remarks', value: (r) => r.reference || r.remarks || '' },
+            { header: 'Date / Time', value: (r) => r.createdAt },
+            { header: 'Recorded By', value: (r) => r.createdByName },
+          ],
+          d.remittances,
+        ),
+      );
+      const movementCols = [
+        { header: 'Type', value: (r: CashMovementRow) => r.movementType ?? '' },
+        { header: 'Amount', value: (r: CashMovementRow) => r.amount },
+        { header: 'Remarks', value: (r: CashMovementRow) => r.remarks ?? '' },
+        { header: 'Date / Time', value: (r: CashMovementRow) => r.createdAt },
+        { header: 'Recorded By', value: (r: CashMovementRow) => r.createdByName },
+      ];
+      section('OTHER CASH IN', toCsv<CashMovementRow>(movementCols, d.cashIn));
+      section('OTHER CASH OUT', toCsv<CashMovementRow>(movementCols, d.cashOut));
+
+      downloadCsvText(`Daily-Cash-Summary-${date}`, sections.join('\r\n\r\n'));
+    } finally {
+      setExporting(false);
+    }
   };
 
   const cards = [
@@ -172,8 +267,15 @@ export function DailyCashView({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Daily Cash Summary</h1>
         <div className="flex items-center gap-3">
-          <Button type="button" variant="outline" size="sm" onClick={exportCsv} data-testid="cash-export">
-            ⭳ Export
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void exportCsv()}
+            disabled={exporting}
+            data-testid="cash-export"
+          >
+            {exporting ? 'Preparing…' : '⭳ Export'}
           </Button>
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">Date</span>

@@ -20,7 +20,16 @@ import {
   getTradeDeductions,
   getWalkIns,
 } from '@/lib/cash/service';
-import type { CashTab, MutationResult } from '@/lib/cash/types';
+import type {
+  CashMovementRow,
+  CashPaymentRow,
+  CashTab,
+  ExpenseRow,
+  MutationResult,
+  RemittanceRow,
+  TradeDeductionRow,
+  WalkInRow,
+} from '@/lib/cash/types';
 
 /**
  * Daily Cash Summary — server actions (transport only). Authority (Owner / Selected
@@ -58,6 +67,44 @@ export async function loadCashDetailAction(
     default:
       return { total: 0, rows: [] };
   }
+}
+
+export type CashExport = {
+  walkIns: WalkInRow[];
+  cashPayments: CashPaymentRow[];
+  tradeDeductions: TradeDeductionRow[];
+  expenses: ExpenseRow[];
+  remittances: RemittanceRow[];
+  cashIn: CashMovementRow[];
+  cashOut: CashMovementRow[];
+};
+
+/**
+ * Gather the day's FULL detailed transactions for Export (spec §23) — every tab, not
+ * just the on-screen page. Read-gated on view_reports (each service reader). Capped per
+ * tab so a huge day still exports safely; a day's transactions are naturally bounded.
+ */
+export async function loadCashExportAction(date: string): Promise<CashExport> {
+  const P = 1;
+  const N = 2000;
+  const [w, cp, td, ex, rm, ci, co] = await Promise.all([
+    getWalkIns(date, P, N),
+    getCashPayments(date, P, N),
+    getTradeDeductions(date, P, N),
+    getExpenses(date, P, N),
+    getRemittances(date, P, N),
+    getCashMovements(date, 'in', P, N),
+    getCashMovements(date, 'out', P, N),
+  ]);
+  return {
+    walkIns: w.rows,
+    cashPayments: cp.rows,
+    tradeDeductions: td.rows,
+    expenses: ex.rows,
+    remittances: rm.rows,
+    cashIn: ci.rows,
+    cashOut: co.rows,
+  };
 }
 
 export async function addExpenseAction(input: {

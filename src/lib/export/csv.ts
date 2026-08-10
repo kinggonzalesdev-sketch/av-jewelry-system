@@ -23,6 +23,20 @@ export function toCsv<T>(columns: CsvColumn<T>[], rows: T[]): string {
   return rows.length ? `${head}\r\n${body}` : head;
 }
 
+/** Triggers a browser download of already-built CSV text (e.g. a multi-section export
+ *  where several tables are joined with blank lines). Adds the Excel UTF-8 BOM. */
+export function downloadCsvText(filename: string, csv: string): void {
+  const blob = new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename.endsWith('.csv') ? filename : `${filename}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 /** Triggers a browser download of the rows as a .csv (opens in Excel). */
 export function downloadCsv<T>(
   filename: string,
