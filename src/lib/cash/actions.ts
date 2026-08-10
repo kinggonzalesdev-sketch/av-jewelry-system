@@ -15,6 +15,7 @@ import {
 import {
   getCashMovements,
   getCashPayments,
+  getDailyCashSummary,
   getExpenses,
   getRemittances,
   getTradeDeductions,
@@ -24,6 +25,7 @@ import type {
   CashMovementRow,
   CashPaymentRow,
   CashTab,
+  DailyCashSummary,
   ExpenseRow,
   MutationResult,
   RemittanceRow,
@@ -67,6 +69,16 @@ export async function loadCashDetailAction(
     default:
       return { total: 0, rows: [] };
   }
+}
+
+/**
+ * Re-read ONLY the day's summary (cards / breakdown / expected). The Details section
+ * calls this after a manual add/edit/delete so the totals recalculate in place —
+ * no full-page reload, so the End-of-Day Actual Cash Count the user is typing is
+ * never reset. Read-gated on view_reports (same as the page).
+ */
+export async function loadCashSummaryAction(date: string): Promise<DailyCashSummary> {
+  return getDailyCashSummary(date);
 }
 
 export type CashExport = {

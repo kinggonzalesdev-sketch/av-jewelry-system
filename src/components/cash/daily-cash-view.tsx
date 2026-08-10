@@ -10,6 +10,7 @@ import {
   deleteCashRecordAction,
   loadCashDetailAction,
   loadCashExportAction,
+  loadCashSummaryAction,
   saveActualCashCountAction,
   updateCashMovementAction,
   updateExpenseAction,
@@ -89,7 +90,7 @@ type EditingState = { id: string; initial: EditInitial };
 
 export function DailyCashView({
   date,
-  summary,
+  summary: summaryProp,
   initialWalkIns,
 }: {
   date: string;
@@ -98,13 +99,29 @@ export function DailyCashView({
 }) {
   const router = useRouter();
 
-  // --- End of Day: actual cash count + live difference ----------------------
-  const [actual, setActual] = useState(summary.actualCount ?? '');
+  // The summary is the one thing a Details edit can move (adding an expense changes
+  // a total). Hold it in client state so those edits recalculate the cards /
+  // breakdown / expected IN PLACE — never a full-page reload, which would also wipe
+  // the Actual Cash Count the user is typing (§7, §10).
+  const [summary, setSummary] = useState(summaryProp);
+  // A NEW day arrives as a fresh prop (date navigation) — adopt it.
   useEffect(() => {
-    // Reset the count field when a new day's summary loads.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setActual(summary.actualCount ?? '');
-  }, [summary.actualCount, date]);
+    setSummary(summaryProp);
+  }, [summaryProp]);
+  const refreshSummary = async () => {
+    setSummary(await loadCashSummaryAction(date));
+  };
+
+  // --- End of Day: actual cash count + live difference ----------------------
+  // Seeded (and reset) ONLY from the server prop — i.e. when a new day loads. A
+  // Details-section edit refreshes `summary` but not the prop, so the count the user
+  // is entering is never cleared by switching tabs or saving a record (§7).
+  const [actual, setActual] = useState(summaryProp.actualCount ?? '');
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setActual(summaryProp.actualCount ?? '');
+  }, [summaryProp.actualCount, date]);
   const [savingCount, setSavingCount] = useState(false);
 
   const diff = useMemo(() => {
@@ -128,8 +145,10 @@ export function DailyCashView({
     if (savingCount || actual.trim() === '') return;
     setSavingCount(true);
     await saveActualCashCountAction(date, actual, summary.expected);
+    // Recalculate in place (close status → button label) without a reload, so the
+    // count the user just entered stays put.
+    await refreshSummary();
     setSavingCount(false);
-    router.refresh();
   };
 
   // --- Date control ---------------------------------------------------------
@@ -376,8 +395,10 @@ export function DailyCashView({
         </Card>
       </div>
 
-      {/* Details */}
-      <DetailsSection date={date} initialWalkIns={initialWalkIns} />
+      {/* Details — an embedded mini-workspace. Its tab switches + Add/View/Edit/Delete
+          modals never navigate or reload; a financial change calls back to
+          recalculate only the totals above. */}
+      <DetailsSection date={date} initialWalkIns={initialWalkIns} onFinancialChange={refreshSummary} />
 
       <p className="pt-1 text-center text-[11px] text-muted-foreground">
         All amounts are in Philippine Peso (₱).
@@ -401,7 +422,15 @@ function BreakRow({ label, value, color }: { label: string; value: string; color
 // Details section — lazy-loaded, paginated tabs
 // ===========================================================================
 
-function DetailsSection({ date, initialWalkIns }: { date: string; initialWalkIns: DetailPage<WalkInRow> }) {
+function DetailsSection({
+  date,
+  initialWalkIns,
+  onFinancialChange,
+}: {
+  date: string;
+  initialWalkIns: DetailPage<WalkInRow>;
+  onFinancialChange: () => Promise<void>;
+}) {
   const [tab, setTab] = useState<CashTab>('sales_walkins');
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(8);
@@ -409,7 +438,15 @@ function DetailsSection({ date, initialWalkIns }: { date: string; initialWalkIns
   const [data, setData] = useState<DetailPage<unknown>>(initialWalkIns);
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<EditingState | null>(null);
+  const [viewing, setViewing] = useState<RowView | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // A manual record was added / edited / deleted: reload THIS tab and recalculate the
+  // summary totals above — nothing else on the page moves (§10, §11).
+  const afterMutation = () => {
+    setRefreshKey((k) => k + 1);
+    void onFinancialChange();
+  };
 
   // Load whenever the tab / page / size / date changes. The default tab's first page is
   // already server-rendered (initialWalkIns), so skip that exact combination once.
@@ -486,7 +523,8 @@ function DetailsSection({ date, initialWalkIns }: { date: string; initialWalkIns
           tab={tab}
           loading={loading}
           rows={data.rows}
-          onChanged={() => setRefreshKey((k) => k + 1)}
+          onChanged={afterMutation}
+          onView={(v) => setViewing(v)}
           onEdit={(id, initial) => {
             setEditing({ id, initial });
             setShowAdd(true);
@@ -522,11 +560,53 @@ function DetailsSection({ date, initialWalkIns }: { date: string; initialWalkIns
           onSaved={() => {
             setShowAdd(false);
             setEditing(null);
-            setRefreshKey((k) => k + 1);
+            afterMutation();
           }}
         />
       ) : null}
+
+      {viewing ? <RowViewModal view={viewing} onClose={() => setViewing(null)} /> : null}
     </Card>
+  );
+}
+
+/** A read-only "View" popup for one Details row (§4). Never navigates. */
+type RowView = { title: string; orderNumber?: string; fields: { label: string; value: string }[] };
+
+function RowViewModal({ view, onClose }: { view: RowView; onClose: () => void }) {
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={view.title}
+      size="sm"
+      footer={
+        <div className="flex w-full items-center justify-between">
+          {view.orderNumber ? (
+            <a
+              href={`/orders?q=${encodeURIComponent(view.orderNumber)}`}
+              className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+            >
+              Open in Orders ↗
+            </a>
+          ) : (
+            <span />
+          )}
+          <Button type="button" variant="outline" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      }
+    >
+      <dl className="divide-y divide-border">
+        {view.fields.map((f) => (
+          <div key={f.label} className="flex items-start justify-between gap-4 py-2">
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{f.label}</dt>
+            <dd className="text-right text-sm font-medium text-foreground">{f.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </Modal>
   );
 }
 
@@ -539,12 +619,14 @@ function TabTable({
   loading,
   rows,
   onChanged,
+  onView,
   onEdit,
 }: {
   tab: CashTab;
   loading: boolean;
   rows: unknown[];
   onChanged: () => void;
+  onView: (view: RowView) => void;
   onEdit: (id: string, initial: EditInitial) => void;
 }) {
   if (loading) {
@@ -586,7 +668,22 @@ function TabTable({
                 <Td kind="num">{money(row.cash)}</Td>
                 <Td kind="center" className="text-muted-foreground">—</Td>
                 <Td kind="center">
-                  <ViewOrderLink orderNumber={row.orderNumber} />
+                  <ViewButton
+                    onView={() =>
+                      onView({
+                        title: `Walk-in — ${row.name}`,
+                        orderNumber: row.orderNumber,
+                        fields: [
+                          { label: 'Name', value: row.name },
+                          { label: 'Order', value: row.orderNumber },
+                          { label: 'Purchased Amount', value: money(row.purchased) },
+                          { label: 'Depo / Bank / CC', value: money(row.nonCash) },
+                          { label: 'Trade Deductions', value: money(row.tradeDeductions) },
+                          { label: 'Cash Payment', value: money(row.cash) },
+                        ],
+                      })
+                    }
+                  />
                 </Td>
               </Tr>
             ))
@@ -624,7 +721,21 @@ function TabTable({
                   {row.reference ?? '—'}
                 </Td>
                 <Td kind="center">
-                  <ViewOrderLink orderNumber={row.orderNumber} />
+                  <ViewButton
+                    onView={() =>
+                      onView({
+                        title: `Cash Payment — ${row.name}`,
+                        orderNumber: row.orderNumber,
+                        fields: [
+                          { label: 'Name', value: row.name },
+                          { label: 'Order', value: row.orderNumber },
+                          { label: 'Amount', value: money(row.amount) },
+                          { label: 'Date / Time', value: fmt(row.at) },
+                          { label: 'Reference', value: row.reference ?? '—' },
+                        ],
+                      })
+                    }
+                  />
                 </Td>
               </Tr>
             ))
@@ -660,7 +771,21 @@ function TabTable({
                 <Td kind="num"><span style={{ color: C.red }}>{money(row.amount)}</span></Td>
                 <Td kind="center" className="text-xs text-muted-foreground">{fmt(row.at)}</Td>
                 <Td kind="center">
-                  <ViewOrderLink orderNumber={row.orderNumber} />
+                  <ViewButton
+                    onView={() =>
+                      onView({
+                        title: `Trade Deduction — ${row.name}`,
+                        orderNumber: row.orderNumber,
+                        fields: [
+                          { label: 'Name', value: row.name },
+                          { label: 'Order', value: row.orderNumber },
+                          { label: 'Label', value: row.label },
+                          { label: 'Amount', value: money(row.amount) },
+                          { label: 'Date / Time', value: fmt(row.at) },
+                        ],
+                      })
+                    }
+                  />
                 </Td>
               </Tr>
             ))
@@ -699,6 +824,21 @@ function TabTable({
                 <Td kind="center" className="text-xs text-muted-foreground">{row.createdByName}</Td>
                 <Td kind="center">
                   <div className="flex items-center justify-center gap-1">
+                    <ViewButton
+                      onView={() =>
+                        onView({
+                          title: `Expense — ${row.payee}`,
+                          fields: [
+                            { label: 'Name / Payee', value: row.payee },
+                            { label: 'Amount', value: money(row.amount) },
+                            { label: 'Category', value: row.category ?? '—' },
+                            { label: 'Remarks', value: row.remarks ?? '—' },
+                            { label: 'Date / Time', value: fmt(row.createdAt) },
+                            { label: 'Created By', value: row.createdByName },
+                          ],
+                        })
+                      }
+                    />
                     <EditButton
                       onEdit={() =>
                         onEdit(row.id, {
@@ -709,7 +849,7 @@ function TabTable({
                         })
                       }
                     />
-                    <DeleteButton onDelete={() => del('daily_cash_expenses', row.id)} />
+                    <DeleteButton noun="expense" onDelete={() => del('daily_cash_expenses', row.id)} />
                   </div>
                 </Td>
               </Tr>
@@ -747,6 +887,20 @@ function TabTable({
                 <Td kind="center" className="text-xs text-muted-foreground">{row.createdByName}</Td>
                 <Td kind="center">
                   <div className="flex items-center justify-center gap-1">
+                    <ViewButton
+                      onView={() =>
+                        onView({
+                          title: 'Remittance',
+                          fields: [
+                            { label: 'Amount', value: money(row.amount) },
+                            { label: 'Reference', value: row.reference ?? '—' },
+                            { label: 'Remarks', value: row.remarks ?? '—' },
+                            { label: 'Date / Time', value: fmt(row.createdAt) },
+                            { label: 'Recorded By', value: row.createdByName },
+                          ],
+                        })
+                      }
+                    />
                     <EditButton
                       onEdit={() =>
                         onEdit(row.id, {
@@ -756,7 +910,7 @@ function TabTable({
                         })
                       }
                     />
-                    <DeleteButton onDelete={() => del('daily_cash_remittances', row.id)} />
+                    <DeleteButton noun="remittance" onDelete={() => del('daily_cash_remittances', row.id)} />
                   </div>
                 </Td>
               </Tr>
@@ -795,6 +949,20 @@ function TabTable({
               <Td kind="center" className="text-xs text-muted-foreground">{row.createdByName}</Td>
               <Td kind="center">
                 <div className="flex items-center justify-center gap-1">
+                  <ViewButton
+                    onView={() =>
+                      onView({
+                        title: isIn ? 'Other Cash In' : 'Other Cash Out',
+                        fields: [
+                          { label: 'Type', value: row.movementType ?? (isIn ? 'Cash In' : 'Cash Out') },
+                          { label: 'Amount', value: money(row.amount) },
+                          { label: 'Remarks', value: row.remarks ?? '—' },
+                          { label: 'Date / Time', value: fmt(row.createdAt) },
+                          { label: 'Recorded By', value: row.createdByName },
+                        ],
+                      })
+                    }
+                  />
                   <EditButton
                     onEdit={() =>
                       onEdit(row.id, {
@@ -804,7 +972,10 @@ function TabTable({
                       })
                     }
                   />
-                  <DeleteButton onDelete={() => del('daily_cash_movements', row.id)} />
+                  <DeleteButton
+                    noun={isIn ? 'cash-in entry' : 'cash-out entry'}
+                    onDelete={() => del('daily_cash_movements', row.id)}
+                  />
                 </div>
               </Td>
             </Tr>
@@ -820,16 +991,16 @@ function fmt(iso: string): string {
   return formatDateTime(iso);
 }
 
-/** View the related order in Orders (search by its number). */
-function ViewOrderLink({ orderNumber }: { orderNumber: string }) {
+/** Open the row's details in a popup — never navigates away (§4). */
+function ViewButton({ onView }: { onView: () => void }) {
   return (
-    <a
-      href={`/orders?q=${encodeURIComponent(orderNumber)}`}
-      title={`View ${orderNumber}`}
+    <button
+      type="button"
+      onClick={onView}
       className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] hover:bg-accent"
     >
       👁 View
-    </a>
+    </button>
   );
 }
 
@@ -845,22 +1016,53 @@ function EditButton({ onEdit }: { onEdit: () => void }) {
   );
 }
 
-function DeleteButton({ onDelete }: { onDelete: () => Promise<void> }) {
+/** Delete opens a confirmation popup first — it never deletes on the first click and
+ *  never navigates (§6). The record's own guarded action runs on confirm. */
+function DeleteButton({ noun, onDelete }: { noun: string; onDelete: () => Promise<void> }) {
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const run = async () => {
     if (busy) return;
     setBusy(true);
     await onDelete();
     setBusy(false);
+    setOpen(false);
   };
   return (
-    <button
-      type="button"
-      onClick={() => void run()}
-      className="rounded-md border border-destructive/40 px-2 py-1 text-[11px] text-destructive hover:bg-destructive/10"
-    >
-      {busy ? '…' : 'Delete'}
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rounded-md border border-destructive/40 px-2 py-1 text-[11px] text-destructive hover:bg-destructive/10"
+      >
+        Delete
+      </button>
+      {open ? (
+        <Modal
+          open
+          onClose={() => {
+            if (!busy) setOpen(false);
+          }}
+          title={`Delete ${noun}?`}
+          size="sm"
+          critical
+          footer={
+            <>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={busy}>
+                Cancel
+              </Button>
+              <Button type="button" variant="destructive" onClick={() => void run()} disabled={busy}>
+                {busy ? 'Deleting…' : 'Delete'}
+              </Button>
+            </>
+          }
+        >
+          <p className="text-sm">
+            This removes the {noun} from today&apos;s cash summary. This cannot be undone.
+          </p>
+        </Modal>
+      ) : null}
+    </>
   );
 }
 
