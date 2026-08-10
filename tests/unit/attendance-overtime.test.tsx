@@ -67,6 +67,8 @@ describe('ReviewAttendanceView — Overtime column', () => {
         }}
       />,
     );
+    // Selfies live in the day's detail popup now (§14) — open it first.
+    fireEvent.click(screen.getByRole('button', { name: 'View' }));
     const inThumb = screen.getByAltText('In selfie');
     const outThumb = screen.getByAltText('Out selfie');
     expect(inThumb).toHaveAttribute('src', 'https://signed.example/in.jpg');

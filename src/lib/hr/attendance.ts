@@ -113,6 +113,30 @@ export async function listOpenSessions(): Promise<Record<string, string>> {
 }
 
 /**
+ * Staff id → the ISO time of their MOST RECENT clock-out TODAY (Manila). Drives the
+ * "Continue Duty" state: a staff member who has already clocked out today (and has no
+ * open session) can resume with a NEW work session on the SAME attendance day, rather
+ * than being offered a plain Clock In. RLS-scoped exactly like listOpenSessions.
+ */
+export async function listLastClockOutToday(): Promise<Record<string, string>> {
+  const supabase = await createClient();
+  // "Today" in the shop's timezone, matching how work_date is read elsewhere.
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+  const { data } = await supabase
+    .from('attendance_records')
+    .select('staff_profile_id, time_out')
+    .eq('work_date', today)
+    .not('time_out', 'is', null)
+    .order('time_out', { ascending: true });
+  const map: Record<string, string> = {};
+  // Ascending order → the last write for each staff is their most recent clock-out.
+  for (const r of (data ?? []) as Array<{ staff_profile_id: string; time_out: string }>) {
+    map[r.staff_profile_id] = r.time_out;
+  }
+  return map;
+}
+
+/**
  * Kiosk clock-IN for a SELECTED team member (shop-device model). The operator must
  * be active staff; the device gate + the DEFINER function enforce the shop-phone
  * rule, active-target rule, and one-open-session rule. The selfie is attached to

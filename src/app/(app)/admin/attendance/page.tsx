@@ -5,7 +5,12 @@ import { AttendanceView } from '@/components/hr/attendance-view';
 import { DeviceManager } from '@/components/hr/device-manager';
 import { canOpenPage, requireActiveStaff } from '@/lib/authz/guard';
 import { PageHeader } from '@/components/ui/page-primitives';
-import { listAttendance, listClockStaff, listOpenSessions } from '@/lib/hr/attendance';
+import {
+  listAttendance,
+  listClockStaff,
+  listLastClockOutToday,
+  listOpenSessions,
+} from '@/lib/hr/attendance';
 import {
   isAttendanceGatingActive,
   isThisDeviceApproved,
@@ -34,16 +39,18 @@ export default async function AttendancePage() {
   const staff = await requireActiveStaff();
   const isOwner = staff.roleKey === 'owner';
 
-  const [records, openSessions, clockStaff, gatingActive, thisApproved] = await Promise.all([
-    listAttendance(),
-    listOpenSessions(),
-    // The kiosk roster is available to ANY hr_attendance holder (Owner request):
-    // reaching this page already requires that permission, so a granted staff/admin
-    // can operate the clock, not just the Owner. Returns active staff name + role.
-    listClockStaff(),
-    isAttendanceGatingActive(),
-    isThisDeviceApproved(),
-  ]);
+  const [records, openSessions, lastOutToday, clockStaff, gatingActive, thisApproved] =
+    await Promise.all([
+      listAttendance(),
+      listOpenSessions(),
+      listLastClockOutToday(),
+      // The kiosk roster is available to ANY hr_attendance holder (Owner request):
+      // reaching this page already requires that permission, so a granted staff/admin
+      // can operate the clock, not just the Owner. Returns active staff name + role.
+      listClockStaff(),
+      isAttendanceGatingActive(),
+      isThisDeviceApproved(),
+    ]);
 
   // Owner or Selected Admin may permanently delete an attendance record.
   const canManage = isOwner || staff.roleKey === 'selected_admin';
@@ -83,6 +90,7 @@ export default async function AttendancePage() {
           isOwner={isOwner}
           clockStaff={clockStaff}
           openSessions={openSessions}
+          lastOutToday={lastOutToday}
           // Everyone who can open this page holds hr_attendance, so the clock is
           // shown to all of them — a granted staff/admin can sign the team in/out on
           // the approved shop phone, not just the Owner.

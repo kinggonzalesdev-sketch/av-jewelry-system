@@ -8,6 +8,7 @@ import { deleteAttendanceRecordAction } from '@/lib/hr/actions';
 import { EMPTY_HR_STATE, type HrActionState } from '@/lib/hr/action-state';
 import type { AttendanceRow, AttendanceSelfies } from '@/lib/hr/attendance';
 import { durationHours, formatDuration } from '@/lib/hr/format';
+import { groupAttendanceDays, type AttendanceDay } from '@/lib/hr/sessions';
 import { formatPeso } from '@/lib/payments/format';
 import { EmptyState } from '@/components/states/empty-state';
 import { Button } from '@/components/ui/button';
@@ -75,15 +76,20 @@ export function ReviewAttendanceView({
     return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]));
   }, [records]);
 
-  const filtered = useMemo(() => {
-    return records.filter((r) => {
+  // Filter the raw sessions, then group into ONE row per (employee, day). The status
+  // filter then applies to the day (open = it still has a session running).
+  const [viewing, setViewing] = useState<AttendanceDay | null>(null);
+  const days = useMemo(() => {
+    const filteredRecords = records.filter((r) => {
       if (employee !== 'all' && r.staffProfileId !== employee) return false;
       if (from && r.workDate < from) return false;
       if (to && r.workDate > to) return false;
-      if (status === 'open' && r.timeOut !== null) return false;
-      if (status === 'complete' && r.timeOut === null) return false;
       return true;
     });
+    let grouped = groupAttendanceDays(filteredRecords);
+    if (status === 'open') grouped = grouped.filter((d) => d.hasOpen);
+    if (status === 'complete') grouped = grouped.filter((d) => !d.hasOpen);
+    return grouped;
   }, [records, employee, from, to, status]);
 
   return (
@@ -137,78 +143,75 @@ export function ReviewAttendanceView({
           </select>
         </label>
         <p className="w-full text-xs text-muted-foreground">
-          Showing <span className="tabular-nums">{filtered.length}</span> of{' '}
-          <span className="tabular-nums">{records.length}</span> loaded records.
+          Showing <span className="tabular-nums">{days.length}</span> attendance{' '}
+          {days.length === 1 ? 'day' : 'days'} ({records.length} loaded sessions).
         </p>
       </div>
 
       {records.length === 0 ? (
         <EmptyState title="No attendance records yet" />
-      ) : filtered.length === 0 ? (
+      ) : days.length === 0 ? (
         <div className="rounded-xl border border-border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
           No records match these filters.
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border bg-card">
           <table
-            className="data-table w-full min-w-[720px] text-left text-sm"            data-testid="review-attendance"
+            className="data-table w-full min-w-[760px] text-left text-sm"
+            data-testid="review-attendance"
           >
             <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="col-grow px-3 py-2.5 text-left font-medium">Employee</th>
                 <th className="px-3 py-2.5 text-center font-medium">Date</th>
-                <th className="px-3 py-2.5 text-center font-medium">Time in</th>
-                <th className="px-3 py-2.5 text-center font-medium">Time out</th>
-                <th className="px-3 py-2.5 text-right font-medium">Total hours</th>
+                <th className="px-3 py-2.5 text-center font-medium">First in</th>
+                <th className="px-3 py-2.5 text-center font-medium">Final out</th>
+                <th className="px-3 py-2.5 text-center font-medium">Sessions</th>
+                <th className="px-3 py-2.5 text-right font-medium">Total worked</th>
                 <th className="px-3 py-2.5 text-center font-medium">Status</th>
                 <th className="px-3 py-2.5 text-right font-medium">Overtime</th>
-                <th className="px-3 py-2.5 text-center font-medium">Selfies</th>
-                {canManage ? (
-                  <th className="col-actions px-3 py-2.5 font-medium">Actions</th>
-                ) : null}
+                <th className="col-actions px-3 py-2.5 font-medium">Details</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((r) => (
-                <tr key={r.id} className="border-b last:border-0">
-                  <td className="px-3 py-2.5 font-medium">{r.staffName ?? '—'}</td>
-                  <td className="whitespace-nowrap px-3 py-2.5 text-center">{r.workDate}</td>
+              {days.map((d) => (
+                <tr key={d.key} className="border-b last:border-0">
+                  <td className="px-3 py-2.5 font-medium">{d.staffName ?? '—'}</td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-center">{d.workDate}</td>
                   <td className="whitespace-nowrap px-3 py-2.5 text-center">
-                    {new Date(r.timeIn).toLocaleTimeString()}
+                    {new Date(d.firstIn).toLocaleTimeString()}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2.5 text-center">
-                    {r.timeOut ? new Date(r.timeOut).toLocaleTimeString() : '—'}
+                    {d.finalOut ? new Date(d.finalOut).toLocaleTimeString() : '—'}
                   </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">
-                    {formatDuration(durationHours(r.timeIn, r.timeOut))}
-                  </td>
+                  <td className="px-3 py-2.5 text-center tabular-nums">{d.sessionCount}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{formatDuration(d.totalHours)}</td>
                   <td className="px-3 py-2.5 text-center">
-                    {r.timeOut ? (
-                      <StatusBadge label="Complete" tone="strong" />
-                    ) : (
+                    {d.hasOpen ? (
                       <StatusBadge label="Open" tone="gold" />
+                    ) : (
+                      <StatusBadge label="Complete" tone="strong" />
                     )}
                   </td>
                   <td className="px-3 py-2.5 text-right tabular-nums">
-                    {r.isOvertime ? (
+                    {d.isOvertime ? (
                       <span className="font-medium text-gold-strong">
-                        {formatPeso(r.overtimeAmount)}
+                        {formatPeso(d.overtimeAmount)}
                       </span>
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
                   </td>
-                  <td className="px-3 py-2.5">
-                    <div className="flex items-center justify-center gap-2">
-                      <SelfieThumb label="In" url={selfies[r.id]?.inUrl ?? null} />
-                      <SelfieThumb label="Out" url={selfies[r.id]?.outUrl ?? null} />
-                    </div>
+                  <td className="col-actions px-3 py-2.5 text-right">
+                    <button
+                      type="button"
+                      onClick={() => setViewing(d)}
+                      data-testid={`review-day-view-${d.key}`}
+                      className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+                    >
+                      View
+                    </button>
                   </td>
-                  {canManage ? (
-                    <td className="col-actions px-3 py-2.5">
-                      <ReviewRowDelete row={r} />
-                    </td>
-                  ) : null}
                 </tr>
               ))}
             </tbody>
@@ -216,7 +219,104 @@ export function ReviewAttendanceView({
         </div>
       )}
 
+      {viewing ? (
+        <ReviewDayModal
+          day={viewing}
+          selfies={selfies}
+          canManage={canManage}
+          onClose={() => setViewing(null)}
+        />
+      ) : null}
     </div>
+  );
+}
+
+/**
+ * One day's work sessions for Review (§14): each session's clock in/out, duration,
+ * its selfies, and the off-duty gaps shown but NOT counted, ending in the day's
+ * total worked. Deleting is per session (§15).
+ */
+function ReviewDayModal({
+  day,
+  selfies,
+  canManage,
+  onClose,
+}: {
+  day: AttendanceDay;
+  selfies: AttendanceSelfies;
+  canManage: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`${day.staffName ?? 'Staff'} — ${day.workDate}`}
+      description={`${day.sessionCount} work session${day.sessionCount === 1 ? '' : 's'}`}
+      size="lg"
+      footer={
+        <Button type="button" variant="outline" onClick={onClose}>
+          Close
+        </Button>
+      }
+    >
+      <div className="space-y-2">
+        {day.sessions.map((s, i) => {
+          const next = day.sessions[i + 1];
+          const gapH = s.row.timeOut && next ? durationHours(s.row.timeOut, next.row.timeIn) : null;
+          return (
+            <div key={s.row.id}>
+              <div className="rounded-md border border-border p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium">
+                    Session {s.sessionNumber}
+                    {s.continued ? (
+                      <span className="ml-2 rounded-full border border-gold/40 bg-gold/10 px-1.5 py-0.5 text-[10px] text-gold-strong">
+                        Continued Duty
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="text-sm tabular-nums">{formatDuration(s.durationHrs)}</span>
+                </div>
+                <div className="mt-0.5 flex items-center justify-between gap-3">
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(s.row.timeIn).toLocaleTimeString()} →{' '}
+                    {s.row.timeOut ? (
+                      new Date(s.row.timeOut).toLocaleTimeString()
+                    ) : (
+                      <span className="text-gold-strong">Open</span>
+                    )}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <SelfieThumb label="In" url={selfies[s.row.id]?.inUrl ?? null} />
+                    <SelfieThumb label="Out" url={selfies[s.row.id]?.outUrl ?? null} />
+                  </div>
+                </div>
+                {s.row.isOvertime ? (
+                  <p className="mt-1 text-[11px] text-gold-strong">
+                    Overtime (night) · {formatPeso(s.row.overtimeAmount)}
+                  </p>
+                ) : null}
+                {canManage ? (
+                  <div className="mt-2">
+                    <ReviewRowDelete row={s.row} />
+                  </div>
+                ) : null}
+              </div>
+              {next && gapH && gapH > 0 ? (
+                <p className="py-1 text-center text-[11px] text-muted-foreground">
+                  Off duty · {formatDuration(gapH)} — not counted
+                </p>
+              ) : null}
+            </div>
+          );
+        })}
+        <div className="flex items-center justify-between border-t border-border pt-2 text-sm font-semibold">
+          <span>Total worked</span>
+          <span className="tabular-nums">{formatDuration(day.totalHours)}</span>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

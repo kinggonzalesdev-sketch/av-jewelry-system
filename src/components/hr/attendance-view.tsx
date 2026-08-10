@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useRef, useState } from 'react';
+import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useRouter } from 'next/navigation';
 
@@ -13,6 +13,7 @@ import { RequestDeletionButton } from '@/components/approvals/request-deletion-b
 import { EMPTY_HR_STATE, type HrActionState } from '@/lib/hr/action-state';
 import type { AttendanceRow } from '@/lib/hr/attendance';
 import { durationHours, formatDuration } from '@/lib/hr/format';
+import { groupAttendanceDays, type AttendanceDay } from '@/lib/hr/sessions';
 import type { PayrollResult, PayrollRow } from '@/lib/hr/payroll';
 import { formatPeso } from '@/lib/payments/format';
 import type { PayslipSnapshot } from '@/lib/hr/payslip-types';
@@ -60,6 +61,7 @@ export function AttendanceView({
   isOwner,
   clockStaff = [],
   openSessions = {},
+  lastOutToday = {},
   payslips = {},
   showClock = true,
   showPayroll = true,
@@ -76,6 +78,8 @@ export function AttendanceView({
   clockStaff?: ClockStaffMember[];
   /** staff id → ISO time of their current open session. */
   openSessions?: Record<string, string>;
+  /** staff id → ISO of their most recent clock-out today (drives Continue Duty). */
+  lastOutToday?: Record<string, string>;
   /** Generated payslip snapshots for this period, keyed by staff id. */
   payslips?: Record<string, PayslipSnapshot>;
   /** Section toggles so the split Team Management pages reuse this one view. */
@@ -92,7 +96,11 @@ export function AttendanceView({
     <div className="space-y-4">
       {/* Clock in / out — name header + selfie capture (Cancel / Capture). */}
       {showClock ? (
-        <AttendanceClock staff={clockStaff} openSessions={openSessions} />
+        <AttendanceClock
+          staff={clockStaff}
+          openSessions={openSessions}
+          lastOutToday={lastOutToday}
+        />
       ) : null}
 
       {/* Payroll summary */}
@@ -258,66 +266,172 @@ export function AttendanceView({
         </Card>
       ) : null}
 
-      {/* Attendance records */}
+      {/* Attendance records — ONE row per day, with its work sessions inside. */}
       {showRecords ? (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Attendance records</CardTitle>
           </CardHeader>
           <CardContent>
-            {records.length === 0 ? (
-              <EmptyState
-                title="No attendance yet"
-                description="Clock in above to record a session."
-              />
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="data-table w-full min-w-[620px] text-left text-sm">
-                  <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
-                    <tr>
-                      <th className="col-grow px-3 py-2.5 text-left font-medium">Staff</th>
-                      <th className="px-3 py-2.5 text-center font-medium">Date</th>
-                      <th className="px-3 py-2.5 text-center font-medium">Time in</th>
-                      <th className="px-3 py-2.5 text-center font-medium">Time out</th>
-                      <th className="px-3 py-2.5 text-right font-medium">Duration</th>
-                      {canManage ? (
-                        <th className="px-3 py-2.5 text-right font-medium">Actions</th>
-                      ) : null}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {records.map((r) => (
-                      <tr key={r.id} className="border-b last:border-0">
-                        <td className="px-3 py-2.5">{r.staffName ?? '—'}</td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-center">{r.workDate}</td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-center">
-                          {new Date(r.timeIn).toLocaleTimeString()}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-center">
-                          {r.timeOut ? (
-                            new Date(r.timeOut).toLocaleTimeString()
-                          ) : (
-                            <span className="text-gold-strong">Open</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2.5 text-right tabular-nums">
-                          {formatDuration(durationHours(r.timeIn, r.timeOut))}
-                        </td>
-                        {canManage ? (
-                          <td className="col-actions px-3 py-2.5">
-                            <AttendanceRowDelete row={r} isOwner={isOwner} />
-                          </td>
-                        ) : null}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <AttendanceHistory records={records} canManage={canManage} isOwner={isOwner} />
           </CardContent>
         </Card>
       ) : null}
     </div>
+  );
+}
+
+/** A local "9:00:00 AM" time label for an ISO timestamp. */
+function clockTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString();
+}
+
+/**
+ * Attendance history, grouped into ONE row per (staff, day). The row shows the
+ * day's first clock-in, final clock-out, how many work sessions it holds, and the
+ * TOTAL worked (sum of session durations — never final-out minus first-in). Clicking
+ * a day opens its sessions with the off-duty gaps shown but not counted (§7).
+ */
+function AttendanceHistory({
+  records,
+  canManage,
+  isOwner,
+}: {
+  records: AttendanceRow[];
+  canManage: boolean;
+  isOwner: boolean;
+}) {
+  const days = useMemo(() => groupAttendanceDays(records), [records]);
+  const [viewing, setViewing] = useState<AttendanceDay | null>(null);
+
+  if (records.length === 0) {
+    return (
+      <EmptyState title="No attendance yet" description="Clock in above to record a session." />
+    );
+  }
+
+  return (
+    <>
+      <div className="overflow-x-auto">
+        <table className="data-table w-full min-w-[680px] text-left text-sm" data-testid="attendance-days">
+          <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
+            <tr>
+              <th className="col-grow px-3 py-2.5 text-left font-medium">Staff</th>
+              <th className="px-3 py-2.5 text-center font-medium">Date</th>
+              <th className="px-3 py-2.5 text-center font-medium">First in</th>
+              <th className="px-3 py-2.5 text-center font-medium">Final out</th>
+              <th className="px-3 py-2.5 text-center font-medium">Sessions</th>
+              <th className="px-3 py-2.5 text-right font-medium">Total worked</th>
+              <th className="px-3 py-2.5 text-right font-medium">Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {days.map((d) => (
+              <tr key={d.key} className="border-b last:border-0">
+                <td className="px-3 py-2.5">{d.staffName ?? '—'}</td>
+                <td className="whitespace-nowrap px-3 py-2.5 text-center">{d.workDate}</td>
+                <td className="whitespace-nowrap px-3 py-2.5 text-center">{clockTime(d.firstIn)}</td>
+                <td className="whitespace-nowrap px-3 py-2.5 text-center">
+                  {d.finalOut ? clockTime(d.finalOut) : <span className="text-gold-strong">Open</span>}
+                </td>
+                <td className="px-3 py-2.5 text-center tabular-nums">{d.sessionCount}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums">{formatDuration(d.totalHours)}</td>
+                <td className="px-3 py-2.5 text-right">
+                  <button
+                    type="button"
+                    onClick={() => setViewing(d)}
+                    data-testid={`attendance-day-view-${d.key}`}
+                    className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+                  >
+                    View
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {viewing ? (
+        <DaySessionsModal
+          day={viewing}
+          canManage={canManage}
+          isOwner={isOwner}
+          onClose={() => setViewing(null)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/** One day's work sessions + off-duty gaps + total (§7, §14). Deleting is per SESSION
+ *  (§15) — correcting one session never rewrites the whole day. */
+function DaySessionsModal({
+  day,
+  canManage,
+  isOwner,
+  onClose,
+}: {
+  day: AttendanceDay;
+  canManage: boolean;
+  isOwner: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`${day.staffName ?? 'Staff'} — ${day.workDate}`}
+      description={`${day.sessionCount} work session${day.sessionCount === 1 ? '' : 's'}`}
+      size="md"
+      footer={
+        <Button type="button" variant="outline" onClick={onClose}>
+          Close
+        </Button>
+      }
+    >
+      <div className="space-y-2">
+        {day.sessions.map((s, i) => {
+          const next = day.sessions[i + 1];
+          const gapH = s.row.timeOut && next ? durationHours(s.row.timeOut, next.row.timeIn) : null;
+          return (
+            <div key={s.row.id}>
+              <div className="rounded-md border border-border p-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">
+                    Session {s.sessionNumber}
+                    {s.continued ? (
+                      <span className="ml-2 rounded-full border border-gold/40 bg-gold/10 px-1.5 py-0.5 text-[10px] text-gold-strong">
+                        Continued Duty
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="text-sm tabular-nums">{formatDuration(s.durationHrs)}</span>
+                </div>
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  {clockTime(s.row.timeIn)} →{' '}
+                  {s.row.timeOut ? clockTime(s.row.timeOut) : <span className="text-gold-strong">Open</span>}
+                </div>
+                {canManage ? (
+                  <div className="mt-2">
+                    <AttendanceRowDelete row={s.row} isOwner={isOwner} />
+                  </div>
+                ) : null}
+              </div>
+              {next && gapH && gapH > 0 ? (
+                <p className="py-1 text-center text-[11px] text-muted-foreground">
+                  Off duty · {formatDuration(gapH)} — not counted
+                </p>
+              ) : null}
+            </div>
+          );
+        })}
+        <div className="flex items-center justify-between border-t border-border pt-2 text-sm font-semibold">
+          <span>Total worked</span>
+          <span className="tabular-nums">{formatDuration(day.totalHours)}</span>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

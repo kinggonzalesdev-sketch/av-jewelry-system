@@ -10,6 +10,7 @@ import { clockInAction, clockOutAction } from '@/lib/hr/actions';
 import { EMPTY_HR_STATE } from '@/lib/hr/action-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Modal } from '@/components/ui/modal';
 
 /**
  * Attendance clock — the person's own name at the top, one big Clock In button,
@@ -49,11 +50,14 @@ export type ClockStaffMember = {
 export function AttendanceClock({
   staff,
   openSessions,
+  lastOutToday = {},
 }: {
   /** Active Owner/Admin/Staff from Team Members — the only people who can be clocked. */
   staff: ClockStaffMember[];
   /** staff id → ISO time of their current open session (clocked in, not out). */
   openSessions: Record<string, string>;
+  /** staff id → ISO of their most recent clock-out TODAY (drives Continue Duty). */
+  lastOutToday?: Record<string, string>;
 }) {
   const router = useRouter();
   // Require selecting WHO is signing in before clock in/out is offered.
@@ -61,6 +65,10 @@ export function AttendanceClock({
   const selected = staff.find((s) => s.id === selectedId) ?? null;
   const openSince = selectedId ? (openSessions[selectedId] ?? null) : null;
   const openSession = { open: Boolean(openSince), since: openSince };
+  // Already clocked out today AND no open session → offer Continue Duty (a NEW
+  // session on the same attendance day), not a plain Clock In.
+  const resumeSince = selectedId && !openSession.open ? (lastOutToday[selectedId] ?? null) : null;
+  const [continueConfirm, setContinueConfirm] = useState(false);
   const [mode, setMode] = useState<'idle' | 'camera'>('idle');
   // Which action the selfie step will complete — clock IN or clock OUT.
   const [intent, setIntent] = useState<'in' | 'out'>('in');
@@ -307,6 +315,22 @@ export function AttendanceClock({
               Clock Out
             </Button>
           </div>
+        ) : resumeSince ? (
+          <div className="mx-auto flex max-w-sm flex-col items-center gap-3">
+            <p className="text-sm text-muted-foreground">
+              Clocked out{' '}
+              {`at ${new Date(resumeSince).toLocaleTimeString()}`}. Returning to work?
+            </p>
+            <Button
+              type="button"
+              onClick={() => setContinueConfirm(true)}
+              disabled={pending}
+              className="w-full"
+              data-testid="clock-continue"
+            >
+              Continue Duty
+            </Button>
+          </div>
         ) : (
           <div className="mx-auto flex max-w-sm flex-col items-center gap-3">
             <span
@@ -326,6 +350,45 @@ export function AttendanceClock({
             </Button>
           </div>
         )}
+
+        {/* Continue Duty confirmation (§3). A new work session is ADDED to today's
+            attendance — no duplicate day. The same selfie step as Clock In follows. */}
+        <Modal
+          open={continueConfirm}
+          onClose={() => setContinueConfirm(false)}
+          title="Continue Duty?"
+          size="sm"
+          footer={
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setContinueConfirm(false)}
+                data-testid="clock-continue-cancel"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  setContinueConfirm(false);
+                  void startCamera('in');
+                }}
+                data-testid="clock-continue-confirm"
+              >
+                Continue Duty
+              </Button>
+            </>
+          }
+        >
+          <p className="text-sm">
+            {resumeSince
+              ? `Your previous duty ended at ${new Date(resumeSince).toLocaleTimeString()}. `
+              : ''}
+            A new work session will be added to today&apos;s attendance. The gap since
+            your last clock-out is off-duty and is not counted.
+          </p>
+        </Modal>
 
         {error ? (
           <p role="alert" className="mt-3 text-center text-sm text-destructive">
