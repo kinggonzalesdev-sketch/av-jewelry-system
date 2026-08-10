@@ -86,6 +86,7 @@ export const PAGE_PERMISSION: Record<string, string> = {
   '/admin/attendance/review': 'hr_review_attendance',
   '/admin/payroll': 'hr_payroll',
   '/reports': 'view_reports',
+  '/cash/daily': 'view_reports',
   '/settings': 'view_settings',
 };
 
@@ -138,6 +139,24 @@ export const PRIMARY_NAV: readonly NavItem[] = [
     label: 'Approvals',
     icon: '✓',
     ownerOnly: true,
+    mobilePrimary: false,
+    available: true,
+  },
+  // Cash & Reports — the daily cash reconciliation module + Reports (Owner-approved
+  // 2026-08-10). Gated by view_reports (financial); the page re-checks server-side.
+  {
+    href: '/cash/daily',
+    label: 'Daily Cash Summary',
+    icon: '▦',
+    section: 'Cash & Reports',
+    mobilePrimary: false,
+    available: true,
+  },
+  {
+    href: '/reports',
+    label: 'Reports',
+    icon: '▩',
+    section: 'Cash & Reports',
     mobilePrimary: false,
     available: true,
   },
