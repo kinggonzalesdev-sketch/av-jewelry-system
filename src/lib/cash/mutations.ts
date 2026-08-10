@@ -117,6 +117,83 @@ export async function addCashMovement(input: {
   return { ok: true };
 }
 
+export async function updateExpense(
+  id: string,
+  input: { date: string; payee: string; amount: string; category: string | null; remarks: string | null },
+): Promise<MutationResult> {
+  const g = await requireManager();
+  if (!g.ok) return g;
+  const amount = money(input.amount);
+  if (!id) return { ok: false, error: 'Missing record.' };
+  if (!amount) return { ok: false, error: 'Enter a valid amount.' };
+  if (!input.payee.trim()) return { ok: false, error: 'A name / payee is required.' };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('daily_cash_expenses')
+    .update({
+      expense_date: input.date,
+      payee: input.payee.trim(),
+      amount,
+      category: input.category?.trim() || null,
+      remarks: input.remarks?.trim() || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+  if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  await recordAuditEvent({ action: 'daily_cash.expense.update', entityType: 'daily_cash_expense', entityId: id, context: { amount } });
+  return { ok: true };
+}
+
+export async function updateRemittance(
+  id: string,
+  input: { date: string; amount: string; reference: string | null; remarks: string | null },
+): Promise<MutationResult> {
+  const g = await requireManager();
+  if (!g.ok) return g;
+  const amount = money(input.amount);
+  if (!id) return { ok: false, error: 'Missing record.' };
+  if (!amount) return { ok: false, error: 'Enter a valid amount.' };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('daily_cash_remittances')
+    .update({
+      remit_date: input.date,
+      amount,
+      reference: input.reference?.trim() || null,
+      remarks: input.remarks?.trim() || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+  if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  await recordAuditEvent({ action: 'daily_cash.remittance.update', entityType: 'daily_cash_remittance', entityId: id, context: { amount } });
+  return { ok: true };
+}
+
+export async function updateCashMovement(
+  id: string,
+  input: { date: string; movementType: string | null; amount: string; remarks: string | null },
+): Promise<MutationResult> {
+  const g = await requireManager();
+  if (!g.ok) return g;
+  const amount = money(input.amount);
+  if (!id) return { ok: false, error: 'Missing record.' };
+  if (!amount) return { ok: false, error: 'Enter a valid amount.' };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('daily_cash_movements')
+    .update({
+      movement_date: input.date,
+      movement_type: input.movementType?.trim() || null,
+      amount,
+      remarks: input.remarks?.trim() || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+  if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  await recordAuditEvent({ action: 'daily_cash.movement.update', entityType: 'daily_cash_movement', entityId: id, context: { amount } });
+  return { ok: true };
+}
+
 const DELETABLE = new Set(['daily_cash_expenses', 'daily_cash_remittances', 'daily_cash_movements']);
 
 export async function deleteCashRecord(table: string, id: string): Promise<MutationResult> {
