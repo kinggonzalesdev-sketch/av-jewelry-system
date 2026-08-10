@@ -28,6 +28,9 @@ import {
   type TradeDeductionRow,
   type WalkInRow,
 } from '@/lib/cash/types';
+import { captureWalkInOrderAction } from '@/lib/orders/actions';
+import type { WalkInItem } from '@/lib/orders/service';
+import { PAYMENT_METHODS, DEFAULT_PAYMENT_METHOD } from '@/lib/payments/methods';
 import { formatPeso } from '@/lib/payments/format';
 import { formatDateTime } from '@/lib/format/date';
 import { toCsv, downloadCsvText } from '@/lib/export/csv';
@@ -58,11 +61,12 @@ function toCents(s: string): bigint {
   return neg ? -c : c;
 }
 
-type AddMode = 'modal' | 'link' | 'none';
+type AddMode = 'modal' | 'none';
 function addConfig(tab: CashTab): { label: string; mode: AddMode } {
   switch (tab) {
+    // sales_walkins has its own in-section walk-in modal, handled in the render.
     case 'sales_walkins':
-      return { label: '+ Add New Sale', mode: 'link' };
+      return { label: '+ Add New Sale', mode: 'none' };
     case 'expenses':
       return { label: '+ Add Expense', mode: 'modal' };
     case 'remittance':
@@ -91,10 +95,16 @@ export function DailyCashView({
   date: dateProp,
   summary: summaryProp,
   initialWalkIns,
+  walkInItems,
+  adminId,
+  canAddWalkIn,
 }: {
   date: string;
   summary: DailyCashSummary;
   initialWalkIns: DetailPage<WalkInRow>;
+  walkInItems: WalkInItem[];
+  adminId: string | null;
+  canAddWalkIn: boolean;
 }) {
   // The ENTIRE Daily Cash Summary lives in this one view — no interaction here ever
   // navigates or reloads the page (Owner request). The server props seed the initial
@@ -392,7 +402,14 @@ export function DailyCashView({
       {/* Details — an embedded mini-workspace. Its tab switches + Add/View/Edit/Delete
           modals never navigate or reload; a financial change calls back to
           recalculate only the totals above. */}
-      <DetailsSection date={date} initialWalkIns={initialWalkIns} onFinancialChange={refreshSummary} />
+      <DetailsSection
+        date={date}
+        initialWalkIns={initialWalkIns}
+        onFinancialChange={refreshSummary}
+        walkInItems={walkInItems}
+        adminId={adminId}
+        canAddWalkIn={canAddWalkIn}
+      />
 
       <p className="pt-1 text-center text-[11px] text-muted-foreground">
         All amounts are in Philippine Peso (₱).
@@ -420,10 +437,16 @@ function DetailsSection({
   date,
   initialWalkIns,
   onFinancialChange,
+  walkInItems,
+  adminId,
+  canAddWalkIn,
 }: {
   date: string;
   initialWalkIns: DetailPage<WalkInRow>;
   onFinancialChange: () => Promise<void>;
+  walkInItems: WalkInItem[];
+  adminId: string | null;
+  canAddWalkIn: boolean;
 }) {
   const [tab, setTab] = useState<CashTab>('sales_walkins');
   const [page, setPage] = useState(1);
@@ -431,6 +454,7 @@ function DetailsSection({
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<DetailPage<unknown>>(initialWalkIns);
   const [showAdd, setShowAdd] = useState(false);
+  const [showWalkIn, setShowWalkIn] = useState(false);
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [viewing, setViewing] = useState<RowView | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -492,12 +516,17 @@ function DetailsSection({
               </button>
             ))}
           </div>
-          {cfg.mode === 'link' ? (
-            <a href="/orders">
-              <Button type="button" size="sm" data-testid="cash-add">
-                {cfg.label}
+          {tab === 'sales_walkins' ? (
+            canAddWalkIn ? (
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setShowWalkIn(true)}
+                data-testid="cash-add"
+              >
+                + Add New Sale
               </Button>
-            </a>
+            ) : null
           ) : cfg.mode === 'modal' ? (
             <Button
               type="button"
@@ -560,6 +589,19 @@ function DetailsSection({
       ) : null}
 
       {viewing ? <RowViewModal view={viewing} onClose={() => setViewing(null)} /> : null}
+
+      {showWalkIn ? (
+        <WalkInSaleModal
+          date={date}
+          walkInItems={walkInItems}
+          adminId={adminId}
+          onClose={() => setShowWalkIn(false)}
+          onSaved={() => {
+            setShowWalkIn(false);
+            afterMutation();
+          }}
+        />
+      ) : null}
     </Card>
   );
 }
@@ -1173,6 +1215,205 @@ function AddCashModal({
         </ModalFieldFull>
       </ModalFormGrid>
       {error ? <p role="alert" className="mt-2 text-sm text-destructive">{error}</p> : null}
+    </Modal>
+  );
+}
+
+// ===========================================================================
+// Add New Sale (Walk-In) modal — records a fully-paid counter sale right here,
+// without leaving Daily Cash. Reuses the same guarded create_walkin_order flow as
+// New Order (customer + items from Active Inventory + one mode of payment); the DB
+// completes it and retires the item. On save the summary + this tab recalculate.
+// ===========================================================================
+
+type WalkRow = { key: number; itemId: string; input: string; price: string };
+
+function WalkInSaleModal({
+  date,
+  walkInItems,
+  adminId,
+  onClose,
+  onSaved,
+}: {
+  date: string;
+  walkInItems: WalkInItem[];
+  adminId: string | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [customer, setCustomer] = useState('');
+  const [rows, setRows] = useState<WalkRow[]>([{ key: 1, itemId: '', input: '', price: '' }]);
+  const nextKey = useRef(2);
+  const [method, setMethod] = useState<string>(DEFAULT_PAYMENT_METHOD);
+  const [saleDate, setSaleDate] = useState(date);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const display = (i: WalkInItem) => (i.facebookName ? `${i.itemCode} — ${i.facebookName}` : i.itemCode);
+  const patch = (key: number, p: Partial<WalkRow>) =>
+    setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...p } : r)));
+  const onItemInput = (key: number, value: string) => {
+    const found = walkInItems.find((i) => display(i) === value);
+    patch(key, { input: value, itemId: found?.id ?? '' });
+  };
+  const addRow = () => setRows((rs) => [...rs, { key: nextKey.current++, itemId: '', input: '', price: '' }]);
+  const removeRow = (key: number) => setRows((rs) => (rs.length > 1 ? rs.filter((r) => r.key !== key) : rs));
+
+  const total = rows.reduce((sum, r) => sum + (r.price.trim() ? toCents(r.price) : 0n), 0n);
+  const totalStr = `${total / 100n}.${String(total % 100n).padStart(2, '0')}`;
+
+  const gramsOf = (r: WalkRow) => walkInItems.find((i) => i.id === r.itemId)?.grams ?? null;
+
+  const save = async () => {
+    if (busy) return;
+    if (!customer.trim()) {
+      setError('Enter the customer name.');
+      return;
+    }
+    const items = rows
+      .filter((r) => r.itemId && r.price.trim())
+      .map((r) => ({ inventoryItemId: r.itemId, price: r.price.trim(), quantity: 1 }));
+    if (items.length === 0) {
+      setError('Select at least one item from Active Inventory and enter its price.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const res = await captureWalkInOrderAction({
+      customerName: customer.trim(),
+      items,
+      paymentMethod: method,
+      saleDate: saleDate || date,
+      adminId,
+    });
+    setBusy(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    onSaved();
+  };
+
+  return (
+    <Modal
+      open
+      onClose={() => (busy ? undefined : onClose())}
+      title="Add New Sale (Walk-In)"
+      description="A fully-paid counter sale — completed immediately and retired from Active Inventory."
+      size="lg"
+      critical
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={() => void save()} disabled={busy} data-testid="walkin-save">
+            {busy ? 'Saving…' : `Save Sale · ${formatPeso(totalStr)}`}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <div>
+          <Label htmlFor="wi-customer" className="text-xs">Customer Name</Label>
+          <Input
+            id="wi-customer"
+            value={customer}
+            onChange={(e) => setCustomer(e.target.value)}
+            className="mt-1 h-9"
+            placeholder="Walk-in customer"
+          />
+        </div>
+
+        <datalist id="wi-item-options">
+          {walkInItems.map((i) => (
+            <option key={i.id} value={display(i)} />
+          ))}
+        </datalist>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">Items (from Active Inventory)</span>
+            <button
+              type="button"
+              onClick={addRow}
+              className="rounded-md border border-border px-2 py-0.5 text-[11px] hover:bg-accent"
+            >
+              ＋ Add item
+            </button>
+          </div>
+          {rows.map((r, idx) => (
+            <div key={r.key} className="flex items-start gap-2">
+              <div className="flex-1">
+                <Input
+                  list="wi-item-options"
+                  aria-label={`Item ${idx + 1}`}
+                  value={r.input}
+                  onChange={(e) => onItemInput(r.key, e.target.value)}
+                  placeholder="Search code / name"
+                  className="h-9"
+                />
+                {r.input && !r.itemId ? (
+                  <p className="mt-0.5 text-[10px] text-destructive">Pick an item from the list.</p>
+                ) : gramsOf(r) ? (
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">{gramsOf(r)} g</p>
+                ) : null}
+              </div>
+              <div className="w-32">
+                <MoneyInput
+                  aria-label={`Price ${idx + 1}`}
+                  value={r.price}
+                  onValueChange={(v) => patch(r.key, { price: v })}
+                  className="h-9"
+                />
+              </div>
+              {rows.length > 1 ? (
+                <button
+                  type="button"
+                  onClick={() => removeRow(r.key)}
+                  aria-label={`Remove item ${idx + 1}`}
+                  className="mt-1 rounded-md border border-destructive/40 px-2 py-1 text-[11px] text-destructive hover:bg-destructive/10"
+                >
+                  ✕
+                </button>
+              ) : null}
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label htmlFor="wi-method" className="text-xs">Mode of Payment</Label>
+            <select
+              id="wi-method"
+              value={method}
+              onChange={(e) => setMethod(e.target.value)}
+              className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+            >
+              {PAYMENT_METHODS.map((mth) => (
+                <option key={mth} value={mth}>{mth}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <Label htmlFor="wi-date" className="text-xs">Date</Label>
+            <Input
+              id="wi-date"
+              type="date"
+              value={saleDate}
+              onChange={(e) => setSaleDate(e.target.value)}
+              className="mt-1 h-9"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-sm">
+          <span className="text-muted-foreground">Total (fully paid)</span>
+          <span className="font-bold" style={{ color: C.green }}>{formatPeso(totalStr)}</span>
+        </div>
+
+        {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+      </div>
     </Modal>
   );
 }

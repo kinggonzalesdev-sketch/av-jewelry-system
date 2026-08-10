@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
 
-import { requirePermission } from '@/lib/authz/guard';
+import { getGrantedPermissions, requirePermission } from '@/lib/authz/guard';
+import { getAdminNameContext } from '@/lib/authz/admin-name';
 import { getDailyCashSummary, getWalkIns } from '@/lib/cash/service';
+import { listWalkInItems } from '@/lib/orders/service';
 import { DailyCashView } from '@/components/cash/daily-cash-view';
 
 export const metadata: Metadata = {};
@@ -28,10 +30,24 @@ export default async function DailyCashPage({
   const date = /^\d{4}-\d{2}-\d{2}$/.test(sp.date ?? '') ? (sp.date as string) : todayInManila();
 
   // Summary + the DEFAULT tab (Sales Walk-ins) render server-side; other tabs lazy-load.
-  const [summary, firstTab] = await Promise.all([
+  // The walk-in item list + admin id back the in-section "Add New Sale" popup so a
+  // walk-in can be recorded WITHOUT leaving Daily Cash (owner request).
+  const [summary, firstTab, walkInItems, permissions, admins] = await Promise.all([
     getDailyCashSummary(date),
     getWalkIns(date, 1, 8),
+    listWalkInItems(),
+    getGrantedPermissions(),
+    getAdminNameContext(),
   ]);
 
-  return <DailyCashView date={date} summary={summary} initialWalkIns={firstTab} />;
+  return (
+    <DailyCashView
+      date={date}
+      summary={summary}
+      initialWalkIns={firstTab}
+      walkInItems={walkInItems}
+      adminId={admins.selfId}
+      canAddWalkIn={permissions.has('claim_capture')}
+    />
+  );
 }

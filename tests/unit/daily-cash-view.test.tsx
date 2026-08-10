@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DailyCashView } from '@/components/cash/daily-cash-view';
 import type { DailyCashSummary, DetailPage, ExpenseRow, WalkInRow } from '@/lib/cash/types';
+import type { WalkInItem } from '@/lib/orders/service';
 
 /**
  * Daily Cash Summary — the Details section must behave as a SELF-CONTAINED mini
@@ -26,10 +27,15 @@ const m = vi.hoisted(() => ({
   updateCashMovementAction: vi.fn(),
   deleteCashRecordAction: vi.fn(),
   saveActualCashCountAction: vi.fn(),
+  captureWalkInOrderAction: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: m.push, refresh: m.refresh }),
+}));
+
+vi.mock('@/lib/orders/actions', () => ({
+  captureWalkInOrderAction: m.captureWalkInOrderAction,
 }));
 
 vi.mock('@/lib/cash/actions', () => ({
@@ -75,6 +81,10 @@ function expensesPage(): DetailPage<ExpenseRow> {
   return { rows: [expenseRow], total: 1 };
 }
 
+const walkInItems: WalkInItem[] = [
+  { id: 'inv-1', itemCode: 'K18-001', facebookName: 'Gold Ring', grams: '3.5' },
+];
+
 beforeEach(() => {
   vi.clearAllMocks();
   m.loadCashDetailAction.mockResolvedValue({ rows: [], total: 0 });
@@ -82,10 +92,20 @@ beforeEach(() => {
   m.addExpenseAction.mockResolvedValue({ ok: true });
   m.deleteCashRecordAction.mockResolvedValue({ ok: true });
   m.saveActualCashCountAction.mockResolvedValue({ ok: true });
+  m.captureWalkInOrderAction.mockResolvedValue({ ok: true, orderNumber: 'ORD-1', itemCount: 1 });
 });
 
 function renderView() {
-  return render(<DailyCashView date="2026-08-10" summary={summary} initialWalkIns={walkIns} />);
+  return render(
+    <DailyCashView
+      date="2026-08-10"
+      summary={summary}
+      initialWalkIns={walkIns}
+      walkInItems={walkInItems}
+      adminId="admin-1"
+      canAddWalkIn
+    />,
+  );
 }
 
 describe('Daily Cash — Details is a self-contained workspace', () => {
@@ -128,6 +148,17 @@ describe('Daily Cash — Details is a self-contained workspace', () => {
     // Fully self-contained: no link out to the Orders section.
     expect(within(dialog).queryByText(/Open in Orders/)).not.toBeInTheDocument();
     expect(m.push).not.toHaveBeenCalled();
+  });
+
+  it('"+ Add New Sale" opens an in-section walk-in popup — it does not jump to Orders', () => {
+    renderView();
+    // Sales Walk-ins is the default tab; its Add button opens the walk-in modal.
+    fireEvent.click(screen.getByTestId('cash-add'));
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent('Add New Sale (Walk-In)');
+    expect(m.push).not.toHaveBeenCalled();
+    expect(m.refresh).not.toHaveBeenCalled();
   });
 
   it('changing the date stays in this section — re-reads the day in place, never navigates', async () => {
