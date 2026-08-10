@@ -67,13 +67,13 @@ describe('groupAttendanceDays', () => {
     expect(open.totalHours).toBe(0);
   });
 
-  it('sums the day overtime bonus across sessions as an exact money string', () => {
+  it('earns the night bonus at most ONCE per day, not per session', () => {
     const rows = [
       row({ timeIn: '2026-08-10T14:00:00Z', timeOut: '2026-08-10T15:00:00Z', isOvertime: true, overtimeAmount: '300.00' }),
       row({ timeIn: '2026-08-10T16:00:00Z', timeOut: '2026-08-10T17:00:00Z', isOvertime: true, overtimeAmount: '300.00' }),
     ];
     const d = groupAttendanceDays(rows)[0]!;
     expect(d.isOvertime).toBe(true);
-    expect(d.overtimeAmount).toBe('600.00');
+    expect(d.overtimeAmount).toBe('300.00'); // one bonus, not ₱600
   });
 });

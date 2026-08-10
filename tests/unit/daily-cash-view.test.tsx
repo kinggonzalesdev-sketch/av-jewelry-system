@@ -28,6 +28,7 @@ const m = vi.hoisted(() => ({
   deleteCashRecordAction: vi.fn(),
   saveActualCashCountAction: vi.fn(),
   captureWalkInOrderAction: vi.fn(),
+  saveWalkInOrderAction: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({
@@ -36,6 +37,7 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/lib/orders/actions', () => ({
   captureWalkInOrderAction: m.captureWalkInOrderAction,
+  saveWalkInOrderAction: m.saveWalkInOrderAction,
 }));
 
 vi.mock('@/lib/cash/actions', () => ({
@@ -93,7 +95,19 @@ beforeEach(() => {
   m.deleteCashRecordAction.mockResolvedValue({ ok: true });
   m.saveActualCashCountAction.mockResolvedValue({ ok: true });
   m.captureWalkInOrderAction.mockResolvedValue({ ok: true, orderNumber: 'ORD-1', itemCount: 1 });
+  m.saveWalkInOrderAction.mockResolvedValue({ ok: true, orderNumber: 'ORD-1', balance: '4940.00' });
 });
+
+function fillWalkIn(paymentValue?: string) {
+  fireEvent.click(screen.getByTestId('cash-add')); // Sales Walk-ins is the default tab
+  fireEvent.change(screen.getByLabelText('Customer Name'), { target: { value: 'Juan Dela Cruz' } });
+  fireEvent.change(screen.getByLabelText('Item 1'), { target: { value: 'K18-001 — Gold Ring' } });
+  fireEvent.change(screen.getByLabelText('Price 1'), { target: { value: '9940' } });
+  if (paymentValue !== undefined) {
+    fireEvent.change(screen.getByTestId('walkin-payment'), { target: { value: paymentValue } });
+  }
+  fireEvent.click(screen.getByTestId('walkin-save'));
+}
 
 function renderView() {
   return render(
@@ -159,6 +173,26 @@ describe('Daily Cash — Details is a self-contained workspace', () => {
     expect(dialog).toHaveTextContent('Add New Sale (Walk-In)');
     expect(m.push).not.toHaveBeenCalled();
     expect(m.refresh).not.toHaveBeenCalled();
+  });
+
+  it('a blank payment completes the walk-in in full (capture, not save)', async () => {
+    renderView();
+    fillWalkIn(); // no payment entered → pay in full
+    await waitFor(() => expect(m.captureWalkInOrderAction).toHaveBeenCalled());
+    expect(m.saveWalkInOrderAction).not.toHaveBeenCalled();
+    expect(m.push).not.toHaveBeenCalled();
+  });
+
+  it('a down-payment saves the walk-in with a balance (save, not complete)', async () => {
+    renderView();
+    fillWalkIn('1000'); // ₱1,000 of ₱9,940 → partial
+    await waitFor(() => expect(m.saveWalkInOrderAction).toHaveBeenCalled());
+    const arg = m.saveWalkInOrderAction.mock.calls[0]![0] as {
+      payments: Array<{ amount: string }>;
+    };
+    expect(arg.payments[0]!.amount).toBe('1000');
+    expect(m.captureWalkInOrderAction).not.toHaveBeenCalled();
+    expect(m.push).not.toHaveBeenCalled();
   });
 
   it('changing the date stays in this section — re-reads the day in place, never navigates', async () => {

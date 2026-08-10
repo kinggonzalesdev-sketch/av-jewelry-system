@@ -28,7 +28,7 @@ import {
   type TradeDeductionRow,
   type WalkInRow,
 } from '@/lib/cash/types';
-import { captureWalkInOrderAction } from '@/lib/orders/actions';
+import { captureWalkInOrderAction, saveWalkInOrderAction } from '@/lib/orders/actions';
 import type { WalkInItem } from '@/lib/orders/service';
 import { PAYMENT_METHODS, DEFAULT_PAYMENT_METHOD } from '@/lib/payments/methods';
 import { formatPeso } from '@/lib/payments/format';
@@ -1220,10 +1220,11 @@ function AddCashModal({
 }
 
 // ===========================================================================
-// Add New Sale (Walk-In) modal — records a fully-paid counter sale right here,
-// without leaving Daily Cash. Reuses the same guarded create_walkin_order flow as
-// New Order (customer + items from Active Inventory + one mode of payment); the DB
-// completes it and retires the item. On save the summary + this tab recalculate.
+// Add New Sale (Walk-In) modal — records a counter sale right here, without leaving
+// Daily Cash. Reuses the same guarded walk-in flows as New Order: a FULL payment
+// completes the sale + retires the item (create_walkin_order); a DOWN-PAYMENT saves
+// it with a balance in For Invoice (save_walkin_order), never auto-completing. On
+// save the summary + this tab recalculate.
 // ===========================================================================
 
 type WalkRow = { key: number; itemId: string; input: string; price: string };
@@ -1245,6 +1246,8 @@ function WalkInSaleModal({
   const [rows, setRows] = useState<WalkRow[]>([{ key: 1, itemId: '', input: '', price: '' }]);
   const nextKey = useRef(2);
   const [method, setMethod] = useState<string>(DEFAULT_PAYMENT_METHOD);
+  const [payment, setPayment] = useState(''); // blank = pay in full
+  const [reference, setReference] = useState('');
   const [saleDate, setSaleDate] = useState(date);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1259,8 +1262,14 @@ function WalkInSaleModal({
   const addRow = () => setRows((rs) => [...rs, { key: nextKey.current++, itemId: '', input: '', price: '' }]);
   const removeRow = (key: number) => setRows((rs) => (rs.length > 1 ? rs.filter((r) => r.key !== key) : rs));
 
+  const centStr = (c: bigint) => `${c / 100n}.${String(c % 100n).padStart(2, '0')}`;
   const total = rows.reduce((sum, r) => sum + (r.price.trim() ? toCents(r.price) : 0n), 0n);
-  const totalStr = `${total / 100n}.${String(total % 100n).padStart(2, '0')}`;
+  const totalStr = centStr(total);
+  // Blank payment = pay in full; a smaller amount is a down-payment leaving a balance.
+  const paid = payment.trim() ? toCents(payment) : total;
+  const paidClamped = paid > total ? total : paid;
+  const isFull = paidClamped >= total && total > 0n;
+  const balanceCents = total - paidClamped;
 
   const gramsOf = (r: WalkRow) => walkInItems.find((i) => i.id === r.itemId)?.grams ?? null;
 
@@ -1279,13 +1288,26 @@ function WalkInSaleModal({
     }
     setBusy(true);
     setError(null);
-    const res = await captureWalkInOrderAction({
-      customerName: customer.trim(),
-      items,
-      paymentMethod: method,
-      saleDate: saleDate || date,
-      adminId,
-    });
+    // Fully paid → complete the sale now. A down-payment → save it with a balance
+    // (the order lands in For Invoice for follow-up), never auto-completing.
+    let res: { ok: true } | { ok: false; error: string };
+    if (isFull) {
+      res = await captureWalkInOrderAction({
+        customerName: customer.trim(),
+        items,
+        paymentMethod: method,
+        saleDate: saleDate || date,
+        adminId,
+      });
+    } else {
+      res = await saveWalkInOrderAction({
+        customerName: customer.trim(),
+        items,
+        payments: paidClamped > 0n ? [{ method, amount: payment.trim(), reference: reference.trim() || null }] : [],
+        saleDate: saleDate || date,
+        adminId,
+      });
+    }
     setBusy(false);
     if (!res.ok) {
       setError(res.error);
@@ -1299,7 +1321,7 @@ function WalkInSaleModal({
       open
       onClose={() => (busy ? undefined : onClose())}
       title="Add New Sale (Walk-In)"
-      description="A fully-paid counter sale — completed immediately and retired from Active Inventory."
+      description="A counter sale. Pay in full to complete it now, or record a down-payment and leave a balance."
       size="lg"
       critical
       footer={
@@ -1308,7 +1330,11 @@ function WalkInSaleModal({
             Cancel
           </Button>
           <Button type="button" onClick={() => void save()} disabled={busy} data-testid="walkin-save">
-            {busy ? 'Saving…' : `Save Sale · ${formatPeso(totalStr)}`}
+            {busy
+              ? 'Saving…'
+              : isFull
+                ? `Save Sale · ${formatPeso(totalStr)}`
+                : `Save Down-payment · ${formatPeso(centStr(paidClamped))}`}
           </Button>
         </>
       }
@@ -1407,9 +1433,52 @@ function WalkInSaleModal({
           </div>
         </div>
 
-        <div className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-sm">
-          <span className="text-muted-foreground">Total (fully paid)</span>
-          <span className="font-bold" style={{ color: C.green }}>{formatPeso(totalStr)}</span>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label htmlFor="wi-payment" className="text-xs">Payment (blank = pay in full)</Label>
+            <MoneyInput
+              id="wi-payment"
+              aria-label="Payment"
+              value={payment}
+              onValueChange={setPayment}
+              placeholder={totalStr}
+              className="mt-1 h-9"
+              data-testid="walkin-payment"
+            />
+          </div>
+          <div>
+            <Label htmlFor="wi-ref" className="text-xs">Payment Reference</Label>
+            <Input
+              id="wi-ref"
+              value={reference}
+              onChange={(e) => setReference(e.target.value)}
+              placeholder="e.g. GCash ref no."
+              className="mt-1 h-9"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-1 rounded-md bg-muted/40 px-3 py-2 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Total</span>
+            <span className="font-semibold tabular-nums">{formatPeso(totalStr)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Paid now</span>
+            <span className="font-semibold tabular-nums" style={{ color: C.green }}>
+              {formatPeso(centStr(paidClamped))}
+            </span>
+          </div>
+          {isFull ? (
+            <p className="text-[11px] text-muted-foreground">Fully paid — the sale completes immediately.</p>
+          ) : (
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Remaining balance</span>
+              <span className="font-bold tabular-nums" style={{ color: C.amber }} data-testid="walkin-balance">
+                {formatPeso(centStr(balanceCents))}
+              </span>
+            </div>
+          )}
         </div>
 
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}

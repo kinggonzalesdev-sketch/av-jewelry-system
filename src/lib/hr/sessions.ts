@@ -46,18 +46,20 @@ export type AttendanceDay = {
   gaps: OffDutyGap[];
   /** True when any session of the day is an overtime (night) session. */
   isOvertime: boolean;
-  /** Sum of the day's session overtime bonuses, as a money STRING (no float). */
+  /** The day's night bonus as a money STRING. Earned at most ONCE per day (Owner
+   *  rule), so this is a single bonus even when several sessions run late. */
   overtimeAmount: string;
 };
 
-/** Sum money strings in exact integer centavos — never a JS float. */
-function sumMoney(values: string[]): string {
-  let cents = 0n;
+/** The single largest money string, in exact integer centavos — never a JS float. */
+function maxMoney(values: string[]): string {
+  let best = 0n;
   for (const v of values) {
     const [w, f = ''] = (v || '0').split('.');
-    cents += BigInt(w || '0') * 100n + BigInt((f + '00').slice(0, 2) || '0');
+    const c = BigInt(w || '0') * 100n + BigInt((f + '00').slice(0, 2) || '0');
+    if (c > best) best = c;
   }
-  return `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`;
+  return `${best / 100n}.${String(best % 100n).padStart(2, '0')}`;
 }
 
 export function groupAttendanceDays(rows: AttendanceRow[]): AttendanceDay[] {
@@ -112,7 +114,8 @@ export function groupAttendanceDays(rows: AttendanceRow[]): AttendanceDay[] {
       totalHours,
       gaps,
       isOvertime: sessions.some((s) => s.row.isOvertime),
-      overtimeAmount: sumMoney(sessions.map((s) => s.row.overtimeAmount)),
+      // One night bonus per day, never the sum — matches report_payroll's per-day count.
+      overtimeAmount: maxMoney(sessions.map((s) => s.row.overtimeAmount)),
     });
   }
 
