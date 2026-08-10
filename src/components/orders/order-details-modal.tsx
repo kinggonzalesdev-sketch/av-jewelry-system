@@ -638,6 +638,18 @@ function ForInvoiceView({
               label: 'Order Number',
               value: <span className="font-mono">{detail.orderNumber}</span>,
             },
+            // Waybill Number moved here from the Orders table (Owner 2026-08-10). Shown
+            // ONLY when the order has one (shipping orders); hidden otherwise, no clutter.
+            // Still stored + searchable in the Orders search regardless of visibility.
+            ...(detail.waybillNumber
+              ? [
+                  {
+                    icon: '✈',
+                    label: 'Waybill Number',
+                    value: <span className="font-mono">{detail.waybillNumber}</span>,
+                  },
+                ]
+              : []),
             {
               icon: '◔',
               label: 'Status',
@@ -1093,6 +1105,18 @@ function KeepView({
               label: 'Order Number',
               value: <span className="font-mono">{detail.orderNumber}</span>,
             },
+            // Waybill Number moved here from the Orders table (Owner 2026-08-10). Shown
+            // ONLY when the order has one (shipping orders); hidden otherwise, no clutter.
+            // Still stored + searchable in the Orders search regardless of visibility.
+            ...(detail.waybillNumber
+              ? [
+                  {
+                    icon: '✈',
+                    label: 'Waybill Number',
+                    value: <span className="font-mono">{detail.waybillNumber}</span>,
+                  },
+                ]
+              : []),
             {
               icon: '₱',
               label: 'Total Amount',
@@ -1232,6 +1256,18 @@ function DetailBody({
               label: 'Order Number',
               value: <span className="font-mono">{detail.orderNumber}</span>,
             },
+            // Waybill Number moved here from the Orders table (Owner 2026-08-10). Shown
+            // ONLY when the order has one (shipping orders); hidden otherwise, no clutter.
+            // Still stored + searchable in the Orders search regardless of visibility.
+            ...(detail.waybillNumber
+              ? [
+                  {
+                    icon: '✈',
+                    label: 'Waybill Number',
+                    value: <span className="font-mono">{detail.waybillNumber}</span>,
+                  },
+                ]
+              : []),
             {
               icon: '₱',
               label: 'Total Amount',

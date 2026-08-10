@@ -19,6 +19,7 @@ import { Money } from '@/components/shell/privacy';
 import { EmptyState } from '@/components/states/empty-state';
 import { PageHeader, StatusBadge, ReadError, type BadgeTone } from '@/components/ui/page-primitives';
 import { DataTable, Thead, Tr, Th, Td } from '@/components/ui/data-table';
+import { formatDate } from '@/lib/format/date';
 import { Pagination } from '@/components/ui/pagination';
 import { cn } from '@/lib/utils';
 
@@ -210,8 +211,11 @@ function OrderRow({
           </span>
         ) : null}
       </Td>
-      <Td clip title={order.waybillNumber || order.orderNumber} className="font-mono text-xs">
-        {order.waybillNumber || <span className="text-muted-foreground">—</span>}
+      {/* Date — the order's creation date, one consistent MineFlow format
+          ("August 10, 2026"). Waybill moved to the Order Details view but stays
+          searchable + stored. */}
+      <Td kind="center" clip className="whitespace-nowrap">
+        {order.createdAt ? formatDate(order.createdAt) : <span className="text-muted-foreground">—</span>}
       </Td>
       <Td kind="center">
         <StatusBadge label={humanize(order.status)} tone="neutral" />
@@ -689,7 +693,7 @@ export function OrdersView({
                 <Th kind="center">Customer Name</Th>
                 <Th kind="num">Amount</Th>
                 <Th kind="center">Payment</Th>
-                <Th>Waybill Number</Th>
+                <Th kind="center">Date</Th>
                 <Th kind="center">Status</Th>
                 <Th kind="actions">Actions</Th>
               </Tr>
