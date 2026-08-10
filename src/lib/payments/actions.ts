@@ -20,6 +20,7 @@ import {
 } from '@/lib/payments/layaway';
 import { recordPayment, verifyPayment } from '@/lib/payments/verification';
 import { recordDirectDeletion } from '@/lib/authz/deletion-requests';
+import { requestOwnerDeletion, type RequestDeletionResult } from '@/lib/authz/request-deletion';
 import {
   addLayawayInfo,
   createLayawayAccount,
@@ -348,6 +349,22 @@ export async function deleteLayawayLedgerRowAction(
     revalidatePath('/dashboard');
     revalidatePath('/admin/deletions');
   }
+  return result;
+}
+
+/**
+ * Approvals unification: a non-owner Admin asks the Owner to approve deleting an
+ * imported layaway account. Creates a pending Owner-approval request in the SAME
+ * queue (/approvals) as the other destructive deletes — deletes nothing until the
+ * Owner approves + executes it (which then runs delete_layaway_ledger_row).
+ */
+export async function requestLayawayLedgerDeletionAction(
+  id: string,
+  label: string,
+  reason: string,
+): Promise<RequestDeletionResult> {
+  const result = await requestOwnerDeletion('layaway_ledger_delete', 'layaway_ledger', id, `layaway account (${label})`, reason);
+  if (result.ok) revalidatePath('/approvals');
   return result;
 }
 

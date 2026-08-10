@@ -32,11 +32,14 @@ describe('the Owner approvals', () => {
       'inventory_item_delete',
       'scrap_sale_delete',
       'attendance_delete',
+      // Approvals unification: the imported-layaway-ledger delete joins the SAME
+      // queue as the others (was the separate deletion_requests register).
+      'layaway_ledger_delete',
     ]);
   });
 
-  it('has exactly ten — nothing else may be smuggled in', () => {
-    expect(OWNER_APPROVAL_KINDS).toHaveLength(10);
+  it('has exactly eleven — nothing else may be smuggled in', () => {
+    expect(OWNER_APPROVAL_KINDS).toHaveLength(11);
   });
 });
 

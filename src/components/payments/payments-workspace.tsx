@@ -11,6 +11,7 @@ import {
   deleteLayawayLedgerRowAction,
   rejectPaymentAction,
   requestForfeitureAction,
+  requestLayawayLedgerDeletionAction,
   verifyPaymentAction,
 } from '@/lib/payments/actions';
 import type { PaymentActionState } from '@/lib/payments/action-state';
@@ -30,7 +31,6 @@ import type { LayawayLedgerRow } from '@/lib/payments/layaway-ledger';
 import { LayawayDetailsModal } from '@/components/payments/layaway-details-modal';
 import { LayawayImportButton } from '@/components/payments/layaway-import-modal';
 import { LayawayNewEntry } from '@/components/payments/layaway-new-entry';
-import { requestDeletionAction } from '@/lib/authz/deletion-actions';
 import type { CaptureItem } from '@/lib/orders/service';
 import type { AdminNameContext } from '@/lib/authz/admin-name';
 import { LayawayLedgerViewModal } from '@/components/payments/layaway-ledger-view-modal';
@@ -1803,12 +1803,11 @@ function LedgerRowRequestDeletion({
     if (pending || !reason.trim()) return;
     setPending(true);
     setError(null);
-    const res = await requestDeletionAction({
-      entityType: 'layaway_ledger',
-      entityId: id,
-      entityLabel: `Layaway ${accountNo} — ${customerName}`,
-      reason: reason.trim(),
-    });
+    const res = await requestLayawayLedgerDeletionAction(
+      id,
+      `${accountNo} — ${customerName}`,
+      reason.trim(),
+    );
     setPending(false);
     if (!res.ok) {
       setError(res.error);

@@ -41,6 +41,7 @@ export const OWNER_APPROVAL_KINDS = [
   'inventory_item_delete',
   'scrap_sale_delete',
   'attendance_delete',
+  'layaway_ledger_delete',
 ] as const;
 
 export type OwnerApprovalKind = (typeof OWNER_APPROVAL_KINDS)[number];
@@ -689,6 +690,9 @@ export async function executeOwnerApproval(
       break;
     case 'attendance_delete':
       ({ error: delError } = await supabase.rpc('delete_attendance_record', { p_record_id: eid }));
+      break;
+    case 'layaway_ledger_delete':
+      ({ error: delError } = await supabase.rpc('delete_layaway_ledger_row', { p_id: eid }));
       break;
     default:
       break;
