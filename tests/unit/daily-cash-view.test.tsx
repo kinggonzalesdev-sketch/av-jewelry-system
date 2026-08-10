@@ -125,7 +125,19 @@ describe('Daily Cash — Details is a self-contained workspace', () => {
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText('Expense — Jollibee lunch')).toBeInTheDocument();
     expect(within(dialog).getByText('Meals')).toBeInTheDocument();
+    // Fully self-contained: no link out to the Orders section.
+    expect(within(dialog).queryByText(/Open in Orders/)).not.toBeInTheDocument();
     expect(m.push).not.toHaveBeenCalled();
+  });
+
+  it('changing the date stays in this section — re-reads the day in place, never navigates', async () => {
+    renderView();
+
+    fireEvent.change(screen.getByTestId('cash-date'), { target: { value: '2026-08-09' } });
+
+    await waitFor(() => expect(m.loadCashSummaryAction).toHaveBeenCalledWith('2026-08-09'));
+    expect(m.push).not.toHaveBeenCalled();
+    expect(m.refresh).not.toHaveBeenCalled();
   });
 
   it('Delete asks first — it never deletes on the first click', async () => {

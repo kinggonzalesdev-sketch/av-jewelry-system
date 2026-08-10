@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
 
 import {
   addCashMovementAction,
@@ -89,7 +88,7 @@ type EditInitial = {
 type EditingState = { id: string; initial: EditInitial };
 
 export function DailyCashView({
-  date,
+  date: dateProp,
   summary: summaryProp,
   initialWalkIns,
 }: {
@@ -97,32 +96,32 @@ export function DailyCashView({
   summary: DailyCashSummary;
   initialWalkIns: DetailPage<WalkInRow>;
 }) {
-  const router = useRouter();
-
-  // The summary is the one thing a Details edit can move (adding an expense changes
-  // a total). Hold it in client state so those edits recalculate the cards /
-  // breakdown / expected IN PLACE — never a full-page reload, which would also wipe
-  // the Actual Cash Count the user is typing (§7, §10).
+  // The ENTIRE Daily Cash Summary lives in this one view — no interaction here ever
+  // navigates or reloads the page (Owner request). The server props seed the initial
+  // state; everything after (date change, edits) is handled in place, client-side.
+  const [date, setDate] = useState(dateProp);
   const [summary, setSummary] = useState(summaryProp);
-  // A NEW day arrives as a fresh prop (date navigation) — adopt it.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSummary(summaryProp);
-  }, [summaryProp]);
   const refreshSummary = async () => {
     setSummary(await loadCashSummaryAction(date));
   };
 
   // --- End of Day: actual cash count + live difference ----------------------
-  // Seeded (and reset) ONLY from the server prop — i.e. when a new day loads. A
-  // Details-section edit refreshes `summary` but not the prop, so the count the user
-  // is entering is never cleared by switching tabs or saving a record (§7).
+  // A Details-section edit refreshes `summary` but never resets `actual`, so the count
+  // the user is entering is never cleared by switching tabs or saving a record (§7).
   const [actual, setActual] = useState(summaryProp.actualCount ?? '');
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setActual(summaryProp.actualCount ?? '');
-  }, [summaryProp.actualCount, date]);
   const [savingCount, setSavingCount] = useState(false);
+
+  // Changing the day STAYS in this section: re-read the day's summary in place and let
+  // the Details section reload its active tab (it is keyed on `date`). The URL is
+  // synced without a navigation, so a manual refresh still lands on the same day.
+  const changeDate = async (next: string) => {
+    if (!next || next === date) return;
+    setDate(next);
+    window.history.replaceState(null, '', `/cash/daily?date=${encodeURIComponent(next)}`);
+    const fresh = await loadCashSummaryAction(next);
+    setSummary(fresh);
+    setActual(fresh.actualCount ?? ''); // a new day → its own saved count (or blank)
+  };
 
   const diff = useMemo(() => {
     if (actual.trim() === '') return null;
@@ -149,11 +148,6 @@ export function DailyCashView({
     // count the user just entered stays put.
     await refreshSummary();
     setSavingCount(false);
-  };
-
-  // --- Date control ---------------------------------------------------------
-  const onDate = (next: string) => {
-    if (next) router.push(`/cash/daily?date=${next}`);
   };
 
   // --- Export (§23: summary + detailed transactions) ------------------------
@@ -301,7 +295,7 @@ export function DailyCashView({
             <Input
               type="date"
               value={date}
-              onChange={(e) => onDate(e.target.value)}
+              onChange={(e) => void changeDate(e.target.value)}
               className="h-9 w-[170px]"
               data-testid="cash-date"
             />
@@ -570,8 +564,9 @@ function DetailsSection({
   );
 }
 
-/** A read-only "View" popup for one Details row (§4). Never navigates. */
-type RowView = { title: string; orderNumber?: string; fields: { label: string; value: string }[] };
+/** A read-only "View" popup for one Details row (§4). Fully self-contained — it shows
+ *  the row's details in place and NEVER leaves the Daily Cash Summary section. */
+type RowView = { title: string; fields: { label: string; value: string }[] };
 
 function RowViewModal({ view, onClose }: { view: RowView; onClose: () => void }) {
   return (
@@ -581,21 +576,9 @@ function RowViewModal({ view, onClose }: { view: RowView; onClose: () => void })
       title={view.title}
       size="sm"
       footer={
-        <div className="flex w-full items-center justify-between">
-          {view.orderNumber ? (
-            <a
-              href={`/orders?q=${encodeURIComponent(view.orderNumber)}`}
-              className="text-xs text-muted-foreground underline-offset-2 hover:underline"
-            >
-              Open in Orders ↗
-            </a>
-          ) : (
-            <span />
-          )}
-          <Button type="button" variant="outline" onClick={onClose}>
-            Close
-          </Button>
-        </div>
+        <Button type="button" variant="outline" onClick={onClose}>
+          Close
+        </Button>
       }
     >
       <dl className="divide-y divide-border">
@@ -672,7 +655,6 @@ function TabTable({
                     onView={() =>
                       onView({
                         title: `Walk-in — ${row.name}`,
-                        orderNumber: row.orderNumber,
                         fields: [
                           { label: 'Name', value: row.name },
                           { label: 'Order', value: row.orderNumber },
@@ -725,7 +707,6 @@ function TabTable({
                     onView={() =>
                       onView({
                         title: `Cash Payment — ${row.name}`,
-                        orderNumber: row.orderNumber,
                         fields: [
                           { label: 'Name', value: row.name },
                           { label: 'Order', value: row.orderNumber },
@@ -775,7 +756,6 @@ function TabTable({
                     onView={() =>
                       onView({
                         title: `Trade Deduction — ${row.name}`,
-                        orderNumber: row.orderNumber,
                         fields: [
                           { label: 'Name', value: row.name },
                           { label: 'Order', value: row.orderNumber },
