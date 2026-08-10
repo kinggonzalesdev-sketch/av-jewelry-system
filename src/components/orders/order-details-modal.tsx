@@ -1607,6 +1607,17 @@ function OrderActionsBar({
     !a.paidInFull &&
     unverifiedPayments.length > 0;
 
+  // Add Payment inside the Actions section too (Owner request 2026-08-10): so a stage
+  // that still has a balance — e.g. an order in Pickup awaiting payment — offers it in
+  // the workflow body, not only the header. Same gate as the header (canOfferPayment),
+  // so it never shows for a paid-in-full order or a viewer who cannot record payments.
+  const showPayment = canOfferPayment({
+    status: detail.status,
+    paidInFull: a.paidInFull,
+    balanceUnavailable,
+    canRecordPayment: detail.permissions.canRecordPayment,
+  });
+
   return (
     <div className="no-print space-y-3">
       {/* Actions card — the forward workflow for this stage. */}
@@ -1616,6 +1627,18 @@ function OrderActionsBar({
         subtitle="Move this order forward in its workflow."
       >
         <div className="space-y-2">
+          {showPayment ? (
+            <OrderPaymentActions
+              orderId={detail.officialOrderId}
+              remaining={a.outstandingBalance}
+              paidInFull={a.paidInFull}
+              canRecord={detail.permissions.canRecordPayment}
+              onRefresh={onRefresh}
+              asButton
+              total={a.unavailable ? undefined : a.totalAmountPayable}
+              paid={a.unavailable ? undefined : a.verifiedNetPayments}
+            />
+          ) : null}
           {/* Ship Confirm shows the Waybill Number first — a shipping order can't
               complete without it. */}
           {isShipConfirm ? (

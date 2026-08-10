@@ -449,7 +449,13 @@ function TabTable({
                 <Td kind="num">{money(row.cash)}</Td>
                 <Td kind="center" className="text-muted-foreground">—</Td>
                 <Td kind="center">
-                  <span className="text-xs text-muted-foreground">{row.orderNumber}</span>
+                  <a
+                    href={`/orders?q=${encodeURIComponent(row.orderNumber)}`}
+                    title={`View ${row.orderNumber}`}
+                    className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] hover:bg-accent"
+                  >
+                    👁 View
+                  </a>
                 </Td>
               </Tr>
             ))
