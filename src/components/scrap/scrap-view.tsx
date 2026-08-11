@@ -6,7 +6,7 @@ import type { ScrapIncomeResult, ScrapSaleRow } from '@/lib/scrap/service';
 import { ScrapGroupView, groupScrapSales } from '@/components/scrap/scrap-group-view';
 import { ScrapEntryModal } from '@/components/scrap/scrap-entry-modal';
 import { downloadCsv } from '@/lib/export/csv';
-import { formatPeso } from '@/lib/payments/format';
+import { usePrivacyMoney } from '@/components/shell/privacy';
 import {
   DataTable,
   Thead,
@@ -47,6 +47,7 @@ export function ScrapView({
   /** Owner deletes directly; a non-owner Admin requests Owner approval. */
   isOwner?: boolean;
 }) {
+  const money = usePrivacyMoney();
   const [showRecord, setShowRecord] = useState(false);
   // Guards a repeat Export click while the file is being built.
   const [exporting, setExporting] = useState(false);
@@ -189,7 +190,7 @@ export function ScrapView({
                 <MetricCard
                   key={r.material}
                   label={`${r.material === 'gold' ? 'Scrap Gold' : 'Scrap Silver'} — ${r.saleCount} sale(s), ${r.totalGrams}g`}
-                  value={formatPeso(r.totalAmount)}
+                  value={money(r.totalAmount)}
                   accent={r.material === 'gold'}
                 />
               ))}
@@ -256,7 +257,7 @@ export function ScrapView({
                     </Td>
                     <Td kind="center">{g.materialsLabel}</Td>
                     <Td kind="center">{g.totalGrams}</Td>
-                    <Td kind="center">{formatPeso(g.totalAmount)}</Td>
+                    <Td kind="center">{money(g.totalAmount)}</Td>
                     <DateCell value={g.soldOn} />
                     <Td
                       kind="center"

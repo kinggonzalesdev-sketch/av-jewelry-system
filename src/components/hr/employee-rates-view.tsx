@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { setHourlyRateAction } from '@/lib/hr/actions';
 import { EMPTY_HR_STATE, type HrActionState } from '@/lib/hr/action-state';
 import type { EmployeeRateRow } from '@/lib/hr/rate';
-import { formatPeso } from '@/lib/payments/format';
+import { usePrivacyMoney } from '@/components/shell/privacy';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -149,6 +149,7 @@ export function EmployeeRatesView({
   rows: EmployeeRateRow[];
   canManage: boolean;
 }) {
+  const money = usePrivacyMoney();
   if (rows.length === 0) {
     return <EmptyState title="No active team members" />;
   }
@@ -192,7 +193,7 @@ export function EmployeeRatesView({
                   <span className="text-[11px] text-muted-foreground">No rate set</span>
                 ) : (
                   <>
-                    {formatPeso(r.hourlyRate)}
+                    {money(r.hourlyRate)}
                     <span className="text-[10px] text-muted-foreground"> /day</span>
                   </>
                 )}
