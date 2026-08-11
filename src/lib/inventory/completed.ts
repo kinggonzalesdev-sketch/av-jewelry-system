@@ -239,6 +239,22 @@ function completionLabel(f?: {
   return 'Released';
 }
 
+// PostgREST puts `.in()` values in the request URL, so a very large id list overflows
+// the gateway's URL-length limit and the WHOLE request is rejected with 400 — silently
+// dropping the data. Split the ids into safe-sized chunks and concatenate the rows.
+const IN_CHUNK = 100;
+async function runInChunks(
+  ids: readonly string[],
+  runChunk: (chunk: string[]) => PromiseLike<{ data: unknown[] | null }>,
+): Promise<unknown[]> {
+  const out: unknown[] = [];
+  for (let i = 0; i < ids.length; i += IN_CHUNK) {
+    const { data } = await runChunk(ids.slice(i, i + IN_CHUNK));
+    if (data) out.push(...data);
+  }
+  return out;
+}
+
 export async function listCompletedInventory(): Promise<CompletedInventoryRow[]> {
   const supabase = await createClient();
 
@@ -265,14 +281,13 @@ export async function listCompletedInventory(): Promise<CompletedInventoryRow[]>
 
   // An item sent back through Returned-to-Stock Review has LEFT Completed Items —
   // it now lives under RTS Review until inspected/approved (§10). Exclude it here.
+  // Read the whole in-review set (a small review queue) instead of filtering by every
+  // completed item id: an `.in()` over the full list overflowed the URL and returned
+  // 400, dropping the exclusion. RLS still scopes this to what the caller may read.
   const { data: openReviews } = await supabase
     .from('returned_to_stock_reviews')
     .select('inventory_item_id')
-    .eq('status', 'in_review')
-    .in(
-      'inventory_item_id',
-      items.map((i) => i.id),
-    );
+    .eq('status', 'in_review');
   const underReview = new Set(
     ((openReviews ?? []) as Array<{ inventory_item_id: string }>).map(
       (r) => r.inventory_item_id,
@@ -281,12 +296,15 @@ export async function listCompletedInventory(): Promise<CompletedInventoryRow[]>
   items = items.filter((i) => !underReview.has(i.id));
   if (items.length === 0) return [];
 
-  // The completing order + customer + fulfillment, keyed by inventory item.
+  // The completing order + customer + fulfillment, keyed by inventory item. Chunked:
+  // an `.in()` over every completed item id overflowed the URL and returned 400,
+  // losing the order context on the whole page. Split into safe-sized chunks.
   const itemIds = items.map((i) => i.id);
-  const { data: claimData } = await supabase
-    .from('claims')
-    .select(
-      `inventory_item_id,
+  const claimData = (await runInChunks(itemIds, (chunk) =>
+    supabase
+      .from('claims')
+      .select(
+        `inventory_item_id,
        official_order_claims (
          official_orders (
            order_number, invoice_number, status, fulfillment_destination, created_at,
@@ -296,8 +314,9 @@ export async function listCompletedInventory(): Promise<CompletedInventoryRow[]>
            )
          )
        )`,
-    )
-    .in('inventory_item_id', itemIds);
+      )
+      .in('inventory_item_id', chunk),
+  )) as Array<Record<string, unknown>>;
 
   type OrderShape = {
     order_number: string | null;
@@ -308,7 +327,7 @@ export async function listCompletedInventory(): Promise<CompletedInventoryRow[]>
     fulfillment_records: unknown;
   };
   const byItem = new Map<string, OrderShape>();
-  for (const row of (claimData ?? []) as Array<Record<string, unknown>>) {
+  for (const row of claimData) {
     const itemId = row.inventory_item_id as string;
     if (byItem.has(itemId)) continue;
     const ooc = one<{ official_orders: unknown }>(row.official_order_claims);

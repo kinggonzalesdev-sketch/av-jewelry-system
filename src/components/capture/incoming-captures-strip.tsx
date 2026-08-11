@@ -27,6 +27,7 @@ import {
 } from '@/components/orders/new-order-workflow';
 import { useDashboardSync } from '@/components/shell/dashboard-sync';
 import { createClient } from '@/lib/supabase/client';
+import { authorizeRealtime } from '@/lib/supabase/realtime-auth';
 import { usePrinter } from '@/components/print/printer-context';
 import { writeToChannel } from '@/lib/print/bluetooth-printer';
 import { encodeReceipt } from '@/lib/print/receipt-encoders';
@@ -157,6 +158,10 @@ export function IncomingCapturesStrip({
     } catch {
       return; // no browser env — the 30s fallback + DashboardSync still surface captures
     }
+    // Authorize the socket with the user's JWT so RLS-filtered capture_records events
+    // actually arrive (an unauthorized socket is rejected with 401) — this is what makes
+    // a new capture appear + auto-print in ~1s instead of waiting for the 30s fallback.
+    const stopRealtimeAuth = authorizeRealtime(supabase);
     const channel = supabase
       .channel('incoming-captures-fast')
       .on(
@@ -169,6 +174,7 @@ export function IncomingCapturesStrip({
       )
       .subscribe();
     return () => {
+      stopRealtimeAuth();
       void supabase.removeChannel(channel);
     };
   }, [load]);

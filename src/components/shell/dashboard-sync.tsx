@@ -14,6 +14,7 @@ import {
 import { useRouter } from 'next/navigation';
 
 import { createClient } from '@/lib/supabase/client';
+import { authorizeRealtime } from '@/lib/supabase/realtime-auth';
 
 /**
  * Real-time reflection across the whole system (Owner request).
@@ -117,6 +118,12 @@ export function DashboardSyncProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    // Authorize the socket with the signed-in user's JWT (postgres_changes is
+    // RLS-filtered, so it needs the user token, not just the anon key) and keep it
+    // fresh. Without this the websocket handshake is rejected (401) and no live events
+    // arrive — the app then updates only on manual refresh / navigation.
+    const stopRealtimeAuth = authorizeRealtime(supabase);
+
     const channel = supabase
       .channel('mineflow-live-sync')
       // No `table` filter → every table in `public`. RLS still decides which
@@ -139,6 +146,7 @@ export function DashboardSyncProvider({ children }: { children: ReactNode }) {
     document.addEventListener('visibilitychange', onVisible);
 
     return () => {
+      stopRealtimeAuth();
       window.removeEventListener('online', onOnline);
       document.removeEventListener('visibilitychange', onVisible);
       if (timer.current) clearTimeout(timer.current);
