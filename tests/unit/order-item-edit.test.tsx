@@ -65,7 +65,7 @@ describe('OrderItemEditControls — Edit Items (Super Admin)', () => {
     expect(screen.queryByTestId('order-edit-items')).not.toBeInTheDocument();
   });
 
-  it('Remove asks to confirm, then calls the action', async () => {
+  it('Remove asks to confirm, then calls the action', () => {
     remove.mockClear();
     renderControls();
     fireEvent.click(screen.getByTestId('order-item-remove-claim-a'));
