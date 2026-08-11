@@ -62,7 +62,12 @@ export function useDashboardSync(): DashboardSyncValue {
   return useContext(DashboardSyncContext);
 }
 
-const DEBOUNCE_MS = 500;
+// A realtime nudge triggers router.refresh() — a full server re-render (the heaviest
+// per-event Vercel CPU op). The debounce collapses a burst of DB writes into ONE
+// re-render; 1000ms (was 500) collapses bursts roughly twice as hard during a live
+// (many writes/sec), meaningfully cutting redundant SSR re-renders, while still
+// reflecting a change within ~1s. Realtime is unchanged — only the burst-coalescing.
+const DEBOUNCE_MS = 1000;
 
 export function DashboardSyncProvider({ children }: { children: ReactNode }) {
   const router = useRouter();

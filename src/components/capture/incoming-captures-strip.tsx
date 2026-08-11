@@ -129,11 +129,13 @@ export function IncomingCapturesStrip({
   }, [load, lastSyncedAt]);
 
   // Realtime (lastSyncedAt above) is the FAST path — a phone capture triggers a load
-  // near-instantly. This interval is only a FALLBACK for when the socket drops, so a
-  // 2.5s cadence still surfaces a capture quickly while cutting the steady request
-  // load ~2.5x (matters most during a live, when the page is open the whole time).
+  // near-instantly. This interval is ONLY a fallback for when the socket drops. It ran
+  // every 2.5s, which meant a steady ~24 server-action calls/min from every open station
+  // for the whole live (a large share of Vercel invocations + CPU on the Hobby plan). At
+  // 30s it still self-heals a dropped socket within half a minute while cutting that
+  // steady load ~12×; realtime keeps normal appearance instant.
   useEffect(() => {
-    const iv = setInterval(load, 2500);
+    const iv = setInterval(load, 30000);
     return () => clearInterval(iv);
   }, [load]);
 
@@ -247,7 +249,11 @@ export function IncomingCapturesStrip({
         draining = false;
       }
     };
-    const iv = setInterval(() => void tick(), 2500);
+    // 2.5s meant a steady claim call every 2.5s from every printer station for the whole
+    // live. 10s still auto-prints a new capture's sticker within a few seconds of it
+    // arriving (hands-off; the operator isn't blocked) while cutting the claim-poll load
+    // ~4×. Only runs at all when a printer is connected + auto-print is enabled.
+    const iv = setInterval(() => void tick(), 10000);
     void tick();
     return () => {
       alive = false;
