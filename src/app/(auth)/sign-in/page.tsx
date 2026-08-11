@@ -42,20 +42,16 @@ export default function SignInPage() {
       <div aria-hidden="true" className="absolute inset-0 bg-black/70" />
 
       <div className="relative w-full max-w-sm">
-        {/* Logo above the title. Uses the official brand mark served at /icon.svg. */}
-        <div className="mb-6 flex flex-col items-center gap-3 text-center">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/icon.svg"
-            alt="A.V. Jewelry"
-            width={64}
-            height={64}
-            className="h-16 w-16"
-          />
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            A.V. Jewelry
-          </h1>
-        </div>
+        {/* Brand: the official A.V. Jewelry logo (transparent PNG), centered above the
+            form — no box or card behind it, so it sits directly on the dark page.
+            Responsive: ~180px desktop/tablet, ~150px mobile, never past 55vw of the
+            viewport. `h-auto` keeps the original aspect ratio (never stretched/cropped). */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/av-jewelry-logo.png"
+          alt="A.V. Jewelry"
+          className="mx-auto mb-6 block h-auto w-[150px] max-w-[55vw] object-contain sm:w-[180px]"
+        />
         <Card>
           <CardContent className="pt-6">
             <SignInForm />
