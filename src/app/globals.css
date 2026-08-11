@@ -84,29 +84,29 @@
  * in the media query, so an explicit choice always beats the OS preference.
  */
 :root {
-  /* A.V. Jewelry brand palette — Rich Black / Ivory / Warm Beige / Soft Gold.
-     Light theme: Ivory canvas, Rich Black text, dark primary, Soft Gold accent. */
-  --background: #f7f4ee; /* Ivory canvas */
-  --foreground: #0a0a0a; /* Rich Black text */
+  /* A.V. Jewelry brand palette — EMERALD GREEN (Owner-approved 2026-07-16; applied
+     2026-08-11). Light: very pale green canvas, white cards, deep emerald primary/accent. */
+  --background: #eef6f0; /* very pale green canvas */
+  --foreground: #0c1a12; /* near-black with a faint green undertone */
   --card: #ffffff; /* white card */
-  --card-foreground: #0a0a0a;
-  --primary: #0a0a0a; /* Rich Black — primary buttons (Ivory text) */
-  --primary-foreground: #f7f4ee;
-  --secondary: #efe9df; /* warm beige-tinted surface */
-  --secondary-foreground: #0a0a0a;
-  --muted: #efe9df;
-  --muted-foreground: #6f6455; /* warm muted text */
-  --accent: #ece5da; /* warm hover */
-  --accent-foreground: #0a0a0a;
+  --card-foreground: #0c1a12;
+  --primary: #047857; /* deep emerald — primary CTA buttons (white text) */
+  --primary-foreground: #ffffff;
+  --secondary: #dff0e6; /* pale green surface */
+  --secondary-foreground: #0c1a12;
+  --muted: #e4f1ea; /* pale green — table headers, muted surfaces */
+  --muted-foreground: #5a6b61; /* muted green-gray text */
+  --accent: #d6ecdf; /* green hover */
+  --accent-foreground: #0c1a12;
   --destructive: oklch(0.57 0.2 27); /* red — Cancel / delete only */
   --destructive-foreground: oklch(0.99 0.004 150);
-  --border: #d9cfc3; /* Warm Beige */
-  --input: #d9cfc3;
-  --ring: #c8a96b; /* Soft Gold focus ring */
+  --border: #cbe2d3; /* soft green-gray */
+  --input: #cbe2d3;
+  --ring: #10b981; /* emerald focus ring */
   --radius: 0.75rem;
 
-  --gold: #b28b3f; /* Soft Gold accent (darker for contrast on ivory) */
-  --gold-strong: #916f2e; /* deeper gold — readable as text on light */
+  --gold: #059669; /* brand ACCENT — emerald green (token name retained) */
+  --gold-strong: #047857; /* deep emerald — readable as text on light */
 }
 
 /*
@@ -116,55 +116,55 @@
  */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    /* A.V. Jewelry dark palette — Rich Black surfaces, Ivory text, Warm Beige
-       muted/borders, Soft Gold accent only. */
-    --background: #0a0a0a; /* Rich Black */
-    --foreground: #f7f4ee; /* Ivory */
-    --card: #151311; /* warm near-black surface */
-    --card-foreground: #f7f4ee;
-    --primary: #f7f4ee; /* Ivory — primary buttons (Rich Black text) */
-    --primary-foreground: #0a0a0a;
-    --secondary: #1b1814;
-    --secondary-foreground: #f7f4ee;
-    --muted: #1b1814;
-    --muted-foreground: #d9cfc3; /* Warm Beige — muted/secondary text */
-    --accent: #221e19; /* subtle warm hover */
-    --accent-foreground: #f7f4ee;
+    /* A.V. Jewelry dark palette — EMERALD GREEN. Near-black green surfaces, pale green
+       text, emerald primary/accent. Keep in sync with the data-theme block below. */
+    --background: #0a120d; /* near-black, green undertone */
+    --foreground: #eaf3ee; /* pale green-white */
+    --card: #101a14; /* dark green-black surface */
+    --card-foreground: #eaf3ee;
+    --primary: #10b981; /* emerald — primary CTA buttons (dark text) */
+    --primary-foreground: #04160d;
+    --secondary: #16211b;
+    --secondary-foreground: #eaf3ee;
+    --muted: #16211b;
+    --muted-foreground: #a7c4b5; /* muted green text */
+    --accent: #1c2a22; /* subtle green hover */
+    --accent-foreground: #eaf3ee;
     --destructive: oklch(0.63 0.18 25); /* red — destructive/errors only */
     --destructive-foreground: oklch(0.985 0.004 150);
-    --border: #3a352d; /* Warm Beige, toned for comfort on black */
-    --input: #3a352d;
-    --ring: #c8a96b; /* Soft Gold focus ring */
+    --border: #2a3a30; /* green-gray border */
+    --input: #2a3a30;
+    --ring: #10b981; /* emerald focus ring */
 
-    --gold: #c8a96b; /* Soft Gold accent */
-    --gold-strong: #d9be83; /* brighter gold — readable as text on black */
+    --gold: #34d399; /* emerald accent (dark) */
+    --gold-strong: #6ee7b7; /* brighter emerald — readable as text on black */
   }
 }
 
 /* Manual dark: forced on regardless of the OS preference. Keep in sync with the
    media-query block above. */
 :root[data-theme='dark'] {
-  /* A.V. Jewelry dark palette — keep in sync with the media-query block above. */
-  --background: #0a0a0a; /* Rich Black */
-  --foreground: #f7f4ee; /* Ivory */
-  --card: #151311; /* warm near-black surface */
-  --card-foreground: #f7f4ee;
-  --primary: #f7f4ee; /* Ivory — primary buttons (Rich Black text) */
-  --primary-foreground: #0a0a0a;
-  --secondary: #1b1814;
-  --secondary-foreground: #f7f4ee;
-  --muted: #1b1814;
-  --muted-foreground: #d9cfc3; /* Warm Beige — muted/secondary text */
-  --accent: #221e19; /* subtle warm hover */
-  --accent-foreground: #f7f4ee;
-  --destructive: oklch(0.63 0.18 25); /* red — destructive/errors only */
+  /* A.V. Jewelry dark palette (EMERALD) — keep in sync with the media-query block above. */
+  --background: #0a120d;
+  --foreground: #eaf3ee;
+  --card: #101a14;
+  --card-foreground: #eaf3ee;
+  --primary: #10b981;
+  --primary-foreground: #04160d;
+  --secondary: #16211b;
+  --secondary-foreground: #eaf3ee;
+  --muted: #16211b;
+  --muted-foreground: #a7c4b5;
+  --accent: #1c2a22;
+  --accent-foreground: #eaf3ee;
+  --destructive: oklch(0.63 0.18 25);
   --destructive-foreground: oklch(0.985 0.004 150);
-  --border: #3a352d; /* Warm Beige, toned for comfort on black */
-  --input: #3a352d;
-  --ring: #c8a96b; /* Soft Gold focus ring */
+  --border: #2a3a30;
+  --input: #2a3a30;
+  --ring: #10b981;
 
-  --gold: #c8a96b; /* Soft Gold accent */
-  --gold-strong: #d9be83; /* brighter gold — readable as text on black */
+  --gold: #34d399;
+  --gold-strong: #6ee7b7;
 }
 
 @layer base {
