@@ -20,26 +20,16 @@ export default function SignInPage() {
       id="main-content"
       className="relative flex min-h-dvh flex-col items-center overflow-hidden px-4 py-6"
     >
-      {/* Same premium background as the landing hero: gradient fallback + jewelry
-          video + dark overlay so the card stays readable. Video degrades to the
-          gradient if it is missing or blocked. */}
-      <div
+      {/* Background: the A.V. Jewelry sign-in photo, stretched to cover the page. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/av-jewelry-signinbg.png"
+        alt=""
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-gradient-to-br from-gold/20 via-background to-background"
+        className="pointer-events-none absolute inset-0 h-full w-full object-cover"
       />
-      <video
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload="metadata"
-        poster="/hero-jewelry.jpg"
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-30"
-      >
-        <source src="/hero-jewelry.mp4" type="video/mp4" />
-      </video>
-      <div aria-hidden="true" className="absolute inset-0 bg-black/70" />
+      {/* Subtle dark overlay so the logo + white card stay readable over the photo. */}
+      <div aria-hidden="true" className="absolute inset-0 bg-black/45" />
 
       {/* Logo pinned near the TOP with a little space above it (not vertically
           centered). Transparent PNG, no box behind it — sits on the dark page bg. */}
