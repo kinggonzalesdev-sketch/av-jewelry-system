@@ -28,8 +28,9 @@ export default function SignInPage() {
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 h-full w-full object-cover"
       />
-      {/* Subtle dark overlay so the logo + white card stay readable over the photo. */}
-      <div aria-hidden="true" className="absolute inset-0 bg-black/45" />
+      {/* Light dark overlay — just enough to keep the logo + card readable while the
+          jewelry photo still shows through clearly (approved "Option C" look). */}
+      <div aria-hidden="true" className="absolute inset-0 bg-black/30" />
 
       {/* Logo pinned near the TOP with a little space above it (not vertically
           centered). Transparent PNG, no box behind it — sits on the dark page bg. */}
@@ -41,8 +42,11 @@ export default function SignInPage() {
       />
 
       {/* Sign-in card sits just below the logo with the empty space pushed to the
-          bottom, so on a normal-height screen it lands around the vertical middle. */}
-      <div className="relative mt-8 w-full max-w-sm">
+          bottom, so on a normal-height screen it lands around the vertical middle.
+          `theme-light-card` forces the WHITE emerald card regardless of the viewer's
+          OS light/dark preference, so it always reads like the approved mockup over
+          the dark jewelry photo. */}
+      <div className="theme-light-card relative mt-8 w-full max-w-sm">
         <Card>
           <CardContent className="pt-6">
             {/* Large, bold form heading above the email field (Owner request). */}

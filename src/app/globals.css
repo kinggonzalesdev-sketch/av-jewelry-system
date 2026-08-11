@@ -380,3 +380,29 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/*
+ * Force the LIGHT emerald palette for a subtree, regardless of the viewer's OS
+ * light/dark preference. Used by the sign-in card so it always renders as a white
+ * card (dark text, emerald button) over the dark jewelry background — the approved
+ * mockup — instead of a dark card that blends into the photo in dark mode. CSS
+ * custom properties cascade, so every token-driven child (card, inputs, button,
+ * labels) inherits these light values.
+ */
+.theme-light-card {
+  --background: #eef6f0;
+  --foreground: #0c1a12;
+  --card: #ffffff;
+  --card-foreground: #0c1a12;
+  --primary: #047857;
+  --primary-foreground: #ffffff;
+  --secondary: #dff0e6;
+  --secondary-foreground: #0c1a12;
+  --muted: #e4f1ea;
+  --muted-foreground: #5a6b61;
+  --accent: #d6ecdf;
+  --accent-foreground: #0c1a12;
+  --border: #cbe2d3;
+  --input: #cbe2d3;
+  --ring: #10b981;
+}
