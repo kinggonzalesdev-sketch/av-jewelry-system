@@ -50,10 +50,14 @@ export default function SignInPage() {
         <img
           src="/av-jewelry-logo.png"
           alt="A.V. Jewelry"
-          className="mx-auto mb-6 block h-auto w-[150px] max-w-[55vw] object-contain sm:w-[180px]"
+          className="mx-auto mb-6 block h-auto w-[240px] max-w-[72vw] object-contain sm:w-[320px]"
         />
         <Card>
           <CardContent className="pt-6">
+            {/* Large, bold form heading above the email field (Owner request). */}
+            <h1 className="mb-5 text-4xl font-bold tracking-tight text-foreground">
+              Sign in
+            </h1>
             <SignInForm />
           </CardContent>
         </Card>
