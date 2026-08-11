@@ -50,8 +50,9 @@ export default function SignInPage() {
         className="relative mt-2 block h-auto w-[240px] max-w-[72vw] object-contain sm:w-[320px]"
       />
 
-      {/* Sign-in card centered in the remaining space below the logo. */}
-      <div className="relative flex w-full max-w-sm flex-1 flex-col justify-center">
+      {/* Sign-in card sits just below the logo with the empty space pushed to the
+          bottom, so on a normal-height screen it lands around the vertical middle. */}
+      <div className="relative mt-8 w-full max-w-sm">
         <Card>
           <CardContent className="pt-6">
             {/* Large, bold form heading above the email field (Owner request). */}
