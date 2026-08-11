@@ -79,11 +79,7 @@ function addSheet(
 }
 
 /** Apply an inclusive date-range filter on a column when a range is active. */
-function rangeFilter<T>(
-  query: T,
-  column: string,
-  opts: ExportOptions,
-): T {
+function rangeFilter<T>(query: T, column: string, opts: ExportOptions): T {
   if (!opts.applyRange) return query;
   // supabase query builder is chainable; typed loosely here on purpose.
   let q = query as unknown as {
@@ -110,7 +106,9 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
     const { data } = await rangeFilter(
       supabase
         .from('inventory_items')
-        .select('item_code, facebook_name, availability_status, grams_per_piece, created_at')
+        .select(
+          'item_code, facebook_name, availability_status, grams_per_piece, created_at',
+        )
         .order('created_at', { ascending: false }),
       'created_at',
       opts,
@@ -180,13 +178,28 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
       },
     }));
     if (want('active_layaways')) {
-      addSheet(wb, 'Active Layaways', layawayCols, all.filter((x) => x.status_raw === 'active').map((x) => x.row));
+      addSheet(
+        wb,
+        'Active Layaways',
+        layawayCols,
+        all.filter((x) => x.status_raw === 'active').map((x) => x.row),
+      );
     }
     if (want('completed_layaways')) {
-      addSheet(wb, 'Completed Layaways', layawayCols, all.filter((x) => x.status_raw === 'completed').map((x) => x.row));
+      addSheet(
+        wb,
+        'Completed Layaways',
+        layawayCols,
+        all.filter((x) => x.status_raw === 'completed').map((x) => x.row),
+      );
     }
     if (want('all_layaways')) {
-      addSheet(wb, 'All Layaways', layawayCols, all.map((x) => x.row));
+      addSheet(
+        wb,
+        'All Layaways',
+        layawayCols,
+        all.map((x) => x.row),
+      );
     }
   }
 
@@ -420,9 +433,12 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
 
   // A workbook must have at least one sheet.
   if (wb.worksheets.length === 0) {
-    addSheet(wb, 'Export', [{ header: 'Note', key: 'note', width: 40 }], [
-      { note: 'No sections were selected.' },
-    ]);
+    addSheet(
+      wb,
+      'Export',
+      [{ header: 'Note', key: 'note', width: 40 }],
+      [{ note: 'No sections were selected.' }],
+    );
   }
 
   const arrayBuffer = await wb.xlsx.writeBuffer();

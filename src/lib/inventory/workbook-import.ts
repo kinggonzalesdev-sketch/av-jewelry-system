@@ -4,7 +4,11 @@ import ExcelJS from 'exceljs';
 
 import { AuthorizationError, requireOwner } from '@/lib/authz/guard';
 import { parseCsvGrid } from '@/lib/import/parse-csv';
-import { detectInventory, type DetectResult, type SheetInput } from '@/lib/inventory/import-detect';
+import {
+  detectInventory,
+  type DetectResult,
+  type SheetInput,
+} from '@/lib/inventory/import-detect';
 import { createClient } from '@/lib/supabase/server';
 
 /**
@@ -22,7 +26,8 @@ import { createClient } from '@/lib/supabase/server';
 function primitive(v: unknown): string {
   if (v == null) return '';
   if (typeof v === 'string') return v;
-  if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'bigint') return String(v);
+  if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'bigint')
+    return String(v);
   if (v instanceof Date) return v.toISOString().slice(0, 10);
   return '';
 }
@@ -41,10 +46,15 @@ function cellToString(value: ExcelJS.CellValue): string {
   return '';
 }
 
-export async function readWorkbook(fileName: string, buffer: ArrayBuffer): Promise<SheetInput[]> {
+export async function readWorkbook(
+  fileName: string,
+  buffer: ArrayBuffer,
+): Promise<SheetInput[]> {
   if (/\.csv$/i.test(fileName)) {
     const text = new TextDecoder().decode(buffer);
-    return [{ name: fileName.replace(/\.csv$/i, '').trim() || 'CSV', rows: parseCsvGrid(text) }];
+    return [
+      { name: fileName.replace(/\.csv$/i, '').trim() || 'CSV', rows: parseCsvGrid(text) },
+    ];
   }
 
   const wb = new ExcelJS.Workbook();
@@ -66,7 +76,8 @@ export async function readWorkbook(fileName: string, buffer: ArrayBuffer): Promi
   return sheets;
 }
 
-export type ParseWorkbookResult = ({ ok: true } & DetectResult) | { ok: false; error: string };
+export type ParseWorkbookResult =
+  ({ ok: true } & DetectResult) | { ok: false; error: string };
 
 /**
  * Owner-only: read an uploaded inventory workbook (every sheet) and return the

@@ -64,7 +64,9 @@ async function openView(d: LayawayLedgerDetail) {
   loadMock.mockResolvedValueOnce(d);
   render(<LayawayLedgerViewModal ledgerId={d.id} />);
   fireEvent.click(screen.getByRole('button'));
-  await waitFor(() => expect(screen.getByTestId('layaway-view-pergram')).toBeInTheDocument());
+  await waitFor(() =>
+    expect(screen.getByTestId('layaway-view-pergram')).toBeInTheDocument(),
+  );
 }
 
 describe('Layaway View — per-gram interest block', () => {

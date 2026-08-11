@@ -94,13 +94,17 @@ export function CaptureLinkPanel({
     </span>
   ) : status === 'customer_no_chat' ? (
     <span>
-      <span className="font-medium text-foreground">{link.linkedCustomerName ?? 'Customer'}</span>{' '}
+      <span className="font-medium text-foreground">
+        {link.linkedCustomerName ?? 'Customer'}
+      </span>{' '}
       <span className="text-amber-700">· no chat linked yet</span>
     </span>
   ) : status === 'needs_confirmation' ? (
     <span className="text-amber-800">
-      {link.matchCount > 1 ? `${link.matchCount} people share this name` : 'Same name shared'} — pick
-      the right one
+      {link.matchCount > 1
+        ? `${link.matchCount} people share this name`
+        : 'Same name shared'}{' '}
+      — pick the right one
     </span>
   ) : (
     <span className="text-muted-foreground">No Facebook match</span>
@@ -133,7 +137,9 @@ export function CaptureLinkPanel({
               data-testid={`capture-link-change-${captureRecordId}`}
               className="rounded border border-border px-1.5 py-0.5 font-medium hover:bg-accent"
             >
-              {status === 'needs_confirmation' || status === 'no_match' ? 'Pick customer' : 'Change'}
+              {status === 'needs_confirmation' || status === 'no_match'
+                ? 'Pick customer'
+                : 'Change'}
             </button>
             {status === 'linked' || status === 'customer_no_chat' ? (
               <button

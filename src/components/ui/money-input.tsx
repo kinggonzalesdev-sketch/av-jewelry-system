@@ -98,7 +98,9 @@ export function MoneyInput({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const pendingCaret = useRef<number | null>(null);
   const isControlled = value !== undefined;
-  const [rawState, setRawState] = useState(() => sanitizeMoney(String(defaultValue ?? '')));
+  const [rawState, setRawState] = useState(() =>
+    sanitizeMoney(String(defaultValue ?? '')),
+  );
   const raw = isControlled ? sanitizeMoney(String(value ?? '')) : rawState;
   const display = formatWithCommas(raw);
 

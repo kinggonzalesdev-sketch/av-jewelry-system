@@ -125,9 +125,10 @@ export async function listOrders(): Promise<OrdersResult> {
 
   const rows: OrderListRow[] = raw.map((row) => {
     const r = row as Record<string, unknown>;
-    const customer = one<{ display_name: string; facebook_conversation_url: string | null }>(
-      r.customers,
-    );
+    const customer = one<{
+      display_name: string;
+      facebook_conversation_url: string | null;
+    }>(r.customers);
     const fulfillment = one<{ status: string; dispatched_at: string | null }>(
       r.fulfillment_records,
     );
@@ -244,14 +245,19 @@ export async function listCaptureItems(): Promise<CaptureItem[]> {
  * item_code) indexes. Read-only. The query is sanitized to alphanumerics/space/dash so
  * it can never break the PostgREST `or` filter or inject.
  */
-export async function searchCaptureItems(query: string, limit = 30): Promise<CaptureItem[]> {
+export async function searchCaptureItems(
+  query: string,
+  limit = 30,
+): Promise<CaptureItem[]> {
   const safe = query.replace(/[^a-zA-Z0-9 -]/g, ' ').trim();
   if (safe.length < 1) return [];
   const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('inventory_items')
-    .select('id, item_code, item_name, total_price_per_piece, grams_per_piece, availability_status')
+    .select(
+      'id, item_code, item_name, total_price_per_piece, grams_per_piece, availability_status',
+    )
     .eq('is_archived', false)
     .in('availability_status', ['available', 'returned_to_available'])
     .or(`item_code.ilike.%${safe}%,item_name.ilike.%${safe}%`)

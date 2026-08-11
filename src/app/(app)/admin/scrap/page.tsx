@@ -5,8 +5,7 @@ import { canOpenPage, getCurrentStaffProfile } from '@/lib/authz/guard';
 import { ScrapView } from '@/components/scrap/scrap-view';
 import { getScrapIncome, listScrapSales } from '@/lib/scrap/service';
 
-export const metadata: Metadata = {
-};
+export const metadata: Metadata = {};
 
 export const dynamic = 'force-dynamic';
 

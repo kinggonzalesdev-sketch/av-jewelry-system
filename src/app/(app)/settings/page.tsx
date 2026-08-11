@@ -40,7 +40,9 @@ function SummaryCard({
         {icon}
       </span>
       <div className="min-w-0">
-        <p className="text-2xl font-bold leading-none tabular-nums text-foreground">{value}</p>
+        <p className="text-2xl font-bold leading-none tabular-nums text-foreground">
+          {value}
+        </p>
         <p className="mt-1 text-sm font-medium text-foreground">{label}</p>
         <p className="truncate text-xs text-muted-foreground">{hint}</p>
       </div>
@@ -87,8 +89,7 @@ function SettingsSection({
   );
 }
 
-export const metadata: Metadata = {
-};
+export const metadata: Metadata = {};
 
 export const dynamic = 'force-dynamic';
 
@@ -139,7 +140,12 @@ export default async function SettingsPage() {
       {/* Top summary cards — 3 compact KPIs derived from the team roster. */}
       {isOwner ? (
         <div className="grid gap-3 sm:grid-cols-3">
-          <SummaryCard icon="👥" value={members.length} label="Team Members" hint="Active members" />
+          <SummaryCard
+            icon="👥"
+            value={members.length}
+            label="Team Members"
+            hint="Active members"
+          />
           <SummaryCard
             icon="🔑"
             value={tempPasswordCount}

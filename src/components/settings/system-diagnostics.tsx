@@ -27,7 +27,15 @@ export function SystemDiagnostics({
   const router = useRouter();
   const { lastSyncedAt, isSyncing, refresh } = useDashboardSync();
 
-  const lastSync = lastSyncedAt ? new Date(lastSyncedAt).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'not yet this session';
+  const lastSync = lastSyncedAt
+    ? new Date(lastSyncedAt).toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+    : 'not yet this session';
 
   const rows: Array<[string, string]> = [
     ['Deployment environment', env],
@@ -67,9 +75,9 @@ export function SystemDiagnostics({
 
       <p className="text-[11px] text-muted-foreground">
         If two devices show different data, compare <strong>Deployment</strong> and{' '}
-        <strong>Commit</strong> above on each device — they must match. Always open the shared
-        address <span className="font-mono">av-jewelry.vercel.app</span>, not a one-off deployment
-        URL.
+        <strong>Commit</strong> above on each device — they must match. Always open the
+        shared address <span className="font-mono">av-jewelry.vercel.app</span>, not a
+        one-off deployment URL.
       </p>
     </div>
   );

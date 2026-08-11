@@ -66,7 +66,9 @@ describe('NewLayawayForm', () => {
   it('filters layaway codes to the customer’s initial and auto-selects the first', async () => {
     render(<NewLayawayForm payableOrders={orders} verifiedPayments={verifiedPayments} />);
     fireEvent.click(screen.getByTestId('new-layaway-entry'));
-    fireEvent.change(screen.getByLabelText('Official Order'), { target: { value: 'o1' } });
+    fireEvent.change(screen.getByLabelText('Official Order'), {
+      target: { value: 'o1' },
+    });
 
     // "Ana Cruz" → only A-codes, naturally sorted, first one auto-selected.
     const codeSelect = await screen.findByTestId('layaway-code-select');

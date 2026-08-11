@@ -110,8 +110,10 @@ export async function createCaptureOrder(
   if (!/^\d{1,12}(\.\d{1,2})?$/.test(price) || Number(price) <= 0) {
     return { ok: false, error: 'A unit price greater than zero is required.' };
   }
-  if (!input.inventoryItemId) return { ok: false, error: 'An inventory item is required.' };
-  if (!input.customerName?.trim()) return { ok: false, error: 'A customer name is required.' };
+  if (!input.inventoryItemId)
+    return { ok: false, error: 'An inventory item is required.' };
+  if (!input.customerName?.trim())
+    return { ok: false, error: 'A customer name is required.' };
   if (!input.deviceInstallationId?.trim() || !input.captureId?.trim()) {
     return { ok: false, error: 'A device id and capture id are required.' };
   }
@@ -173,8 +175,10 @@ export async function enqueueCaptureReview(
   if (!/^\d{1,12}(\.\d{1,2})?$/.test(price) || Number(price) <= 0) {
     return { ok: false, error: 'A unit price greater than zero is required.' };
   }
-  if (!input.inventoryItemId) return { ok: false, error: 'An inventory item is required.' };
-  if (!input.customerName?.trim()) return { ok: false, error: 'A customer name is required.' };
+  if (!input.inventoryItemId)
+    return { ok: false, error: 'An inventory item is required.' };
+  if (!input.customerName?.trim())
+    return { ok: false, error: 'A customer name is required.' };
   if (!input.deviceInstallationId?.trim() || !input.captureId?.trim()) {
     return { ok: false, error: 'A device id and capture id are required.' };
   }
@@ -245,8 +249,7 @@ const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const MAX_SCREENSHOT_BYTES = 12 * 1024 * 1024;
 
 export type UploadScreenshotResult =
-  | { ok: true; path: string }
-  | { ok: false; error: string };
+  { ok: true; path: string } | { ok: false; error: string };
 
 /**
  * Store a capture screenshot in the PRIVATE attachments bucket (signed access
@@ -257,7 +260,12 @@ export type UploadScreenshotResult =
 export async function uploadCaptureScreenshot(
   supabase: SupabaseClient,
   staffProfileId: string,
-  input: { deviceInstallationId: string; captureId: string; contentType: string; base64: string },
+  input: {
+    deviceInstallationId: string;
+    captureId: string;
+    contentType: string;
+    base64: string;
+  },
 ): Promise<UploadScreenshotResult> {
   const contentType = (input.contentType ?? '').trim().toLowerCase();
   if (!ALLOWED_IMAGE_TYPES.has(contentType)) {
@@ -265,7 +273,8 @@ export async function uploadCaptureScreenshot(
   }
   const device = (input.deviceInstallationId ?? '').trim();
   const capture = (input.captureId ?? '').trim();
-  if (!device || !capture) return { ok: false, error: 'A device id and capture id are required.' };
+  if (!device || !capture)
+    return { ok: false, error: 'A device id and capture id are required.' };
 
   let bytes: Buffer;
   try {
@@ -281,7 +290,8 @@ export async function uploadCaptureScreenshot(
     return { ok: false, error: 'The image is too large (max 12 MB).' };
   }
 
-  const ext = contentType === 'image/png' ? 'png' : contentType === 'image/webp' ? 'webp' : 'jpg';
+  const ext =
+    contentType === 'image/png' ? 'png' : contentType === 'image/webp' ? 'webp' : 'jpg';
   const safe = (s: string) => s.replace(/[^a-zA-Z0-9._-]/g, '_');
   const path = `captures/${staffProfileId}/${safe(device)}-${safe(capture)}.${ext}`;
 
@@ -295,8 +305,7 @@ export async function uploadCaptureScreenshot(
 }
 
 export type DispatchResult =
-  | { ok: true; messageStatus: string; printStatus: string }
-  | { ok: false; error: string };
+  { ok: true; messageStatus: string; printStatus: string } | { ok: false; error: string };
 
 /**
  * Record the outcome of sending (Pancake) / printing a capture, and/or attach the
@@ -336,7 +345,12 @@ export async function updateCaptureDispatch(
 }
 
 export type SendCaptureMessageResult =
-  | { ok: true; code: 'sent' | 'already_sent'; pancakeMessageId: string | null; message: string }
+  | {
+      ok: true;
+      code: 'sent' | 'already_sent';
+      pancakeMessageId: string | null;
+      message: string;
+    }
   | { ok: false; code: string; error: string };
 
 /**
@@ -361,9 +375,18 @@ export async function sendCaptureMessage(
 ): Promise<SendCaptureMessageResult> {
   const device = (input.deviceInstallationId ?? '').trim();
   const capture = (input.captureId ?? '').trim();
-  if (!device || !capture) return { ok: false, code: 'bad_request', error: 'A device id and capture id are required.' };
+  if (!device || !capture)
+    return {
+      ok: false,
+      code: 'bad_request',
+      error: 'A device id and capture id are required.',
+    };
   if (!input.conversationId?.trim()) {
-    return { ok: false, code: 'conversation_missing', error: 'Confirm a Pancake conversation before sending.' };
+    return {
+      ok: false,
+      code: 'conversation_missing',
+      error: 'Confirm a Pancake conversation before sending.',
+    };
   }
   if (!input.message?.trim()) {
     return { ok: false, code: 'empty_message', error: 'The message is empty.' };
@@ -387,7 +410,8 @@ export async function sendCaptureMessage(
   }
 
   // Build a short-lived signed URL for the screenshot so Pancake can fetch it.
-  const path = input.screenshotPath?.trim() || (row?.screenshot_path as string | null) || null;
+  const path =
+    input.screenshotPath?.trim() || (row?.screenshot_path as string | null) || null;
   let attachmentUrl: string | null = null;
   if (path) {
     const signed = (await supabase.storage
@@ -416,7 +440,12 @@ export async function sendCaptureMessage(
   });
 
   if (!result.ok) return { ok: false, code: result.code, error: result.message };
-  return { ok: true, code: 'sent', pancakeMessageId: result.pancakeMessageId, message: result.message };
+  return {
+    ok: true,
+    code: 'sent',
+    pancakeMessageId: result.pancakeMessageId,
+    message: result.message,
+  };
 }
 
 export type CaptureStatus = {

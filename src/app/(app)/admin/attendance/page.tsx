@@ -17,8 +17,7 @@ import {
   listDevices,
 } from '@/lib/hr/devices';
 
-export const metadata: Metadata = {
-};
+export const metadata: Metadata = {};
 
 export const dynamic = 'force-dynamic';
 

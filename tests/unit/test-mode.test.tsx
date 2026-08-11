@@ -24,7 +24,9 @@ describe('TestModeBanner', () => {
 describe('TestModeControls', () => {
   it('starts a test session, then offers End', async () => {
     render(
-      <TestModeControls initial={{ active: false, startedAt: null, startedByName: null }} />,
+      <TestModeControls
+        initial={{ active: false, startedAt: null, startedByName: null }}
+      />,
     );
     expect(screen.getByTestId('test-mode-status')).toHaveTextContent(/production/i);
 
@@ -36,7 +38,9 @@ describe('TestModeControls', () => {
 
   it('ends an active test session', async () => {
     render(
-      <TestModeControls initial={{ active: true, startedAt: null, startedByName: 'X' }} />,
+      <TestModeControls
+        initial={{ active: true, startedAt: null, startedByName: 'X' }}
+      />,
     );
     fireEvent.click(screen.getByTestId('end-test-session'));
     expect(await screen.findByTestId('start-test-session')).toBeInTheDocument();
@@ -44,7 +48,9 @@ describe('TestModeControls', () => {
 
   it('reset requires typing DELETE, then reports the deleted counts', async () => {
     render(
-      <TestModeControls initial={{ active: false, startedAt: null, startedByName: null }} />,
+      <TestModeControls
+        initial={{ active: false, startedAt: null, startedByName: null }}
+      />,
     );
     fireEvent.click(screen.getByTestId('reset-test-data'));
     // Confirm is disabled until DELETE is typed.

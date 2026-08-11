@@ -61,7 +61,10 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
 
   if (error || !data) return [];
 
-  type CustJoin = { display_name?: string | null; facebook_conversation_url?: string | null };
+  type CustJoin = {
+    display_name?: string | null;
+    facebook_conversation_url?: string | null;
+  };
   const rows = data as Array<{
     id: string;
     captured_at: string;
@@ -99,7 +102,8 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
       // Prefer the dedicated grams field; fall back to the mined number (older builds
       // put the pinned weight in itemQuery). normalizeGrams also rejects non-weights.
       grams: normalizeGrams(
-        ocrStr(r.ocr, 'grams', 'weight') ?? ocrStr(r.ocr, 'itemQuery', 'item_query', 'item'),
+        ocrStr(r.ocr, 'grams', 'weight') ??
+          ocrStr(r.ocr, 'itemQuery', 'item_query', 'item'),
       ),
       isTest: r.is_test === true,
       linkStatus,

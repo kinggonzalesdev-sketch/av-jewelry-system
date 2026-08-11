@@ -34,19 +34,27 @@ export async function POST(request: Request): Promise<Response> {
     body = {};
   }
 
-  const requested = Array.isArray(body.sections) ? body.sections : ALL_EXPORT_SECTION_KEYS;
+  const requested = Array.isArray(body.sections)
+    ? body.sections
+    : ALL_EXPORT_SECTION_KEYS;
   const sections = requested.filter((s): s is ExportSectionKey =>
     (ALL_EXPORT_SECTION_KEYS as string[]).includes(s),
   );
   const finalSections = sections.length > 0 ? sections : ALL_EXPORT_SECTION_KEYS;
 
-  const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+  const isDate = (v: unknown): v is string =>
+    typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
   const from = isDate(body.from) ? body.from : null;
   const to = isDate(body.to) ? body.to : null;
   const applyRange = body.applyRange === true && Boolean(from && to);
 
   try {
-    const buffer = await buildDataExport({ from, to, applyRange, sections: finalSections });
+    const buffer = await buildDataExport({
+      from,
+      to,
+      applyRange,
+      sections: finalSections,
+    });
 
     await recordAuditEvent({
       action: 'data.export_all',

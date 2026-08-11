@@ -148,7 +148,9 @@ export function DailyCashView({
   const diffMoney =
     diff === null
       ? '—'
-      : formatPeso(`${(diff < 0n ? -diff : diff) / 100n}.${String((diff < 0n ? -diff : diff) % 100n).padStart(2, '0')}`);
+      : formatPeso(
+          `${(diff < 0n ? -diff : diff) / 100n}.${String((diff < 0n ? -diff : diff) % 100n).padStart(2, '0')}`,
+        );
 
   const saveCount = async () => {
     if (savingCount || actual.trim() === '') return;
@@ -254,7 +256,10 @@ export function DailyCashView({
         toCsv<RemittanceRow>(
           [
             { header: 'Amount', value: (r) => r.amount },
-            { header: 'Reference / Remarks', value: (r) => r.reference || r.remarks || '' },
+            {
+              header: 'Reference / Remarks',
+              value: (r) => r.reference || r.remarks || '',
+            },
             { header: 'Date / Time', value: (r) => r.createdAt },
             { header: 'Recorded By', value: (r) => r.createdByName },
           ],
@@ -278,17 +283,43 @@ export function DailyCashView({
   };
 
   const cards = [
-    { label: 'CASH SALES', amount: summary.cashSales, sub: 'Total cash payments received', color: C.green, icon: '🛒' },
-    { label: 'PREVIOUS CASH', amount: summary.previousCash, sub: 'Cash carried over', color: C.blue, icon: '🗂' },
-    { label: 'OTHER CASH IN', amount: summary.otherCashIn, sub: 'Borrowed / Other cash in', color: C.purple, icon: '💵' },
-    { label: 'EXPENSES / DEDUCTIONS', amount: summary.expenses, sub: 'Total expenses and deductions', color: C.red, icon: '🧾' },
+    {
+      label: 'CASH SALES',
+      amount: summary.cashSales,
+      sub: 'Total cash payments received',
+      color: C.green,
+      icon: '🛒',
+    },
+    {
+      label: 'PREVIOUS CASH',
+      amount: summary.previousCash,
+      sub: 'Cash carried over',
+      color: C.blue,
+      icon: '🗂',
+    },
+    {
+      label: 'OTHER CASH IN',
+      amount: summary.otherCashIn,
+      sub: 'Borrowed / Other cash in',
+      color: C.purple,
+      icon: '💵',
+    },
+    {
+      label: 'EXPENSES / DEDUCTIONS',
+      amount: summary.expenses,
+      sub: 'Total expenses and deductions',
+      color: C.red,
+      icon: '🧾',
+    },
   ];
 
   return (
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Daily Cash Summary</h1>
+        <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+          Daily Cash Summary
+        </h1>
         <div className="flex items-center gap-3">
           <Button
             type="button"
@@ -325,8 +356,12 @@ export function DailyCashView({
                 {c.icon}
               </span>
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{c.label}</p>
-                <p className="truncate text-lg font-bold text-foreground">{formatPeso(c.amount)}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {c.label}
+                </p>
+                <p className="truncate text-lg font-bold text-foreground">
+                  {formatPeso(c.amount)}
+                </p>
                 <p className="truncate text-[11px] text-muted-foreground">{c.sub}</p>
               </div>
             </CardContent>
@@ -338,20 +373,42 @@ export function DailyCashView({
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <Card>
           <CardContent className="p-5">
-            <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-foreground">Cash Breakdown</h2>
+            <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-foreground">
+              Cash Breakdown
+            </h2>
             <BreakRow label="Cash Sales" value={formatPeso(summary.cashSales)} />
-            <BreakRow label="Previous Cash" value={`+ ${formatPeso(summary.previousCash)}`} />
-            <BreakRow label="Other Cash In" value={`+ ${formatPeso(summary.otherCashIn)}`} />
+            <BreakRow
+              label="Previous Cash"
+              value={`+ ${formatPeso(summary.previousCash)}`}
+            />
+            <BreakRow
+              label="Other Cash In"
+              value={`+ ${formatPeso(summary.otherCashIn)}`}
+            />
             <div className="my-2 border-t border-dashed border-border" />
-            <BreakRow label="Expenses / Deductions" value={`- ${formatPeso(summary.expenses)}`} color={C.red} />
-            <BreakRow label="Remittance" value={`- ${formatPeso(summary.remittance)}`} color={C.red} />
+            <BreakRow
+              label="Expenses / Deductions"
+              value={`- ${formatPeso(summary.expenses)}`}
+              color={C.red}
+            />
+            <BreakRow
+              label="Remittance"
+              value={`- ${formatPeso(summary.remittance)}`}
+              color={C.red}
+            />
             {toCents(summary.otherCashOut) > 0n ? (
-              <BreakRow label="Other Cash Out" value={`- ${formatPeso(summary.otherCashOut)}`} color={C.red} />
+              <BreakRow
+                label="Other Cash Out"
+                value={`- ${formatPeso(summary.otherCashOut)}`}
+                color={C.red}
+              />
             ) : null}
             <div className="my-2 border-t border-border" />
             <div className="flex items-end justify-between">
               <div>
-                <p className="text-sm font-semibold text-foreground">Expected Cash on Hand</p>
+                <p className="text-sm font-semibold text-foreground">
+                  Expected Cash on Hand
+                </p>
                 <p className="text-[11px] text-muted-foreground">(End of Day)</p>
               </div>
               <p className="text-xl font-bold" style={{ color: C.gold }}>
@@ -363,9 +420,15 @@ export function DailyCashView({
 
         <Card>
           <CardContent className="p-5">
-            <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-foreground">End of Day</h2>
+            <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-foreground">
+              End of Day
+            </h2>
             <p className="text-sm text-muted-foreground">Expected Cash on Hand</p>
-            <p className="mb-3 text-2xl font-bold" style={{ color: C.gold }} data-testid="cash-expected">
+            <p
+              className="mb-3 text-2xl font-bold"
+              style={{ color: C.gold }}
+              data-testid="cash-expected"
+            >
               {formatPeso(summary.expected)}
             </p>
             <Label htmlFor="cash-actual" className="text-sm text-muted-foreground">
@@ -387,12 +450,25 @@ export function DailyCashView({
                 {diffLabel.text}
               </span>
             </div>
-            <p className="mt-1 text-right text-lg font-bold" style={{ color: diffLabel.tone }} data-testid="cash-diff-amount">
+            <p
+              className="mt-1 text-right text-lg font-bold"
+              style={{ color: diffLabel.tone }}
+              data-testid="cash-diff-amount"
+            >
               {diffMoney}
             </p>
             <div className="mt-3 flex justify-end">
-              <Button type="button" size="sm" onClick={() => void saveCount()} disabled={savingCount || actual.trim() === ''}>
-                {savingCount ? 'Saving…' : summary.closeStatus === 'closed' ? 'Update Count' : 'Save & Close Day'}
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => void saveCount()}
+                disabled={savingCount || actual.trim() === ''}
+              >
+                {savingCount
+                  ? 'Saving…'
+                  : summary.closeStatus === 'closed'
+                    ? 'Update Count'
+                    : 'Save & Close Day'}
               </Button>
             </div>
           </CardContent>
@@ -418,7 +494,15 @@ export function DailyCashView({
   );
 }
 
-function BreakRow({ label, value, color }: { label: string; value: string; color?: string }) {
+function BreakRow({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: string;
+  color?: string;
+}) {
   return (
     <div className="flex items-center justify-between py-1 text-sm">
       <span className="text-muted-foreground">{label}</span>
@@ -626,7 +710,9 @@ function RowViewModal({ view, onClose }: { view: RowView; onClose: () => void })
       <dl className="divide-y divide-border">
         {view.fields.map((f) => (
           <div key={f.label} className="flex items-start justify-between gap-4 py-2">
-            <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{f.label}</dt>
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {f.label}
+            </dt>
             <dd className="text-right text-sm font-medium text-foreground">{f.value}</dd>
           </div>
         ))}
@@ -666,7 +752,10 @@ function TabTable({
   if (tab === 'sales_walkins') {
     const r = rows as WalkInRow[];
     return (
-      <DataTable minWidth="900px" columns={['5%', '22%', '14%', '13%', '13%', '13%', '12%', '8%']}>
+      <DataTable
+        minWidth="900px"
+        columns={['5%', '22%', '14%', '13%', '13%', '13%', '12%', '8%']}
+      >
         <Thead>
           <Tr plain>
             <Th kind="center">#</Th>
@@ -686,12 +775,16 @@ function TabTable({
             r.map((row, i) => (
               <Tr key={row.id}>
                 <Td kind="center">{i + 1}</Td>
-                <Td clip title={row.name}>{row.name}</Td>
+                <Td clip title={row.name}>
+                  {row.name}
+                </Td>
                 <Td kind="num">{money(row.purchased)}</Td>
                 <Td kind="num">{money(row.nonCash)}</Td>
                 <Td kind="num">{money(row.tradeDeductions)}</Td>
                 <Td kind="num">{money(row.cash)}</Td>
-                <Td kind="center" className="text-muted-foreground">—</Td>
+                <Td kind="center" className="text-muted-foreground">
+                  —
+                </Td>
                 <Td kind="center">
                   <ViewButton
                     onView={() =>
@@ -702,7 +795,10 @@ function TabTable({
                           { label: 'Order', value: row.orderNumber },
                           { label: 'Purchased Amount', value: money(row.purchased) },
                           { label: 'Depo / Bank / CC', value: money(row.nonCash) },
-                          { label: 'Trade Deductions', value: money(row.tradeDeductions) },
+                          {
+                            label: 'Trade Deductions',
+                            value: money(row.tradeDeductions),
+                          },
                           { label: 'Cash Payment', value: money(row.cash) },
                         ],
                       })
@@ -737,11 +833,24 @@ function TabTable({
           ) : (
             r.map((row) => (
               <Tr key={row.id}>
-                <Td clip title={row.name}>{row.name}</Td>
-                <Td kind="center" className="text-xs">{row.orderNumber}</Td>
-                <Td kind="num"><span style={{ color: C.green }}>{money(row.amount)}</span></Td>
-                <Td kind="center" className="text-xs text-muted-foreground">{fmt(row.at)}</Td>
-                <Td kind="center" clip className="text-muted-foreground" title={row.reference ?? undefined}>
+                <Td clip title={row.name}>
+                  {row.name}
+                </Td>
+                <Td kind="center" className="text-xs">
+                  {row.orderNumber}
+                </Td>
+                <Td kind="num">
+                  <span style={{ color: C.green }}>{money(row.amount)}</span>
+                </Td>
+                <Td kind="center" className="text-xs text-muted-foreground">
+                  {fmt(row.at)}
+                </Td>
+                <Td
+                  kind="center"
+                  clip
+                  className="text-muted-foreground"
+                  title={row.reference ?? undefined}
+                >
                   {row.reference ?? '—'}
                 </Td>
                 <Td kind="center">
@@ -788,11 +897,21 @@ function TabTable({
           ) : (
             r.map((row) => (
               <Tr key={row.id}>
-                <Td clip title={row.name}>{row.name}</Td>
-                <Td kind="center" className="text-xs">{row.orderNumber}</Td>
-                <Td clip title={row.label}>{row.label}</Td>
-                <Td kind="num"><span style={{ color: C.red }}>{money(row.amount)}</span></Td>
-                <Td kind="center" className="text-xs text-muted-foreground">{fmt(row.at)}</Td>
+                <Td clip title={row.name}>
+                  {row.name}
+                </Td>
+                <Td kind="center" className="text-xs">
+                  {row.orderNumber}
+                </Td>
+                <Td clip title={row.label}>
+                  {row.label}
+                </Td>
+                <Td kind="num">
+                  <span style={{ color: C.red }}>{money(row.amount)}</span>
+                </Td>
+                <Td kind="center" className="text-xs text-muted-foreground">
+                  {fmt(row.at)}
+                </Td>
                 <Td kind="center">
                   <ViewButton
                     onView={() =>
@@ -820,7 +939,10 @@ function TabTable({
   if (tab === 'expenses') {
     const r = rows as ExpenseRow[];
     return (
-      <DataTable minWidth="820px" columns={['22%', '14%', '15%', '18%', '15%', '10%', '6%']}>
+      <DataTable
+        minWidth="820px"
+        columns={['22%', '14%', '15%', '18%', '15%', '10%', '6%']}
+      >
         <Thead>
           <Tr plain>
             <Th>Name / Payee</Th>
@@ -838,12 +960,29 @@ function TabTable({
           ) : (
             r.map((row) => (
               <Tr key={row.id}>
-                <Td clip title={row.payee}>{row.payee}</Td>
-                <Td kind="num"><span style={{ color: C.red }}>{money(row.amount)}</span></Td>
-                <Td kind="center" className="text-muted-foreground">{row.category ?? '—'}</Td>
-                <Td kind="center" clip className="text-muted-foreground" title={row.remarks ?? undefined}>{row.remarks ?? '—'}</Td>
-                <Td kind="center" className="text-xs text-muted-foreground">{fmt(row.createdAt)}</Td>
-                <Td kind="center" className="text-xs text-muted-foreground">{row.createdByName}</Td>
+                <Td clip title={row.payee}>
+                  {row.payee}
+                </Td>
+                <Td kind="num">
+                  <span style={{ color: C.red }}>{money(row.amount)}</span>
+                </Td>
+                <Td kind="center" className="text-muted-foreground">
+                  {row.category ?? '—'}
+                </Td>
+                <Td
+                  kind="center"
+                  clip
+                  className="text-muted-foreground"
+                  title={row.remarks ?? undefined}
+                >
+                  {row.remarks ?? '—'}
+                </Td>
+                <Td kind="center" className="text-xs text-muted-foreground">
+                  {fmt(row.createdAt)}
+                </Td>
+                <Td kind="center" className="text-xs text-muted-foreground">
+                  {row.createdByName}
+                </Td>
                 <Td kind="center">
                   <div className="flex items-center justify-center gap-1">
                     <ViewButton
@@ -871,7 +1010,10 @@ function TabTable({
                         })
                       }
                     />
-                    <DeleteButton noun="expense" onDelete={() => del('daily_cash_expenses', row.id)} />
+                    <DeleteButton
+                      noun="expense"
+                      onDelete={() => del('daily_cash_expenses', row.id)}
+                    />
                   </div>
                 </Td>
               </Tr>
@@ -901,12 +1043,22 @@ function TabTable({
           ) : (
             r.map((row) => (
               <Tr key={row.id}>
-                <Td kind="num"><span style={{ color: C.red }}>{money(row.amount)}</span></Td>
-                <Td clip title={row.reference ?? row.remarks ?? undefined} className="text-muted-foreground">
+                <Td kind="num">
+                  <span style={{ color: C.red }}>{money(row.amount)}</span>
+                </Td>
+                <Td
+                  clip
+                  title={row.reference ?? row.remarks ?? undefined}
+                  className="text-muted-foreground"
+                >
                   {row.reference || row.remarks || '—'}
                 </Td>
-                <Td kind="center" className="text-xs text-muted-foreground">{fmt(row.createdAt)}</Td>
-                <Td kind="center" className="text-xs text-muted-foreground">{row.createdByName}</Td>
+                <Td kind="center" className="text-xs text-muted-foreground">
+                  {fmt(row.createdAt)}
+                </Td>
+                <Td kind="center" className="text-xs text-muted-foreground">
+                  {row.createdByName}
+                </Td>
                 <Td kind="center">
                   <div className="flex items-center justify-center gap-1">
                     <ViewButton
@@ -932,7 +1084,10 @@ function TabTable({
                         })
                       }
                     />
-                    <DeleteButton noun="remittance" onDelete={() => del('daily_cash_remittances', row.id)} />
+                    <DeleteButton
+                      noun="remittance"
+                      onDelete={() => del('daily_cash_remittances', row.id)}
+                    />
                   </div>
                 </Td>
               </Tr>
@@ -960,15 +1115,31 @@ function TabTable({
       </Thead>
       <tbody>
         {r.length === 0 ? (
-          <EmptyRow colSpan={6}>No {isIn ? 'cash-in' : 'cash-out'} entries for this date.</EmptyRow>
+          <EmptyRow colSpan={6}>
+            No {isIn ? 'cash-in' : 'cash-out'} entries for this date.
+          </EmptyRow>
         ) : (
           r.map((row) => (
             <Tr key={row.id}>
-              <Td><span style={{ color: isIn ? C.purple : C.red }}>{row.movementType ?? (isIn ? 'Cash In' : 'Cash Out')}</span></Td>
-              <Td kind="num"><span style={{ color: isIn ? C.purple : C.red }}>{money(row.amount)}</span></Td>
-              <Td clip className="text-muted-foreground" title={row.remarks ?? undefined}>{row.remarks ?? '—'}</Td>
-              <Td kind="center" className="text-xs text-muted-foreground">{fmt(row.createdAt)}</Td>
-              <Td kind="center" className="text-xs text-muted-foreground">{row.createdByName}</Td>
+              <Td>
+                <span style={{ color: isIn ? C.purple : C.red }}>
+                  {row.movementType ?? (isIn ? 'Cash In' : 'Cash Out')}
+                </span>
+              </Td>
+              <Td kind="num">
+                <span style={{ color: isIn ? C.purple : C.red }}>
+                  {money(row.amount)}
+                </span>
+              </Td>
+              <Td clip className="text-muted-foreground" title={row.remarks ?? undefined}>
+                {row.remarks ?? '—'}
+              </Td>
+              <Td kind="center" className="text-xs text-muted-foreground">
+                {fmt(row.createdAt)}
+              </Td>
+              <Td kind="center" className="text-xs text-muted-foreground">
+                {row.createdByName}
+              </Td>
               <Td kind="center">
                 <div className="flex items-center justify-center gap-1">
                   <ViewButton
@@ -976,7 +1147,10 @@ function TabTable({
                       onView({
                         title: isIn ? 'Other Cash In' : 'Other Cash Out',
                         fields: [
-                          { label: 'Type', value: row.movementType ?? (isIn ? 'Cash In' : 'Cash Out') },
+                          {
+                            label: 'Type',
+                            value: row.movementType ?? (isIn ? 'Cash In' : 'Cash Out'),
+                          },
                           { label: 'Amount', value: money(row.amount) },
                           { label: 'Remarks', value: row.remarks ?? '—' },
                           { label: 'Date / Time', value: fmt(row.createdAt) },
@@ -1040,7 +1214,13 @@ function EditButton({ onEdit }: { onEdit: () => void }) {
 
 /** Delete opens a confirmation popup first — it never deletes on the first click and
  *  never navigates (§6). The record's own guarded action runs on confirm. */
-function DeleteButton({ noun, onDelete }: { noun: string; onDelete: () => Promise<void> }) {
+function DeleteButton({
+  noun,
+  onDelete,
+}: {
+  noun: string;
+  onDelete: () => Promise<void>;
+}) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const run = async () => {
@@ -1070,10 +1250,20 @@ function DeleteButton({ noun, onDelete }: { noun: string; onDelete: () => Promis
           critical
           footer={
             <>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={busy}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setOpen(false)}
+                disabled={busy}
+              >
                 Cancel
               </Button>
-              <Button type="button" variant="destructive" onClick={() => void run()} disabled={busy}>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => void run()}
+                disabled={busy}
+              >
                 {busy ? 'Deleting…' : 'Delete'}
               </Button>
             </>
@@ -1117,10 +1307,13 @@ function AddCashModal({
   const [error, setError] = useState<string | null>(null);
 
   const noun =
-    tab === 'expenses' ? 'Expense'
-    : tab === 'remittance' ? 'Remittance'
-    : tab === 'other_cash_in' ? 'Cash In'
-    : 'Cash Out';
+    tab === 'expenses'
+      ? 'Expense'
+      : tab === 'remittance'
+        ? 'Remittance'
+        : tab === 'other_cash_in'
+          ? 'Cash In'
+          : 'Cash Out';
   const title = `${editing ? 'Edit' : 'Add'} ${noun}`;
 
   const save = async () => {
@@ -1129,11 +1322,26 @@ function AddCashModal({
     setError(null);
     let res;
     if (tab === 'expenses') {
-      const payload = { date: entryDate, payee, amount, category: category || null, remarks: remarks || null };
-      res = editing ? await updateExpenseAction(editing.id, payload) : await addExpenseAction(payload);
+      const payload = {
+        date: entryDate,
+        payee,
+        amount,
+        category: category || null,
+        remarks: remarks || null,
+      };
+      res = editing
+        ? await updateExpenseAction(editing.id, payload)
+        : await addExpenseAction(payload);
     } else if (tab === 'remittance') {
-      const payload = { date: entryDate, amount, reference: reference || null, remarks: remarks || null };
-      res = editing ? await updateRemittanceAction(editing.id, payload) : await addRemittanceAction(payload);
+      const payload = {
+        date: entryDate,
+        amount,
+        reference: reference || null,
+        remarks: remarks || null,
+      };
+      res = editing
+        ? await updateRemittanceAction(editing.id, payload)
+        : await addRemittanceAction(payload);
     } else if (editing) {
       res = await updateCashMovementAction(editing.id, {
         date: entryDate,
@@ -1170,7 +1378,12 @@ function AddCashModal({
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="button" onClick={() => void save()} disabled={busy} data-testid="cash-add-save">
+          <Button
+            type="button"
+            onClick={() => void save()}
+            disabled={busy}
+            data-testid="cash-add-save"
+          >
             {busy ? 'Saving…' : 'Save'}
           </Button>
         </>
@@ -1179,42 +1392,102 @@ function AddCashModal({
       <ModalFormGrid>
         {tab === 'expenses' ? (
           <ModalFieldFull>
-            <Label htmlFor="ex-payee" className="text-xs">Name / Payee</Label>
-            <Input id="ex-payee" value={payee} onChange={(e) => setPayee(e.target.value)} className="mt-1 h-9" />
+            <Label htmlFor="ex-payee" className="text-xs">
+              Name / Payee
+            </Label>
+            <Input
+              id="ex-payee"
+              value={payee}
+              onChange={(e) => setPayee(e.target.value)}
+              className="mt-1 h-9"
+            />
           </ModalFieldFull>
         ) : null}
         {tab === 'other_cash_in' || tab === 'other_cash_out' ? (
           <ModalFieldFull>
-            <Label htmlFor="mv-type" className="text-xs">Type</Label>
-            <Input id="mv-type" value={movementType} onChange={(e) => setMovementType(e.target.value)} placeholder={tab === 'other_cash_in' ? 'e.g. Borrowed / Owner Cash In' : 'e.g. Cash Out'} className="mt-1 h-9" />
+            <Label htmlFor="mv-type" className="text-xs">
+              Type
+            </Label>
+            <Input
+              id="mv-type"
+              value={movementType}
+              onChange={(e) => setMovementType(e.target.value)}
+              placeholder={
+                tab === 'other_cash_in'
+                  ? 'e.g. Borrowed / Owner Cash In'
+                  : 'e.g. Cash Out'
+              }
+              className="mt-1 h-9"
+            />
           </ModalFieldFull>
         ) : null}
         <div>
-          <Label htmlFor="cash-amount" className="text-xs">Amount (₱)</Label>
-          <MoneyInput id="cash-amount" value={amount} onValueChange={setAmount} className="mt-1 h-9" />
+          <Label htmlFor="cash-amount" className="text-xs">
+            Amount (₱)
+          </Label>
+          <MoneyInput
+            id="cash-amount"
+            value={amount}
+            onValueChange={setAmount}
+            className="mt-1 h-9"
+          />
         </div>
         <div>
-          <Label htmlFor="cash-entry-date" className="text-xs">Date</Label>
-          <Input id="cash-entry-date" type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} className="mt-1 h-9" />
+          <Label htmlFor="cash-entry-date" className="text-xs">
+            Date
+          </Label>
+          <Input
+            id="cash-entry-date"
+            type="date"
+            value={entryDate}
+            onChange={(e) => setEntryDate(e.target.value)}
+            className="mt-1 h-9"
+          />
         </div>
         {tab === 'expenses' ? (
           <div>
-            <Label htmlFor="ex-cat" className="text-xs">Category</Label>
-            <Input id="ex-cat" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Supplies" className="mt-1 h-9" />
+            <Label htmlFor="ex-cat" className="text-xs">
+              Category
+            </Label>
+            <Input
+              id="ex-cat"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="e.g. Supplies"
+              className="mt-1 h-9"
+            />
           </div>
         ) : null}
         {tab === 'remittance' ? (
           <div>
-            <Label htmlFor="rm-ref" className="text-xs">Reference</Label>
-            <Input id="rm-ref" value={reference} onChange={(e) => setReference(e.target.value)} className="mt-1 h-9" />
+            <Label htmlFor="rm-ref" className="text-xs">
+              Reference
+            </Label>
+            <Input
+              id="rm-ref"
+              value={reference}
+              onChange={(e) => setReference(e.target.value)}
+              className="mt-1 h-9"
+            />
           </div>
         ) : null}
         <ModalFieldFull>
-          <Label htmlFor="cash-remarks" className="text-xs">Remarks</Label>
-          <Input id="cash-remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} className="mt-1 h-9" />
+          <Label htmlFor="cash-remarks" className="text-xs">
+            Remarks
+          </Label>
+          <Input
+            id="cash-remarks"
+            value={remarks}
+            onChange={(e) => setRemarks(e.target.value)}
+            className="mt-1 h-9"
+          />
         </ModalFieldFull>
       </ModalFormGrid>
-      {error ? <p role="alert" className="mt-2 text-sm text-destructive">{error}</p> : null}
+      {error ? (
+        <p role="alert" className="mt-2 text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
     </Modal>
   );
 }
@@ -1243,7 +1516,9 @@ function WalkInSaleModal({
   onSaved: () => void;
 }) {
   const [customer, setCustomer] = useState('');
-  const [rows, setRows] = useState<WalkRow[]>([{ key: 1, itemId: '', input: '', price: '' }]);
+  const [rows, setRows] = useState<WalkRow[]>([
+    { key: 1, itemId: '', input: '', price: '' },
+  ]);
   const nextKey = useRef(2);
   const [method, setMethod] = useState<string>(DEFAULT_PAYMENT_METHOD);
   const [payment, setPayment] = useState(''); // blank = pay in full
@@ -1252,18 +1527,27 @@ function WalkInSaleModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const display = (i: WalkInItem) => (i.facebookName ? `${i.itemCode} — ${i.facebookName}` : i.itemCode);
+  const display = (i: WalkInItem) =>
+    i.facebookName ? `${i.itemCode} — ${i.facebookName}` : i.itemCode;
   const patch = (key: number, p: Partial<WalkRow>) =>
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...p } : r)));
   const onItemInput = (key: number, value: string) => {
     const found = walkInItems.find((i) => display(i) === value);
     patch(key, { input: value, itemId: found?.id ?? '' });
   };
-  const addRow = () => setRows((rs) => [...rs, { key: nextKey.current++, itemId: '', input: '', price: '' }]);
-  const removeRow = (key: number) => setRows((rs) => (rs.length > 1 ? rs.filter((r) => r.key !== key) : rs));
+  const addRow = () =>
+    setRows((rs) => [
+      ...rs,
+      { key: nextKey.current++, itemId: '', input: '', price: '' },
+    ]);
+  const removeRow = (key: number) =>
+    setRows((rs) => (rs.length > 1 ? rs.filter((r) => r.key !== key) : rs));
 
   const centStr = (c: bigint) => `${c / 100n}.${String(c % 100n).padStart(2, '0')}`;
-  const total = rows.reduce((sum, r) => sum + (r.price.trim() ? toCents(r.price) : 0n), 0n);
+  const total = rows.reduce(
+    (sum, r) => sum + (r.price.trim() ? toCents(r.price) : 0n),
+    0n,
+  );
   const totalStr = centStr(total);
   // Blank payment = pay in full; a smaller amount is a down-payment leaving a balance.
   const paid = payment.trim() ? toCents(payment) : total;
@@ -1271,7 +1555,8 @@ function WalkInSaleModal({
   const isFull = paidClamped >= total && total > 0n;
   const balanceCents = total - paidClamped;
 
-  const gramsOf = (r: WalkRow) => walkInItems.find((i) => i.id === r.itemId)?.grams ?? null;
+  const gramsOf = (r: WalkRow) =>
+    walkInItems.find((i) => i.id === r.itemId)?.grams ?? null;
 
   const save = async () => {
     if (busy) return;
@@ -1303,7 +1588,10 @@ function WalkInSaleModal({
       res = await saveWalkInOrderAction({
         customerName: customer.trim(),
         items,
-        payments: paidClamped > 0n ? [{ method, amount: payment.trim(), reference: reference.trim() || null }] : [],
+        payments:
+          paidClamped > 0n
+            ? [{ method, amount: payment.trim(), reference: reference.trim() || null }]
+            : [],
         saleDate: saleDate || date,
         adminId,
       });
@@ -1329,7 +1617,12 @@ function WalkInSaleModal({
           <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button type="button" onClick={() => void save()} disabled={busy} data-testid="walkin-save">
+          <Button
+            type="button"
+            onClick={() => void save()}
+            disabled={busy}
+            data-testid="walkin-save"
+          >
             {busy
               ? 'Saving…'
               : isFull
@@ -1341,7 +1634,9 @@ function WalkInSaleModal({
     >
       <div className="space-y-3">
         <div>
-          <Label htmlFor="wi-customer" className="text-xs">Customer Name</Label>
+          <Label htmlFor="wi-customer" className="text-xs">
+            Customer Name
+          </Label>
           <Input
             id="wi-customer"
             value={customer}
@@ -1359,7 +1654,9 @@ function WalkInSaleModal({
 
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-muted-foreground">Items (from Active Inventory)</span>
+            <span className="text-xs font-medium text-muted-foreground">
+              Items (from Active Inventory)
+            </span>
             <button
               type="button"
               onClick={addRow}
@@ -1380,9 +1677,13 @@ function WalkInSaleModal({
                   className="h-9"
                 />
                 {r.input && !r.itemId ? (
-                  <p className="mt-0.5 text-[10px] text-destructive">Pick an item from the list.</p>
+                  <p className="mt-0.5 text-[10px] text-destructive">
+                    Pick an item from the list.
+                  </p>
                 ) : gramsOf(r) ? (
-                  <p className="mt-0.5 text-[10px] text-muted-foreground">{gramsOf(r)} g</p>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">
+                    {gramsOf(r)} g
+                  </p>
                 ) : null}
               </div>
               <div className="w-32">
@@ -1409,7 +1710,9 @@ function WalkInSaleModal({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label htmlFor="wi-method" className="text-xs">Mode of Payment</Label>
+            <Label htmlFor="wi-method" className="text-xs">
+              Mode of Payment
+            </Label>
             <select
               id="wi-method"
               value={method}
@@ -1417,12 +1720,16 @@ function WalkInSaleModal({
               className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
             >
               {PAYMENT_METHODS.map((mth) => (
-                <option key={mth} value={mth}>{mth}</option>
+                <option key={mth} value={mth}>
+                  {mth}
+                </option>
               ))}
             </select>
           </div>
           <div>
-            <Label htmlFor="wi-date" className="text-xs">Date</Label>
+            <Label htmlFor="wi-date" className="text-xs">
+              Date
+            </Label>
             <Input
               id="wi-date"
               type="date"
@@ -1435,7 +1742,9 @@ function WalkInSaleModal({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label htmlFor="wi-payment" className="text-xs">Payment (blank = pay in full)</Label>
+            <Label htmlFor="wi-payment" className="text-xs">
+              Payment (blank = pay in full)
+            </Label>
             <MoneyInput
               id="wi-payment"
               aria-label="Payment"
@@ -1447,7 +1756,9 @@ function WalkInSaleModal({
             />
           </div>
           <div>
-            <Label htmlFor="wi-ref" className="text-xs">Payment Reference</Label>
+            <Label htmlFor="wi-ref" className="text-xs">
+              Payment Reference
+            </Label>
             <Input
               id="wi-ref"
               value={reference}
@@ -1470,18 +1781,28 @@ function WalkInSaleModal({
             </span>
           </div>
           {isFull ? (
-            <p className="text-[11px] text-muted-foreground">Fully paid — the sale completes immediately.</p>
+            <p className="text-[11px] text-muted-foreground">
+              Fully paid — the sale completes immediately.
+            </p>
           ) : (
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Remaining balance</span>
-              <span className="font-bold tabular-nums" style={{ color: C.amber }} data-testid="walkin-balance">
+              <span
+                className="font-bold tabular-nums"
+                style={{ color: C.amber }}
+                data-testid="walkin-balance"
+              >
                 {formatPeso(centStr(balanceCents))}
               </span>
             </div>
           )}
         </div>
 
-        {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+        {error ? (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        ) : null}
       </div>
     </Modal>
   );

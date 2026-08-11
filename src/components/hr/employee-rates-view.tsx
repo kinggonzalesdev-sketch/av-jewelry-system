@@ -24,7 +24,9 @@ import { EmptyState } from '@/components/states/empty-state';
 function fmtDate(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 const FREQ_LABEL: Record<string, string> = {
@@ -152,7 +154,10 @@ export function EmployeeRatesView({
   }
   return (
     <div className="overflow-x-auto rounded-xl border border-border bg-card">
-      <table className="data-table w-full min-w-[720px] text-left text-sm" data-testid="employee-rates">
+      <table
+        className="data-table w-full min-w-[720px] text-left text-sm"
+        data-testid="employee-rates"
+      >
         <colgroup>
           <col style={{ width: '22%' }} />
           <col style={{ width: '13%' }} />
@@ -170,7 +175,9 @@ export function EmployeeRatesView({
             <th className="px-3 py-2.5 text-center font-medium">Pay Frequency</th>
             <th className="px-3 py-2.5 text-center font-medium">Effective Date</th>
             <th className="px-3 py-2.5 text-center font-medium">Last Updated</th>
-            {canManage ? <th className="col-actions px-3 py-2.5 font-medium">Actions</th> : null}
+            {canManage ? (
+              <th className="col-actions px-3 py-2.5 font-medium">Actions</th>
+            ) : null}
           </tr>
         </thead>
         <tbody>
@@ -193,8 +200,12 @@ export function EmployeeRatesView({
               <td className="whitespace-nowrap px-3 py-2.5 text-center">
                 {FREQ_LABEL[r.payFrequency] ?? r.payFrequency}
               </td>
-              <td className="whitespace-nowrap px-3 py-2.5 text-center">{r.effectiveDate ?? '—'}</td>
-              <td className="whitespace-nowrap px-3 py-2.5 text-center">{fmtDate(r.lastUpdated)}</td>
+              <td className="whitespace-nowrap px-3 py-2.5 text-center">
+                {r.effectiveDate ?? '—'}
+              </td>
+              <td className="whitespace-nowrap px-3 py-2.5 text-center">
+                {fmtDate(r.lastUpdated)}
+              </td>
               {canManage ? (
                 <td className="col-actions px-3 py-2.5">
                   <EditRate row={r} />

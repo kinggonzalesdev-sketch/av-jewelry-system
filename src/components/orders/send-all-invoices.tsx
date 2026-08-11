@@ -20,7 +20,13 @@ import { Modal } from '@/components/ui/modal';
  * modal shows the plan; processing shows live Sent / Failed / Skipped / Remaining;
  * a summary lists any failures. Each successful send records its date/time/sender.
  */
-type Progress = { sent: number; failed: number; skipped: number; remaining: number; done: boolean };
+type Progress = {
+  sent: number;
+  failed: number;
+  skipped: number;
+  remaining: number;
+  done: boolean;
+};
 
 export function SendAllInvoices() {
   const router = useRouter();
@@ -59,7 +65,13 @@ export function SendAllInvoices() {
     let sent = 0;
     let failed = 0;
     const fails: string[] = [];
-    setProgress({ sent: 0, failed: 0, skipped: skipped.length, remaining: eligible.length, done: false });
+    setProgress({
+      sent: 0,
+      failed: 0,
+      skipped: skipped.length,
+      remaining: eligible.length,
+      done: false,
+    });
 
     for (let i = 0; i < eligible.length; i++) {
       const o = eligible[i];
@@ -133,7 +145,9 @@ export function SendAllInvoices() {
                 disabled={processing || loading || eligible.length === 0}
                 data-testid="orders-send-all-confirm"
               >
-                {processing ? 'Sending…' : `Send ${eligible.length} invoice${eligible.length === 1 ? '' : 's'}`}
+                {processing
+                  ? 'Sending…'
+                  : `Send ${eligible.length} invoice${eligible.length === 1 ? '' : 's'}`}
               </Button>
             </>
           )
@@ -163,8 +177,8 @@ export function SendAllInvoices() {
             {progress.done ? (
               <div className="rounded-lg border border-border bg-card p-3 text-sm">
                 <p className="font-medium">
-                  Done — {progress.sent} sent, {progress.failed} failed, {progress.skipped}{' '}
-                  skipped.
+                  Done — {progress.sent} sent, {progress.failed} failed,{' '}
+                  {progress.skipped} skipped.
                 </p>
                 {failedOrders.length > 0 ? (
                   <p className="mt-1 text-xs text-destructive">
@@ -173,7 +187,8 @@ export function SendAllInvoices() {
                 ) : null}
                 {progress.skipped > 0 ? (
                   <p className="mt-1 text-xs text-amber-600">
-                    Skipped (no Facebook chat): {skipped.map((s) => s.orderNumber).join(', ')}
+                    Skipped (no Facebook chat):{' '}
+                    {skipped.map((s) => s.orderNumber).join(', ')}
                   </p>
                 ) : null}
               </div>
@@ -186,7 +201,8 @@ export function SendAllInvoices() {
         ) : (
           <div className="space-y-2 text-sm" data-testid="orders-send-all-plan">
             <p>
-              <strong>{total}</strong> order{total === 1 ? '' : 's'} currently in For Invoice.
+              <strong>{total}</strong> order{total === 1 ? '' : 's'} currently in For
+              Invoice.
             </p>
             <ul className="space-y-1 text-xs">
               <li>

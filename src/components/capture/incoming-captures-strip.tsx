@@ -17,7 +17,10 @@ import {
   type CaptureLinkResult,
   type PendingCaptureRow,
 } from '@/lib/capture/pending-types';
-import { CaptureLinkPanel, type EffectiveCaptureLink } from '@/components/capture/capture-link-panel';
+import {
+  CaptureLinkPanel,
+  type EffectiveCaptureLink,
+} from '@/components/capture/capture-link-panel';
 import {
   NewOrderModal,
   type CapturePrefill,
@@ -26,7 +29,11 @@ import { useDashboardSync } from '@/components/shell/dashboard-sync';
 import { usePrinter } from '@/components/print/printer-context';
 import { writeToChannel } from '@/lib/print/bluetooth-printer';
 import { encodeReceipt } from '@/lib/print/receipt-encoders';
-import { stickerDate, normalizeGrams, type OrderReceiptData } from '@/lib/print/order-receipt';
+import {
+  stickerDate,
+  normalizeGrams,
+  type OrderReceiptData,
+} from '@/lib/print/order-receipt';
 import { readStickerFields, readStickerPricePerGram } from '@/lib/print/sticker-fields';
 import type { CaptureItem, WalkInItem } from '@/lib/orders/service';
 import type { AdminNameContext } from '@/lib/authz/admin-name';
@@ -72,7 +79,9 @@ export function IncomingCapturesStrip({
   const [notes, setNotes] = useState<Record<string, string>>({});
   // Client cache of the resolved Facebook link per capture (overrides the row until
   // the next server load reflects the persisted status).
-  const [linkOverrides, setLinkOverrides] = useState<Record<string, CaptureLinkResult>>({});
+  const [linkOverrides, setLinkOverrides] = useState<Record<string, CaptureLinkResult>>(
+    {},
+  );
   // Captures we've already kicked a resolution for, so each resolves exactly once.
   const resolvedRef = useRef<Set<string>>(new Set());
 
@@ -106,7 +115,9 @@ export function IncomingCapturesStrip({
         setRows(data);
         // Tell the "Capture Pending" pill the exact live count so its badge always
         // matches this popup's "(N)" — same query, one source of truth.
-        window.dispatchEvent(new CustomEvent(CAPTURE_COUNT_EVENT, { detail: data.length }));
+        window.dispatchEvent(
+          new CustomEvent(CAPTURE_COUNT_EVENT, { detail: data.length }),
+        );
       })
       .catch(() => undefined);
   }, []);
@@ -145,7 +156,8 @@ export function IncomingCapturesStrip({
   useEffect(() => {
     for (const r of rows) {
       const id = r.captureRecordId;
-      if (r.linkStatus !== null || linkOverrides[id] || resolvedRef.current.has(id)) continue;
+      if (r.linkStatus !== null || linkOverrides[id] || resolvedRef.current.has(id))
+        continue;
       resolvedRef.current.add(id);
       resolveCaptureLinkAction(id)
         .then((res) => {
@@ -160,7 +172,10 @@ export function IncomingCapturesStrip({
   // Build the sticker for a capture: Facebook Name / grams • ₱rate/g / Date. The rate
   // ALWAYS comes from Sticker Settings (the pinned comment never carries a price); the
   // grams comes from the OCR (or the operator's correction). Pure — no side effects.
-  const stickerFor = (r: PendingCaptureRow, gramsOverride?: string): OrderReceiptData => ({
+  const stickerFor = (
+    r: PendingCaptureRow,
+    gramsOverride?: string,
+  ): OrderReceiptData => ({
     customerName: (r.fbName ?? '').trim() || '—',
     itemName: '',
     grams: normalizeGrams(gramsOverride ?? r.grams ?? ''),
@@ -212,12 +227,17 @@ export function IncomingCapturesStrip({
             date: stickerDate(),
           };
           try {
-            await writeToChannel(activeChannel, encodeReceipt(data, printLang, readStickerFields()));
+            await writeToChannel(
+              activeChannel,
+              encodeReceipt(data, printLang, readStickerFields()),
+            );
             await markCaptureStickerPrintedAction(claim.captureRecordId);
             setNotes((cur) => ({ ...cur, [claim.captureRecordId]: 'Auto-printed ✓' }));
           } catch {
             // Printer trouble — hand the claim back so the phone (or a retry) can take it.
-            await releaseCaptureStickerAction(claim.captureRecordId).catch(() => undefined);
+            await releaseCaptureStickerAction(claim.captureRecordId).catch(
+              () => undefined,
+            );
             break;
           }
         }
@@ -376,116 +396,125 @@ export function IncomingCapturesStrip({
           ) : (
             <ul className="space-y-2">
               {rows.map((r) => (
-          <li
-            key={r.captureRecordId}
-            className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-card/60 px-3 py-2 text-sm"
-          >
-            {r.screenshotUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={r.screenshotUrl}
-                alt="Capture"
-                className="h-14 w-14 shrink-0 rounded object-cover"
-              />
-            ) : (
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded bg-muted text-[10px] text-muted-foreground">
-                no image
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              <p className="break-words font-medium">
-                {r.fbName ?? <span className="text-muted-foreground">Name not read</span>}
-                {r.isTest ? (
-                  <span className="ml-1.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-amber-700">
-                    Test
-                  </span>
-                ) : null}
-              </p>
-              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
-                <label className="flex items-center gap-1 text-muted-foreground">
-                  Grams
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={gramsEdits[r.captureRecordId] ?? r.grams ?? ''}
-                    placeholder="e.g. 11.5"
-                    onChange={(e) =>
-                      setGramsEdits((cur) => ({ ...cur, [r.captureRecordId]: e.target.value }))
-                    }
-                    className="h-7 w-20 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-gold"
-                    data-testid={`incoming-grams-${r.captureRecordId}`}
-                  />
-                </label>
-                {normalizeGrams(gramsEdits[r.captureRecordId] ?? r.grams ?? '') === null ? (
-                  <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-amber-700">
-                    Needs review
-                  </span>
-                ) : null}
-                {notes[r.captureRecordId] ? (
-                  <span className="text-[10px] font-medium text-emerald-600">
-                    {notes[r.captureRecordId]}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => void printLabel(r)}
-                data-testid={`incoming-print-${r.captureRecordId}`}
-              >
-                🖨 Print
-              </Button>
-              {/* Send the screenshot to the pinned customer's Messenger. Disabled for a
+                <li
+                  key={r.captureRecordId}
+                  className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-card/60 px-3 py-2 text-sm"
+                >
+                  {r.screenshotUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={r.screenshotUrl}
+                      alt="Capture"
+                      className="h-14 w-14 shrink-0 rounded object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded bg-muted text-[10px] text-muted-foreground">
+                      no image
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="break-words font-medium">
+                      {r.fbName ?? (
+                        <span className="text-muted-foreground">Name not read</span>
+                      )}
+                      {r.isTest ? (
+                        <span className="ml-1.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-amber-700">
+                          Test
+                        </span>
+                      ) : null}
+                    </p>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+                      <label className="flex items-center gap-1 text-muted-foreground">
+                        Grams
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={gramsEdits[r.captureRecordId] ?? r.grams ?? ''}
+                          placeholder="e.g. 11.5"
+                          onChange={(e) =>
+                            setGramsEdits((cur) => ({
+                              ...cur,
+                              [r.captureRecordId]: e.target.value,
+                            }))
+                          }
+                          className="h-7 w-20 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-gold"
+                          data-testid={`incoming-grams-${r.captureRecordId}`}
+                        />
+                      </label>
+                      {normalizeGrams(gramsEdits[r.captureRecordId] ?? r.grams ?? '') ===
+                      null ? (
+                        <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-amber-700">
+                          Needs review
+                        </span>
+                      ) : null}
+                      {notes[r.captureRecordId] ? (
+                        <span className="text-[10px] font-medium text-emerald-600">
+                          {notes[r.captureRecordId]}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void printLabel(r)}
+                      data-testid={`incoming-print-${r.captureRecordId}`}
+                    >
+                      🖨 Print
+                    </Button>
+                    {/* Send the screenshot to the pinned customer's Messenger. Disabled for a
                   Test capture — a test must never message a real customer. */}
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={sendingId === r.captureRecordId || r.isTest}
-                onClick={() => void sendToMessenger(r)}
-                data-testid={`incoming-send-${r.captureRecordId}`}
-              >
-                {sendingId === r.captureRecordId ? 'Sending…' : '📨 Send'}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => {
-                  setSelected(r);
-                  setOpen(false);
-                }}
-                data-testid={`incoming-use-${r.captureRecordId}`}
-              >
-                Use
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={busy === r.captureRecordId}
-                onClick={() => dismiss(r.captureRecordId)}
-              >
-                {busy === r.captureRecordId ? '…' : 'Dismiss'}
-              </Button>
-            </div>
-            {/* Linked Facebook Customer — resolved from the detected name. Full width
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={sendingId === r.captureRecordId || r.isTest}
+                      onClick={() => void sendToMessenger(r)}
+                      data-testid={`incoming-send-${r.captureRecordId}`}
+                    >
+                      {sendingId === r.captureRecordId ? 'Sending…' : '📨 Send'}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => {
+                        setSelected(r);
+                        setOpen(false);
+                      }}
+                      data-testid={`incoming-use-${r.captureRecordId}`}
+                    >
+                      Use
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={busy === r.captureRecordId}
+                      onClick={() => dismiss(r.captureRecordId)}
+                    >
+                      {busy === r.captureRecordId ? '…' : 'Dismiss'}
+                    </Button>
+                  </div>
+                  {/* Linked Facebook Customer — resolved from the detected name. Full width
                 on its own line (the li is flex-wrap). Not shown for a Test capture. */}
-            {!r.isTest ? (
-              <div className="w-full">
-                <CaptureLinkPanel
-                  captureRecordId={r.captureRecordId}
-                  link={effectiveLink(r)}
-                  onChanged={(res) =>
-                    setLinkOverrides((cur) => ({ ...cur, [r.captureRecordId]: res }))
-                  }
-                />
-              </div>
-            ) : null}
-          </li>
-        ))}
+                  {!r.isTest ? (
+                    <div className="w-full">
+                      <CaptureLinkPanel
+                        captureRecordId={r.captureRecordId}
+                        link={effectiveLink(r)}
+                        onChanged={(res) =>
+                          setLinkOverrides((cur) => ({
+                            ...cur,
+                            [r.captureRecordId]: res,
+                          }))
+                        }
+                      />
+                    </div>
+                  ) : null}
+                </li>
+              ))}
             </ul>
           )}
         </div>

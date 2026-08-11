@@ -105,7 +105,9 @@ describe('the screen never contradicts the rules', () => {
   // and the service.ts guarantees asserted above), so no honesty guarantee is lost
   // — the screen simply no longer surfaces those review workflows.
   it('no longer surfaces the removed RTS / Duplicate review tabs', () => {
-    expect(view).not.toMatch(/never promotes a 2nd miner or allocates from the waitlist/i);
+    expect(view).not.toMatch(
+      /never promotes a 2nd miner or allocates from the waitlist/i,
+    );
     expect(view).not.toMatch(/Recording a judgement merges nothing/i);
   });
 

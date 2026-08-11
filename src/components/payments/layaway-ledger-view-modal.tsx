@@ -31,7 +31,9 @@ import {
 function fmtDate(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 function peso(v: string | null): string {
   return v ? formatPeso(v) : '—';
@@ -111,7 +113,9 @@ function SummaryItem({
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
       <span className="text-sm font-medium break-words">{children}</span>
     </div>
   );
@@ -149,13 +153,17 @@ export function LayawayLedgerViewModal({
   const canComplete =
     allowComplete &&
     detail !== null &&
-    !['completed', 'cancelled', 'forfeited', 'needs_review'].includes(detail.status ?? '');
+    !['completed', 'cancelled', 'forfeited', 'needs_review'].includes(
+      detail.status ?? '',
+    );
 
   // Add Payment shows only for a manager on a non-terminal, non-review account.
   const showAddPayment =
     canAddPayment &&
     detail !== null &&
-    !['completed', 'cancelled', 'forfeited', 'needs_review'].includes(detail.status ?? '');
+    !['completed', 'cancelled', 'forfeited', 'needs_review'].includes(
+      detail.status ?? '',
+    );
 
   const runComplete = async () => {
     if (completing) return;
@@ -207,7 +215,9 @@ export function LayawayLedgerViewModal({
   const overdue = ((): string => {
     if (!detail || detail.status !== 'active' || !detail.nextDueDate) return '—';
     const owes = Number((detail.balance ?? '0').replace(/[^\d.-]/g, '')) > 0;
-    return detail.nextDueDate < new Date().toISOString().slice(0, 10) && owes ? 'Yes' : 'No';
+    return detail.nextDueDate < new Date().toISOString().slice(0, 10) && owes
+      ? 'Yes'
+      : 'No';
   })();
 
   return (
@@ -351,7 +361,10 @@ export function LayawayLedgerViewModal({
                 <SummaryItem icon="₱" label="Balance">
                   {peso(detail.balance)}
                   {detail.balanceMismatch ? (
-                    <span className="ml-1 text-amber-600" title="Balance ≠ Grand Total − Payment">
+                    <span
+                      className="ml-1 text-amber-600"
+                      title="Balance ≠ Grand Total − Payment"
+                    >
                       ⚠
                     </span>
                   ) : null}
@@ -408,7 +421,9 @@ export function LayawayLedgerViewModal({
             {/* Payment History — stays at the bottom (Owner request). */}
             <SectionCard icon="₱" title="Payment History">
               {detail.payments.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No payment records parsed.</p>
+                <p className="text-xs text-muted-foreground">
+                  No payment records parsed.
+                </p>
               ) : (
                 <div className="overflow-x-auto rounded-lg border border-border">
                   <table className="data-table w-full min-w-[640px] text-left text-xs">
@@ -426,7 +441,9 @@ export function LayawayLedgerViewModal({
                         <tr key={p.sequence}>
                           <td className="px-3 py-1.5 tabular-nums">{p.sequence}</td>
                           <td className="px-3 py-1.5">{fmtDate(p.paymentDate)}</td>
-                          <td className="px-3 py-1.5 text-right tabular-nums">{peso(p.amount)}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">
+                            {peso(p.amount)}
+                          </td>
                           <td className="px-3 py-1.5">{p.mop ?? '—'}</td>
                           <td className="px-3 py-1.5">{p.reference ?? '—'}</td>
                         </tr>

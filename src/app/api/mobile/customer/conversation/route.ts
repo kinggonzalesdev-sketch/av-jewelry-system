@@ -24,7 +24,10 @@ export const maxDuration = 25;
 export async function GET(request: Request): Promise<Response> {
   const staff = await authenticateMobile(request);
   if (!staff) {
-    return NextResponse.json({ ok: false, error: 'Session invalid or expired.' }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: 'Session invalid or expired.' },
+      { status: 401 },
+    );
   }
 
   const name = (new URL(request.url).searchParams.get('name') ?? '').trim();

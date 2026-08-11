@@ -3,11 +3,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { recordAuditEvent } from '@/lib/audit/log';
-import {
-  AuthorizationError,
-  requireOwner,
-  requireOwnerOrAdmin,
-} from '@/lib/authz/guard';
+import { AuthorizationError, requireOwner, requireOwnerOrAdmin } from '@/lib/authz/guard';
 import { mapSnapshotRow } from '@/lib/hr/payslip';
 import type { PayslipActionState } from '@/lib/hr/payslip-types';
 import { createClient } from '@/lib/supabase/server';
@@ -42,7 +38,11 @@ export async function generatePayslipAction(
   const deductionsRaw = text(formData, 'deductions');
 
   if (!employeeId || !from || !to) {
-    return { error: 'Missing employee or payroll period.', success: null, snapshot: null };
+    return {
+      error: 'Missing employee or payroll period.',
+      success: null,
+      snapshot: null,
+    };
   }
   // Deductions cross the wire as a string; the SQL clamps to >= 0.
   if (deductionsRaw !== null && !/^\d+(\.\d{1,2})?$/.test(deductionsRaw)) {
@@ -111,7 +111,8 @@ export async function markPayslipPaidAction(
   }
 
   const snapshotId = text(formData, 'snapshotId');
-  const paymentDate = text(formData, 'paymentDate') ?? new Date().toISOString().slice(0, 10);
+  const paymentDate =
+    text(formData, 'paymentDate') ?? new Date().toISOString().slice(0, 10);
   if (!snapshotId) {
     return { error: 'Missing payslip.', success: null, snapshot: null };
   }

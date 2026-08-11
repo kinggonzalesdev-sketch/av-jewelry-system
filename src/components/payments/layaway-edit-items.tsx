@@ -47,7 +47,9 @@ export function LayawayEditItems({
   const [addError, setAddError] = useState<string | null>(null);
 
   // Remove / Split.
-  const [target, setTarget] = useState<{ kind: 'remove' | 'split'; item: Item } | null>(null);
+  const [target, setTarget] = useState<{ kind: 'remove' | 'split'; item: Item } | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -101,7 +103,9 @@ export function LayawayEditItems({
         setRowError(res.error);
         return;
       }
-      setNote(`Removed ${target.item.itemCode ?? 'the item'} — returned to Active inventory.`);
+      setNote(
+        `Removed ${target.item.itemCode ?? 'the item'} — returned to Active inventory.`,
+      );
     } else {
       const res = await splitLayawayItemToOrderAction(ledgerId, target.item.id);
       setBusy(false);
@@ -130,11 +134,14 @@ export function LayawayEditItems({
         </span>
       </div>
       <p className="mb-2 mt-0.5 text-[11px] text-muted-foreground">
-        Add a piece (grams, interest and grand total recompute), remove one (returns to Active
-        inventory), or split it into its own order to pay and deliver on its own.
+        Add a piece (grams, interest and grand total recompute), remove one (returns to
+        Active inventory), or split it into its own order to pay and deliver on its own.
       </p>
       {note ? (
-        <p className="mb-2 text-xs font-medium text-emerald-600" data-testid="layaway-edit-items-note">
+        <p
+          className="mb-2 text-xs font-medium text-emerald-600"
+          data-testid="layaway-edit-items-note"
+        >
           {note}
         </p>
       ) : null}
@@ -147,7 +154,9 @@ export function LayawayEditItems({
           >
             <span className="flex flex-wrap items-center gap-2">
               <span className="font-mono">{it.itemCode ?? '—'}</span>
-              {it.grams ? <span className="text-muted-foreground">{it.grams}g</span> : null}
+              {it.grams ? (
+                <span className="text-muted-foreground">{it.grams}g</span>
+              ) : null}
               <span className="text-muted-foreground">
                 {it.itemAmount ? formatPeso(it.itemAmount) : '—'}
               </span>
@@ -213,7 +222,11 @@ export function LayawayEditItems({
                 <Label className="text-[10px]">
                   {pricing === 'per_gram' ? 'Price / gram (₱)' : 'Price (₱)'}
                 </Label>
-                <MoneyInput value={price} onValueChange={setPrice} className="mt-1 h-9 w-32" />
+                <MoneyInput
+                  value={price}
+                  onValueChange={setPrice}
+                  className="mt-1 h-9 w-32"
+                />
               </div>
               <Button
                 type="button"
@@ -267,7 +280,9 @@ export function LayawayEditItems({
                 ))}
               </ul>
             ) : query.trim().length >= 2 && !searching ? (
-              <p className="text-[11px] text-muted-foreground">No matching available items.</p>
+              <p className="text-[11px] text-muted-foreground">
+                No matching available items.
+              </p>
             ) : null}
           </div>
         )}
@@ -280,10 +295,19 @@ export function LayawayEditItems({
         }}
         critical
         size="sm"
-        title={target?.kind === 'remove' ? 'Remove item from layaway' : 'Split item to a new order'}
+        title={
+          target?.kind === 'remove'
+            ? 'Remove item from layaway'
+            : 'Split item to a new order'
+        }
         footer={
           <>
-            <Button type="button" variant="outline" onClick={() => setTarget(null)} disabled={busy}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setTarget(null)}
+              disabled={busy}
+            >
               Cancel
             </Button>
             {target?.kind === 'remove' ? (
@@ -313,13 +337,14 @@ export function LayawayEditItems({
           <p className="font-mono">{target?.item.itemCode ?? ''}</p>
           {target?.kind === 'remove' ? (
             <p className="text-muted-foreground">
-              This piece returns to Active inventory and the layaway&apos;s grams, interest,
-              grand total and balance recompute. Payments already made stay on the account.
+              This piece returns to Active inventory and the layaway&apos;s grams,
+              interest, grand total and balance recompute. Payments already made stay on
+              the account.
             </p>
           ) : (
             <p className="text-muted-foreground">
-              This piece moves to a brand-new For-Invoice order (same customer, unpaid). The
-              layaway keeps its other items and all payments; its money recomputes.
+              This piece moves to a brand-new For-Invoice order (same customer, unpaid).
+              The layaway keeps its other items and all payments; its money recomputes.
             </p>
           )}
           {rowError ? (

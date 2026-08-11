@@ -32,14 +32,20 @@ export function Alert({
   return (
     <div
       role={tone === 'error' ? 'alert' : 'status'}
-      className={cn('flex items-start gap-2 rounded-lg border px-3 py-2 text-sm', a.cls, className)}
+      className={cn(
+        'flex items-start gap-2 rounded-lg border px-3 py-2 text-sm',
+        a.cls,
+        className,
+      )}
     >
       <span aria-hidden="true" className="mt-0.5 shrink-0 text-xs leading-none">
         {a.icon}
       </span>
       <div className="min-w-0">
         {title ? <p className="font-semibold">{title}</p> : null}
-        {children ? <div className={cn(title && 'mt-0.5 opacity-90')}>{children}</div> : null}
+        {children ? (
+          <div className={cn(title && 'mt-0.5 opacity-90')}>{children}</div>
+        ) : null}
       </div>
     </div>
   );

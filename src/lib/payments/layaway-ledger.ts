@@ -162,10 +162,17 @@ export type LayawayLedgerInput = {
 };
 
 export type LedgerImportResult =
-  | { ok: true; inserted: number; skipped: number; installments: number; payments: number }
+  | {
+      ok: true;
+      inserted: number;
+      skipped: number;
+      installments: number;
+      payments: number;
+    }
   | { ok: false; error: string };
 
-export type LedgerDeleteResult = { ok: true; deleted: number } | { ok: false; error: string };
+export type LedgerDeleteResult =
+  { ok: true; deleted: number } | { ok: false; error: string };
 
 export type LedgerPaymentResult =
   | { ok: true; payment: string; balance: string; status: string }
@@ -292,7 +299,12 @@ export async function listKeepLayawayAccounts(): Promise<KeepLayawayRow[]> {
  * under Completed Layaways; the code is released. Leaves the balance untouched.
  */
 /** Layaway → Orders destination options (the only four offered from Layaway). */
-export const LAYAWAY_TRANSFER_DESTINATIONS = ['pickup', 'delivery', 'shipping', 'keep'] as const;
+export const LAYAWAY_TRANSFER_DESTINATIONS = [
+  'pickup',
+  'delivery',
+  'shipping',
+  'keep',
+] as const;
 export type LayawayTransferDestination = (typeof LAYAWAY_TRANSFER_DESTINATIONS)[number];
 
 /**
@@ -306,7 +318,9 @@ export async function transferLayawayToDestination(
   destination: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!ledgerId) return { ok: false, error: 'A layaway account is required.' };
-  if (!LAYAWAY_TRANSFER_DESTINATIONS.includes(destination as LayawayTransferDestination)) {
+  if (
+    !LAYAWAY_TRANSFER_DESTINATIONS.includes(destination as LayawayTransferDestination)
+  ) {
     return { ok: false, error: 'Select a valid destination.' };
   }
   try {
@@ -359,7 +373,9 @@ export async function completeLayawayLedger(
     throw cause;
   }
   const supabase = await createClient();
-  const res = (await supabase.rpc('complete_layaway_ledger', { p_ledger_id: ledgerId })) as {
+  const res = (await supabase.rpc('complete_layaway_ledger', {
+    p_ledger_id: ledgerId,
+  })) as {
     error: { message: string } | null;
   };
   if (res.error) {
@@ -381,8 +397,7 @@ export async function completeLayawayLedger(
  */
 export type LayawayItemResult = { ok: true } | { ok: false; error: string };
 export type LayawaySplitResult =
-  | { ok: true; orderNumber: string }
-  | { ok: false; error: string };
+  { ok: true; orderNumber: string } | { ok: false; error: string };
 
 export async function addLayawayItem(
   ledgerId: string,
@@ -404,7 +419,8 @@ export async function addLayawayItem(
     p_pricing_type: pricingType,
     p_price: price,
   })) as { error: { message: string } | null };
-  if (res.error) return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  if (res.error)
+    return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
   await recordAuditEvent({
     action: 'layaway.add_item',
     entityType: 'layaway_ledger',
@@ -430,7 +446,8 @@ export async function removeLayawayItem(
     p_ledger: ledgerId,
     p_item_id: itemId,
   })) as { error: { message: string } | null };
-  if (res.error) return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  if (res.error)
+    return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
   await recordAuditEvent({
     action: 'layaway.remove_item',
     entityType: 'layaway_ledger',
@@ -456,7 +473,8 @@ export async function splitLayawayItemToOrder(
     p_ledger: ledgerId,
     p_item_id: itemId,
   })) as { data: { order_number?: string } | null; error: { message: string } | null };
-  if (res.error) return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  if (res.error)
+    return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
   const orderNumber = res.data?.order_number ?? '—';
   await recordAuditEvent({
     action: 'layaway.split_item',
@@ -485,7 +503,9 @@ export async function cancelLayawayLedger(
     throw cause;
   }
   const supabase = await createClient();
-  const res = (await supabase.rpc('cancel_layaway_ledger', { p_ledger_id: ledgerId })) as {
+  const res = (await supabase.rpc('cancel_layaway_ledger', {
+    p_ledger_id: ledgerId,
+  })) as {
     error: { message: string } | null;
   };
   if (res.error) {
@@ -609,7 +629,9 @@ export async function getLayawayLedgerDetail(
   // have no recorder). One small lookup keyed by the distinct staff ids.
   const payRows = (pay.data ?? []) as Array<Record<string, unknown>>;
   const receiverIds = [
-    ...new Set(payRows.map((p) => p.received_by).filter((v): v is string => typeof v === 'string')),
+    ...new Set(
+      payRows.map((p) => p.received_by).filter((v): v is string => typeof v === 'string'),
+    ),
   ];
   const receiverNames = new Map<string, string>();
   if (receiverIds.length > 0) {
@@ -675,7 +697,10 @@ export async function getLayawayLedgerDetail(
     screw: (r.screw as string | null) ?? null,
     notes: (r.notes as string | null) ?? null,
     interestType: (r.interest_type as string | null) ?? null,
-    layawayTerm: r.layaway_term === null || r.layaway_term === undefined ? null : Number(r.layaway_term),
+    layawayTerm:
+      r.layaway_term === null || r.layaway_term === undefined
+        ? null
+        : Number(r.layaway_term),
     interestRate: toStr(r.interest_rate),
     fixedInterest: toStr(r.fixed_interest),
     perGram,
@@ -852,7 +877,9 @@ export async function addLayawayPaymentAndTransfer(
   if (!/^\d{1,12}(\.\d{1,2})?$/.test(amount) || Number(amount) <= 0) {
     return { ok: false, error: 'Enter a payment amount greater than zero.' };
   }
-  if (!LAYAWAY_TRANSFER_DESTINATIONS.includes(destination as LayawayTransferDestination)) {
+  if (
+    !LAYAWAY_TRANSFER_DESTINATIONS.includes(destination as LayawayTransferDestination)
+  ) {
     return { ok: false, error: 'Select a valid destination.' };
   }
   // Both capabilities are required for the combined action.
@@ -946,7 +973,8 @@ export async function updateLayawayLedgerAccount(
   input: UpdateLedgerAccountInput,
 ): Promise<LedgerUpdateResult> {
   if (!input.id) return { ok: false, error: 'A layaway account is required.' };
-  if (!input.customerName.trim()) return { ok: false, error: 'A customer name is required.' };
+  if (!input.customerName.trim())
+    return { ok: false, error: 'A customer name is required.' };
 
   try {
     await requireOwnerOrAdmin();

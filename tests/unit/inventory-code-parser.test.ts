@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  normalizeInventoryCode,
-  parseInventoryCode,
-} from '@/lib/inventory/code-parser';
+import { normalizeInventoryCode, parseInventoryCode } from '@/lib/inventory/code-parser';
 
 /**
  * Inventory code parser (UI/UX spec §4–§8). Every example from the spec is pinned

@@ -7,7 +7,9 @@ import type { CaptureReviewRow } from '@/lib/capture/review-types';
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 const approveMock = vi.fn((_id: string) => Promise.resolve({ ok: true as const }));
-const rejectMock = vi.fn((_id: string, _r?: string | null) => Promise.resolve({ ok: true as const }));
+const rejectMock = vi.fn((_id: string, _r?: string | null) =>
+  Promise.resolve({ ok: true as const }),
+);
 vi.mock('@/lib/capture/review-actions', () => ({
   approveCaptureReviewAction: (id: string) => approveMock(id),
   rejectCaptureReviewAction: (id: string, r?: string | null) => rejectMock(id, r),

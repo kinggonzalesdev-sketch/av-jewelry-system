@@ -67,7 +67,8 @@ export function AttendanceClock({
   const openSession = { open: Boolean(openSince), since: openSince };
   // Already clocked out today AND no open session → offer Continue Duty (a NEW
   // session on the same attendance day), not a plain Clock In.
-  const resumeSince = selectedId && !openSession.open ? (lastOutToday[selectedId] ?? null) : null;
+  const resumeSince =
+    selectedId && !openSession.open ? (lastOutToday[selectedId] ?? null) : null;
   const [continueConfirm, setContinueConfirm] = useState(false);
   const [mode, setMode] = useState<'idle' | 'camera'>('idle');
   // Which action the selfie step will complete — clock IN or clock OUT.
@@ -247,8 +248,8 @@ export function AttendanceClock({
             </p>
             {cameraError ? (
               <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">
-                {cameraError} You can still clock {intent === 'in' ? 'in' : 'out'} without a
-                photo.
+                {cameraError} You can still clock {intent === 'in' ? 'in' : 'out'} without
+                a photo.
               </div>
             ) : (
               <video
@@ -318,8 +319,8 @@ export function AttendanceClock({
         ) : resumeSince ? (
           <div className="mx-auto flex max-w-sm flex-col items-center gap-3">
             <p className="text-sm text-muted-foreground">
-              Clocked out{' '}
-              {`at ${new Date(resumeSince).toLocaleTimeString()}`}. Returning to work?
+              Clocked out {`at ${new Date(resumeSince).toLocaleTimeString()}`}. Returning
+              to work?
             </p>
             <Button
               type="button"

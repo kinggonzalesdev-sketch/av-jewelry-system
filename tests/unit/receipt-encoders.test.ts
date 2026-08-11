@@ -48,13 +48,15 @@ describe('stickerLines content', () => {
 
   it('shows the quantity only when more than one piece', () => {
     expect(
-      stickerLineItems({ ...data, quantity: 3 }, ALL).find((l) => l.kind === 'price')?.text,
+      stickerLineItems({ ...data, quantity: 3 }, ALL).find((l) => l.kind === 'price')
+        ?.text,
     ).toBe('3 x ₱12,000');
   });
 
   it('shows an em dash for the price when there is none', () => {
     expect(
-      stickerLineItems({ ...data, unitPrice: null }, ALL).find((l) => l.kind === 'price')?.text,
+      stickerLineItems({ ...data, unitPrice: null }, ALL).find((l) => l.kind === 'price')
+        ?.text,
     ).toBe('—');
   });
 });
@@ -141,7 +143,8 @@ describe('encodeReceiptEscPos', () => {
     // ESC a 1 — center align — is present.
     let centered = false;
     for (let i = 0; i < bytes.length - 2; i++) {
-      if (bytes[i] === 0x1b && bytes[i + 1] === 0x61 && bytes[i + 2] === 0x01) centered = true;
+      if (bytes[i] === 0x1b && bytes[i + 1] === 0x61 && bytes[i + 2] === 0x01)
+        centered = true;
     }
     expect(centered).toBe(true);
   });

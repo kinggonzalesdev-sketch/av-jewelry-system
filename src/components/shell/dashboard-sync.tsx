@@ -142,7 +142,9 @@ export function DashboardSyncProvider({ children }: { children: ReactNode }) {
   }, [scheduleRefresh]);
 
   return (
-    <DashboardSyncContext.Provider value={{ lastSyncedAt, isSyncing: isPending, refresh }}>
+    <DashboardSyncContext.Provider
+      value={{ lastSyncedAt, isSyncing: isPending, refresh }}
+    >
       {children}
     </DashboardSyncContext.Provider>
   );

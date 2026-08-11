@@ -131,14 +131,15 @@ describe('stage action sets (§7)', () => {
     expect(stageOffers('keep', 'transfer_destination')).toBe(false);
   });
 
-  it.each(['required_payment_verified', 'approved_for_release', 'exceptional_release_pending'])(
-    '%s offers transfer but never a handover action',
-    (status) => {
-      expect(stageOffers(status, 'transfer_destination')).toBe(true);
-      expect(stageOffers(status, 'done')).toBe(false);
-      expect(stageOffers(status, 'transfer_completed')).toBe(false);
-    },
-  );
+  it.each([
+    'required_payment_verified',
+    'approved_for_release',
+    'exceptional_release_pending',
+  ])('%s offers transfer but never a handover action', (status) => {
+    expect(stageOffers(status, 'transfer_destination')).toBe(true);
+    expect(stageOffers(status, 'done')).toBe(false);
+    expect(stageOffers(status, 'transfer_completed')).toBe(false);
+  });
 
   it('For Shipping keeps Transfer to Destination (§6)', () => {
     expect(stageOffers('for_shipping_or_pickup', 'transfer_destination')).toBe(true);

@@ -82,9 +82,7 @@ export function OrderDestinationTransfer({
     onTransferred();
   };
 
-  const label = selected
-    ? DESTINATION_LABEL[selected as FulfillmentDestination]
-    : '';
+  const label = selected ? DESTINATION_LABEL[selected as FulfillmentDestination] : '';
 
   return (
     <div className="rounded-lg border border-border p-3">
@@ -119,15 +117,23 @@ export function OrderDestinationTransfer({
         </Button>
       </div>
       {completedBlocked ? (
-        <p className="mt-1 text-[11px] text-amber-600" data-testid="order-destination-complete-blocked">
+        <p
+          className="mt-1 text-[11px] text-amber-600"
+          data-testid="order-destination-complete-blocked"
+        >
           Cannot complete yet — {completionBlock}
         </p>
       ) : null}
       {current ? (
-        <p className="mt-1 text-[11px] text-muted-foreground" data-testid="order-destination-current">
+        <p
+          className="mt-1 text-[11px] text-muted-foreground"
+          data-testid="order-destination-current"
+        >
           Currently in {DESTINATION_LABEL[current] ?? current}
           {destinationSetByName ? ` · moved by ${destinationSetByName}` : ''}
-          {destinationSetAt ? ` · ${new Date(destinationSetAt).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ''}
+          {destinationSetAt
+            ? ` · ${new Date(destinationSetAt).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`
+            : ''}
         </p>
       ) : null}
       {error && !confirmOpen ? (

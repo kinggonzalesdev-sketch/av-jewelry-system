@@ -22,15 +22,15 @@ the server boundary are the authority.
 
 ## Endpoints
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/mobile/session` | Verify session → `{ staff: { name, role }, connection }`. |
-| `GET` | `/api/mobile/inventory/search?q=` | Active-Inventory search for the item picker. |
-| `POST` | `/api/mobile/capture/order` | Create the order for a confirmed capture (idempotent). |
-| `POST` | `/api/mobile/capture/upload` | Store a screenshot in the private `attachments` bucket → returns `path`. |
-| `POST` | `/api/mobile/capture/send` | Send screenshot + message to the customer's Pancake conversation. |
-| `POST` | `/api/mobile/capture/dispatch` | Record send/print outcome + attach screenshot (safe Retry Send/Print). |
-| `GET` | `/api/mobile/capture/status?device=&capture=` | Order / message / print status for retry screens. |
+| Method | Path                                          | Purpose                                                                  |
+| ------ | --------------------------------------------- | ------------------------------------------------------------------------ |
+| `GET`  | `/api/mobile/session`                         | Verify session → `{ staff: { name, role }, connection }`.                |
+| `GET`  | `/api/mobile/inventory/search?q=`             | Active-Inventory search for the item picker.                             |
+| `POST` | `/api/mobile/capture/order`                   | Create the order for a confirmed capture (idempotent).                   |
+| `POST` | `/api/mobile/capture/upload`                  | Store a screenshot in the private `attachments` bucket → returns `path`. |
+| `POST` | `/api/mobile/capture/send`                    | Send screenshot + message to the customer's Pancake conversation.        |
+| `POST` | `/api/mobile/capture/dispatch`                | Record send/print outcome + attach screenshot (safe Retry Send/Print).   |
+| `GET`  | `/api/mobile/capture/status?device=&capture=` | Order / message / print status for retry screens.                        |
 
 All responses are JSON `{ ok: boolean, ... }`. `401` = invalid/expired session.
 
@@ -96,8 +96,8 @@ access only). Pancake sending reuses the server-side `PANCAKE_USER_ACCESS_TOKEN`
   - `PANCAKE_SEND_BASE` — default `https://pages.fm/api/public_api/v1`.
   - `PANCAKE_SEND_PATH` — default
     `/pages/{page_id}/conversations/{conversation_id}/messages`.
-  If your Pancake plan uses a different send path/body, set `PANCAKE_SEND_BASE` /
-  `PANCAKE_SEND_PATH` accordingly and redeploy.
+    If your Pancake plan uses a different send path/body, set `PANCAKE_SEND_BASE` /
+    `PANCAKE_SEND_PATH` accordingly and redeploy.
 - **Print payload** — reuses the existing label/print system on the device; result
   recorded via `/dispatch`.
 

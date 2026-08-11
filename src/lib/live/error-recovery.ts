@@ -2,10 +2,7 @@ import 'server-only';
 
 import { requireActiveStaff } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
-import type {
-  LiveErrorReport,
-  LiveErrorRow,
-} from '@/lib/live/error-recovery-types';
+import type { LiveErrorReport, LiveErrorRow } from '@/lib/live/error-recovery-types';
 
 const LIMIT = 50;
 
@@ -35,11 +32,15 @@ export async function listLiveErrors(): Promise<LiveErrorReport> {
   const msgRows = (msgData ?? []) as Array<Record<string, unknown>>;
   // Resolve customer names + order numbers in one round-trip each (tiny sets).
   const customerIds = [
-    ...new Set(msgRows.map((r) => r.customer_id).filter((v): v is string => typeof v === 'string')),
+    ...new Set(
+      msgRows.map((r) => r.customer_id).filter((v): v is string => typeof v === 'string'),
+    ),
   ];
   const orderIds = [
     ...new Set(
-      msgRows.map((r) => r.official_order_id).filter((v): v is string => typeof v === 'string'),
+      msgRows
+        .map((r) => r.official_order_id)
+        .filter((v): v is string => typeof v === 'string'),
     ),
   ];
   const names = new Map<string, string>();
@@ -82,7 +83,9 @@ export async function listLiveErrors(): Promise<LiveErrorReport> {
   const prints: LiveErrorRow[] = [];
   const { data: printData, error: printErr } = await supabase
     .from('label_jobs')
-    .select('id, item_code, item_name, customer_display_name, last_error, is_test, updated_at')
+    .select(
+      'id, item_code, item_name, customer_display_name, last_error, is_test, updated_at',
+    )
     .eq('status', 'failed_print')
     .order('updated_at', { ascending: false })
     .limit(LIMIT);

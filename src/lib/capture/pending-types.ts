@@ -26,11 +26,7 @@ export const CAPTURE_COUNT_EVENT = 'mineflow:capture-count';
 /** The resolved-customer state of a pending capture (Capture-time linking, 2026-08-09).
  *  Mirrors capture_records.link_status; null = not resolved yet. */
 export type CaptureLinkStatus =
-  | 'linked'
-  | 'needs_confirmation'
-  | 'customer_no_chat'
-  | 'no_match'
-  | null;
+  'linked' | 'needs_confirmation' | 'customer_no_chat' | 'no_match' | null;
 
 /** What a resolve/change/remove link action returns to the strip (client-safe). */
 export type CaptureLinkResult = {

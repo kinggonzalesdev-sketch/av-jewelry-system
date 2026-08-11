@@ -136,9 +136,10 @@ export function DeleteTestOrderAction({
           </dl>
 
           <p className="text-xs text-muted-foreground">
-            This deletes the test order and its <strong>test payment</strong>, then returns the
-            item(s) above to <strong>Active Inventory</strong>. Test records never appear in any
-            report, so no sales or payment figure changes. This cannot be undone.
+            This deletes the test order and its <strong>test payment</strong>, then
+            returns the item(s) above to <strong>Active Inventory</strong>. Test records
+            never appear in any report, so no sales or payment figure changes. This cannot
+            be undone.
           </p>
 
           <div>

@@ -3,10 +3,7 @@ import 'server-only';
 import { recordAuditEvent } from '@/lib/audit/log';
 import { AuthorizationError, requirePermission } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
-import type {
-  CaptureReviewResult,
-  CaptureReviewRow,
-} from '@/lib/capture/review-types';
+import type { CaptureReviewResult, CaptureReviewRow } from '@/lib/capture/review-types';
 
 /**
  * Review Mode queue (live-readiness). In Review Mode a capture is enqueued instead of
@@ -38,9 +35,13 @@ export async function listPendingCaptureReviews(): Promise<CaptureReviewRow[]> {
       itemCode: item?.item_code ?? null,
       itemName: item?.item_name ?? null,
       price:
-        typeof r.price === 'number' || typeof r.price === 'string' ? String(r.price) : '0',
+        typeof r.price === 'number' || typeof r.price === 'string'
+          ? String(r.price)
+          : '0',
       grams:
-        typeof r.grams === 'number' || typeof r.grams === 'string' ? String(r.grams) : null,
+        typeof r.grams === 'number' || typeof r.grams === 'string'
+          ? String(r.grams)
+          : null,
       screenshotPath: (r.screenshot_path as string | null) ?? null,
       isTest: r.is_test === true,
       createdAt: r.created_at as string,
@@ -49,7 +50,9 @@ export async function listPendingCaptureReviews(): Promise<CaptureReviewRow[]> {
 }
 
 /** Approve a pending review → creates the order via create_capture_order. */
-export async function approveCaptureReview(reviewId: string): Promise<CaptureReviewResult> {
+export async function approveCaptureReview(
+  reviewId: string,
+): Promise<CaptureReviewResult> {
   if (!reviewId) return { ok: false, error: 'A capture review is required.' };
   try {
     await requirePermission('claim_capture');

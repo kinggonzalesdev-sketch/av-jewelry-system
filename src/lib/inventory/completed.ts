@@ -68,7 +68,10 @@ function stageFromOrder(
   };
 
   // A terminal order state is the truth regardless of any earlier routing.
-  if (orderStatus && ['completed', 'cancelled', 'for_cancel', 'expired_overdue'].includes(orderStatus)) {
+  if (
+    orderStatus &&
+    ['completed', 'cancelled', 'for_cancel', 'expired_overdue'].includes(orderStatus)
+  ) {
     return byStatus[orderStatus] ?? 'Completed';
   }
   if (destination && byDestination[destination]) return byDestination[destination];
@@ -213,7 +216,11 @@ export async function returnCompletedItemToInventory(
     action: 'inventory.return_completed_to_inventory',
     entityType: 'inventory_item',
     entityId: itemId,
-    context: { returned_to_available: true, owner_approved: true, deleted_orders: deletedOrders },
+    context: {
+      returned_to_available: true,
+      owner_approved: true,
+      deleted_orders: deletedOrders,
+    },
   });
   return { ok: true, deletedOrders };
 }
@@ -314,7 +321,10 @@ export async function listCompletedInventory(): Promise<CompletedInventoryRow[]>
   const moneyRes = (await supabase.rpc('completed_items_money', {
     p_item_ids: itemIds,
   })) as { data: Array<Record<string, unknown>> | null };
-  const moneyByItem = new Map<string, { finalSale: string | null; paymentStatus: string | null }>();
+  const moneyByItem = new Map<
+    string,
+    { finalSale: string | null; paymentStatus: string | null }
+  >();
   for (const m of moneyRes.data ?? []) {
     const id = m.inventory_item_id as string;
     moneyByItem.set(id, {

@@ -2,7 +2,11 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
 import { PaymentsWorkspace } from '@/components/payments/payments-workspace';
-import { canOpenPage, getGrantedPermissions, requireActiveStaff } from '@/lib/authz/guard';
+import {
+  canOpenPage,
+  getGrantedPermissions,
+  requireActiveStaff,
+} from '@/lib/authz/guard';
 import { getAdminNameContext } from '@/lib/authz/admin-name';
 import { listCaptureItems } from '@/lib/orders/service';
 import { listCaptureCustomers } from '@/lib/live/batches';
@@ -18,8 +22,7 @@ import {
   type DateRangeKey,
 } from '@/lib/payments/workspace';
 
-export const metadata: Metadata = {
-};
+export const metadata: Metadata = {};
 
 const VALID_RANGES: DateRangeKey[] = ['today', '7d', '14d', '30d', 'month', 'custom'];
 

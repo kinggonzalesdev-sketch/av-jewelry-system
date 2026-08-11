@@ -10,7 +10,10 @@ import {
   requestInventoryItemDeletionAction,
 } from '@/lib/inventory/actions';
 import { RequestDeletionButton } from '@/components/approvals/request-deletion-button';
-import { EMPTY_INVENTORY_STATE, type InventoryActionState } from '@/lib/inventory/action-state';
+import {
+  EMPTY_INVENTORY_STATE,
+  type InventoryActionState,
+} from '@/lib/inventory/action-state';
 import type { InventoryRow } from '@/lib/inventory/service';
 import { parseInventoryCode } from '@/lib/inventory/code-parser';
 import { Button } from '@/components/ui/button';
@@ -93,10 +96,10 @@ export function InventoryItemActions({
   }, [delState.success, router]);
 
   // --- Force delete (Super Admin override; same type-DELETE confirm) ----------
-  const [forceState, forceAction, forcing] = useActionState<InventoryActionState, FormData>(
-    forceDeleteInventoryItemAction,
-    EMPTY_INVENTORY_STATE,
-  );
+  const [forceState, forceAction, forcing] = useActionState<
+    InventoryActionState,
+    FormData
+  >(forceDeleteInventoryItemAction, EMPTY_INVENTORY_STATE);
   const lastForce = useRef<string | null>(null);
   useEffect(() => {
     if (forceState.success && forceState.success !== lastForce.current) {
@@ -113,7 +116,11 @@ export function InventoryItemActions({
     canForceDelete && !!delState.error && /linked to/i.test(delState.error);
 
   const dateEncoded = row.createdAt
-    ? new Date(row.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    ? new Date(row.createdAt).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
     : '—';
 
   return (
@@ -158,19 +165,18 @@ export function InventoryItemActions({
             entityNoun="item"
             testIdBase={`inventory-request-delete-${row.inventoryItemId}`}
             onRequest={(reason) =>
-              requestInventoryItemDeletionAction(row.inventoryItemId, row.itemCode, reason)
+              requestInventoryItemDeletionAction(
+                row.inventoryItemId,
+                row.itemCode,
+                reason,
+              )
             }
           />
         )
       ) : null}
 
       {/* View — compact read-only detail. */}
-      <Modal
-        open={view}
-        onClose={() => setView(false)}
-        title="Inventory item"
-        size="sm"
-      >
+      <Modal open={view} onClose={() => setView(false)} title="Inventory item" size="sm">
         <dl className="text-sm">
           <DetailRow
             label="Inventory Code"
@@ -194,7 +200,11 @@ export function InventoryItemActions({
             <Button type="button" variant="outline" onClick={() => setEdit(false)}>
               Cancel
             </Button>
-            <Button type="submit" form={`inventory-edit-form-${row.inventoryItemId}`} disabled={editing}>
+            <Button
+              type="submit"
+              form={`inventory-edit-form-${row.inventoryItemId}`}
+              disabled={editing}
+            >
               {editing ? 'Saving…' : 'Save corrections'}
             </Button>
           </>
@@ -335,11 +345,13 @@ export function InventoryItemActions({
           <div className="mt-3 space-y-2 rounded-md border border-destructive/40 bg-destructive/5 p-2.5">
             <p className="text-xs text-muted-foreground">
               <span className="font-semibold text-foreground">Super Admin override.</span>{' '}
-              This item is held only by resolved records. You can force-delete it —
-              items tied to a real order, payment, active hold, layaway, or sale stay
-              protected.
+              This item is held only by resolved records. You can force-delete it — items
+              tied to a real order, payment, active hold, layaway, or sale stay protected.
             </p>
-            <form id={`inventory-force-delete-form-${row.inventoryItemId}`} action={forceAction}>
+            <form
+              id={`inventory-force-delete-form-${row.inventoryItemId}`}
+              action={forceAction}
+            >
               <input type="hidden" name="inventoryItemId" value={row.inventoryItemId} />
               <input type="hidden" name="confirm" value={confirm} />
             </form>

@@ -8,7 +8,9 @@ describe('CopyButton', () => {
     const writeText = vi.fn(() => Promise.resolve());
     Object.assign(navigator, { clipboard: { writeText } });
 
-    render(<CopyButton text="Hi Ana, your invoice…" label="Copy Message" testId="copy" />);
+    render(
+      <CopyButton text="Hi Ana, your invoice…" label="Copy Message" testId="copy" />,
+    );
     fireEvent.click(screen.getByTestId('copy'));
 
     expect(writeText).toHaveBeenCalledWith('Hi Ana, your invoice…');

@@ -4,16 +4,21 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { listLiveErrorsAction } from '@/lib/live/live-ops-actions';
 import { resendInvoiceAction } from '@/lib/orders/actions';
-import type {
-  LiveErrorReport,
-  LiveErrorRow,
-} from '@/lib/live/error-recovery-types';
+import type { LiveErrorReport, LiveErrorRow } from '@/lib/live/error-recovery-types';
 import { Button } from '@/components/ui/button';
 
 function fmtWhen(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
 }
 
 /**
@@ -71,8 +76,7 @@ export function ErrorRecoveryPanel() {
     void load();
   };
 
-  const total =
-    report && report.ok ? report.messages.length + report.prints.length : 0;
+  const total = report && report.ok ? report.messages.length + report.prints.length : 0;
 
   return (
     <div className="space-y-3" data-testid="error-recovery-panel">
@@ -95,7 +99,11 @@ export function ErrorRecoveryPanel() {
       </div>
 
       {note ? (
-        <p role="status" className="text-xs font-medium text-gold-strong" data-testid="error-recovery-note">
+        <p
+          role="status"
+          className="text-xs font-medium text-gold-strong"
+          data-testid="error-recovery-note"
+        >
           {note}
         </p>
       ) : null}
@@ -135,7 +143,9 @@ export function ErrorRecoveryPanel() {
                       </span>
                     ) : null}
                   </p>
-                  <p className="text-[10px] text-muted-foreground">{fmtWhen(row.occurredAt)}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {fmtWhen(row.occurredAt)}
+                  </p>
                 </div>
                 {row.orderId ? (
                   <Button
@@ -177,7 +187,8 @@ export function ErrorRecoveryPanel() {
                   <p className="text-[10px] text-destructive break-words">{row.detail}</p>
                 ) : null}
                 <p className="text-[10px] text-muted-foreground">
-                  {fmtWhen(row.occurredAt)} — reprint from the order on the capturing device.
+                  {fmtWhen(row.occurredAt)} — reprint from the order on the capturing
+                  device.
                 </p>
               </li>
             ))}

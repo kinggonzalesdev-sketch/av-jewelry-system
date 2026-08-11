@@ -14,20 +14,29 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request): Promise<Response> {
   const staff = await authenticateMobile(request);
   if (!staff) {
-    return NextResponse.json({ ok: false, error: 'Session invalid or expired.' }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: 'Session invalid or expired.' },
+      { status: 401 },
+    );
   }
 
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;
   } catch {
-    return NextResponse.json({ ok: false, error: 'Invalid request body.' }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: 'Invalid request body.' },
+      { status: 400 },
+    );
   }
 
   const jobId = typeof body.labelJobId === 'string' ? body.labelJobId.trim() : '';
   const outcome = typeof body.outcome === 'string' ? body.outcome : '';
   if (!jobId) {
-    return NextResponse.json({ ok: false, error: 'A label job id is required.' }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: 'A label job id is required.' },
+      { status: 400 },
+    );
   }
 
   if (outcome === 'printed') {
@@ -44,7 +53,8 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   if (outcome === 'failed') {
-    const reason = typeof body.reason === 'string' && body.reason.trim() ? body.reason.trim() : null;
+    const reason =
+      typeof body.reason === 'string' && body.reason.trim() ? body.reason.trim() : null;
     const { error } = (await staff.supabase.rpc('mark_label_job_failed', {
       p_job_id: jobId,
       p_reason: reason,

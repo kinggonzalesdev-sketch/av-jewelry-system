@@ -54,8 +54,22 @@ function detail(over: Partial<LayawayLedgerDetail> = {}): LayawayLedgerDetail {
     perGram: null,
     installments: [],
     payments: [
-      { sequence: 1, paymentDate: '2026-06-12', amount: '5000.00', mop: 'BPI', reference: null, receivedBy: null },
-      { sequence: 2, paymentDate: '2026-06-24', amount: '6280.00', mop: 'BPI', reference: null, receivedBy: null },
+      {
+        sequence: 1,
+        paymentDate: '2026-06-12',
+        amount: '5000.00',
+        mop: 'BPI',
+        reference: null,
+        receivedBy: null,
+      },
+      {
+        sequence: 2,
+        paymentDate: '2026-06-24',
+        amount: '6280.00',
+        mop: 'BPI',
+        reference: null,
+        receivedBy: null,
+      },
     ],
     items: [],
     ...over,
@@ -66,7 +80,9 @@ async function openView(d: LayawayLedgerDetail, canAddPayment: boolean) {
   loadMock.mockResolvedValueOnce(d);
   render(<LayawayLedgerViewModal ledgerId={d.id} canAddPayment={canAddPayment} />);
   fireEvent.click(screen.getByTestId(`ledger-view-${d.id}`));
-  await waitFor(() => expect(screen.getByTestId('ledger-account-summary')).toBeInTheDocument());
+  await waitFor(() =>
+    expect(screen.getByTestId('ledger-account-summary')).toBeInTheDocument(),
+  );
 }
 
 describe('Layaway View — Add Payment moved inside, Order-Summary layout', () => {

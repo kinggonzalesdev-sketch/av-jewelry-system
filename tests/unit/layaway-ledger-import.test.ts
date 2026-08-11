@@ -94,7 +94,12 @@ describe('layaway CSV analyzer', () => {
       layawayDedupKey({ code: 'A1', name: 'X', datePurchased: null, grandTotal: '1' }),
     ).toBe('code:A1');
     expect(
-      layawayDedupKey({ code: null, name: 'Ben', datePurchased: '2026-05-03', grandTotal: '100' }),
+      layawayDedupKey({
+        code: null,
+        name: 'Ben',
+        datePurchased: '2026-05-03',
+        grandTotal: '100',
+      }),
     ).toContain('cust:ben|2026-05-03|100');
   });
 });

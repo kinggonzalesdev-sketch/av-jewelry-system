@@ -127,7 +127,10 @@ export async function returnCompletedItemToInventoryAction(
   const confirm = text(formData, 'confirm');
   if (!itemId) return { error: 'An item is required.', success: null };
   if (confirm !== 'DELETE') {
-    return { error: 'Type DELETE to confirm returning this item to inventory.', success: null };
+    return {
+      error: 'Type DELETE to confirm returning this item to inventory.',
+      success: null,
+    };
   }
 
   const result = await returnCompletedItemToInventory(itemId);
@@ -246,10 +249,7 @@ export async function reviewDuplicateAction(
  *  confirmation modal. Read-only; the RPC re-checks inventory_monitoring. */
 export async function checkItemDependenciesAction(
   inventoryItemId: string,
-): Promise<
-  | { ok: true; dependencies: ItemDependency[] }
-  | { ok: false; error: string }
-> {
+): Promise<{ ok: true; dependencies: ItemDependency[] } | { ok: false; error: string }> {
   return getItemDependencies(inventoryItemId);
 }
 
@@ -269,7 +269,10 @@ export async function archiveInventoryItemAction(
   if (!result.ok) return { error: result.error, success: null };
 
   revalidatePath('/orders/inventory');
-  return { error: null, success: 'Item archived. It has left Active Inventory and can be restored.' };
+  return {
+    error: null,
+    success: 'Item archived. It has left Active Inventory and can be restored.',
+  };
 }
 
 /** Restore an archived item to its prior status (spec §6). */
@@ -299,7 +302,10 @@ export async function permanentlyDeleteInventoryItemAction(
   if (!result.ok) return { error: result.error, success: null };
 
   revalidatePath('/orders/inventory');
-  return { error: null, success: 'Item permanently deleted. The audit trail is preserved.' };
+  return {
+    error: null,
+    success: 'Item permanently deleted. The audit trail is preserved.',
+  };
 }
 
 /**
@@ -322,7 +328,10 @@ export async function deleteInventoryItemAction(
   if (!result.ok) return { error: result.error, success: null };
 
   revalidatePath('/orders/inventory');
-  return { error: null, success: 'Item permanently deleted. The audit trail is preserved.' };
+  return {
+    error: null,
+    success: 'Item permanently deleted. The audit trail is preserved.',
+  };
 }
 
 /**

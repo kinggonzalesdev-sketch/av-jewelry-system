@@ -40,7 +40,9 @@ function centavos(raw: string): bigint {
 function pesoFromCentavos(c: bigint): string {
   const neg = c < 0n;
   const abs = neg ? -c : c;
-  return formatPeso(`${neg ? '-' : ''}${abs / 100n}.${String(abs % 100n).padStart(2, '0')}`);
+  return formatPeso(
+    `${neg ? '-' : ''}${abs / 100n}.${String(abs % 100n).padStart(2, '0')}`,
+  );
 }
 
 /** Never show a negative pending balance. */
@@ -170,7 +172,10 @@ export function OrderPaymentActions({
   }
 
   return (
-    <div className="rounded-lg border border-border p-3" data-testid="order-payment-actions">
+    <div
+      className="rounded-lg border border-border p-3"
+      data-testid="order-payment-actions"
+    >
       <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         Record a payment
       </p>
@@ -228,8 +233,12 @@ export function OrderPaymentActions({
               className="space-y-0.5 rounded-md border border-border bg-muted/30 p-2.5 text-xs"
               data-testid="order-pay-computation"
             >
-              {total !== undefined ? <CompRow label="Total amount" value={formatPeso(total)} /> : null}
-              {paid !== undefined ? <CompRow label="Paid so far" value={formatPeso(paid)} /> : null}
+              {total !== undefined ? (
+                <CompRow label="Total amount" value={formatPeso(total)} />
+              ) : null}
+              {paid !== undefined ? (
+                <CompRow label="Paid so far" value={formatPeso(paid)} />
+              ) : null}
               <CompRow label="Pending balance" value={formatPeso(remaining)} />
               {amount.trim() ? (
                 <>
@@ -243,7 +252,9 @@ export function OrderPaymentActions({
                   ) : null}
                   <CompRow
                     label="Pending after"
-                    value={pesoFromCentavos(clampZero(remainingCentavos - centavos(amount)))}
+                    value={pesoFromCentavos(
+                      clampZero(remainingCentavos - centavos(amount)),
+                    )}
                     strong
                   />
                 </>
@@ -307,7 +318,11 @@ export function OrderPaymentActions({
             />
           </div>
           {error ? (
-            <p role="alert" className="text-sm text-destructive" data-testid="order-pay-error">
+            <p
+              role="alert"
+              className="text-sm text-destructive"
+              data-testid="order-pay-error"
+            >
               {error}
             </p>
           ) : null}

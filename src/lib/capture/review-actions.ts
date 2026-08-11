@@ -7,10 +7,7 @@ import {
   listPendingCaptureReviews,
   rejectCaptureReview,
 } from '@/lib/capture/review';
-import type {
-  CaptureReviewResult,
-  CaptureReviewRow,
-} from '@/lib/capture/review-types';
+import type { CaptureReviewResult, CaptureReviewRow } from '@/lib/capture/review-types';
 
 export async function listPendingCaptureReviewsAction(): Promise<CaptureReviewRow[]> {
   return listPendingCaptureReviews();

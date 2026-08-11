@@ -11,7 +11,10 @@ export const dynamic = 'force-dynamic';
  * account). The `code` lets the Capture app show a precise, non-sensitive reason.
  */
 const FAILURE: Record<MobileAuthFailure, { status: number; error: string }> = {
-  session_invalid: { status: 401, error: 'Session invalid or expired. Please sign in again.' },
+  session_invalid: {
+    status: 401,
+    error: 'Session invalid or expired. Please sign in again.',
+  },
   account_not_found: {
     status: 403,
     error: 'This account isn’t registered as MineFlow staff.',

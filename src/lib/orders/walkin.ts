@@ -53,9 +53,13 @@ export async function createWalkInOrder(input: {
   for (const it of items) {
     const id = (it.inventoryItemId ?? '').trim();
     const price = (it.price ?? '').trim();
-    if (!id) return { ok: false, error: 'Select an item from Active Inventory for every row.' };
+    if (!id)
+      return { ok: false, error: 'Select an item from Active Inventory for every row.' };
     if (seen.has(id)) {
-      return { ok: false, error: 'The same item was added more than once. Remove the duplicate.' };
+      return {
+        ok: false,
+        error: 'The same item was added more than once. Remove the duplicate.',
+      };
     }
     seen.add(id);
     if (!PRICE_RE.test(price) || Number(price) <= 0) {
@@ -214,7 +218,11 @@ export async function saveWalkInOrder(input: SaveWalkInInput): Promise<SaveWalkI
     action: 'order.walkin_saved',
     entityType: 'official_order',
     ...(typeof d.official_order_id === 'string' ? { entityId: d.official_order_id } : {}),
-    context: { total: money(d.total), verified_paid: money(d.verified_paid), payments: payPayload.length },
+    context: {
+      total: money(d.total),
+      verified_paid: money(d.verified_paid),
+      payments: payPayload.length,
+    },
   });
 
   return {

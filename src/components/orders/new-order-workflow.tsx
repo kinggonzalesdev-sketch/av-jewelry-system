@@ -262,7 +262,9 @@ function ItemRows({
       onClick={() => patch(r.key, { priceMode: m })}
       className={cn(
         'rounded-md px-2 py-1 text-[11px] font-semibold',
-        r.priceMode === m ? 'bg-gold text-black' : 'text-muted-foreground hover:bg-accent',
+        r.priceMode === m
+          ? 'bg-gold text-black'
+          : 'text-muted-foreground hover:bg-accent',
       )}
     >
       {label}
@@ -277,12 +279,11 @@ function ItemRows({
         // inventory record). `hkLocked` is true only when a catalogue price exists,
         // so an HK item missing a saved price stays manually enterable.
         const hk = matched ? isHKItem(matched) : false;
-        const hkPrice = hk && matched ? (hkFixedPrice(matched) ?? matched.unitPrice) : null;
+        const hkPrice =
+          hk && matched ? (hkFixedPrice(matched) ?? matched.unitPrice) : null;
         const hkLocked = hk && Boolean(hkPrice);
         const taken = chosenElsewhere(r.key);
-        const options = allItems
-          .filter((i) => !taken.has(i.label))
-          .map((i) => i.label);
+        const options = allItems.filter((i) => !taken.has(i.label)).map((i) => i.label);
         const perGram = r.priceMode === 'per_gram' && !hk;
         const gramsText = matched ? (matched.grams ? `${matched.grams}g` : '—') : '';
         // Walk-In: has the operator typed grams that differ from the item's own?
@@ -404,7 +405,10 @@ function ItemRows({
                   {hkLocked ? (
                     // Official catalogue price from the inventory record — read-only.
                     <input
-                      className={cn(fieldClass, 'h-9 bg-muted/40 text-right tabular-nums')}
+                      className={cn(
+                        fieldClass,
+                        'h-9 bg-muted/40 text-right tabular-nums',
+                      )}
                       readOnly
                       value={formatPeso(r.price || hkPrice || '0')}
                       data-testid={`order-item-price-${idx}`}
@@ -412,7 +416,9 @@ function ItemRows({
                   ) : (
                     <MoneyInput
                       className={cn(fieldClass, 'h-9 text-right tabular-nums')}
-                      placeholder={matched?.unitPrice ? formatPeso(matched.unitPrice) : '0.00'}
+                      placeholder={
+                        matched?.unitPrice ? formatPeso(matched.unitPrice) : '0.00'
+                      }
                       value={r.price}
                       onValueChange={(v) => patch(r.key, { price: v })}
                     />
@@ -450,7 +456,10 @@ function ItemRows({
                   'Select an item.'
                 )}
               </span>
-              <span className="font-semibold tabular-nums" data-testid={`order-item-line-${idx}`}>
+              <span
+                className="font-semibold tabular-nums"
+                data-testid={`order-item-line-${idx}`}
+              >
                 {formatPeso(lineTotal)}
               </span>
             </div>
@@ -693,7 +702,8 @@ export function NewOrderModal({
     const ids = new Set<string>();
     for (const { row, item } of resolved) {
       if (!item) return 'Pick an item from Active Inventory for every row.';
-      if (ids.has(item.id)) return 'The same item was added more than once. Remove the duplicate.';
+      if (ids.has(item.id))
+        return 'The same item was added more than once. Remove the duplicate.';
       ids.add(item.id);
       // Walk-In grams override, when typed, must be a positive number.
       if (mode === 'walkin' && row.grams.trim() && Number(row.grams) <= 0) {
@@ -743,7 +753,7 @@ export function NewOrderModal({
       quantity: 1,
       unitPrice: centavosToStr(rowTotalCentavos(row, item)),
       // The per-gram rate, so the optional "Price per gram" sticker field can print it.
-      pricePerGram: row.priceMode === 'per_gram' ? (row.perGram.trim() || null) : null,
+      pricePerGram: row.priceMode === 'per_gram' ? row.perGram.trim() || null : null,
       date,
     }));
   };
@@ -1115,7 +1125,10 @@ export function NewOrderModal({
                           {' '}
                           · {g}g
                           {changed ? (
-                            <span className="text-gold-strong"> (was {item?.grams ?? '—'}g)</span>
+                            <span className="text-gold-strong">
+                              {' '}
+                              (was {item?.grams ?? '—'}g)
+                            </span>
                           ) : null}
                         </span>
                       ) : null}
@@ -1191,8 +1204,7 @@ export function NewOrderModal({
     );
   }
 
-  const submitLabel =
-    mode === 'walkin' ? 'Save' : pending ? 'Saving…' : 'Confirm Order';
+  const submitLabel = mode === 'walkin' ? 'Save' : pending ? 'Saving…' : 'Confirm Order';
 
   return (
     <Modal
@@ -1226,7 +1238,9 @@ export function NewOrderModal({
           data-testid="mode-order"
           className={cn(
             'rounded-md px-3 py-1.5 text-xs font-semibold',
-            mode === 'order' ? 'bg-gold text-black' : 'text-muted-foreground hover:bg-accent',
+            mode === 'order'
+              ? 'bg-gold text-black'
+              : 'text-muted-foreground hover:bg-accent',
           )}
         >
           New Entry
@@ -1237,7 +1251,9 @@ export function NewOrderModal({
           data-testid="mode-walkin"
           className={cn(
             'rounded-md px-3 py-1.5 text-xs font-semibold',
-            mode === 'walkin' ? 'bg-gold text-black' : 'text-muted-foreground hover:bg-accent',
+            mode === 'walkin'
+              ? 'bg-gold text-black'
+              : 'text-muted-foreground hover:bg-accent',
           )}
         >
           Walk In
@@ -1423,7 +1439,6 @@ export function NewOrderModal({
             {error}
           </p>
         ) : null}
-
       </div>
     </Modal>
   );

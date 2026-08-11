@@ -267,7 +267,9 @@ export async function listLiveBatchItems(
   // items, and per-row RPCs made this view slow. Same computation, same RLS; an
   // item whose quantity can't be read is absent from the map → rendered as null.
   const availResponse = await supabase.rpc('available_quantities_for', {
-    p_item_ids: rows.map((row) => (row as Record<string, unknown>).inventory_item_id as string),
+    p_item_ids: rows.map(
+      (row) => (row as Record<string, unknown>).inventory_item_id as string,
+    ),
   });
   const qtyById = new Map<string, number>();
   if (Array.isArray(availResponse.data)) {

@@ -200,7 +200,9 @@ describe('Layaway New Entry — automatic code', () => {
     const code = await screen.findByTestId<HTMLInputElement>('layaway-code');
     expect(code).toHaveValue('A1');
     expect(code).toHaveAttribute('readonly');
-    expect(screen.getByTestId('layaway-code-note')).toHaveTextContent(/assigned automatically/i);
+    expect(screen.getByTestId('layaway-code-note')).toHaveTextContent(
+      /assigned automatically/i,
+    );
   });
 });
 
@@ -208,7 +210,9 @@ describe('Layaway New Entry — validation', () => {
   it('refuses a save with no customer', () => {
     open();
     fireEvent.click(screen.getByTestId('layaway-save'));
-    expect(screen.getByTestId('layaway-error')).toHaveTextContent(/enter the customer name/i);
+    expect(screen.getByTestId('layaway-error')).toHaveTextContent(
+      /enter the customer name/i,
+    );
   });
 
   it('refuses a payment larger than the grand total', () => {
@@ -217,8 +221,12 @@ describe('Layaway New Entry — validation', () => {
       target: { value: 'Maria Santos' },
     });
     fireEvent.click(screen.getByTestId('layaway-no-interest'));
-    fireEvent.change(screen.getByTestId('layaway-payment'), { target: { value: '99999' } });
+    fireEvent.change(screen.getByTestId('layaway-payment'), {
+      target: { value: '99999' },
+    });
     fireEvent.click(screen.getByTestId('layaway-save'));
-    expect(screen.getByTestId('layaway-error')).toHaveTextContent(/exceeds the remaining balance/i);
+    expect(screen.getByTestId('layaway-error')).toHaveTextContent(
+      /exceeds the remaining balance/i,
+    );
   });
 });

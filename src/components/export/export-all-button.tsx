@@ -118,7 +118,12 @@ export function ExportAllButton({
         size="md"
         footer={
           <>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={busy}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpen(false)}
+              disabled={busy}
+            >
               Cancel
             </Button>
             <Button

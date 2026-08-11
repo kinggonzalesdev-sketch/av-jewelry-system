@@ -31,8 +31,16 @@ function row(over: Partial<DeletionRequestRow> = {}): DeletionRequestRow {
 
 const mixed: DeletionRequestRow[] = [
   row(),
-  row({ status: 'approved', decidedByName: 'King Gonzales', decidedAt: '2026-07-29T03:00:00.000Z' }),
-  row({ status: 'rejected', decidedByName: 'King Gonzales', decidedAt: '2026-07-29T03:00:00.000Z' }),
+  row({
+    status: 'approved',
+    decidedByName: 'King Gonzales',
+    decidedAt: '2026-07-29T03:00:00.000Z',
+  }),
+  row({
+    status: 'rejected',
+    decidedByName: 'King Gonzales',
+    decidedAt: '2026-07-29T03:00:00.000Z',
+  }),
   row({
     status: 'directly_deleted',
     requestedByName: 'King Gonzales',

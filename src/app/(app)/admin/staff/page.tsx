@@ -10,8 +10,7 @@ import {
 } from '@/lib/authz/account-management';
 import { requireActiveStaff } from '@/lib/authz/guard';
 
-export const metadata: Metadata = {
-};
+export const metadata: Metadata = {};
 
 export const dynamic = 'force-dynamic';
 
@@ -73,9 +72,9 @@ export default async function StaffManagementPage() {
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
           <p>
-            Admin is the standard team role (Owner decision) — the former max-2 cap
-            was retired, so any number of members may be Admin. The Super Admin cap
-            of 2 is separate and still enforced.
+            Admin is the standard team role (Owner decision) — the former max-2 cap was
+            retired, so any number of members may be Admin. The Super Admin cap of 2 is
+            separate and still enforced.
           </p>
           <p>
             Selected Admin status does not grant permissions. Every permission is granted

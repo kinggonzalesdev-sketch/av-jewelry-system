@@ -61,7 +61,9 @@ export function OrderItemEditControls({
         setError(res.error);
         return;
       }
-      setNote(`Removed ${target.item.itemCode ?? 'the item'} — returned to Active inventory.`);
+      setNote(
+        `Removed ${target.item.itemCode ?? 'the item'} — returned to Active inventory.`,
+      );
     } else {
       const res = await splitOrderItemAction(orderId, target.item.claimId);
       setBusy(false);
@@ -88,11 +90,14 @@ export function OrderItemEditControls({
         </span>
       </div>
       <p className="mb-2 mt-0.5 text-[11px] text-muted-foreground">
-        Remove a piece (returns to Active inventory, the order total drops) or split it into
-        its own new order to pay and deliver on its own.
+        Remove a piece (returns to Active inventory, the order total drops) or split it
+        into its own new order to pay and deliver on its own.
       </p>
       {note ? (
-        <p className="mb-2 text-xs font-medium text-emerald-600" data-testid="order-edit-items-note">
+        <p
+          className="mb-2 text-xs font-medium text-emerald-600"
+          data-testid="order-edit-items-note"
+        >
           {note}
         </p>
       ) : null}
@@ -138,10 +143,19 @@ export function OrderItemEditControls({
         }}
         critical
         size="sm"
-        title={target?.kind === 'remove' ? 'Remove item from order' : 'Split item to a new order'}
+        title={
+          target?.kind === 'remove'
+            ? 'Remove item from order'
+            : 'Split item to a new order'
+        }
         footer={
           <>
-            <Button type="button" variant="outline" onClick={() => setTarget(null)} disabled={busy}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setTarget(null)}
+              disabled={busy}
+            >
               Cancel
             </Button>
             {target?.kind === 'remove' ? (
@@ -171,15 +185,15 @@ export function OrderItemEditControls({
           <p className="font-mono">{target ? label(target.item) : ''}</p>
           {target?.kind === 'remove' ? (
             <p className="text-muted-foreground">
-              This piece returns to Active inventory (sellable again) and the order total drops by
-              its price. Payments already made stay on this order — if that leaves the order
-              overpaid, it shows a credit (never auto-refunded).
+              This piece returns to Active inventory (sellable again) and the order total
+              drops by its price. Payments already made stay on this order — if that
+              leaves the order overpaid, it shows a credit (never auto-refunded).
             </p>
           ) : (
             <p className="text-muted-foreground">
-              This piece moves to a brand-new For-Invoice order (same customer, unpaid) so it can be
-              paid and delivered on its own. This order keeps the remaining items and all its
-              payments.
+              This piece moves to a brand-new For-Invoice order (same customer, unpaid) so
+              it can be paid and delivered on its own. This order keeps the remaining
+              items and all its payments.
             </p>
           )}
           {error ? (

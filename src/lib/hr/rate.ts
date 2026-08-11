@@ -73,7 +73,10 @@ export async function setHourlyRate(
       outcome: 'denied',
       reason: 'not_owner_or_admin',
     });
-    return { ok: false, error: 'Only the Owner or a Selected Admin may set an hourly rate.' };
+    return {
+      ok: false,
+      error: 'Only the Owner or a Selected Admin may set an hourly rate.',
+    };
   }
 
   const { error } = await supabase.rpc('set_staff_hourly_rate', {
@@ -141,7 +144,12 @@ export async function listEmployeeRates(): Promise<EmployeeRateRow[]> {
   // legacy hourly_rate column is no longer the pay basis.
   const latest = new Map<
     string,
-    { effective_date: string; created_at: string; daily_rate: string | null; pay_frequency: string }
+    {
+      effective_date: string;
+      created_at: string;
+      daily_rate: string | null;
+      pay_frequency: string;
+    }
   >();
   for (const r of (rates ?? []) as Array<Record<string, unknown>>) {
     const sid = r.staff_profile_id as string;

@@ -117,7 +117,10 @@ export function CustomerMergeButton({
                     <div className="min-w-0 flex-1">
                       <span className="font-medium">{c.displayName}</span>
                       {c.contactNumber ? (
-                        <span className="text-muted-foreground"> · {c.contactNumber}</span>
+                        <span className="text-muted-foreground">
+                          {' '}
+                          · {c.contactNumber}
+                        </span>
                       ) : null}
                       {c.hasConversation ? (
                         <span className="text-emerald-600"> · FB ✓</span>
@@ -139,7 +142,8 @@ export function CustomerMergeButton({
                     <div className="mt-1.5 space-y-1.5 border-t border-border pt-1.5">
                       <p className="text-xs text-muted-foreground">
                         Move all of <strong>{c.displayName}</strong>&apos;s records into{' '}
-                        <strong>{survivorName}</strong> and deactivate it? This is reversible.
+                        <strong>{survivorName}</strong> and deactivate it? This is
+                        reversible.
                       </p>
                       <div className="flex justify-end gap-2">
                         <Button

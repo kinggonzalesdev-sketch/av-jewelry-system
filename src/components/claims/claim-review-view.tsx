@@ -269,7 +269,16 @@ export function ClaimReviewView({
                           : '—',
                       ],
                       ['Captured by', claim.capturedByName ?? '—'],
-                      ['Captured at', new Date(claim.capturedAt).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })],
+                      [
+                        'Captured at',
+                        new Date(claim.capturedAt).toLocaleString('en-US', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        }),
+                      ],
                       ['Evidence', `${claim.evidenceCount} attached`],
                       ['Available', String(claim.availableQuantity)],
                       ['Reserves', `${claim.reservationImpact} on confirm`],

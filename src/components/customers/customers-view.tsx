@@ -29,7 +29,9 @@ import { Modal } from '@/components/ui/modal';
 function fmtDate(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso.slice(0, 10) : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  return Number.isNaN(d.getTime())
+    ? iso.slice(0, 10)
+    : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 function CustomerList({
@@ -75,75 +77,79 @@ function CustomerList({
 
   return (
     <div className="space-y-3">
-    <div className="rounded-xl border border-border bg-card">
-      <div className="table-scroll">
-        <table className="data-table w-full min-w-[640px] text-left text-sm">
-          <thead>
-            <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
-              <th className="col-grow px-3 py-2.5 text-left font-medium">Customer Name</th>
-              <th className="px-3 py-2.5 text-left font-medium">Address</th>
-              <th className="px-3 py-2.5 text-left font-medium">Contact</th>
-              <th className="px-3 py-2.5 text-center font-medium">Status</th>
-              <th className="px-3 py-2.5 text-center font-medium">Stage</th>
-              <th className="col-actions px-3 py-2.5 font-medium">Details</th>
-            </tr>
-          </thead>
-          <tbody>
-            {result.rows.map((row) => (
-              <tr key={row.id} className="border-b border-border last:border-0">
-                <td className="px-3 py-2.5 font-medium">{row.displayName}</td>
-                <td className="px-3 py-2.5 text-muted-foreground">
-                  {row.address ? <Sensitive>{row.address}</Sensitive> : '—'}
-                </td>
-                <td className="px-3 py-2.5 text-muted-foreground">
-                  {row.contactNumber ? (
-                    <SensitivePhone value={row.contactNumber} />
-                  ) : (
-                    '—'
-                  )}
-                </td>
-                <td className="px-3 py-2.5 text-center">
-                  <StatusBadge
-                    label={row.isActive ? 'Active' : 'Inactive'}
-                    tone={row.isActive ? 'success' : 'neutral'}
-                  />
-                </td>
-                <td className="px-3 py-2.5 text-center text-muted-foreground">{row.stage}</td>
-                <td className="col-actions px-3 py-2.5">
-                  <div className="flex items-center justify-end gap-1.5">
-                    {canManage ? (
-                      <CustomerRowActions
-                        customerId={row.id}
-                        customerName={row.displayName}
-                        canManage={canManage}
-                        isOwner={isOwner}
-                      />
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => onView(row)}
-                      data-testid={`customer-view-${row.id}`}
-                      className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
-                    >
-                      View
-                    </button>
-                  </div>
-                </td>
+      <div className="rounded-xl border border-border bg-card">
+        <div className="table-scroll">
+          <table className="data-table w-full min-w-[640px] text-left text-sm">
+            <thead>
+              <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
+                <th className="col-grow px-3 py-2.5 text-left font-medium">
+                  Customer Name
+                </th>
+                <th className="px-3 py-2.5 text-left font-medium">Address</th>
+                <th className="px-3 py-2.5 text-left font-medium">Contact</th>
+                <th className="px-3 py-2.5 text-center font-medium">Status</th>
+                <th className="px-3 py-2.5 text-center font-medium">Stage</th>
+                <th className="col-actions px-3 py-2.5 font-medium">Details</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {result.rows.map((row) => (
+                <tr key={row.id} className="border-b border-border last:border-0">
+                  <td className="px-3 py-2.5 font-medium">{row.displayName}</td>
+                  <td className="px-3 py-2.5 text-muted-foreground">
+                    {row.address ? <Sensitive>{row.address}</Sensitive> : '—'}
+                  </td>
+                  <td className="px-3 py-2.5 text-muted-foreground">
+                    {row.contactNumber ? (
+                      <SensitivePhone value={row.contactNumber} />
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5 text-center">
+                    <StatusBadge
+                      label={row.isActive ? 'Active' : 'Inactive'}
+                      tone={row.isActive ? 'success' : 'neutral'}
+                    />
+                  </td>
+                  <td className="px-3 py-2.5 text-center text-muted-foreground">
+                    {row.stage}
+                  </td>
+                  <td className="col-actions px-3 py-2.5">
+                    <div className="flex items-center justify-end gap-1.5">
+                      {canManage ? (
+                        <CustomerRowActions
+                          customerId={row.id}
+                          customerName={row.displayName}
+                          canManage={canManage}
+                          isOwner={isOwner}
+                        />
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => onView(row)}
+                        data-testid={`customer-view-${row.id}`}
+                        className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+                      >
+                        View
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
-    {result.total > result.pageSize ? (
-      <Pagination
-        page={result.page}
-        pageCount={pageCount}
-        total={result.total}
-        onPageChange={goToPage}
-        sticky
-      />
-    ) : null}
+      {result.total > result.pageSize ? (
+        <Pagination
+          page={result.page}
+          pageCount={pageCount}
+          total={result.total}
+          onPageChange={goToPage}
+          sticky
+        />
+      ) : null}
     </div>
   );
 }

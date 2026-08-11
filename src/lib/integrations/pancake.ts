@@ -96,7 +96,8 @@ function extractPages(body: unknown): PancakePageInfo[] {
     if (page && !out.has(page.id)) out.set(page.id, page);
   };
 
-  const root = body && typeof body === 'object' ? (body as Record<string, unknown>) : null;
+  const root =
+    body && typeof body === 'object' ? (body as Record<string, unknown>) : null;
 
   const categorized = root?.categorized;
   if (categorized && typeof categorized === 'object') {
@@ -312,7 +313,10 @@ export type PancakeLinkStatus = { linked: number; total: number };
 export async function getPancakeLinkStatus(): Promise<PancakeLinkStatus> {
   const supabase = await createClient();
   const [{ count: total }, { count: linked }] = await Promise.all([
-    supabase.from('customers').select('id', { count: 'exact', head: true }).eq('is_active', true),
+    supabase
+      .from('customers')
+      .select('id', { count: 'exact', head: true })
+      .eq('is_active', true),
     supabase
       .from('customers')
       .select('id', { count: 'exact', head: true })
@@ -351,8 +355,7 @@ export async function listLinkedPancakeCustomers(): Promise<LinkedPancakeCustome
 }
 
 export type SavePancakePageResult =
-  | { ok: true; message: string; pageId: string }
-  | { ok: false; error: string };
+  { ok: true; message: string; pageId: string } | { ok: false; error: string };
 
 /**
  * Persist the selected Page ID. Primary Super Admin only. Stores the non-secret
@@ -382,7 +385,10 @@ export async function saveSelectedPancakePage(input: {
     p_platform: input.platform ?? null,
   });
   if (error) {
-    return { ok: false, error: 'The Page selection could not be saved. Please try again.' };
+    return {
+      ok: false,
+      error: 'The Page selection could not be saved. Please try again.',
+    };
   }
 
   return {
@@ -452,7 +458,11 @@ export type PancakeSendResult = {
 function extractMessageId(body: unknown): string | null {
   if (!body || typeof body !== 'object') return null;
   const b = body as Record<string, unknown>;
-  const candidates = [b.message_id, b.id, (b.data as Record<string, unknown> | undefined)?.id];
+  const candidates = [
+    b.message_id,
+    b.id,
+    (b.data as Record<string, unknown> | undefined)?.id,
+  ];
   for (const c of candidates) {
     if (typeof c === 'string' && c.trim()) return c.trim();
     if (typeof c === 'number') return String(c);
@@ -473,7 +483,8 @@ export async function sendPancakeConversationMessage(input: {
   // pages.fm page-scoped endpoints authenticate with `page_access_token`, not
   // `access_token`. Use the right param for the token in play; overridable.
   const tokenParam =
-    process.env.PANCAKE_SEND_TOKEN_PARAM || (pageToken ? 'page_access_token' : 'access_token');
+    process.env.PANCAKE_SEND_TOKEN_PARAM ||
+    (pageToken ? 'page_access_token' : 'access_token');
   if (!token || !token.trim()) {
     return {
       ok: false,
@@ -488,7 +499,8 @@ export async function sendPancakeConversationMessage(input: {
     return {
       ok: false,
       code: 'page_missing',
-      message: 'No Page selected. Set PANCAKE_PAGE_ID (from Save Selected Page) and redeploy.',
+      message:
+        'No Page selected. Set PANCAKE_PAGE_ID (from Save Selected Page) and redeploy.',
       pancakeMessageId: null,
     };
   }
@@ -506,7 +518,8 @@ export async function sendPancakeConversationMessage(input: {
   // pages.fm public v1 default — self-correcting a missing /public_api/v1 segment.
   const base = resolvePancakeApiBase();
   const template =
-    process.env.PANCAKE_SEND_PATH || '/pages/{page_id}/conversations/{conversation_id}/messages';
+    process.env.PANCAKE_SEND_PATH ||
+    '/pages/{page_id}/conversations/{conversation_id}/messages';
   const path = template
     .replace('{page_id}', encodeURIComponent(pageId.trim()))
     .replace('{conversation_id}', encodeURIComponent(conversationId));
@@ -589,7 +602,8 @@ export async function sendPancakeConversationMessage(input: {
     return {
       ok: false,
       code: 'failed',
-      message: 'Pancake rejected the message. The reminder is saved — you can retry, or send it via Open FB Chat.',
+      message:
+        'Pancake rejected the message. The reminder is saved — you can retry, or send it via Open FB Chat.',
       pancakeMessageId: null,
       debug,
     };
@@ -648,7 +662,8 @@ function extractConversations(body: unknown): {
   rawCount: number;
   skippedComments: number;
 } {
-  const root = body && typeof body === 'object' ? (body as Record<string, unknown>) : null;
+  const root =
+    body && typeof body === 'object' ? (body as Record<string, unknown>) : null;
   const list =
     (Array.isArray(root?.conversations) && root.conversations) ||
     (Array.isArray(root?.data) && root.data) ||
@@ -668,7 +683,11 @@ function extractConversations(body: unknown): {
     // their customer just like a messager — this is what lifts coverage past the handful
     // who happened to DM. Flag comments so an inbox thread wins over a comment for the
     // same person (below). RATING/REVIEW/FEED items are not per-person chats — skip them.
-    const convType = (asConvText(c.type) ?? asConvText(c.conversation_type) ?? '').toUpperCase();
+    const convType = (
+      asConvText(c.type) ??
+      asConvText(c.conversation_type) ??
+      ''
+    ).toUpperCase();
     const isComment = /COMMENT/.test(convType);
     if (/RATING|REVIEW|FEED/.test(convType)) {
       skippedComments += 1;
@@ -680,7 +699,9 @@ function extractConversations(body: unknown): {
     // pages.fm usually carries the person in a `customers` ARRAY (the participants),
     // not a single `customer`. Fall back through every shape we've seen so names show
     // instead of "Unknown".
-    const custArr = Array.isArray(c.customers) ? (c.customers as Record<string, unknown>[]) : [];
+    const custArr = Array.isArray(c.customers)
+      ? (c.customers as Record<string, unknown>[])
+      : [];
     const firstCust = custArr.find((x) => x && typeof x === 'object');
     const recentSender = c.recent_sender as Record<string, unknown> | undefined;
     const customerName =
@@ -717,8 +738,7 @@ export type PancakeMessage = {
   at: string | null;
 };
 export type PancakeMessagesResult =
-  | { ok: true; messages: PancakeMessage[] }
-  | { ok: false; message: string };
+  { ok: true; messages: PancakeMessage[] } | { ok: false; message: string };
 
 /**
  * Recent messages of ONE Pancake conversation (oldest→newest, capped). Super-Admin
@@ -740,7 +760,8 @@ export async function getPancakeConversationMessages(
   const pageToken = process.env.PANCAKE_PAGE_ACCESS_TOKEN;
   const token = pageToken || process.env.PANCAKE_USER_ACCESS_TOKEN;
   const tokenParam =
-    process.env.PANCAKE_SEND_TOKEN_PARAM || (pageToken ? 'page_access_token' : 'access_token');
+    process.env.PANCAKE_SEND_TOKEN_PARAM ||
+    (pageToken ? 'page_access_token' : 'access_token');
   const pageId = process.env.PANCAKE_PAGE_ID;
   if (!token?.trim() || !pageId?.trim()) {
     return { ok: false, message: 'Pancake is not configured.' };
@@ -758,7 +779,10 @@ export async function getPancakeConversationMessages(
 
   try {
     const endpoint = `${base}${path}${path.includes('?') ? '&' : '?'}${tokenParam}=${encodeURIComponent(token.trim())}`;
-    const res = await fetch(endpoint, { cache: 'no-store', signal: AbortSignal.timeout(10000) });
+    const res = await fetch(endpoint, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(10000),
+    });
     const rawText = await res.text().catch(() => '');
     let body: unknown = null;
     try {
@@ -780,7 +804,9 @@ export async function getPancakeConversationMessages(
       .slice(-15)
       .map((m, i) => {
         const fromObj =
-          m.from && typeof m.from === 'object' ? (m.from as Record<string, unknown>) : null;
+          m.from && typeof m.from === 'object'
+            ? (m.from as Record<string, unknown>)
+            : null;
         const fromPage = m.is_page === true || m.from_page === true;
         return {
           id: asConvText(m.id) ?? String(i),
@@ -795,7 +821,10 @@ export async function getPancakeConversationMessages(
             asConvText(m.text) ??
             asConvText(m.original_message) ??
             asConvText(m.content),
-          at: asConvText(m.inserted_at) ?? asConvText(m.created_at) ?? asConvText(m.updated_at),
+          at:
+            asConvText(m.inserted_at) ??
+            asConvText(m.created_at) ??
+            asConvText(m.updated_at),
         };
       });
     return { ok: true, messages };
@@ -836,13 +865,15 @@ export async function fetchPancakeConversationsCore(): Promise<PancakeConversati
   const pageToken = process.env.PANCAKE_PAGE_ACCESS_TOKEN;
   const token = pageToken || process.env.PANCAKE_USER_ACCESS_TOKEN;
   const tokenParam =
-    process.env.PANCAKE_SEND_TOKEN_PARAM || (pageToken ? 'page_access_token' : 'access_token');
+    process.env.PANCAKE_SEND_TOKEN_PARAM ||
+    (pageToken ? 'page_access_token' : 'access_token');
   const pageId = process.env.PANCAKE_PAGE_ID;
   if (!token || !token.trim()) {
     return {
       ok: false,
       code: 'token_missing',
-      message: 'Access token missing. Set PANCAKE_USER_ACCESS_TOKEN / PANCAKE_PAGE_ACCESS_TOKEN.',
+      message:
+        'Access token missing. Set PANCAKE_USER_ACCESS_TOKEN / PANCAKE_PAGE_ACCESS_TOKEN.',
       conversations: [],
     };
   }
@@ -850,13 +881,15 @@ export async function fetchPancakeConversationsCore(): Promise<PancakeConversati
     return {
       ok: false,
       code: 'token_missing',
-      message: 'No Page selected. Set PANCAKE_PAGE_ID (from Save Selected Page) and redeploy.',
+      message:
+        'No Page selected. Set PANCAKE_PAGE_ID (from Save Selected Page) and redeploy.',
       conversations: [],
     };
   }
 
   const base = resolvePancakeApiBase();
-  const template = process.env.PANCAKE_CONVERSATIONS_PATH || '/pages/{page_id}/conversations';
+  const template =
+    process.env.PANCAKE_CONVERSATIONS_PATH || '/pages/{page_id}/conversations';
   const path = template.replace('{page_id}', encodeURIComponent(pageId.trim()));
   const tokenKind = pageToken ? 'page_access_token' : 'user_access_token';
 
@@ -869,7 +902,8 @@ export async function fetchPancakeConversationsCore(): Promise<PancakeConversati
   const now = Math.floor(Date.now() / 1000);
   const WINDOW = 28 * 86400; // < 1 month per pages.fm's limit
   const monthsRaw = Number(process.env.PANCAKE_CONVERSATIONS_MONTHS || '6');
-  const months = Number.isFinite(monthsRaw) && monthsRaw > 0 ? Math.min(monthsRaw, 24) : 6;
+  const months =
+    Number.isFinite(monthsRaw) && monthsRaw > 0 ? Math.min(monthsRaw, 24) : 6;
   const earliest = now - months * 30 * 86400;
   const MAX_PAGES = 30; // safety cap per window
   const delayRaw = Number(process.env.PANCAKE_REQUEST_DELAY_MS || '350');
@@ -883,7 +917,11 @@ export async function fetchPancakeConversationsCore(): Promise<PancakeConversati
   let totalRaw = 0;
   let totalSkippedComments = 0;
 
-  type PageData = { conversations: PancakeConversation[]; rawCount: number; skippedComments: number };
+  type PageData = {
+    conversations: PancakeConversation[];
+    rawCount: number;
+    skippedComments: number;
+  };
 
   // One request for a given window + page. Retries on 429 with backoff. Returns the
   // parsed conversations, a `rateLimited` signal (stop, keep what we have), or a
@@ -893,16 +931,17 @@ export async function fetchPancakeConversationsCore(): Promise<PancakeConversati
     until: number,
     pageNumber: number,
   ): Promise<
-    | { fatal: PancakeConversationsResult }
-    | { rateLimited: true }
-    | { page: PageData }
+    { fatal: PancakeConversationsResult } | { rateLimited: true } | { page: PageData }
   > => {
     const win = `since=${since}&until=${until}&page_number=${pageNumber}`;
     for (let attempt = 0; attempt <= MAX_429_RETRIES; attempt += 1) {
       let res: Response;
       try {
         const endpoint = `${base}${path}${path.includes('?') ? '&' : '?'}${tokenParam}=${encodeURIComponent(token.trim())}&${win}`;
-        res = await fetch(endpoint, { cache: 'no-store', signal: AbortSignal.timeout(10000) });
+        res = await fetch(endpoint, {
+          cache: 'no-store',
+          signal: AbortSignal.timeout(10000),
+        });
       } catch {
         return {
           fatal: {
@@ -930,9 +969,10 @@ export async function fetchPancakeConversationsCore(): Promise<PancakeConversati
       if (res.status === 429) {
         if (attempt >= MAX_429_RETRIES) return { rateLimited: true };
         const retryAfter = Number(res.headers.get('retry-after'));
-        const waitMs = Number.isFinite(retryAfter) && retryAfter > 0
-          ? retryAfter * 1000
-          : 1000 * 2 ** attempt;
+        const waitMs =
+          Number.isFinite(retryAfter) && retryAfter > 0
+            ? retryAfter * 1000
+            : 1000 * 2 ** attempt;
         await sleep(waitMs);
         continue;
       }
@@ -952,16 +992,52 @@ export async function fetchPancakeConversationsCore(): Promise<PancakeConversati
         };
       }
       if (res.status === 401) {
-        return { fatal: { ok: false, code: 'token_invalid', message: 'Invalid or expired token.', conversations: [], debug: lastDebug } };
+        return {
+          fatal: {
+            ok: false,
+            code: 'token_invalid',
+            message: 'Invalid or expired token.',
+            conversations: [],
+            debug: lastDebug,
+          },
+        };
       }
       if (res.status === 403) {
-        return { fatal: { ok: false, code: 'permission_denied', message: 'Permission denied for conversations.', conversations: [], debug: lastDebug } };
+        return {
+          fatal: {
+            ok: false,
+            code: 'permission_denied',
+            message: 'Permission denied for conversations.',
+            conversations: [],
+            debug: lastDebug,
+          },
+        };
       }
       if (!res.ok) {
-        return { fatal: { ok: false, code: 'unavailable', message: `Pancake responded ${res.status}.`, conversations: [], debug: lastDebug } };
+        return {
+          fatal: {
+            ok: false,
+            code: 'unavailable',
+            message: `Pancake responded ${res.status}.`,
+            conversations: [],
+            debug: lastDebug,
+          },
+        };
       }
-      if (body && typeof body === 'object' && (body as { success?: boolean }).success === false) {
-        return { fatal: { ok: false, code: 'token_invalid', message: 'Pancake rejected the token.', conversations: [], debug: lastDebug } };
+      if (
+        body &&
+        typeof body === 'object' &&
+        (body as { success?: boolean }).success === false
+      ) {
+        return {
+          fatal: {
+            ok: false,
+            code: 'token_invalid',
+            message: 'Pancake rejected the token.',
+            conversations: [],
+            debug: lastDebug,
+          },
+        };
       }
 
       return { page: extractConversations(body) };
@@ -1017,7 +1093,10 @@ export async function fetchPancakeConversationsCore(): Promise<PancakeConversati
     const curComment = c.isComment === true;
     if (prevComment && !curComment) {
       byName.set(key, c); // an inbox thread replaces a comment
-    } else if (prevComment === curComment && (c.updatedAt ?? '') > (prev.updatedAt ?? '')) {
+    } else if (
+      prevComment === curComment &&
+      (c.updatedAt ?? '') > (prev.updatedAt ?? '')
+    ) {
       byName.set(key, c); // same kind → newest wins
     }
     // else: keep prev (it is inbox and the new one is a comment)
@@ -1026,14 +1105,22 @@ export async function fetchPancakeConversationsCore(): Promise<PancakeConversati
   // Honest breakdown so the count is explainable (comments filtered, rate-limit cut-off).
   const breakdown =
     `${conversations.length} people (messages + comments)` +
-    (totalSkippedComments > 0 ? ` · ${totalSkippedComments} ratings/reviews skipped` : '') +
+    (totalSkippedComments > 0
+      ? ` · ${totalSkippedComments} ratings/reviews skipped`
+      : '') +
     ` · ${totalRaw} raw over ~${months} month(s)` +
     (rateLimited ? ' · rate-limited (partial)' : '');
   if (conversations.length === 0) {
     const msg = rateLimited
       ? 'Pancake is rate-limiting requests right now (HTTP 429). Please wait a minute and try again.'
       : 'No conversations found for this Page.';
-    return { ok: false, code: rateLimited ? 'unavailable' : 'none_found', message: msg, conversations: [], debug: lastDebug };
+    return {
+      ok: false,
+      code: rateLimited ? 'unavailable' : 'none_found',
+      message: msg,
+      conversations: [],
+      debug: lastDebug,
+    };
   }
   return {
     ok: true,
@@ -1072,7 +1159,10 @@ export async function getPancakeLinkCoverage(
   supabase: SupabaseClient,
 ): Promise<{ linked: number; total: number }> {
   const [totalRes, linkedRes] = await Promise.all([
-    supabase.from('customers').select('id', { count: 'exact', head: true }).eq('is_active', true),
+    supabase
+      .from('customers')
+      .select('id', { count: 'exact', head: true })
+      .eq('is_active', true),
     supabase
       .from('customers')
       .select('id', { count: 'exact', head: true })
@@ -1083,7 +1173,11 @@ export async function getPancakeLinkCoverage(
 }
 
 /** The confirmation after a sync — this run's NEW links plus running coverage. */
-export function buildPancakeSyncMessage(matched: number, linked: number, total: number): string {
+export function buildPancakeSyncMessage(
+  matched: number,
+  linked: number,
+  total: number,
+): string {
   const newly = matched === 1 ? '1 new customer' : `${matched} new customers`;
   return (
     `Linked ${newly}. ${linked} of ${total} active customers are now reachable ` +
@@ -1120,12 +1214,14 @@ export async function findRecentPancakeConversationByName(
   const pageToken = process.env.PANCAKE_PAGE_ACCESS_TOKEN;
   const token = (pageToken || process.env.PANCAKE_USER_ACCESS_TOKEN || '').trim();
   const tokenParam =
-    process.env.PANCAKE_SEND_TOKEN_PARAM || (pageToken ? 'page_access_token' : 'access_token');
+    process.env.PANCAKE_SEND_TOKEN_PARAM ||
+    (pageToken ? 'page_access_token' : 'access_token');
   const pageId = await getActivePancakePageId();
   if (!token || !pageId) return { conversationId: null, matchCount: 0 };
 
   const base = resolvePancakeApiBase();
-  const template = process.env.PANCAKE_CONVERSATIONS_PATH || '/pages/{page_id}/conversations';
+  const template =
+    process.env.PANCAKE_CONVERSATIONS_PATH || '/pages/{page_id}/conversations';
   const path = template.replace('{page_id}', encodeURIComponent(pageId));
   const now = Math.floor(Date.now() / 1000);
   // BOUNDED window so this stays fast (seconds, not the minutes the full 6-month load
@@ -1144,10 +1240,17 @@ export async function findRecentPancakeConversationByName(
       `${tokenParam}=${encodeURIComponent(token)}&since=${since}&until=${now}&page_number=${page}`;
     let convs: PancakeConversation[];
     try {
-      const res = await fetch(endpoint, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+      const res = await fetch(endpoint, {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(8000),
+      });
       if (!res.ok) break;
       const body = (await res.json().catch(() => null)) as unknown;
-      if (body && typeof body === 'object' && (body as { success?: boolean }).success === false) {
+      if (
+        body &&
+        typeof body === 'object' &&
+        (body as { success?: boolean }).success === false
+      ) {
         break;
       }
       convs = extractConversations(body).conversations;
@@ -1177,7 +1280,8 @@ export async function findRecentPancakeConversationByName(
   for (const c of all) {
     if (normalizeConvName(c.customerName ?? '') === norm) exact.set(c.id, c);
   }
-  if (exact.size === 1) return { conversationId: [...exact.values()][0]?.id ?? null, matchCount: 1 };
+  if (exact.size === 1)
+    return { conversationId: [...exact.values()][0]?.id ?? null, matchCount: 1 };
   if (exact.size > 1) return { conversationId: null, matchCount: exact.size };
 
   // FIRST+LAST fallback (middle-name tolerant) — still a single distinct conversation.
@@ -1186,7 +1290,8 @@ export async function findRecentPancakeConversationByName(
     for (const c of all) {
       if (convNameKey(c.customerName ?? '') === key) fl.set(c.id, c);
     }
-    if (fl.size === 1) return { conversationId: [...fl.values()][0]?.id ?? null, matchCount: 1 };
+    if (fl.size === 1)
+      return { conversationId: [...fl.values()][0]?.id ?? null, matchCount: 1 };
     return { conversationId: null, matchCount: fl.size };
   }
   return { conversationId: null, matchCount: 0 };

@@ -25,8 +25,7 @@ export type ImportItemInput = {
 };
 
 export type ImportResult =
-  | { ok: true; inserted: number; skipped: number }
-  | { ok: false; error: string };
+  { ok: true; inserted: number; skipped: number } | { ok: false; error: string };
 
 export async function importInventoryItems(
   items: ImportItemInput[],
@@ -112,7 +111,8 @@ export async function importInventoryItems(
     // visible pre-filter missed (e.g. an archived item). Rather than fail the whole
     // batch, insert row-by-row and SKIP the conflicting ones — a duplicate is never
     // saved, and the rest still import.
-    const isConflict = error.code === '23505' || /duplicate key|unique/i.test(error.message);
+    const isConflict =
+      error.code === '23505' || /duplicate key|unique/i.test(error.message);
     if (!isConflict) {
       await recordAuditEvent({
         action: 'inventory_item.import',

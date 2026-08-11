@@ -8,8 +8,7 @@ import { getPayroll } from '@/lib/hr/payroll';
 import { listPayslipsForPeriod } from '@/lib/hr/payslip';
 import { listEmployeeRates, type EmployeeRateRow } from '@/lib/hr/rate';
 
-export const metadata: Metadata = {
-};
+export const metadata: Metadata = {};
 
 export const dynamic = 'force-dynamic';
 

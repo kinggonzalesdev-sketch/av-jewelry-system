@@ -75,7 +75,14 @@ describe('ScrapView', () => {
 
   it('groups a customer into one row; the Owner View lists the pieces with Edit/Delete', () => {
     render(
-      <ScrapView income={income} sales={sales} from="2026-07-01" to="2026-07-18" canDelete isOwner />,
+      <ScrapView
+        income={income}
+        sales={sales}
+        from="2026-07-01"
+        to="2026-07-18"
+        canDelete
+        isOwner
+      />,
     );
     // One grouped row for Buyer A (key = "<buyer> <soldOn>").
     expect(screen.getByText('Buyer A')).toBeInTheDocument();
@@ -90,7 +97,13 @@ describe('ScrapView', () => {
 
   it('a non-owner Admin sees Request delete (Owner approval), not a direct Delete', () => {
     render(
-      <ScrapView income={income} sales={sales} from="2026-07-01" to="2026-07-18" canDelete />,
+      <ScrapView
+        income={income}
+        sales={sales}
+        from="2026-07-01"
+        to="2026-07-18"
+        canDelete
+      />,
     );
     fireEvent.click(screen.getByRole('button', { name: 'View' }));
     expect(screen.getByTestId('scrap-group-body')).toBeInTheDocument();

@@ -71,7 +71,10 @@ export type DetectSummary = {
   needsReview: number;
   ignoredBlank: number;
   ignoredHeader: number;
-  perSheet: Record<string, { candidates: number; valid: number; duplicate: number; needsReview: number }>;
+  perSheet: Record<
+    string,
+    { candidates: number; valid: number; duplicate: number; needsReview: number }
+  >;
 };
 
 export type DetectResult = { candidates: ImportCandidate[]; summary: DetectSummary };
@@ -85,12 +88,30 @@ const ALIASES: Record<ImportField, string[]> = {
   size: ['size', 'length'],
   date: ['date', 'date encoded', 'date added', 'purchase date'],
   notes: ['note', 'notes', 'remarks'],
-  fixed_price: ['fixed price', 'price', 'item price', 'selling price', 'srp', 'cash price'],
-  price_per_gram: ['price per gram', 'per gram', 'price/gram', 'price per g', 'ppg', 'rate'],
+  fixed_price: [
+    'fixed price',
+    'price',
+    'item price',
+    'selling price',
+    'srp',
+    'cash price',
+  ],
+  price_per_gram: [
+    'price per gram',
+    'per gram',
+    'price/gram',
+    'price per g',
+    'ppg',
+    'rate',
+  ],
 };
 
 function normHeader(s: string): string {
-  return (s ?? '').replace(/\s+/g, ' ').trim().toLowerCase().replace(/[.:]+$/, '');
+  return (s ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+    .replace(/[.:]+$/, '');
 }
 
 /** Map a header cell to a field, or null when it is not a recognised header. */
@@ -162,7 +183,11 @@ function isHeaderRow(row: string[]): boolean {
 }
 
 /** Cluster a header row's mapped cells into side-by-side blocks (gap > 2 splits). */
-function blocksFromHeaderRow(row: string[], headerRow: number, startIndex: number): Block[] {
+function blocksFromHeaderRow(
+  row: string[],
+  headerRow: number,
+  startIndex: number,
+): Block[] {
   const mapped: Array<{ col: number; field: ImportField }> = [];
   row.forEach((cell, col) => {
     const f = headerField(cell);
@@ -173,7 +198,8 @@ function blocksFromHeaderRow(row: string[], headerRow: number, startIndex: numbe
   const flush = () => {
     if (current.length === 0) return;
     const cols: Partial<Record<ImportField, number>> = {};
-    for (const { col, field } of current) if (cols[field] === undefined) cols[field] = col;
+    for (const { col, field } of current)
+      if (cols[field] === undefined) cols[field] = col;
     out.push({
       index: startIndex + out.length,
       headerRow,
@@ -206,7 +232,8 @@ function get(row: string[], col: number | undefined): string {
  *  the mapped item/code column, else the longest non-price text cell in the block. */
 function itemTextForBlock(row: string[], block: Block): string {
   const mappedCol = block.cols.item ?? block.cols.code;
-  if (mappedCol !== undefined && !blank(row[mappedCol])) return (row[mappedCol] ?? '').trim();
+  if (mappedCol !== undefined && !blank(row[mappedCol]))
+    return (row[mappedCol] ?? '').trim();
   let best = '';
   for (let c = block.minCol; c <= block.maxCol; c += 1) {
     const v = (row[c] ?? '').trim();
@@ -251,8 +278,13 @@ function buildCandidate(
 
   if (hk) {
     pricingType = 'fixed';
-    fixedPrice = fixedCol ?? extractHkPrice(original) ?? extractHkPrice(source) ?? adjacentPrice(row, block);
-    if (!fixedPrice) issues.push('HK Item detected, but Fixed Price could not be identified.');
+    fixedPrice =
+      fixedCol ??
+      extractHkPrice(original) ??
+      extractHkPrice(source) ??
+      adjacentPrice(row, block);
+    if (!fixedPrice)
+      issues.push('HK Item detected, but Fixed Price could not be identified.');
   } else if (fixedCol) {
     pricingType = 'fixed';
     fixedPrice = fixedCol;
@@ -269,20 +301,28 @@ function buildCandidate(
         : null;
 
   const itemName = hk
-    ? extractHkName(original) ?? parsed.itemType ?? (original || null)
-    : parsed.itemType ?? (original || null);
+    ? (extractHkName(original) ?? parsed.itemType ?? (original || null))
+    : (parsed.itemType ?? (original || null));
 
   // Validation reasons (specific). Duplicate marking is a SEPARATE workbook-wide
   // pass (markDuplicates) so EVERY occurrence of a repeated code is flagged, not
   // just the second one.
   if (!inventoryCode && !itemName) issues.push('Inventory Code missing');
   if (!inventoryCode && itemName && !hk) issues.push('Inventory Code missing');
-  if (fixedCol === null && !hk && block.cols.fixed_price !== undefined && !blank(get(row, block.cols.fixed_price))) {
+  if (
+    fixedCol === null &&
+    !hk &&
+    block.cols.fixed_price !== undefined &&
+    !blank(get(row, block.cols.fixed_price))
+  ) {
     issues.push('Fixed Price invalid');
   }
 
   let validation: ImportValidation;
-  if (issues.length > 0 && !(hk && issues.length === 1 && issues[0]!.startsWith('HK Item detected')))
+  if (
+    issues.length > 0 &&
+    !(hk && issues.length === 1 && issues[0]!.startsWith('HK Item detected'))
+  )
     validation = 'needs_review';
   else if (hk && !fixedPrice) validation = 'needs_review';
   else validation = 'valid';
@@ -291,7 +331,9 @@ function buildCandidate(
     sheet,
     sourceRow: rowIndex0 + 1,
     sourceBlock: block.index,
-    original: (source && source !== original ? `${source} ${original}`.trim() : original) || source,
+    original:
+      (source && source !== original ? `${source} ${original}`.trim() : original) ||
+      source,
     inventoryCode,
     itemName,
     condition: parsed.condition,
@@ -349,11 +391,15 @@ function markDuplicates(candidates: ImportCandidate[], existing: Set<string>): v
 
     let reason: string;
     if (conflicts.length > 0) {
-      reason = `Duplicate code with conflicting details — ${conflicts.join(', ')} differ` +
-        (where ? ` (also ${where})` : '') + '.';
+      reason =
+        `Duplicate code with conflicting details — ${conflicts.join(', ')} differ` +
+        (where ? ` (also ${where})` : '') +
+        '.';
     } else if (fileCount > 1) {
-      reason = `Duplicate — code ${key} appears ${fileCount}× in this file` +
-        (where ? ` (${where})` : '') + '.';
+      reason =
+        `Duplicate — code ${key} appears ${fileCount}× in this file` +
+        (where ? ` (${where})` : '') +
+        '.';
     } else {
       reason = `Duplicate — code ${key} already exists in inventory.`;
     }
@@ -411,9 +457,14 @@ function adjacentPrice(row: string[], block: Block): string | null {
 
 // ---- top-level detection ---------------------------------------------------
 
-export function detectInventory(sheets: SheetInput[], existingCodes: string[]): DetectResult {
+export function detectInventory(
+  sheets: SheetInput[],
+  existingCodes: string[],
+): DetectResult {
   const existing = new Set(
-    existingCodes.map((c) => normalizeInventoryCode(c) ?? c.toUpperCase().trim()).filter(Boolean),
+    existingCodes
+      .map((c) => normalizeInventoryCode(c) ?? c.toUpperCase().trim())
+      .filter(Boolean),
   );
   const candidates: ImportCandidate[] = [];
   const summary: DetectSummary = {
@@ -429,7 +480,12 @@ export function detectInventory(sheets: SheetInput[], existingCodes: string[]): 
   };
 
   for (const sheet of sheets) {
-    summary.perSheet[sheet.name] = { candidates: 0, valid: 0, duplicate: 0, needsReview: 0 };
+    summary.perSheet[sheet.name] = {
+      candidates: 0,
+      valid: 0,
+      duplicate: 0,
+      needsReview: 0,
+    };
 
     // 1) Find header rows and their blocks.
     const blocksByRow = new Map<number, Block[]>();

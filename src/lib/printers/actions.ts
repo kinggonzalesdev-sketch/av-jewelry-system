@@ -2,11 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 
-import {
-  deletePrinter,
-  registerPrinter,
-  updatePrinter,
-} from '@/lib/printers/service';
+import { deletePrinter, registerPrinter, updatePrinter } from '@/lib/printers/service';
 import type { PrinterResult } from '@/lib/printers/types';
 
 const revalidate = () => revalidatePath('/settings/live-operations');
@@ -24,7 +20,11 @@ export async function registerPrinterAction(input: {
 
 export async function updatePrinterAction(
   id: string,
-  changes: { name?: string | null; active?: boolean | null; makeDefault?: boolean | null },
+  changes: {
+    name?: string | null;
+    active?: boolean | null;
+    makeDefault?: boolean | null;
+  },
 ): Promise<PrinterResult> {
   const res = await updatePrinter(id, changes);
   if (res.ok) revalidate();

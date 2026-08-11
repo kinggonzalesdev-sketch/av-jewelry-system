@@ -98,8 +98,16 @@ describe('OrdersView — honest states', () => {
     render(
       <OrdersView
         result={ok([
-          row({ orderNumber: 'ORD-W', customerDisplayName: 'Walk Customer', orderSource: 'walk_in' }),
-          row({ orderNumber: 'ORD-O', customerDisplayName: 'Online Customer', orderSource: 'online' }),
+          row({
+            orderNumber: 'ORD-W',
+            customerDisplayName: 'Walk Customer',
+            orderSource: 'walk_in',
+          }),
+          row({
+            orderNumber: 'ORD-O',
+            customerDisplayName: 'Online Customer',
+            orderSource: 'online',
+          }),
         ])}
       />,
     );
@@ -300,4 +308,3 @@ describe('OrdersView — For Shipping is its own flow', () => {
     expect(screen.queryByText('Awaiting Release')).not.toBeInTheDocument();
   });
 });
-

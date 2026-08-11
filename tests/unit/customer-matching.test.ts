@@ -45,9 +45,16 @@ describe('rankCustomerMatches — safe priority (spec §2)', () => {
   });
 
   it('prefers an existing Pancake conversation id over a name match', () => {
-    const out = rankCustomerMatches({ name: 'Someone Else', conversationId: 'PAGE_123' }, [
-      row({ id: 'conv', display_name: 'Different Name', pancake_conversation_id: 'PAGE_123' }),
-    ]);
+    const out = rankCustomerMatches(
+      { name: 'Someone Else', conversationId: 'PAGE_123' },
+      [
+        row({
+          id: 'conv',
+          display_name: 'Different Name',
+          pancake_conversation_id: 'PAGE_123',
+        }),
+      ],
+    );
     expect(out.autoMatch?.source).toBe('pancake_conversation');
     expect(out.autoMatch?.hasConversation).toBe(true);
   });
@@ -63,7 +70,10 @@ describe('rankCustomerMatches — safe priority (spec §2)', () => {
 
   it('surfaces the linked Facebook state on each candidate', () => {
     const out = rankCustomerMatches({ name: 'Maria Dela Cruz' }, [
-      row({ facebook_conversation_url: 'https://m.me/x', pancake_conversation_id: 'P_1' }),
+      row({
+        facebook_conversation_url: 'https://m.me/x',
+        pancake_conversation_id: 'P_1',
+      }),
     ]);
     expect(out.autoMatch?.hasConversation).toBe(true);
     expect(out.autoMatch?.facebookConversationUrl).toBe('https://m.me/x');

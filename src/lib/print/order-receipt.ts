@@ -67,7 +67,9 @@ export function formatStickerPeso(amount: string): string {
  */
 export function normalizeGrams(value: string | number | null | undefined): string | null {
   if (value === null || value === undefined) return null;
-  const match = String(value).replace(/,/g, '').match(/\d+(?:\.\d+)?/);
+  const match = String(value)
+    .replace(/,/g, '')
+    .match(/\d+(?:\.\d+)?/);
   if (!match) return null;
   const n = Number.parseFloat(match[0]);
   if (!Number.isFinite(n) || n <= 0) return null;
@@ -90,7 +92,10 @@ export function stickerLineItems(
   }
   if (fields.price) {
     const price = d.unitPrice ? formatStickerPeso(d.unitPrice) : '—';
-    out.push({ text: d.quantity > 1 ? `${d.quantity} x ${price}` : price, kind: 'price' });
+    out.push({
+      text: d.quantity > 1 ? `${d.quantity} x ${price}` : price,
+      kind: 'price',
+    });
   }
   if (fields.pricePerGram && d.pricePerGram) {
     // Grams + rate on one line, e.g. "11.5g • ₱7,500/g" (the screenshot-to-print
@@ -167,8 +172,12 @@ export function slipLines(d: OrderSlipData): string[] {
     '------------------------------',
   ];
   for (const it of d.items) {
-    lines.push(`${it.code}${it.name ? ` ${it.name}` : ''}${it.grams ? ` ${it.grams}g` : ''}`);
-    lines.push(`  Qty ${it.quantity} x ${formatStickerPeso(it.unitPrice)} = ${formatStickerPeso(it.lineTotal)}`);
+    lines.push(
+      `${it.code}${it.name ? ` ${it.name}` : ''}${it.grams ? ` ${it.grams}g` : ''}`,
+    );
+    lines.push(
+      `  Qty ${it.quantity} x ${formatStickerPeso(it.unitPrice)} = ${formatStickerPeso(it.lineTotal)}`,
+    );
   }
   lines.push('------------------------------');
   lines.push(`GRAND TOTAL: ${formatStickerPeso(d.grandTotal)}`);

@@ -31,10 +31,13 @@ function member(over: Partial<TeamMemberRow> = {}): TeamMemberRow {
   };
 }
 
-function renderControls(over: Partial<TeamMemberRow> = {}, opts?: {
-  isPrimary?: boolean;
-  slotFree?: boolean;
-}) {
+function renderControls(
+  over: Partial<TeamMemberRow> = {},
+  opts?: {
+    isPrimary?: boolean;
+    slotFree?: boolean;
+  },
+) {
   return render(
     <MemberAccessControls
       member={member(over)}

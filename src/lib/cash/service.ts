@@ -75,7 +75,11 @@ async function rpcPage(
   return { rows: data?.rows ?? [], total: Number(data?.total ?? 0) };
 }
 
-export async function getWalkIns(date: string, page: number, size: number): Promise<DetailPage<WalkInRow>> {
+export async function getWalkIns(
+  date: string,
+  page: number,
+  size: number,
+): Promise<DetailPage<WalkInRow>> {
   await requirePermission('view_reports');
   const { rows, total } = await rpcPage('daily_cash_walkins', date, page, size);
   return {
@@ -92,7 +96,11 @@ export async function getWalkIns(date: string, page: number, size: number): Prom
   };
 }
 
-export async function getCashPayments(date: string, page: number, size: number): Promise<DetailPage<CashPaymentRow>> {
+export async function getCashPayments(
+  date: string,
+  page: number,
+  size: number,
+): Promise<DetailPage<CashPaymentRow>> {
   await requirePermission('view_reports');
   const { rows, total } = await rpcPage('daily_cash_payments', date, page, size);
   return {
@@ -108,7 +116,11 @@ export async function getCashPayments(date: string, page: number, size: number):
   };
 }
 
-export async function getTradeDeductions(date: string, page: number, size: number): Promise<DetailPage<TradeDeductionRow>> {
+export async function getTradeDeductions(
+  date: string,
+  page: number,
+  size: number,
+): Promise<DetailPage<TradeDeductionRow>> {
   await requirePermission('view_reports');
   const { rows, total } = await rpcPage('daily_cash_trade_deductions', date, page, size);
   return {
@@ -125,10 +137,16 @@ export async function getTradeDeductions(date: string, page: number, size: numbe
 }
 
 /** Resolve staff ids → full names in one query (created_by has no FK to embed). */
-async function staffNames(supabase: SupabaseClient, ids: (string | null)[]): Promise<Record<string, string>> {
+async function staffNames(
+  supabase: SupabaseClient,
+  ids: (string | null)[],
+): Promise<Record<string, string>> {
   const uniq = [...new Set(ids.filter((x): x is string => Boolean(x)))];
   if (uniq.length === 0) return {};
-  const { data } = await supabase.from('staff_profiles').select('id, full_name').in('id', uniq);
+  const { data } = await supabase
+    .from('staff_profiles')
+    .select('id, full_name')
+    .in('id', uniq);
   const map: Record<string, string> = {};
   for (const r of (data ?? []) as { id: string; full_name: string | null }[]) {
     map[r.id] = r.full_name ?? '—';
@@ -142,7 +160,11 @@ async function tablePage(
   date: string,
   page: number,
   size: number,
-): Promise<{ rows: Record<string, unknown>[]; total: number; names: Record<string, string> }> {
+): Promise<{
+  rows: Record<string, unknown>[];
+  total: number;
+  names: Record<string, string>;
+}> {
   const supabase = await createClient();
   const { data, count } = await supabase
     .from(table)
@@ -152,13 +174,26 @@ async function tablePage(
     .order('created_at', { ascending: false })
     .range((page - 1) * size, page * size - 1);
   const rows = (data ?? []) as Record<string, unknown>[];
-  const names = await staffNames(supabase, rows.map((r) => r.created_by as string | null));
+  const names = await staffNames(
+    supabase,
+    rows.map((r) => r.created_by as string | null),
+  );
   return { rows, total: count ?? 0, names };
 }
 
-export async function getExpenses(date: string, page: number, size: number): Promise<DetailPage<ExpenseRow>> {
+export async function getExpenses(
+  date: string,
+  page: number,
+  size: number,
+): Promise<DetailPage<ExpenseRow>> {
   await requirePermission('view_reports');
-  const { rows, total, names } = await tablePage('daily_cash_expenses', 'expense_date', date, page, size);
+  const { rows, total, names } = await tablePage(
+    'daily_cash_expenses',
+    'expense_date',
+    date,
+    page,
+    size,
+  );
   return {
     total,
     rows: rows.map((r) => ({
@@ -173,9 +208,19 @@ export async function getExpenses(date: string, page: number, size: number): Pro
   };
 }
 
-export async function getRemittances(date: string, page: number, size: number): Promise<DetailPage<RemittanceRow>> {
+export async function getRemittances(
+  date: string,
+  page: number,
+  size: number,
+): Promise<DetailPage<RemittanceRow>> {
   await requirePermission('view_reports');
-  const { rows, total, names } = await tablePage('daily_cash_remittances', 'remit_date', date, page, size);
+  const { rows, total, names } = await tablePage(
+    'daily_cash_remittances',
+    'remit_date',
+    date,
+    page,
+    size,
+  );
   return {
     total,
     rows: rows.map((r) => ({
@@ -206,7 +251,10 @@ export async function getCashMovements(
     .order('created_at', { ascending: false })
     .range((page - 1) * size, page * size - 1);
   const rows = (data ?? []) as Record<string, unknown>[];
-  const names = await staffNames(supabase, rows.map((r) => r.created_by as string | null));
+  const names = await staffNames(
+    supabase,
+    rows.map((r) => r.created_by as string | null),
+  );
   const total = count ?? 0;
   return {
     total,

@@ -121,7 +121,11 @@ async function maybeAutoSend(
   link: CaptureLink,
   cap: PendingCaptureLite,
 ): Promise<boolean> {
-  if (link.linkStatus !== 'linked' || cap.is_test === true || cap.message_status === 'sent') {
+  if (
+    link.linkStatus !== 'linked' ||
+    cap.is_test === true ||
+    cap.message_status === 'sent'
+  ) {
     return false;
   }
   try {
@@ -146,7 +150,9 @@ export async function resolveCaptureLinkAction(
   const supabase = await createClient();
   const { data } = await supabase
     .from('capture_records')
-    .select('id, ocr, pancake_conversation_id, is_test, message_status, source, official_order_id')
+    .select(
+      'id, ocr, pancake_conversation_id, is_test, message_status, source, official_order_id',
+    )
     .eq('id', captureRecordId)
     .maybeSingle();
   const cap = (data as PendingCaptureLite | null) ?? null;
@@ -252,10 +258,18 @@ export type CaptureStickerClaim =
 export async function claimCaptureStickerAction(): Promise<CaptureStickerClaim> {
   await requirePermission('claim_capture');
   const supabase = await createClient();
-  const { data } = (await supabase.rpc('claim_next_capture_sticker', { p_device: 'pc-web' })) as {
-    data: { claimed?: boolean; capture_record_id?: string; fb_name?: string; grams?: string } | null;
+  const { data } = (await supabase.rpc('claim_next_capture_sticker', {
+    p_device: 'pc-web',
+  })) as {
+    data: {
+      claimed?: boolean;
+      capture_record_id?: string;
+      fb_name?: string;
+      grams?: string;
+    } | null;
   };
-  if (!data || data.claimed !== true || !data.capture_record_id) return { claimed: false };
+  if (!data || data.claimed !== true || !data.capture_record_id)
+    return { claimed: false };
   return {
     claimed: true,
     captureRecordId: data.capture_record_id,
@@ -265,15 +279,21 @@ export async function claimCaptureStickerAction(): Promise<CaptureStickerClaim> 
 }
 
 /** Mark a claimed capture sticker printed (so no device reprints it). */
-export async function markCaptureStickerPrintedAction(captureRecordId: string): Promise<void> {
+export async function markCaptureStickerPrintedAction(
+  captureRecordId: string,
+): Promise<void> {
   if (!captureRecordId) return;
   await requirePermission('claim_capture');
   const supabase = await createClient();
-  await supabase.rpc('mark_capture_sticker_printed', { p_capture_record_id: captureRecordId });
+  await supabase.rpc('mark_capture_sticker_printed', {
+    p_capture_record_id: captureRecordId,
+  });
 }
 
 /** Release a claimed capture sticker (print failed) so another device can take it. */
-export async function releaseCaptureStickerAction(captureRecordId: string): Promise<void> {
+export async function releaseCaptureStickerAction(
+  captureRecordId: string,
+): Promise<void> {
   if (!captureRecordId) return;
   await requirePermission('claim_capture');
   const supabase = await createClient();

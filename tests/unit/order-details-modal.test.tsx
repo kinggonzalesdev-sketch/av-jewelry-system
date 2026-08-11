@@ -16,7 +16,10 @@ const loadOrderDetailAction = vi.fn<(id: string) => Promise<OrderDetailResult>>(
 vi.mock('@/lib/orders/actions', () => ({
   loadOrderDetailAction: (id: string) => loadOrderDetailAction(id),
   sendInvoiceMessageAction: vi.fn(() =>
-    Promise.resolve({ ok: true, pancake: { attempted: false, delivered: false, error: null } }),
+    Promise.resolve({
+      ok: true,
+      pancake: { attempted: false, delivered: false, error: null },
+    }),
   ),
   saveOrderInvoiceMessageAction: vi.fn(() => Promise.resolve({ ok: true })),
   confirmRequiredPaymentAction: vi.fn(() => Promise.resolve({ ok: true })),

@@ -21,7 +21,8 @@ import { createClient } from '@/lib/supabase/server';
  * second approval and a repeated finalize cannot return the same stock twice.
  */
 
-export type CancellationResult = { ok: true; changed: boolean } | { ok: false; error: string };
+export type CancellationResult =
+  { ok: true; changed: boolean } | { ok: false; error: string };
 
 export type FinalizeCancellationResult =
   | { ok: true; changed: boolean; returned: number; kept: number }

@@ -85,7 +85,13 @@ export async function requestScrapDeletionAction(
   label: string,
   reason: string,
 ): Promise<RequestDeletionResult> {
-  const result = await requestOwnerDeletion('scrap_sale_delete', 'scrap_sale', scrapId, `scrap sale (${label})`, reason);
+  const result = await requestOwnerDeletion(
+    'scrap_sale_delete',
+    'scrap_sale',
+    scrapId,
+    `scrap sale (${label})`,
+    reason,
+  );
   if (result.ok) revalidatePath('/admin/scrap');
   return result;
 }

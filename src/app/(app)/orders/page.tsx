@@ -5,7 +5,11 @@ import { NewOrderWorkflow } from '@/components/orders/new-order-workflow';
 import { OrdersView } from '@/components/orders/orders-view';
 import { CaptureReviewPanel } from '@/components/capture/capture-review-panel';
 import { IncomingCapturesStrip } from '@/components/capture/incoming-captures-strip';
-import { canOpenPage, getCurrentStaffProfile, getGrantedPermissions } from '@/lib/authz/guard';
+import {
+  canOpenPage,
+  getCurrentStaffProfile,
+  getGrantedPermissions,
+} from '@/lib/authz/guard';
 import { getAdminNameContext } from '@/lib/authz/admin-name';
 import { listCaptureCustomers } from '@/lib/live/batches';
 import { listPendingCaptureReviews } from '@/lib/capture/review';
@@ -13,8 +17,7 @@ import { countPendingCaptures } from '@/lib/capture/pending';
 import { listCaptureItems, listOrders, listWalkInItems } from '@/lib/orders/service';
 import { listKeepLayawayAccounts } from '@/lib/payments/layaway-ledger';
 
-export const metadata: Metadata = {
-};
+export const metadata: Metadata = {};
 
 export const dynamic = 'force-dynamic';
 

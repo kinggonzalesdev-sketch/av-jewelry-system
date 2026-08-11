@@ -21,8 +21,7 @@ import { createClient } from '@/lib/supabase/server';
 
 export type EditItemResult = { ok: true } | { ok: false; error: string };
 export type SplitItemResult =
-  | { ok: true; orderNumber: string }
-  | { ok: false; error: string };
+  { ok: true; orderNumber: string } | { ok: false; error: string };
 
 function cleanError(message: string): string {
   return message.replace(/^ERROR:\s*/i, '').trim();

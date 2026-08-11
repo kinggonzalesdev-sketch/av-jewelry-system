@@ -161,7 +161,8 @@ export async function kioskClockIn(
   if (res.error || !res.data) {
     return {
       ok: false,
-      error: res.error?.message.replace(/^ERROR:\s*/i, '').trim() ?? 'Could not clock in.',
+      error:
+        res.error?.message.replace(/^ERROR:\s*/i, '').trim() ?? 'Could not clock in.',
     };
   }
 
@@ -179,7 +180,10 @@ export async function kioskClockIn(
     action: 'attendance.clock_in',
     entityType: 'attendance_record',
     entityId: recordId,
-    context: { for_staff: staffProfileId, ...(isOvertime ? { overtime_amount: overtimeAmount } : {}) },
+    context: {
+      for_staff: staffProfileId,
+      ...(isOvertime ? { overtime_amount: overtimeAmount } : {}),
+    },
   });
 
   return {
@@ -208,7 +212,8 @@ export async function kioskClockOut(staffProfileId: string): Promise<ClockResult
   if (res.error || !res.data) {
     return {
       ok: false,
-      error: res.error?.message.replace(/^ERROR:\s*/i, '').trim() ?? 'Could not clock out.',
+      error:
+        res.error?.message.replace(/^ERROR:\s*/i, '').trim() ?? 'Could not clock out.',
     };
   }
 

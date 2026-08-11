@@ -8,8 +8,18 @@ vi.mock('@/lib/live/live-ops-actions', () => ({
     Promise.resolve({
       ok: true,
       items: [
-        { key: 'database', label: 'Supabase Database', status: 'ready', detail: 'Connected.' },
-        { key: 'pancake', label: 'Pancake Connection', status: 'failed', detail: 'Down.' },
+        {
+          key: 'database',
+          label: 'Supabase Database',
+          status: 'ready',
+          detail: 'Connected.',
+        },
+        {
+          key: 'pancake',
+          label: 'Pancake Connection',
+          status: 'failed',
+          detail: 'Down.',
+        },
       ],
     }),
   ),

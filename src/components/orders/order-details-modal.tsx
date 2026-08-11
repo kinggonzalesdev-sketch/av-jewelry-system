@@ -141,7 +141,15 @@ function lineTotal(unitPrice: string | null, quantity: number): string | null {
 
 function fmtDateTime(iso: string): string {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
 }
 
 /** A compact key-value cell for the summary blocks. */
@@ -156,7 +164,9 @@ function KV({
 }) {
   return (
     <div className={`flex flex-col gap-0.5 py-1 ${wide ? 'col-span-2' : ''}`}>
-      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
       <span className="min-w-0 break-words text-sm font-medium">{children}</span>
     </div>
   );
@@ -267,7 +277,11 @@ function SummaryCard({
     <SectionCard icon="▤" title="Order Summary" {...(testId ? { testId } : {})}>
       <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
         {rows.map((r) => (
-          <SummaryItem key={r.label} label={r.label} {...(r.icon ? { icon: r.icon } : {})}>
+          <SummaryItem
+            key={r.label}
+            label={r.label}
+            {...(r.icon ? { icon: r.icon } : {})}
+          >
             {r.value}
           </SummaryItem>
         ))}
@@ -285,7 +299,6 @@ function TabPanel({ active, children }: { active: boolean; children: React.React
     </div>
   );
 }
-
 
 /**
  * The ONE shared modal header, used by every stage. Order number + status badge on
@@ -313,7 +326,11 @@ function ModalHeader({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge
-              label={headerStageLabel(section, detail.status, detail.fulfillmentDestination)}
+              label={headerStageLabel(
+                section,
+                detail.status,
+                detail.fulfillmentDestination,
+              )}
               tone="neutral"
               className="px-3.5 py-1 text-sm font-semibold"
             />
@@ -456,7 +473,13 @@ function ForInvoiceView({
     const iso = detail.layaway?.finalDueDate;
     if (!iso) return null;
     const dt = new Date(iso);
-    return Number.isNaN(dt.getTime()) ? iso : dt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    return Number.isNaN(dt.getTime())
+      ? iso
+      : dt.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        });
   })();
 
   // Price per gram = Total Price ÷ Total Grams (display only). Money stays exact
@@ -467,7 +490,8 @@ function ForInvoiceView({
     const clean = a.totalAmountPayable.replace(/[^\d.]/g, '');
     const [w = '0', f = ''] = clean.split('.');
     const totalCentavos = BigInt(w || '0') * 100n + BigInt(`${f}00`.slice(0, 2) || '0');
-    const perGram = (totalCentavos * 1000n + BigInt(gramsMilli) / 2n) / BigInt(gramsMilli);
+    const perGram =
+      (totalCentavos * 1000n + BigInt(gramsMilli) / 2n) / BigInt(gramsMilli);
     return `${perGram / 100n}.${String(perGram % 100n).padStart(2, '0')}`;
   })();
 
@@ -608,7 +632,11 @@ function ForInvoiceView({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge
-              label={headerStageLabel(section, detail.status, detail.fulfillmentDestination)}
+              label={headerStageLabel(
+                section,
+                detail.status,
+                detail.fulfillmentDestination,
+              )}
               tone="gold"
               className="px-3.5 py-1 text-sm font-semibold"
             />
@@ -653,7 +681,11 @@ function ForInvoiceView({
             {
               icon: '◔',
               label: 'Status',
-              value: headerStageLabel(section, detail.status, detail.fulfillmentDestination),
+              value: headerStageLabel(
+                section,
+                detail.status,
+                detail.fulfillmentDestination,
+              ),
             },
             {
               icon: '☺',
@@ -665,8 +697,8 @@ function ForInvoiceView({
                     url={detail.customer.facebookConversationUrl}
                     linked={Boolean(
                       detail.orderFacebook.conversationId ||
-                        detail.orderFacebook.url ||
-                        detail.customer.pancakeConversationId,
+                      detail.orderFacebook.url ||
+                      detail.customer.pancakeConversationId,
                     )}
                   />
                 </span>
@@ -806,7 +838,8 @@ function ForInvoiceView({
                   </>
                 )}
               </dl>
-              {matchInfo && (matchInfo.sameNameCount > 0 || !matchInfo.hasConversation) ? (
+              {matchInfo &&
+              (matchInfo.sameNameCount > 0 || !matchInfo.hasConversation) ? (
                 <div
                   role="status"
                   data-testid="order-match-warning"
@@ -815,8 +848,10 @@ function ForInvoiceView({
                   {matchInfo.sameNameCount > 0 ? (
                     <p>
                       ⚠ {matchInfo.sameNameCount} other customer(s) share this exact name
-                      {matchInfo.examples.length ? ` (${matchInfo.examples.join(', ')})` : ''}.
-                      Verify this is the right person before sending.
+                      {matchInfo.examples.length
+                        ? ` (${matchInfo.examples.join(', ')})`
+                        : ''}
+                      . Verify this is the right person before sending.
                     </p>
                   ) : null}
                   {!matchInfo.hasConversation ? (
@@ -925,13 +960,14 @@ function ForInvoiceView({
               {/* Honest delivery status: Send Invoice can only reach the customer's chat
                   when a Pancake conversation is linked. If not, say so plainly so the
                   operator isn't left wondering why "nothing happened". */}
-              {detail.orderFacebook.conversationId || detail.customer.pancakeConversationId ? (
+              {detail.orderFacebook.conversationId ||
+              detail.customer.pancakeConversationId ? (
                 <p
                   className="rounded-md border border-green-600/40 bg-green-600/10 px-2 py-1 text-[11px] text-green-700"
                   data-testid="order-send-will-deliver"
                 >
-                  ✓ The invoice will be sent to {detail.customer.displayName}&apos;s Facebook
-                  chat through Pancake.
+                  ✓ The invoice will be sent to {detail.customer.displayName}&apos;s
+                  Facebook chat through Pancake.
                 </p>
               ) : (
                 <p
@@ -939,14 +975,15 @@ function ForInvoiceView({
                   data-testid="order-send-no-chat"
                 >
                   ⚠ No Pancake chat is linked, so this will <strong>not</strong> reach the
-                  customer&apos;s chat — it only advances the order. Link a Pancake chat above
-                  (Integrations → Load conversations → Copy ID) to actually deliver it.
+                  customer&apos;s chat — it only advances the order. Link a Pancake chat
+                  above (Integrations → Load conversations → Copy ID) to actually deliver
+                  it.
                 </p>
               )}
               <p className="text-[11px] text-muted-foreground">
-                This sends the invoice to the customer&apos;s chat and records it. The order{' '}
-                <strong>stays in For Invoice</strong> — transfer it to a destination below
-                whenever you&apos;re ready.
+                This sends the invoice to the customer&apos;s chat and records it. The
+                order <strong>stays in For Invoice</strong> — transfer it to a destination
+                below whenever you&apos;re ready.
               </p>
               <div className="flex items-center gap-2">
                 <button
@@ -1047,7 +1084,11 @@ function KeepView({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge
-              label={headerStageLabel(section, detail.status, detail.fulfillmentDestination)}
+              label={headerStageLabel(
+                section,
+                detail.status,
+                detail.fulfillmentDestination,
+              )}
               tone="neutral"
               className="px-3.5 py-1 text-sm font-semibold"
             />
@@ -1093,8 +1134,8 @@ function KeepView({
                     url={detail.customer.facebookConversationUrl}
                     linked={Boolean(
                       detail.orderFacebook.conversationId ||
-                        detail.orderFacebook.url ||
-                        detail.customer.pancakeConversationId,
+                      detail.orderFacebook.url ||
+                      detail.customer.pancakeConversationId,
                     )}
                   />
                 </span>
@@ -1190,7 +1231,12 @@ function DetailBody({
   // never changes hook order.)
   if (detail.status === 'invoiced') {
     return (
-      <ForInvoiceView detail={detail} section={section} onDone={onRefresh} onClose={onClose} />
+      <ForInvoiceView
+        detail={detail}
+        section={section}
+        onDone={onRefresh}
+        onClose={onClose}
+      />
     );
   }
   // Owner (2026-08-09): the "For Reminder" stage was removed. An
@@ -1201,7 +1247,9 @@ function DetailBody({
   // 2026-07-30): summary + Add Payment / Cancel (header) + Transfer to Completed +
   // Save, and nothing else.
   if (detail.status === 'keep') {
-    return <KeepView detail={detail} section={section} onDone={onRefresh} onClose={onClose} />;
+    return (
+      <KeepView detail={detail} section={section} onDone={onRefresh} onClose={onClose} />
+    );
   }
 
   const a = detail.amounts;
@@ -1212,7 +1260,9 @@ function DetailBody({
       <ModalHeader
         detail={detail}
         section={section}
-        actions={<HeaderActions detail={detail} section={section} onRefresh={onRefresh} />}
+        actions={
+          <HeaderActions detail={detail} section={section} onRefresh={onRefresh} />
+        }
         onClose={onClose}
       />
 
@@ -1244,8 +1294,8 @@ function DetailBody({
                     url={detail.customer.facebookConversationUrl}
                     linked={Boolean(
                       detail.orderFacebook.conversationId ||
-                        detail.orderFacebook.url ||
-                        detail.customer.pancakeConversationId,
+                      detail.orderFacebook.url ||
+                      detail.customer.pancakeConversationId,
                     )}
                   />
                 </span>
@@ -1395,15 +1445,22 @@ function DetailBody({
                     </thead>
                     <tbody className="divide-y">
                       {detail.paymentHistory.map((p) => (
-                        <tr key={p.paymentId} className={p.voided || p.reversed ? 'opacity-50' : ''}>
+                        <tr
+                          key={p.paymentId}
+                          className={p.voided || p.reversed ? 'opacity-50' : ''}
+                        >
                           <td className="px-3 py-1.5 whitespace-nowrap">
                             {fmtDateTime(p.recordedAt)}
                           </td>
                           <td className="px-3 py-1.5 text-right tabular-nums">
                             <Money amount={p.verifiedAmount ?? p.amount} />
                           </td>
-                          <td className="px-3 py-1.5">{humanize(p.paymentMethod ?? '—')}</td>
-                          <td className="px-3 py-1.5 font-mono">{p.referenceNumber ?? '—'}</td>
+                          <td className="px-3 py-1.5">
+                            {humanize(p.paymentMethod ?? '—')}
+                          </td>
+                          <td className="px-3 py-1.5 font-mono">
+                            {p.referenceNumber ?? '—'}
+                          </td>
                           <td className="px-3 py-1.5">{humanize(p.status)}</td>
                         </tr>
                       ))}
@@ -1422,139 +1479,143 @@ function DetailBody({
         {/* --------------------------------- ITEMS -------------------------- */}
         <TabPanel active={tab === 'detail'}>
           <div className="space-y-4">
-          {detail.items.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
-              No line items found for this order.
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table
-                className="data-table w-full min-w-[540px] text-left text-xs"
-                data-testid="order-modal-items"
-              >
-                <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
-                  <tr>
-                    <th className="px-3 py-1.5">Code</th>
-                    <th className="px-3 py-1.5">Item</th>
-                    <th className="px-3 py-1.5 text-right">Grams</th>
-                    <th className="px-3 py-1.5 text-right">Qty</th>
-                    <th className="px-3 py-1.5 text-right">Unit Price</th>
-                    <th className="px-3 py-1.5 text-right">Line Total</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {detail.items.map((it, i) => {
-                    const lt = lineTotal(it.unitPrice, it.quantity);
-                    return (
-                      <tr key={`${it.claimReference}-${i}`}>
-                        <td className="px-3 py-1.5 font-mono">{it.itemCode ?? '—'}</td>
-                        <td className="px-3 py-1.5">{it.itemName ?? '—'}</td>
-                        <td className="px-3 py-1.5 text-right tabular-nums">
-                          {it.gramsPerPiece
-                            ? totalGrams(it.gramsPerPiece, it.quantity)
-                            : '—'}
-                        </td>
-                        <td className="px-3 py-1.5 text-right tabular-nums">{it.quantity}</td>
-                        <td className="px-3 py-1.5 text-right tabular-nums">
-                          {it.unitPrice ? <Money amount={it.unitPrice} /> : '—'}
-                        </td>
-                        <td className="px-3 py-1.5 text-right font-medium tabular-nums">
-                          {lt ? <Money amount={lt} /> : '—'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Edit Items (Super Admin) — Remove a piece or Split it to a new order.
-              Self-hides for non-owners, locked statuses, and the last item. */}
-          <OrderItemEditControls
-            orderId={detail.officialOrderId}
-            status={detail.status}
-            items={detail.items}
-            isOwner={detail.permissions.isOwner}
-            onRefresh={onRefresh}
-          />
-
-          {/* ------------------------------ HISTORY ------------------------- */}
-          <div className="space-y-3">
-            <div>
-              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Order activity — newest first
+            {detail.items.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                No line items found for this order.
               </p>
-              {detail.activity.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  No recorded activity for this order.
-                </p>
-              ) : (
-                <ul className="space-y-1.5" data-testid="order-modal-activity">
-                  {detail.activity.map((ev) => (
-                    <li key={ev.id} className="text-xs">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-medium">{humanize(ev.action)}</span>
-                        <span className="text-muted-foreground">
-                          {fmtDateTime(ev.occurredAt)}
-                        </span>
-                      </div>
-                      <p className="text-muted-foreground">
-                        {ev.actorLabel}
-                        {ev.outcome !== 'succeeded' ? ` · ${humanize(ev.outcome)}` : ''}
-                        {ev.reason ? ` · ${ev.reason}` : ''}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            <div>
-              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Uploaded screenshots &amp; files
-              </p>
-              {detail.attachments.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  No files uploaded for this order.
-                </p>
-              ) : (
-                <ul
-                  className="grid grid-cols-2 gap-2"
-                  data-testid="order-modal-attachments"
+            ) : (
+              <div className="overflow-x-auto">
+                <table
+                  className="data-table w-full min-w-[540px] text-left text-xs"
+                  data-testid="order-modal-items"
                 >
-                  {detail.attachments.map((att) => (
-                    <li
-                      key={att.id}
-                      className="rounded-md border border-border p-1.5 text-xs"
-                    >
-                      {att.signedUrl && att.contentType.startsWith('image/') ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={att.signedUrl}
-                          alt={att.fileName ?? 'Attachment'}
-                          className="mb-1 h-24 w-full rounded object-cover"
-                        />
-                      ) : null}
-                      <p className="truncate">{att.fileName ?? humanize(att.purpose)}</p>
-                      {att.signedUrl ? (
-                        <a
-                          href={att.signedUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-gold-strong hover:underline no-print"
-                        >
-                          Open
-                        </a>
-                      ) : (
-                        <span className="text-muted-foreground">No preview</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
+                  <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-1.5">Code</th>
+                      <th className="px-3 py-1.5">Item</th>
+                      <th className="px-3 py-1.5 text-right">Grams</th>
+                      <th className="px-3 py-1.5 text-right">Qty</th>
+                      <th className="px-3 py-1.5 text-right">Unit Price</th>
+                      <th className="px-3 py-1.5 text-right">Line Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {detail.items.map((it, i) => {
+                      const lt = lineTotal(it.unitPrice, it.quantity);
+                      return (
+                        <tr key={`${it.claimReference}-${i}`}>
+                          <td className="px-3 py-1.5 font-mono">{it.itemCode ?? '—'}</td>
+                          <td className="px-3 py-1.5">{it.itemName ?? '—'}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">
+                            {it.gramsPerPiece
+                              ? totalGrams(it.gramsPerPiece, it.quantity)
+                              : '—'}
+                          </td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">
+                            {it.quantity}
+                          </td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">
+                            {it.unitPrice ? <Money amount={it.unitPrice} /> : '—'}
+                          </td>
+                          <td className="px-3 py-1.5 text-right font-medium tabular-nums">
+                            {lt ? <Money amount={lt} /> : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Edit Items (Super Admin) — Remove a piece or Split it to a new order.
+              Self-hides for non-owners, locked statuses, and the last item. */}
+            <OrderItemEditControls
+              orderId={detail.officialOrderId}
+              status={detail.status}
+              items={detail.items}
+              isOwner={detail.permissions.isOwner}
+              onRefresh={onRefresh}
+            />
+
+            {/* ------------------------------ HISTORY ------------------------- */}
+            <div className="space-y-3">
+              <div>
+                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Order activity — newest first
+                </p>
+                {detail.activity.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    No recorded activity for this order.
+                  </p>
+                ) : (
+                  <ul className="space-y-1.5" data-testid="order-modal-activity">
+                    {detail.activity.map((ev) => (
+                      <li key={ev.id} className="text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium">{humanize(ev.action)}</span>
+                          <span className="text-muted-foreground">
+                            {fmtDateTime(ev.occurredAt)}
+                          </span>
+                        </div>
+                        <p className="text-muted-foreground">
+                          {ev.actorLabel}
+                          {ev.outcome !== 'succeeded' ? ` · ${humanize(ev.outcome)}` : ''}
+                          {ev.reason ? ` · ${ev.reason}` : ''}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div>
+                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Uploaded screenshots &amp; files
+                </p>
+                {detail.attachments.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    No files uploaded for this order.
+                  </p>
+                ) : (
+                  <ul
+                    className="grid grid-cols-2 gap-2"
+                    data-testid="order-modal-attachments"
+                  >
+                    {detail.attachments.map((att) => (
+                      <li
+                        key={att.id}
+                        className="rounded-md border border-border p-1.5 text-xs"
+                      >
+                        {att.signedUrl && att.contentType.startsWith('image/') ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={att.signedUrl}
+                            alt={att.fileName ?? 'Attachment'}
+                            className="mb-1 h-24 w-full rounded object-cover"
+                          />
+                        ) : null}
+                        <p className="truncate">
+                          {att.fileName ?? humanize(att.purpose)}
+                        </p>
+                        {att.signedUrl ? (
+                          <a
+                            href={att.signedUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-gold-strong hover:underline no-print"
+                          >
+                            Open
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground">No preview</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
-          </div>
           </div>
         </TabPanel>
       </div>
@@ -1586,7 +1647,8 @@ function OrderActionsBar({
   // Pending Payment view so the operator can MANUALLY set the destination there
   // (Owner request) — adding a payment only updates the money, never the routing.
   const showTransfer =
-    (stageOffers(detail.status, 'transfer_destination') || section === 'unverified_pay') &&
+    (stageOffers(detail.status, 'transfer_destination') ||
+      section === 'unverified_pay') &&
     detail.permissions.canPrepareFulfillment;
 
   // Ship Confirm (release approved): shows a Waybill Number field first, and now
@@ -1603,9 +1665,7 @@ function OrderActionsBar({
     (p) => p.status !== 'verified' && !p.voided && !p.reversed,
   );
   const showVerify =
-    detail.permissions.canRecordPayment &&
-    !a.paidInFull &&
-    unverifiedPayments.length > 0;
+    detail.permissions.canRecordPayment && !a.paidInFull && unverifiedPayments.length > 0;
 
   // Add Payment inside the Actions section too (Owner request 2026-08-10): so a stage
   // that still has a balance — e.g. an order in Pickup awaiting payment — offers it in
@@ -1662,7 +1722,8 @@ function OrderActionsBar({
             <p className="rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground">
               This order was set up as a Layaway — it now lives in Payments & Layaway.
             </p>
-          ) : detail.status === 'for_layaway' && detail.permissions.canPrepareFulfillment ? (
+          ) : detail.status === 'for_layaway' &&
+            detail.permissions.canPrepareFulfillment ? (
             <LayawaySetupForOrder
               orderId={detail.officialOrderId}
               customerName={detail.customer.displayName}
@@ -1756,9 +1817,10 @@ export function OrderDetailsModal({
    *  its status counts (e.g. router.refresh()) — never a full reload. */
   onMutated?: () => void;
 }) {
-  const [loaded, setLoaded] = useState<{ orderId: string; result: OrderDetailResult } | null>(
-    null,
-  );
+  const [loaded, setLoaded] = useState<{
+    orderId: string;
+    result: OrderDetailResult;
+  } | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   // Body scroll-lock + Escape while open.
@@ -1797,7 +1859,7 @@ export function OrderDetailsModal({
   if (!orderId) return null;
 
   const isLoading = loaded?.orderId !== orderId;
-  const result = isLoading ? null : loaded?.result ?? null;
+  const result = isLoading ? null : (loaded?.result ?? null);
 
   return createPortal(
     <div id="order-modal-portal">

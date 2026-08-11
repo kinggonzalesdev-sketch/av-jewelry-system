@@ -106,7 +106,10 @@ export function rankCustomerMatches(
     const rowName = normalizeName(row.display_name);
     if (convId && row.pancake_conversation_id === convId) {
       candidates.push(toMatch(row, 'pancake_conversation', 'high'));
-    } else if (phone.length >= 7 && digitsOf(row.contact_number).endsWith(phone.slice(-9))) {
+    } else if (
+      phone.length >= 7 &&
+      digitsOf(row.contact_number).endsWith(phone.slice(-9))
+    ) {
       candidates.push(toMatch(row, 'phone', 'high'));
     } else if (normName && rowName === normName) {
       candidates.push(toMatch(row, 'exact_name', 'high'));
@@ -125,7 +128,9 @@ export function rankCustomerMatches(
   }
 
   candidates.sort(
-    (a, b) => SOURCE_RANK[a.source] - SOURCE_RANK[b.source] || a.displayName.localeCompare(b.displayName),
+    (a, b) =>
+      SOURCE_RANK[a.source] - SOURCE_RANK[b.source] ||
+      a.displayName.localeCompare(b.displayName),
   );
 
   const high = candidates.filter((c) => c.confidence === 'high');

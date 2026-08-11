@@ -680,19 +680,27 @@ export async function executeOwnerApproval(
   let delError: { message: string } | null = null;
   switch (request.action_kind) {
     case 'customer_delete':
-      ({ error: delError } = await supabase.rpc('permanently_delete_customer', { p_customer_id: eid }));
+      ({ error: delError } = await supabase.rpc('permanently_delete_customer', {
+        p_customer_id: eid,
+      }));
       break;
     case 'inventory_item_delete':
-      ({ error: delError } = await supabase.rpc('delete_inventory_item_direct', { p_item_id: eid }));
+      ({ error: delError } = await supabase.rpc('delete_inventory_item_direct', {
+        p_item_id: eid,
+      }));
       break;
     case 'scrap_sale_delete':
       ({ error: delError } = await supabase.rpc('delete_scrap_sale', { p_id: eid }));
       break;
     case 'attendance_delete':
-      ({ error: delError } = await supabase.rpc('delete_attendance_record', { p_record_id: eid }));
+      ({ error: delError } = await supabase.rpc('delete_attendance_record', {
+        p_record_id: eid,
+      }));
       break;
     case 'layaway_ledger_delete':
-      ({ error: delError } = await supabase.rpc('delete_layaway_ledger_row', { p_id: eid }));
+      ({ error: delError } = await supabase.rpc('delete_layaway_ledger_row', {
+        p_id: eid,
+      }));
       break;
     default:
       break;
@@ -790,7 +798,8 @@ export async function listOwnerApprovals(): Promise<ApprovalRow[]> {
     entityType: r.entity_type as string,
     entityId: r.entity_id as string,
     // Prefer the reason; fall back to the evidence note so the row is never contextless.
-    reason: (r.reason as string | null)?.trim() || (r.evidence_note as string | null) || '',
+    reason:
+      (r.reason as string | null)?.trim() || (r.evidence_note as string | null) || '',
     requestedAt: r.requested_at as string,
     decidedAt: (r.decided_at as string | null) ?? null,
     executedAt: (r.executed_at as string | null) ?? null,
@@ -808,9 +817,13 @@ export async function listOwnerApprovals(): Promise<ApprovalRow[]> {
       .from('official_orders')
       .select('id, order_number, invoice_number, customers ( display_name )')
       .in('id', orderIds);
-    const byId = new Map<string, { on: string | null; inv: string | null; cust: string | null }>();
+    const byId = new Map<
+      string,
+      { on: string | null; inv: string | null; cust: string | null }
+    >();
     for (const o of (orders ?? []) as Record<string, unknown>[]) {
-      const c = o.customers as { display_name?: string } | { display_name?: string }[] | null;
+      const c = o.customers as
+        { display_name?: string } | { display_name?: string }[] | null;
       const one = Array.isArray(c) ? c[0] : c;
       byId.set(o.id as string, {
         on: (o.order_number as string | null) ?? null,
@@ -830,8 +843,12 @@ export async function listOwnerApprovals(): Promise<ApprovalRow[]> {
 
   // Enrich with the requester's name.
   const reqIdByApproval = new Map<string, string | null>();
-  raw.forEach((r) => reqIdByApproval.set(r.id as string, (r.requested_by as string | null) ?? null));
-  const staffIds = [...new Set([...reqIdByApproval.values()].filter((v): v is string => Boolean(v)))];
+  raw.forEach((r) =>
+    reqIdByApproval.set(r.id as string, (r.requested_by as string | null) ?? null),
+  );
+  const staffIds = [
+    ...new Set([...reqIdByApproval.values()].filter((v): v is string => Boolean(v))),
+  ];
   if (staffIds.length > 0) {
     const { data: staff } = await supabase
       .from('staff_profiles')
@@ -912,54 +929,54 @@ export async function listFulfillments(): Promise<FulfillmentListResult> {
   );
 
   const rows = raw.map((row) => {
-      const r = row as Record<string, unknown>;
-      const orderId = r.official_order_id as string;
-      const order = one<{ order_number: string; customers: unknown }>(r.official_orders);
-      const customer = one<{ display_name: string }>(order?.customers);
+    const r = row as Record<string, unknown>;
+    const orderId = r.official_order_id as string;
+    const order = one<{ order_number: string; customers: unknown }>(r.official_orders);
+    const customer = one<{ display_name: string }>(order?.customers);
 
-      // A row absent from the map is treated exactly like a failed single read.
-      const result = balanceById.get(orderId);
+    // A row absent from the map is treated exactly like a failed single read.
+    const result = balanceById.get(orderId);
 
-      const base = {
-        officialOrderId: orderId,
-        orderNumber: order?.order_number ?? '—',
-        customerDisplayName: customer?.display_name ?? 'Unknown',
-        status: r.status as string,
-        method: (r.method as string | null) ?? null,
-        courier: (r.courier as string | null) ?? null,
-        trackingNumber: (r.tracking_number as string | null) ?? null,
-        isCod: r.is_cod === true,
-        codApproved: r.cod_approved_at !== null,
-        dispatched: r.dispatched_at !== null,
-        collectionChannel: (r.collection_channel as string | null) ?? null,
-        collected: r.collected_at !== null,
-        collectedAmount: (r.collected_amount as string | null) ?? null,
-        remitted: r.remitted_at !== null,
-      };
+    const base = {
+      officialOrderId: orderId,
+      orderNumber: order?.order_number ?? '—',
+      customerDisplayName: customer?.display_name ?? 'Unknown',
+      status: r.status as string,
+      method: (r.method as string | null) ?? null,
+      courier: (r.courier as string | null) ?? null,
+      trackingNumber: (r.tracking_number as string | null) ?? null,
+      isCod: r.is_cod === true,
+      codApproved: r.cod_approved_at !== null,
+      dispatched: r.dispatched_at !== null,
+      collectionChannel: (r.collection_channel as string | null) ?? null,
+      collected: r.collected_at !== null,
+      collectedAmount: (r.collected_amount as string | null) ?? null,
+      remitted: r.remitted_at !== null,
+    };
 
-      if (!result || !result.ok) {
-        return {
-          ...base,
-          verifiedNetPayments: '',
-          totalAmountPayable: '',
-          // Unknown is NOT "met". The database decides at release time either
-          // way, so this only governs what the operator is told.
-          meetsDepositFloor: false,
-          balanceUnavailable: result?.reason ?? 'The balance could not be read.',
-        };
-      }
-
-      const verified = result.balance.verifiedNetPayments;
-
+    if (!result || !result.ok) {
       return {
         ...base,
-        verifiedNetPayments: verified,
-        totalAmountPayable: result.balance.totalAmountPayable,
-        // Advisory only. The database decides at release time.
-        meetsDepositFloor: toCentavos(verified) >= 100000n,
-        balanceUnavailable: null,
+        verifiedNetPayments: '',
+        totalAmountPayable: '',
+        // Unknown is NOT "met". The database decides at release time either
+        // way, so this only governs what the operator is told.
+        meetsDepositFloor: false,
+        balanceUnavailable: result?.reason ?? 'The balance could not be read.',
       };
-    });
+    }
+
+    const verified = result.balance.verifiedNetPayments;
+
+    return {
+      ...base,
+      verifiedNetPayments: verified,
+      totalAmountPayable: result.balance.totalAmountPayable,
+      // Advisory only. The database decides at release time.
+      meetsDepositFloor: toCentavos(verified) >= 100000n,
+      balanceUnavailable: null,
+    };
+  });
 
   return { ok: true, rows };
 }

@@ -139,7 +139,12 @@ export function DeviceManager({
                   <span>
                     <span className="font-medium">{d.label}</span>{' '}
                     <span className="text-xs text-muted-foreground">
-                      · registered {new Date(d.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                      · registered{' '}
+                      {new Date(d.createdAt).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                      })}
                     </span>
                   </span>
                   <form action={revoke}>

@@ -93,7 +93,9 @@ export function CustomerMatchHint({
             {auto.hasConversation ? (
               <span className="ml-1 font-semibold">· Facebook linked ✓</span>
             ) : (
-              <span className="ml-1 text-muted-foreground">· no Facebook chat linked yet</span>
+              <span className="ml-1 text-muted-foreground">
+                · no Facebook chat linked yet
+              </span>
             )}
             . Reusing this customer avoids a duplicate.
           </p>
@@ -132,7 +134,9 @@ export function CustomerMatchHint({
                       <span className="text-muted-foreground">· {c.contactNumber}</span>
                     ) : null}
                     {fbTag(c)}
-                    <span className="ml-auto text-[10px] font-semibold text-amber-700">Use →</span>
+                    <span className="ml-auto text-[10px] font-semibold text-amber-700">
+                      Use →
+                    </span>
                   </button>
                 </li>
               ) : (

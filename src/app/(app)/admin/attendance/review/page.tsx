@@ -6,8 +6,7 @@ import { canOpenPage } from '@/lib/authz/guard';
 import { PageHeader } from '@/components/ui/page-primitives';
 import { listAttendance, listAttendanceSelfies } from '@/lib/hr/attendance';
 
-export const metadata: Metadata = {
-};
+export const metadata: Metadata = {};
 
 export const dynamic = 'force-dynamic';
 
@@ -30,9 +29,7 @@ export default async function ReviewAttendancePage() {
 
   return (
     <div>
-      <PageHeader
-        title="Review Attendance"
-      />
+      <PageHeader title="Review Attendance" />
       <ReviewAttendanceView records={records} selfies={selfies} />
     </div>
   );

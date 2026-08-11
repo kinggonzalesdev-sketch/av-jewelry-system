@@ -82,11 +82,15 @@ describe('Cancel Order — the confirmation', () => {
     expect(confirmBtn).toBeDisabled();
 
     // The wrong word is not enough either.
-    fireEvent.change(screen.getByPlaceholderText('CANCEL'), { target: { value: 'cancel' } });
+    fireEvent.change(screen.getByPlaceholderText('CANCEL'), {
+      target: { value: 'cancel' },
+    });
     expect(confirmBtn).toBeDisabled();
 
     // Exact word unlocks it.
-    fireEvent.change(screen.getByPlaceholderText('CANCEL'), { target: { value: 'CANCEL' } });
+    fireEvent.change(screen.getByPlaceholderText('CANCEL'), {
+      target: { value: 'CANCEL' },
+    });
     expect(confirmBtn).toBeEnabled();
   });
 

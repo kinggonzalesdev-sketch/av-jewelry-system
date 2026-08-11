@@ -3,7 +3,10 @@
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 
-import { importInventoryItemsAction, parseInventoryWorkbookAction } from '@/lib/inventory/actions';
+import {
+  importInventoryItemsAction,
+  parseInventoryWorkbookAction,
+} from '@/lib/inventory/actions';
 import type { DetectSummary, ImportCandidate } from '@/lib/inventory/import-detect';
 import { formatPeso } from '@/lib/payments/format';
 import { Button } from '@/components/ui/button';
@@ -35,7 +38,9 @@ export function InventoryImportButton() {
   const [query, setQuery] = useState('');
 
   const [importing, setImporting] = useState(false);
-  const [result, setResult] = useState<{ inserted: number; skipped: number } | null>(null);
+  const [result, setResult] = useState<{ inserted: number; skipped: number } | null>(
+    null,
+  );
 
   function reset() {
     setFileName('');
@@ -128,7 +133,13 @@ export function InventoryImportButton() {
   }
 
   const footer = result ? (
-    <Button type="button" onClick={() => { reset(); setOpen(false); }}>
+    <Button
+      type="button"
+      onClick={() => {
+        reset();
+        setOpen(false);
+      }}
+    >
       Done
     </Button>
   ) : candidates ? (
@@ -165,7 +176,10 @@ export function InventoryImportButton() {
 
       <Modal
         open={open}
-        onClose={() => { reset(); setOpen(false); }}
+        onClose={() => {
+          reset();
+          setOpen(false);
+        }}
         title="Import inventory from Excel / CSV"
         description="Every worksheet is read automatically. HK ITEM rows import as Fixed Price. Nothing is saved until you confirm."
         size="xl"
@@ -177,20 +191,27 @@ export function InventoryImportButton() {
             <p className="text-sm font-semibold text-foreground">Import complete</p>
             <p className="text-sm text-muted-foreground">
               <span className="text-green-600">{result.inserted} imported</span> ·{' '}
-              {result.skipped} skipped (duplicate / needs review). Imported items now appear in
-              Active Inventory — no refresh needed.
+              {result.skipped} skipped (duplicate / needs review). Imported items now
+              appear in Active Inventory — no refresh needed.
             </p>
           </div>
         ) : !candidates ? (
           <div className="space-y-3">
             <label
               onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => { e.preventDefault(); void onFile(e.dataTransfer.files?.[0]); }}
+              onDrop={(e) => {
+                e.preventDefault();
+                void onFile(e.dataTransfer.files?.[0]);
+              }}
               className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border bg-background px-4 py-10 text-center text-sm hover:border-gold/50"
             >
-              <span className="text-2xl" aria-hidden="true">⭱</span>
+              <span className="text-2xl" aria-hidden="true">
+                ⭱
+              </span>
               <span className="font-medium">
-                {parsing ? 'Reading every worksheet…' : 'Choose an .xlsx or .csv file or drag it here'}
+                {parsing
+                  ? 'Reading every worksheet…'
+                  : 'Choose an .xlsx or .csv file or drag it here'}
               </span>
               <span className="text-xs text-muted-foreground">
                 All sheets, blocks, and HK ITEM prices are detected automatically.
@@ -204,7 +225,11 @@ export function InventoryImportButton() {
                 onChange={(e) => void onFile(e.target.files?.[0])}
               />
             </label>
-            {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+            {error ? (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            ) : null}
           </div>
         ) : (
           <div className="space-y-3">
@@ -218,9 +243,12 @@ export function InventoryImportButton() {
                 <span>{summary.candidates} rows</span>
                 <span className="text-green-600">{summary.valid} valid new</span>
                 <span className="text-amber-600">{summary.duplicate} duplicate</span>
-                <span className="text-destructive">{summary.needsReview} need review</span>
+                <span className="text-destructive">
+                  {summary.needsReview} need review
+                </span>
                 <span className="text-muted-foreground">
-                  {summary.ignoredBlank} blank · {summary.ignoredHeader} header rows ignored
+                  {summary.ignoredBlank} blank · {summary.ignoredHeader} header rows
+                  ignored
                 </span>
               </div>
             ) : null}
@@ -258,7 +286,9 @@ export function InventoryImportButton() {
                 className="h-8 flex-1 rounded-md border border-border bg-background px-2 text-xs"
                 data-testid="import-search"
               />
-              <span className="text-xs text-muted-foreground">{filtered.length} shown</span>
+              <span className="text-xs text-muted-foreground">
+                {filtered.length} shown
+              </span>
             </div>
 
             {/* Preview table */}
@@ -266,9 +296,26 @@ export function InventoryImportButton() {
               <table className="data-table min-w-[1100px] text-left text-[11px]">
                 <thead className="sticky top-0 z-10 bg-muted/90 text-[10px] uppercase text-muted-foreground">
                   <tr>
-                    {['Sheet', 'Row', 'Original', 'Code', 'Item', 'Type', 'Grams', 'Size',
-                      'Pricing', 'Fixed Price', 'Per Gram', 'Computed', 'Date', 'Dup', 'Validation'].map((h) => (
-                      <th key={h} className="whitespace-nowrap px-2 py-1.5">{h}</th>
+                    {[
+                      'Sheet',
+                      'Row',
+                      'Original',
+                      'Code',
+                      'Item',
+                      'Type',
+                      'Grams',
+                      'Size',
+                      'Pricing',
+                      'Fixed Price',
+                      'Per Gram',
+                      'Computed',
+                      'Date',
+                      'Dup',
+                      'Validation',
+                    ].map((h) => (
+                      <th key={h} className="whitespace-nowrap px-2 py-1.5">
+                        {h}
+                      </th>
                     ))}
                   </tr>
                 </thead>
@@ -286,7 +333,10 @@ export function InventoryImportButton() {
                     >
                       <td className="px-2 py-1">{c.sheet}</td>
                       <td className="px-2 py-1 tabular-nums">{c.sourceRow}</td>
-                      <td className="max-w-[200px] truncate px-2 py-1 font-mono" title={c.original}>
+                      <td
+                        className="max-w-[200px] truncate px-2 py-1 font-mono"
+                        title={c.original}
+                      >
                         {c.original}
                       </td>
                       <td className="px-2 py-1 font-mono">{c.inventoryCode ?? '—'}</td>
@@ -302,14 +352,22 @@ export function InventoryImportButton() {
                       <td className="px-2 py-1 tabular-nums">{c.grams ?? '—'}</td>
                       <td className="px-2 py-1">{c.size ?? '—'}</td>
                       <td className="px-2 py-1">
-                        {c.pricingType === 'fixed' ? 'Fixed' : c.pricingType === 'per_gram' ? 'Per Gram' : '—'}
+                        {c.pricingType === 'fixed'
+                          ? 'Fixed'
+                          : c.pricingType === 'per_gram'
+                            ? 'Per Gram'
+                            : '—'}
                       </td>
                       <td className="px-2 py-1 tabular-nums">{peso(c.fixedPrice)}</td>
                       <td className="px-2 py-1 tabular-nums">{peso(c.pricePerGram)}</td>
                       <td className="px-2 py-1 tabular-nums">{peso(c.computedPrice)}</td>
                       <td className="px-2 py-1">{c.date ?? '—'}</td>
                       <td className="px-2 py-1">
-                        {c.duplicate ? <span className="text-amber-600">Dup</span> : <span className="text-green-600">New</span>}
+                        {c.duplicate ? (
+                          <span className="text-amber-600">Dup</span>
+                        ) : (
+                          <span className="text-green-600">New</span>
+                        )}
                       </td>
                       <td className="px-2 py-1">
                         {c.validation === 'valid' ? (
@@ -330,10 +388,15 @@ export function InventoryImportButton() {
               </table>
             </div>
             <p className="text-[11px] text-muted-foreground">
-              Confirming imports the {importable.length} valid, non-duplicate row(s) from every sheet.
-              Duplicates and needs-review rows are skipped — never overwritten.
+              Confirming imports the {importable.length} valid, non-duplicate row(s) from
+              every sheet. Duplicates and needs-review rows are skipped — never
+              overwritten.
             </p>
-            {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+            {error ? (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            ) : null}
           </div>
         )}
       </Modal>

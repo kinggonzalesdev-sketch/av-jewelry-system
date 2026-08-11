@@ -4,8 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getMfaStatus, MFA_ENFORCEMENT_IMPLEMENTED } from '@/lib/auth/mfa';
 import { requireActiveStaff } from '@/lib/authz/guard';
 
-export const metadata: Metadata = {
-};
+export const metadata: Metadata = {};
 
 export const dynamic = 'force-dynamic';
 

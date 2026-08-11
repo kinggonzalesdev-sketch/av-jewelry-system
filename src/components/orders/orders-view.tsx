@@ -17,7 +17,12 @@ import {
 import type { KeepLayawayRow } from '@/lib/payments/layaway-ledger';
 import { Money } from '@/components/shell/privacy';
 import { EmptyState } from '@/components/states/empty-state';
-import { PageHeader, StatusBadge, ReadError, type BadgeTone } from '@/components/ui/page-primitives';
+import {
+  PageHeader,
+  StatusBadge,
+  ReadError,
+  type BadgeTone,
+} from '@/components/ui/page-primitives';
 import { DataTable, Thead, Tr, Th, Td } from '@/components/ui/data-table';
 import { formatDate } from '@/lib/format/date';
 import { Pagination } from '@/components/ui/pagination';
@@ -215,7 +220,11 @@ function OrderRow({
           ("August 10, 2026"). Waybill moved to the Order Details view but stays
           searchable + stored. */}
       <Td kind="center" clip className="whitespace-nowrap">
-        {order.createdAt ? formatDate(order.createdAt) : <span className="text-muted-foreground">—</span>}
+        {order.createdAt ? (
+          formatDate(order.createdAt)
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
       </Td>
       <Td kind="center">
         <StatusBadge label={humanize(order.status)} tone="neutral" />
@@ -240,13 +249,17 @@ function OrderRow({
             <OrderEdit
               orderId={order.officialOrderId}
               currentName={order.customerDisplayName}
-              currentTotal={order.paymentStatus === 'unavailable' ? '' : order.totalAmountPayable}
+              currentTotal={
+                order.paymentStatus === 'unavailable' ? '' : order.totalAmountPayable
+              }
             />
           ) : null}
           {canManageOrders ? (
             <OrderDelete
               orderId={order.officialOrderId}
-              orderLabel={order.invoiceNumber !== '—' ? order.invoiceNumber : order.orderNumber}
+              orderLabel={
+                order.invoiceNumber !== '—' ? order.invoiceNumber : order.orderNumber
+              }
               customerName={order.customerDisplayName}
               orderStatus={humanize(order.status)}
             />
@@ -281,7 +294,11 @@ function latestFirst(a: OrderListRow, b: OrderListRow): number {
   const bc = ts(b.createdAt);
   if (bc !== ac) return bc - ac;
   // Permanent id, descending — the final stable tie-breaker.
-  return a.officialOrderId < b.officialOrderId ? 1 : a.officialOrderId > b.officialOrderId ? -1 : 0;
+  return a.officialOrderId < b.officialOrderId
+    ? 1
+    : a.officialOrderId > b.officialOrderId
+      ? -1
+      : 0;
 }
 
 function completedFirst(a: OrderListRow, b: OrderListRow): number {
@@ -480,7 +497,12 @@ export function OrdersView({
       if (orderDate && o.createdAt.slice(0, 10) !== orderDate) return false;
       if (shipDate && (o.shipDate?.slice(0, 10) ?? '') !== shipDate) return false;
       if (!q) return true;
-      return [o.orderNumber, o.invoiceNumber, o.waybillNumber ?? '', o.customerDisplayName]
+      return [
+        o.orderNumber,
+        o.invoiceNumber,
+        o.waybillNumber ?? '',
+        o.customerDisplayName,
+      ]
         .join(' ')
         .toLowerCase()
         .includes(q);
@@ -498,7 +520,10 @@ export function OrdersView({
 
   const ordPageCount = Math.max(1, Math.ceil(filtered.length / ordPageSize));
   const ordPageSafe = Math.min(ordPage, ordPageCount);
-  const pagedOrders = filtered.slice((ordPageSafe - 1) * ordPageSize, ordPageSafe * ordPageSize);
+  const pagedOrders = filtered.slice(
+    (ordPageSafe - 1) * ordPageSize,
+    ordPageSafe * ordPageSize,
+  );
 
   // A FAILED read is not "no orders" — say so loudly (the session's hard rule).
   if (!result.ok) {
@@ -520,152 +545,152 @@ export function OrdersView({
           including the search/filter row — scrolls normally so it never eats the
           small screen; on desktop it pins as before. */}
       <div className="space-y-3 sm:sticky sm:top-0 sm:z-20 sm:-mx-5 sm:border-b sm:border-border sm:bg-background sm:px-5 sm:py-3">
-      {title ? <PageHeader title={title} /> : null}
-      {/* Top action row: + New Order, then Send All Invoices while For Invoice is
+        {title ? <PageHeader title={title} /> : null}
+        {/* Top action row: + New Order, then Send All Invoices while For Invoice is
           the active card. Hidden otherwise, with no leftover gap. */}
-      {newOrderAction || card === 'for_invoice' || liveCaptureCount > 0 ? (
-        <div className="flex flex-wrap items-center gap-2">
-          {newOrderAction}
-          {/* Compact "Capture Pending" pill — amber, only when captures are waiting.
+        {newOrderAction || card === 'for_invoice' || liveCaptureCount > 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {newOrderAction}
+            {/* Compact "Capture Pending" pill — amber, only when captures are waiting.
               Lightweight COUNT only; clicking OPENS the Incoming Captures station,
               which stays hidden until then (Owner request 2026-08-09). The station is
               still mounted the whole time for its background auto-print. */}
-          {liveCaptureCount > 0 ? (
-            <button
-              type="button"
-              onClick={() =>
-                window.dispatchEvent(new CustomEvent(TOGGLE_INCOMING_CAPTURES_EVENT))
-              }
-              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-500/20 dark:text-amber-400"
-              data-testid="capture-pending-indicator"
-              title="Show or hide the pending captures"
-            >
-              <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden="true" />
-              Capture Pending
-              <span className="rounded-full bg-amber-500/20 px-1.5 text-xs font-semibold tabular-nums">
-                {liveCaptureCount}
-              </span>
-            </button>
-          ) : null}
-          {card === 'for_invoice' ? <SendAllInvoices /> : null}
-        </div>
-      ) : null}
+            {liveCaptureCount > 0 ? (
+              <button
+                type="button"
+                onClick={() =>
+                  window.dispatchEvent(new CustomEvent(TOGGLE_INCOMING_CAPTURES_EVENT))
+                }
+                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-500/20 dark:text-amber-400"
+                data-testid="capture-pending-indicator"
+                title="Show or hide the pending captures"
+              >
+                <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden="true" />
+                Capture Pending
+                <span className="rounded-full bg-amber-500/20 px-1.5 text-xs font-semibold tabular-nums">
+                  {liveCaptureCount}
+                </span>
+              </button>
+            ) : null}
+            {card === 'for_invoice' ? <SendAllInvoices /> : null}
+          </div>
+        ) : null}
 
-      {/* Status cards — real counts of the loaded orders; each is a quick filter
+        {/* Status cards — real counts of the loaded orders; each is a quick filter
           with a coloured icon badge. Active card is ringed in the brand accent.
           Responsive grid (Owner request 2026-08-05, replaces the old single
           horizontally-scrolling row): auto-fit equal-width columns that STRETCH to
           fill the full width — no fixed card width, no horizontal scroll, no empty
           space on the right. It reflows on its own as statuses are added/removed
           (~2–3 per row on a phone, more as the screen widens). */}
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-2">
-        {CARD_DEFS.map((def) => {
-          const active = card === def.key;
-          return (
-            <button
-              key={def.key}
-              type="button"
-              onClick={() => setCard(def.key)}
-              aria-pressed={active}
-              data-testid={`orders-card-${def.key}`}
-              className={cn(
-                // Width comes from the responsive grid; the card just fills its
-                // cell and keeps a fixed min-height so every card is equal height.
-                // Content is centered (Owner request): icon → label → value stacked
-                // and centered, vertically balanced.
-                'flex min-h-[92px] w-full flex-col items-center justify-center gap-1.5 rounded-xl border bg-card p-2.5 text-center transition-colors',
-                active
-                  ? 'border-gold ring-1 ring-gold'
-                  : 'border-border hover:border-gold/40',
-              )}
-            >
-              <span
-                aria-hidden="true"
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-2">
+          {CARD_DEFS.map((def) => {
+            const active = card === def.key;
+            return (
+              <button
+                key={def.key}
+                type="button"
+                onClick={() => setCard(def.key)}
+                aria-pressed={active}
+                data-testid={`orders-card-${def.key}`}
                 className={cn(
-                  'flex h-7 w-7 items-center justify-center rounded-lg text-sm',
-                  CARD_ICON_TONE[def.tone],
+                  // Width comes from the responsive grid; the card just fills its
+                  // cell and keeps a fixed min-height so every card is equal height.
+                  // Content is centered (Owner request): icon → label → value stacked
+                  // and centered, vertically balanced.
+                  'flex min-h-[92px] w-full flex-col items-center justify-center gap-1.5 rounded-xl border bg-card p-2.5 text-center transition-colors',
+                  active
+                    ? 'border-gold ring-1 ring-gold'
+                    : 'border-border hover:border-gold/40',
                 )}
               >
-                {def.icon}
-              </span>
-              <span className="text-[11px] font-semibold uppercase leading-tight tracking-wide text-muted-foreground [hyphens:auto]">
-                {def.label}
-              </span>
-              <span className="text-2xl font-bold leading-none tabular-nums text-foreground">
-                {counts[def.key]}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    'flex h-7 w-7 items-center justify-center rounded-lg text-sm',
+                    CARD_ICON_TONE[def.tone],
+                  )}
+                >
+                  {def.icon}
+                </span>
+                <span className="text-[11px] font-semibold uppercase leading-tight tracking-wide text-muted-foreground [hyphens:auto]">
+                  {def.label}
+                </span>
+                <span className="text-2xl font-bold leading-none tabular-nums text-foreground">
+                  {counts[def.key]}
+                </span>
+              </button>
+            );
+          })}
+        </div>
 
-      {/* Search + filters — operate on the loaded set (client-side), honestly
+        {/* Search + filters — operate on the loaded set (client-side), honestly
           labelled. Search spans order no., invoice no., and customer name. Part of
           the sticky top section (Owner request) so it pins with the cards. */}
-      <div className="rounded-xl border border-border bg-card p-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search waybill, order no., invoice no., or customer"
-            aria-label="Search orders"
-            data-testid="orders-search"
-            className="h-9 flex-1 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold"
-          />
-          {/* Order flow — the SAME state the status cards drive, so the dropdown
+        <div className="rounded-xl border border-border bg-card p-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search waybill, order no., invoice no., or customer"
+              aria-label="Search orders"
+              data-testid="orders-search"
+              className="h-9 flex-1 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+            />
+            {/* Order flow — the SAME state the status cards drive, so the dropdown
               and the highlighted card can never disagree. Its options are derived
               from CARD_DEFS rather than written out again, which is what keeps the
               labels identical and stops a flow existing in one place but not the
               other. Selecting filters in place; nothing navigates. */}
-          <select
-            value={card}
-            onChange={(e) => setCard(e.target.value as CardKey)}
-            aria-label="Filter by order flow"
-            data-testid="orders-filter-flow"
-            className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
-          >
-            {CARD_DEFS.map((def) => (
-              <option key={def.key} value={def.key}>
-                {def.label}
-              </option>
-            ))}
-          </select>
+            <select
+              value={card}
+              onChange={(e) => setCard(e.target.value as CardKey)}
+              aria-label="Filter by order flow"
+              data-testid="orders-filter-flow"
+              className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+            >
+              {CARD_DEFS.map((def) => (
+                <option key={def.key} value={def.key}>
+                  {def.label}
+                </option>
+              ))}
+            </select>
 
-          {/* Approved date filters. Order Date filters on the order's created day,
+            {/* Approved date filters. Order Date filters on the order's created day,
               Ship Date on the fulfillment dispatch day. */}
-          <label className="flex items-center gap-1 text-xs text-muted-foreground">
-            <span className="sr-only">Order date</span>
-            <span aria-hidden="true">🗓</span>
-            <input
-              type="date"
-              value={orderDate}
-              onChange={(e) => setOrderDate(e.target.value)}
-              aria-label="Filter by order date"
-              data-testid="orders-filter-order-date"
-              title="Order date"
-              className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
-            />
-          </label>
-          <label className="flex items-center gap-1 text-xs text-muted-foreground">
-            <span className="sr-only">Ship date</span>
-            <span aria-hidden="true">🚚</span>
-            <input
-              type="date"
-              value={shipDate}
-              onChange={(e) => setShipDate(e.target.value)}
-              aria-label="Filter by ship date"
-              data-testid="orders-filter-ship-date"
-              title="Ship date"
-              className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
-            />
-          </label>
+            <label className="flex items-center gap-1 text-xs text-muted-foreground">
+              <span className="sr-only">Order date</span>
+              <span aria-hidden="true">🗓</span>
+              <input
+                type="date"
+                value={orderDate}
+                onChange={(e) => setOrderDate(e.target.value)}
+                aria-label="Filter by order date"
+                data-testid="orders-filter-order-date"
+                title="Order date"
+                className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+              />
+            </label>
+            <label className="flex items-center gap-1 text-xs text-muted-foreground">
+              <span className="sr-only">Ship date</span>
+              <span aria-hidden="true">🚚</span>
+              <input
+                type="date"
+                value={shipDate}
+                onChange={(e) => setShipDate(e.target.value)}
+                aria-label="Filter by ship date"
+                data-testid="orders-filter-ship-date"
+                title="Ship date"
+                className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+              />
+            </label>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Showing <span className="tabular-nums">{filtered.length}</span> of{' '}
+            <span className="tabular-nums">{rows.length}</span> Official Orders. The
+            status cards count every order in the store.
+          </p>
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Showing <span className="tabular-nums">{filtered.length}</span> of{' '}
-          <span className="tabular-nums">{rows.length}</span> Official Orders. The
-          status cards count every order in the store.
-        </p>
-      </div>
       </div>
 
       {/* Table region: honest empty state at zero, "no matches" when filters
@@ -730,7 +755,10 @@ export function OrdersView({
           shows here too (Owner request). These are imported layaway accounts flagged
           KEEP; manage them under Payments & Layaway. */}
       {card === 'keep' && keepLayaways.length > 0 ? (
-        <div className="rounded-xl border border-border bg-card" data-testid="keep-layaways">
+        <div
+          className="rounded-xl border border-border bg-card"
+          data-testid="keep-layaways"
+        >
           <div className="flex items-center justify-between px-4 py-2.5">
             <p className="text-sm font-semibold">
               From Layaway — KEEP{' '}

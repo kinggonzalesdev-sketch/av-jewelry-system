@@ -155,9 +155,10 @@ function AddInfoForm({
   const [reference, setReference] = useState('');
 
   // ---- Assigned Layaway Code (automatic, read-only) -----------------------
-  const [assignedCode, setAssignedCode] = useState<{ letter: string | null; code: string | null }>(
-    { letter: null, code: null },
-  );
+  const [assignedCode, setAssignedCode] = useState<{
+    letter: string | null;
+    code: string | null;
+  }>({ letter: null, code: null });
   useEffect(() => {
     const name = source?.customerName?.trim();
     let cancelled = false;
@@ -191,8 +192,10 @@ function AddInfoForm({
 
   const derivedPerGram =
     source && source.grams && Number(source.grams) > 0
-      ? toStr((itemCentavos * 1000n + BigInt(Math.round(Number(source.grams) * 1000)) / 2n) /
-          BigInt(Math.round(Number(source.grams) * 1000)))
+      ? toStr(
+          (itemCentavos * 1000n + BigInt(Math.round(Number(source.grams) * 1000)) / 2n) /
+            BigInt(Math.round(Number(source.grams) * 1000)),
+        )
       : null;
 
   const [pending, setPending] = useState(false);
@@ -347,7 +350,9 @@ function AddInfoForm({
           <L>Source Layaway Record</L>
           <Combobox
             className={fieldClass}
-            placeholder={sourcesLoading ? 'Loading records…' : 'Search by account, customer or item'}
+            placeholder={
+              sourcesLoading ? 'Loading records…' : 'Search by account, customer or item'
+            }
             value={sourceInput}
             onChange={setSourceInput}
             options={sources.map(sourceLabel)}
@@ -381,7 +386,11 @@ function AddInfoForm({
             value={assignedCode.code ?? ''}
             readOnly
             placeholder={
-              !source ? 'Select a source record' : assignedCode.letter ? 'Finding a code…' : '—'
+              !source
+                ? 'Select a source record'
+                : assignedCode.letter
+                  ? 'Finding a code…'
+                  : '—'
             }
             data-testid="add-info-code"
           />
@@ -390,7 +399,10 @@ function AddInfoForm({
               Code assigned automatically
             </span>
           ) : source && assignedCode.letter ? (
-            <span className="mt-1 block text-[11px] text-destructive" data-testid="add-info-code-none">
+            <span
+              className="mt-1 block text-[11px] text-destructive"
+              data-testid="add-info-code-none"
+            >
               No available layaway code remains under letter {assignedCode.letter}.
             </span>
           ) : null}
@@ -474,7 +486,9 @@ function AddInfoForm({
                   data-testid={`add-info-term-${t}`}
                   className={cn(
                     'flex-1 rounded-md px-2 py-1 text-[11px] font-semibold',
-                    term === t ? 'bg-gold text-black' : 'text-muted-foreground hover:bg-accent',
+                    term === t
+                      ? 'bg-gold text-black'
+                      : 'text-muted-foreground hover:bg-accent',
                   )}
                 >
                   {t} {t === 1 ? 'month' : 'months'}
@@ -540,7 +554,10 @@ function AddInfoForm({
           data-testid="add-info-totals"
         >
           <Fig label="Item total" value={toStr(itemCentavos)} />
-          <Fig label="Monthly interest" value={noInterest ? '0' : toStr(monthlyInterest)} />
+          <Fig
+            label="Monthly interest"
+            value={noInterest ? '0' : toStr(monthlyInterest)}
+          />
           <div className="flex items-center justify-between gap-2 py-0.5">
             <dt className="text-xs text-muted-foreground">Term</dt>
             <dd className="font-medium tabular-nums">
@@ -553,7 +570,11 @@ function AddInfoForm({
         </dl>
 
         {error ? (
-          <p role="alert" className="text-sm text-destructive" data-testid="add-info-error">
+          <p
+            role="alert"
+            className="text-sm text-destructive"
+            data-testid="add-info-error"
+          >
             {error}
           </p>
         ) : null}
@@ -584,10 +605,20 @@ function AddInfoForm({
         critical
         footer={
           <>
-            <Button type="button" variant="outline" onClick={() => setConfirming(false)} disabled={pending}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirming(false)}
+              disabled={pending}
+            >
               Back
             </Button>
-            <Button type="button" onClick={() => void save()} disabled={pending} data-testid="add-info-confirm">
+            <Button
+              type="button"
+              onClick={() => void save()}
+              disabled={pending}
+              data-testid="add-info-confirm"
+            >
               {pending ? 'Saving…' : 'Confirm & Save'}
             </Button>
           </>
@@ -598,7 +629,10 @@ function AddInfoForm({
           <Line label="Assigned Code" value={assignedCode.code ?? '—'} />
           <Line label="Item" value={source?.itemCode ?? '—'} />
           <Line label="Item Total" value={formatPeso(toStr(itemCentavos))} />
-          <Line label="Monthly Interest" value={noInterest ? '₱0' : formatPeso(toStr(monthlyInterest))} />
+          <Line
+            label="Monthly Interest"
+            value={noInterest ? '₱0' : formatPeso(toStr(monthlyInterest))}
+          />
           <Line label="Term" value={`${term} ${term === 1 ? 'month' : 'months'}`} />
           <Line label="Payment" value={formatPeso(toStr(paidCentavos))} />
           <Line label="Grand Total" value={formatPeso(toStr(grandTotal))} strong />
@@ -609,16 +643,34 @@ function AddInfoForm({
   );
 }
 
-function Line({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+function Line({
+  label,
+  value,
+  strong,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+}) {
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="text-xs text-muted-foreground">{label}</span>
-      <span className={cn('tabular-nums', strong ? 'font-bold' : 'font-medium')}>{value}</span>
+      <span className={cn('tabular-nums', strong ? 'font-bold' : 'font-medium')}>
+        {value}
+      </span>
     </div>
   );
 }
 
-function Fig({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+function Fig({
+  label,
+  value,
+  strong,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+}) {
   return (
     <div className="flex items-center justify-between gap-2 py-0.5">
       <dt className="text-xs text-muted-foreground">{label}</dt>

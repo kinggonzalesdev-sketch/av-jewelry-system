@@ -2,7 +2,12 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DailyCashView } from '@/components/cash/daily-cash-view';
-import type { DailyCashSummary, DetailPage, ExpenseRow, WalkInRow } from '@/lib/cash/types';
+import type {
+  DailyCashSummary,
+  DetailPage,
+  ExpenseRow,
+  WalkInRow,
+} from '@/lib/cash/types';
 import type { WalkInItem } from '@/lib/orders/service';
 
 /**
@@ -94,17 +99,31 @@ beforeEach(() => {
   m.addExpenseAction.mockResolvedValue({ ok: true });
   m.deleteCashRecordAction.mockResolvedValue({ ok: true });
   m.saveActualCashCountAction.mockResolvedValue({ ok: true });
-  m.captureWalkInOrderAction.mockResolvedValue({ ok: true, orderNumber: 'ORD-1', itemCount: 1 });
-  m.saveWalkInOrderAction.mockResolvedValue({ ok: true, orderNumber: 'ORD-1', balance: '4940.00' });
+  m.captureWalkInOrderAction.mockResolvedValue({
+    ok: true,
+    orderNumber: 'ORD-1',
+    itemCount: 1,
+  });
+  m.saveWalkInOrderAction.mockResolvedValue({
+    ok: true,
+    orderNumber: 'ORD-1',
+    balance: '4940.00',
+  });
 });
 
 function fillWalkIn(paymentValue?: string) {
   fireEvent.click(screen.getByTestId('cash-add')); // Sales Walk-ins is the default tab
-  fireEvent.change(screen.getByLabelText('Customer Name'), { target: { value: 'Juan Dela Cruz' } });
-  fireEvent.change(screen.getByLabelText('Item 1'), { target: { value: 'K18-001 — Gold Ring' } });
+  fireEvent.change(screen.getByLabelText('Customer Name'), {
+    target: { value: 'Juan Dela Cruz' },
+  });
+  fireEvent.change(screen.getByLabelText('Item 1'), {
+    target: { value: 'K18-001 — Gold Ring' },
+  });
   fireEvent.change(screen.getByLabelText('Price 1'), { target: { value: '9940' } });
   if (paymentValue !== undefined) {
-    fireEvent.change(screen.getByTestId('walkin-payment'), { target: { value: paymentValue } });
+    fireEvent.change(screen.getByTestId('walkin-payment'), {
+      target: { value: paymentValue },
+    });
   }
   fireEvent.click(screen.getByTestId('walkin-save'));
 }
@@ -198,9 +217,13 @@ describe('Daily Cash — Details is a self-contained workspace', () => {
   it('changing the date stays in this section — re-reads the day in place, never navigates', async () => {
     renderView();
 
-    fireEvent.change(screen.getByTestId('cash-date'), { target: { value: '2026-08-09' } });
+    fireEvent.change(screen.getByTestId('cash-date'), {
+      target: { value: '2026-08-09' },
+    });
 
-    await waitFor(() => expect(m.loadCashSummaryAction).toHaveBeenCalledWith('2026-08-09'));
+    await waitFor(() =>
+      expect(m.loadCashSummaryAction).toHaveBeenCalledWith('2026-08-09'),
+    );
     expect(m.push).not.toHaveBeenCalled();
     expect(m.refresh).not.toHaveBeenCalled();
   });
@@ -219,7 +242,10 @@ describe('Daily Cash — Details is a self-contained workspace', () => {
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
     await waitFor(() =>
-      expect(m.deleteCashRecordAction).toHaveBeenCalledWith('daily_cash_expenses', 'exp-1'),
+      expect(m.deleteCashRecordAction).toHaveBeenCalledWith(
+        'daily_cash_expenses',
+        'exp-1',
+      ),
     );
     expect(m.push).not.toHaveBeenCalled();
     expect(m.refresh).not.toHaveBeenCalled();
@@ -235,7 +261,9 @@ describe('Daily Cash — Details is a self-contained workspace', () => {
 
     await waitFor(() => expect(m.addExpenseAction).toHaveBeenCalled());
     // Totals recalculated via a targeted summary re-read, NOT a router.refresh().
-    await waitFor(() => expect(m.loadCashSummaryAction).toHaveBeenCalledWith('2026-08-10'));
+    await waitFor(() =>
+      expect(m.loadCashSummaryAction).toHaveBeenCalledWith('2026-08-10'),
+    );
     expect(m.refresh).not.toHaveBeenCalled();
     expect(m.push).not.toHaveBeenCalled();
   });

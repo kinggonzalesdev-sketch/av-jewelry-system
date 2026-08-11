@@ -13,7 +13,9 @@ vi.mock('@/lib/customers/actions', () => ({
 }));
 
 // The row's Delete modal + the detail modal refresh use the router.
-vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+}));
 
 const rows: CustomersResult = {
   ok: true,
@@ -52,12 +54,24 @@ describe('CustomersView list states', () => {
   });
 
   it('shows a genuine empty state when there are no customers', () => {
-    render(<CustomersView result={{ ok: true, rows: [], total: 0, page: 1, pageSize: 25 }} query="" canManage={true} />);
+    render(
+      <CustomersView
+        result={{ ok: true, rows: [], total: 0, page: 1, pageSize: 25 }}
+        query=""
+        canManage={true}
+      />,
+    );
     expect(screen.getByText(/No customers yet/i)).toBeInTheDocument();
   });
 
   it('distinguishes "no matches" for a search from "no customers"', () => {
-    render(<CustomersView result={{ ok: true, rows: [], total: 0, page: 1, pageSize: 25 }} query="zzz" canManage={true} />);
+    render(
+      <CustomersView
+        result={{ ok: true, rows: [], total: 0, page: 1, pageSize: 25 }}
+        query="zzz"
+        canManage={true}
+      />,
+    );
     expect(screen.getByText(/No matches/i)).toBeInTheDocument();
   });
 

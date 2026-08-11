@@ -8,8 +8,15 @@ import {
   permanentlyDeleteInventoryItemAction,
   restoreInventoryItemAction,
 } from '@/lib/inventory/actions';
-import { EMPTY_INVENTORY_STATE, type InventoryActionState } from '@/lib/inventory/action-state';
-import type { ArchivedInventoryResult, ArchivedInventoryRow, ItemDependency } from '@/lib/inventory/archive';
+import {
+  EMPTY_INVENTORY_STATE,
+  type InventoryActionState,
+} from '@/lib/inventory/action-state';
+import type {
+  ArchivedInventoryResult,
+  ArchivedInventoryRow,
+  ItemDependency,
+} from '@/lib/inventory/archive';
 import { EmptyState } from '@/components/states/empty-state';
 import { ReadError } from '@/components/ui/page-primitives';
 import { Button } from '@/components/ui/button';
@@ -77,7 +84,9 @@ export function ArchivedItemsView({
 
   // Dependencies for the permanent-delete modal.
   const [deps, setDeps] = useState<
-    { loading: true } | { loading: false; ok: true; rows: ItemDependency[] } | { loading: false; ok: false; error: string }
+    | { loading: true }
+    | { loading: false; ok: true; rows: ItemDependency[] }
+    | { loading: false; ok: false; error: string }
   >({ loading: true });
   useEffect(() => {
     if (!deleteRow) return;
@@ -96,7 +105,9 @@ export function ArchivedItemsView({
   }, [deleteRow]);
 
   if (!archived.ok) {
-    return <ReadError title="Archived items could not be loaded" detail={archived.reason} />;
+    return (
+      <ReadError title="Archived items could not be loaded" detail={archived.reason} />
+    );
   }
   if (archived.rows.length === 0) {
     return (
@@ -107,19 +118,21 @@ export function ArchivedItemsView({
     );
   }
 
-  const eligibleForDelete =
-    deps.loading === false && deps.ok && deps.rows.length === 0;
+  const eligibleForDelete = deps.loading === false && deps.ok && deps.rows.length === 0;
 
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
         Archived records are incorrect / duplicate / test items — never legitimate sales
-        (those are Completed Items). Archiving is reversible; the record and every link are
-        preserved.
+        (those are Completed Items). Archiving is reversible; the record and every link
+        are preserved.
       </p>
 
       <div className="overflow-x-auto rounded-xl border border-border bg-card">
-        <table className="data-table w-full min-w-[860px] text-left text-xs" data-testid="archived-items">
+        <table
+          className="data-table w-full min-w-[860px] text-left text-xs"
+          data-testid="archived-items"
+        >
           <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
             <tr>
               <th className="px-3 py-2.5 text-left">Inventory Code</th>
@@ -141,12 +154,18 @@ export function ArchivedItemsView({
                     {REASON_LABEL[r.archiveReasonCode] ?? humanize(r.archiveReasonCode)}
                   </span>
                   {r.archiveReasonDetail ? (
-                    <span className="block text-muted-foreground">{r.archiveReasonDetail}</span>
+                    <span className="block text-muted-foreground">
+                      {r.archiveReasonDetail}
+                    </span>
                   ) : null}
                 </td>
                 <td className="px-3 py-2.5">{r.archivedByName ?? '—'}</td>
-                <td className="whitespace-nowrap px-3 py-2.5 text-center">{r.archivedAt.slice(0, 10)}</td>
-                <td className="px-3 py-2.5 text-center">{humanize(r.archivedFromStatus)}</td>
+                <td className="whitespace-nowrap px-3 py-2.5 text-center">
+                  {r.archivedAt.slice(0, 10)}
+                </td>
+                <td className="px-3 py-2.5 text-center">
+                  {humanize(r.archivedFromStatus)}
+                </td>
                 <td className="col-actions px-3 py-2.5">
                   <div className="flex justify-end gap-1">
                     {canMonitor ? (
@@ -201,10 +220,17 @@ export function ArchivedItemsView({
       >
         {restoreRow ? (
           <form id="archived-restore-form" action={restoreAction} className="space-y-2">
-            <input type="hidden" name="inventoryItemId" value={restoreRow.inventoryItemId} />
+            <input
+              type="hidden"
+              name="inventoryItemId"
+              value={restoreRow.inventoryItemId}
+            />
             <p className="text-sm">
               Restore <span className="font-mono">{restoreRow.itemCode}</span> to{' '}
-              <span className="font-medium">{humanize(restoreRow.archivedFromStatus)}</span>.
+              <span className="font-medium">
+                {humanize(restoreRow.archivedFromStatus)}
+              </span>
+              .
             </p>
             <div>
               <Label htmlFor="restore-reason" className="text-xs">
@@ -250,11 +276,12 @@ export function ArchivedItemsView({
         {deleteRow ? (
           <div className="space-y-3">
             <p className="text-sm">
-              <span className="font-mono">{deleteRow.itemCode}</span> — {deleteRow.itemName ?? '—'}
+              <span className="font-mono">{deleteRow.itemCode}</span> —{' '}
+              {deleteRow.itemName ?? '—'}
             </p>
             <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-              This permanently removes the inventory row. The audit trail is preserved, but
-              the record cannot be recovered.
+              This permanently removes the inventory row. The audit trail is preserved,
+              but the record cannot be recovered.
             </div>
 
             {deps.loading ? (
@@ -279,12 +306,17 @@ export function ArchivedItemsView({
               </div>
             ) : (
               <p className="text-xs text-muted-foreground">
-                No connected records — this isolated item is eligible for permanent deletion.
+                No connected records — this isolated item is eligible for permanent
+                deletion.
               </p>
             )}
 
             <form id="archived-delete-form" action={deleteAction}>
-              <input type="hidden" name="inventoryItemId" value={deleteRow.inventoryItemId} />
+              <input
+                type="hidden"
+                name="inventoryItemId"
+                value={deleteRow.inventoryItemId}
+              />
               {deleteState.error ? (
                 <p role="alert" className="text-sm text-destructive">
                   {deleteState.error}

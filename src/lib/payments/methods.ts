@@ -7,13 +7,23 @@
  * (bank_transfer / e_wallet / cash / card / other) remain valid and readable —
  * the database CHECK constraint accepts BOTH sets so no past transaction breaks.
  */
-export const PAYMENT_METHODS = ['Cash', 'GCash', 'BPI', 'BDO', 'BDO NEW', 'BDO UNIBANK', 'Credit Card'] as const;
+export const PAYMENT_METHODS = [
+  'Cash',
+  'GCash',
+  'BPI',
+  'BDO',
+  'BDO NEW',
+  'BDO UNIBANK',
+  'Credit Card',
+] as const;
 
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 /** {value,label} pairs for a <select>. Value === label (the canonical string). */
-export const PAYMENT_METHOD_OPTIONS: ReadonlyArray<{ value: PaymentMethod; label: string }> =
-  PAYMENT_METHODS.map((m) => ({ value: m, label: m }));
+export const PAYMENT_METHOD_OPTIONS: ReadonlyArray<{
+  value: PaymentMethod;
+  label: string;
+}> = PAYMENT_METHODS.map((m) => ({ value: m, label: m }));
 
 /** The default choice for a fresh form. */
 export const DEFAULT_PAYMENT_METHOD: PaymentMethod = 'Cash';

@@ -50,7 +50,8 @@ export async function sendPancakeTestAction(
   try {
     await requirePrimarySuperAdmin();
   } catch (cause) {
-    if (cause instanceof AuthorizationError) return { error: cause.message, success: null };
+    if (cause instanceof AuthorizationError)
+      return { error: cause.message, success: null };
     throw cause;
   }
 

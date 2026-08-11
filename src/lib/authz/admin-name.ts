@@ -43,7 +43,12 @@ export const getAdminNameContext = cache(async (): Promise<AdminNameContext> => 
   const canChange = staff.roleKey === 'owner';
 
   if (!canChange) {
-    return { selfId: self.id, selfName: self.fullName, canChange: false, options: [self] };
+    return {
+      selfId: self.id,
+      selfName: self.fullName,
+      canChange: false,
+      options: [self],
+    };
   }
 
   const supabase = await createClient();

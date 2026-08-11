@@ -97,13 +97,14 @@ export function RequestDeletionButton({
       >
         {sent ? (
           <p className="text-sm text-emerald-600" data-testid={`${testIdBase}-sent`}>
-            Request sent. The Owner reviews it in Approvals — nothing is deleted until then.
+            Request sent. The Owner reviews it in Approvals — nothing is deleted until
+            then.
           </p>
         ) : (
           <div className="space-y-3">
             <p className="text-sm">
-              Ask the Owner to permanently delete <strong>{label}</strong>. This deletes nothing
-              now; the Owner approves it in Approvals.
+              Ask the Owner to permanently delete <strong>{label}</strong>. This deletes
+              nothing now; the Owner approves it in Approvals.
             </p>
             <div>
               <Label htmlFor={`${testIdBase}-reason`} className="text-xs">

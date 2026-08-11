@@ -271,7 +271,12 @@ function SetupForm({
           <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
             Cancel
           </Button>
-          <Button type="button" onClick={openConfirm} disabled={pending} data-testid="setup-layaway-save">
+          <Button
+            type="button"
+            onClick={openConfirm}
+            disabled={pending}
+            data-testid="setup-layaway-save"
+          >
             Save
           </Button>
         </>
@@ -282,7 +287,12 @@ function SetupForm({
         <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
           <label className="block">
             <L>Customer Name</L>
-            <input className={readonlyClass} value={customerName} readOnly data-testid="setup-customer" />
+            <input
+              className={readonlyClass}
+              value={customerName}
+              readOnly
+              data-testid="setup-customer"
+            />
           </label>
           <label className="block">
             <L>Admin Name</L>
@@ -302,7 +312,11 @@ function SetupForm({
           </label>
           <label className="block">
             <L>Total Grams</L>
-            <input className={readonlyClass} value={hasGrams ? `${grams}g` : '—'} readOnly />
+            <input
+              className={readonlyClass}
+              value={hasGrams ? `${grams}g` : '—'}
+              readOnly
+            />
           </label>
         </div>
 
@@ -356,7 +370,9 @@ function SetupForm({
                   data-testid={`setup-term-${t}`}
                   className={cn(
                     'flex-1 rounded-md px-2 py-1 text-[11px] font-semibold',
-                    term === t ? 'bg-gold text-black' : 'text-muted-foreground hover:bg-accent',
+                    term === t
+                      ? 'bg-gold text-black'
+                      : 'text-muted-foreground hover:bg-accent',
                   )}
                 >
                   {t} {t === 1 ? 'month' : 'months'}
@@ -421,7 +437,10 @@ function SetupForm({
           data-testid="setup-totals"
         >
           <Fig label="Item total" value={toStr(itemCentavos)} />
-          <Fig label="Monthly interest" value={noInterest ? '0' : toStr(monthlyInterest)} />
+          <Fig
+            label="Monthly interest"
+            value={noInterest ? '0' : toStr(monthlyInterest)}
+          />
           <div className="flex items-center justify-between gap-2 py-0.5">
             <dt className="text-xs text-muted-foreground">Term</dt>
             <dd className="font-medium tabular-nums" data-testid="setup-term-label">
@@ -464,10 +483,20 @@ function SetupForm({
         critical
         footer={
           <>
-            <Button type="button" variant="outline" onClick={() => setConfirming(false)} disabled={pending}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirming(false)}
+              disabled={pending}
+            >
               Back
             </Button>
-            <Button type="button" onClick={() => void save()} disabled={pending} data-testid="setup-confirm">
+            <Button
+              type="button"
+              onClick={() => void save()}
+              disabled={pending}
+              data-testid="setup-confirm"
+            >
               {pending ? 'Saving…' : 'Confirm & Save'}
             </Button>
           </>
@@ -476,9 +505,15 @@ function SetupForm({
         <div className="space-y-1.5 text-sm" data-testid="setup-review">
           <Line label="Customer" value={customerName} />
           <Line label="Item Total" value={formatPeso(toStr(itemCentavos))} />
-          <Line label="Monthly Interest" value={noInterest ? '₱0' : formatPeso(toStr(monthlyInterest))} />
+          <Line
+            label="Monthly Interest"
+            value={noInterest ? '₱0' : formatPeso(toStr(monthlyInterest))}
+          />
           <Line label="Term" value={`${term} ${term === 1 ? 'month' : 'months'}`} />
-          <Line label="Total Interest" value={noInterest ? '₱0' : formatPeso(toStr(totalInterest))} />
+          <Line
+            label="Total Interest"
+            value={noInterest ? '₱0' : formatPeso(toStr(totalInterest))}
+          />
           <Line label="Payment" value={formatPeso(toStr(paidCentavos))} />
           <Line label="Grand Total" value={formatPeso(toStr(grandTotal))} strong />
           <Line label="Remaining Balance" value={formatPeso(toStr(balance))} strong />
@@ -488,20 +523,40 @@ function SetupForm({
   );
 }
 
-function Line({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+function Line({
+  label,
+  value,
+  strong,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+}) {
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="text-xs text-muted-foreground">{label}</span>
-      <span className={cn('tabular-nums', strong ? 'font-bold' : 'font-medium')}>{value}</span>
+      <span className={cn('tabular-nums', strong ? 'font-bold' : 'font-medium')}>
+        {value}
+      </span>
     </div>
   );
 }
 
-function Fig({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+function Fig({
+  label,
+  value,
+  strong,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+}) {
   return (
     <div className="flex items-center justify-between gap-2 py-0.5">
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className={cn('tabular-nums', strong ? 'font-bold' : 'font-medium')}>{formatPeso(value)}</dd>
+      <dd className={cn('tabular-nums', strong ? 'font-bold' : 'font-medium')}>
+        {formatPeso(value)}
+      </dd>
     </div>
   );
 }

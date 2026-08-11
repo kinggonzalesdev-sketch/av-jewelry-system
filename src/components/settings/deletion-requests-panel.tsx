@@ -4,10 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 
 import { decideDeletionRequestAction } from '@/lib/authz/deletion-actions';
-import type {
-  DeletionRequestRow,
-  DeletionStatus,
-} from '@/lib/authz/deletion-requests';
+import type { DeletionRequestRow, DeletionStatus } from '@/lib/authz/deletion-requests';
 import { EmptyState } from '@/components/states/empty-state';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -56,7 +53,15 @@ function humanize(value: string): string {
 function fmt(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
 }
 
 export function DeletionRequestsPanel({
@@ -262,8 +267,8 @@ function DecideActions({ row }: { row: DeletionRequestRow }) {
           <p className="text-xs text-muted-foreground">Reason given: {row.reason}</p>
           {!rejecting ? (
             <p className="text-xs text-muted-foreground">
-              Approving records the decision. The record is then deleted through its
-              own screen, which keeps that screen&apos;s own confirmations in force.
+              Approving records the decision. The record is then deleted through its own
+              screen, which keeps that screen&apos;s own confirmations in force.
             </p>
           ) : null}
           <div>

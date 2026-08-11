@@ -11,8 +11,7 @@ import {
   listLinkedPancakeCustomers,
 } from '@/lib/integrations/pancake';
 
-export const metadata: Metadata = {
-};
+export const metadata: Metadata = {};
 
 export const dynamic = 'force-dynamic';
 // The Auto-link server action does a paced, multi-window Pancake fetch (429 backoff).

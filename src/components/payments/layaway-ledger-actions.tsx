@@ -208,7 +208,8 @@ export function LedgerAddPayment({
   };
 
   // "Pending balance after" this payment, for the transfer confirmation.
-  const remainingAfterCents = remainingCents - amountCents < 0n ? 0n : remainingCents - amountCents;
+  const remainingAfterCents =
+    remainingCents - amountCents < 0n ? 0n : remainingCents - amountCents;
 
   return (
     <>
@@ -262,25 +263,25 @@ export function LedgerAddPayment({
               ) : null}
               {/* No "Record payment" for a fully-paid account — only Save (transfer). */}
               {fullyPaid ? null : (
-              <Button
-                type="button"
-                onClick={() => {
-                  if (dest) {
-                    setTransferOnly(false);
-                    setConfirming(true);
-                  } else {
-                    void run();
-                  }
-                }}
-                disabled={!canSubmit}
-                data-testid={`ledger-pay-submit-${id}`}
-              >
-                {pending
-                  ? 'Recording…'
-                  : dest
-                    ? 'Record Payment & Transfer'
-                    : 'Record payment'}
-              </Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    if (dest) {
+                      setTransferOnly(false);
+                      setConfirming(true);
+                    } else {
+                      void run();
+                    }
+                  }}
+                  disabled={!canSubmit}
+                  data-testid={`ledger-pay-submit-${id}`}
+                >
+                  {pending
+                    ? 'Recording…'
+                    : dest
+                      ? 'Record Payment & Transfer'
+                      : 'Record payment'}
+                </Button>
               )}
             </>
           )
@@ -289,8 +290,7 @@ export function LedgerAddPayment({
         {done ? (
           <div className="space-y-2" data-testid="ledger-payment-done">
             <p className="text-sm">
-              Payment recorded. New balance{' '}
-              <strong>{formatPeso(done.balance)}</strong>.
+              Payment recorded. New balance <strong>{formatPeso(done.balance)}</strong>.
             </p>
             {Number(done.balance) <= 0 ? (
               <p className="flex items-center gap-1.5 rounded-md border border-green-600/40 bg-green-600/10 px-2 py-1.5 text-xs text-green-700">
@@ -305,8 +305,8 @@ export function LedgerAddPayment({
               className="flex items-center gap-1.5 rounded-md border border-green-600/40 bg-green-600/10 px-3 py-2 text-sm text-green-700"
               data-testid="ledger-payment-fully-paid"
             >
-              <span aria-hidden="true">✓</span> This account is already fully paid. It stays
-              here — transfer it to a destination when you&apos;re ready.
+              <span aria-hidden="true">✓</span> This account is already fully paid. It
+              stays here — transfer it to a destination when you&apos;re ready.
             </p>
             {canTransfer ? (
               <div>
@@ -382,7 +382,9 @@ export function LedgerAddPayment({
                     <dd className="font-semibold tabular-nums">
                       {formatPeso(
                         pesoString(
-                          remainingCents - amountCents < 0n ? 0n : remainingCents - amountCents,
+                          remainingCents - amountCents < 0n
+                            ? 0n
+                            : remainingCents - amountCents,
                         ),
                       )}
                     </dd>
@@ -463,7 +465,7 @@ export function LedgerAddPayment({
               </div>
             ) : null}
 
-            {validationError ?? error ? (
+            {(validationError ?? error) ? (
               <p role="alert" className="text-sm text-destructive">
                 {validationError ?? error}
               </p>
@@ -522,7 +524,9 @@ export function LedgerAddPayment({
           )}
           <ConfirmLine
             label="Remaining Balance"
-            value={formatPeso(pesoString(transferOnly ? remainingCents : remainingAfterCents))}
+            value={formatPeso(
+              pesoString(transferOnly ? remainingCents : remainingAfterCents),
+            )}
             strong
           />
           <ConfirmLine label="Destination" value={DEST_LABELS[dest] ?? dest} strong />
@@ -877,8 +881,8 @@ export function LedgerCancelAccount({
           <ConfirmLine label="Account No." value={accountNo} />
         </dl>
         <p className="mt-2 text-xs text-muted-foreground">
-          The account is marked <strong>Cancelled</strong> and its code is released. Payment
-          history is kept. This can&apos;t be undone.
+          The account is marked <strong>Cancelled</strong> and its code is released.
+          Payment history is kept. This can&apos;t be undone.
         </p>
         {error ? (
           <p role="alert" className="mt-2 text-sm text-destructive">
@@ -890,11 +894,21 @@ export function LedgerCancelAccount({
   );
 }
 
-function ConfirmLine({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+function ConfirmLine({
+  label,
+  value,
+  strong,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+}) {
   return (
     <div className="flex items-center justify-between gap-2">
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className={strong ? 'font-bold tabular-nums' : 'font-medium tabular-nums'}>{value}</dd>
+      <dd className={strong ? 'font-bold tabular-nums' : 'font-medium tabular-nums'}>
+        {value}
+      </dd>
     </div>
   );
 }

@@ -27,7 +27,10 @@ export async function clockInAction(
   formData: FormData,
 ): Promise<HrActionState> {
   // Kiosk model: the selected team member is clocked in (not necessarily the caller).
-  const result = await kioskClockIn(text(formData, 'staffProfileId') ?? '', text(formData, 'note'));
+  const result = await kioskClockIn(
+    text(formData, 'staffProfileId') ?? '',
+    text(formData, 'note'),
+  );
   if (!result.ok) return { error: result.error, success: null };
   revalidatePath('/admin/attendance');
   // Return the new record id so the client can attach the clock-in selfie to it.

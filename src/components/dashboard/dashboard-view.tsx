@@ -199,9 +199,7 @@ export function DashboardView({
   // last-updated time so the operator can trust the figures are current.
   const sync = useDashboardSync();
   const lastUpdated =
-    sync.lastSyncedAt != null
-      ? new Date(sync.lastSyncedAt).toLocaleTimeString()
-      : null;
+    sync.lastSyncedAt != null ? new Date(sync.lastSyncedAt).toLocaleTimeString() : null;
 
   const notices = [refreshState];
 
@@ -256,7 +254,11 @@ export function DashboardView({
                   )}
                   aria-hidden
                 />
-                {sync.isSyncing ? 'Syncing…' : lastUpdated ? `Updated ${lastUpdated}` : 'Live'}
+                {sync.isSyncing
+                  ? 'Syncing…'
+                  : lastUpdated
+                    ? `Updated ${lastUpdated}`
+                    : 'Live'}
               </span>
               <form action={refresh}>
                 <Button
@@ -275,7 +277,11 @@ export function DashboardView({
                   than bouncing the user to another screen. Hidden without the
                   permission; the API route re-checks regardless. */}
               {canExport ? (
-                <ExportAllButton label="⭳ Export Reports" testId="dash-export" size="sm" />
+                <ExportAllButton
+                  label="⭳ Export Reports"
+                  testId="dash-export"
+                  size="sm"
+                />
               ) : null}
             </div>
           </div>
@@ -333,7 +339,6 @@ export function DashboardView({
         </CardContent>
       </Card>
 
-
       {notices.map((n, i) =>
         n.error ? (
           <p key={`e${i}`} role="alert" className="text-sm text-destructive">
@@ -356,239 +361,251 @@ export function DashboardView({
         />
       ) : (
         <div className="space-y-4">
-            {/* Metric cards — real business totals. */}
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-              <MetricCard
-                label="Total Sales"
-                value={money(metrics.totalSales)}
-                accent
-              />
-              <MetricCard
-                label="Verified Collections"
-                value={money(metrics.verifiedCollections)}
-              />
-              <MetricCard
-                label="Outstanding Balance"
-                value={money(metrics.outstandingBalance)}
-              />
-              <MetricCard label="Sales Today" value={money(metrics.salesToday)} />
-              <MetricCard label="Sales This Week" value={money(metrics.salesWeek)} />
-              <MetricCard
-                label="Sales This Month"
-                value={money(metrics.salesMonth)}
-              />
-            </div>
+          {/* Metric cards — real business totals. */}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            <MetricCard label="Total Sales" value={money(metrics.totalSales)} accent />
+            <MetricCard
+              label="Verified Collections"
+              value={money(metrics.verifiedCollections)}
+            />
+            <MetricCard
+              label="Outstanding Balance"
+              value={money(metrics.outstandingBalance)}
+            />
+            <MetricCard label="Sales Today" value={money(metrics.salesToday)} />
+            <MetricCard label="Sales This Week" value={money(metrics.salesWeek)} />
+            <MetricCard label="Sales This Month" value={money(metrics.salesMonth)} />
+          </div>
 
-            {/* Sales by Channel — total order value split by how it's fulfilled:
+          {/* Sales by Channel — total order value split by how it's fulfilled:
                 Walk In / Pick Up / Rider / Shipment (Owner request). Real SQL sums
                 scoped to the selected range; excludes cancelled + test orders. */}
-            {salesByChannel ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Sales by Channel</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    <ChannelTile label="Walk In" amount={salesByChannel.walkIn} count={salesByChannel.walkInCount} money={money} />
-                    <ChannelTile label="Pick Up" amount={salesByChannel.pickup} count={salesByChannel.pickupCount} money={money} />
-                    <ChannelTile label="Rider" amount={salesByChannel.rider} count={salesByChannel.riderCount} money={money} />
-                    <ChannelTile label="Shipment" amount={salesByChannel.shipment} count={salesByChannel.shipmentCount} money={money} />
-                  </div>
-                  {salesByChannel.otherCount > 0 ? (
-                    <p className="mt-2 text-[11px] text-muted-foreground">
-                      Plus {money(salesByChannel.other)} from {salesByChannel.otherCount} order(s)
-                      not yet routed to a channel (or kept in store).
-                    </p>
-                  ) : null}
-                </CardContent>
-              </Card>
-            ) : null}
+          {salesByChannel ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Sales by Channel</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <ChannelTile
+                    label="Walk In"
+                    amount={salesByChannel.walkIn}
+                    count={salesByChannel.walkInCount}
+                    money={money}
+                  />
+                  <ChannelTile
+                    label="Pick Up"
+                    amount={salesByChannel.pickup}
+                    count={salesByChannel.pickupCount}
+                    money={money}
+                  />
+                  <ChannelTile
+                    label="Rider"
+                    amount={salesByChannel.rider}
+                    count={salesByChannel.riderCount}
+                    money={money}
+                  />
+                  <ChannelTile
+                    label="Shipment"
+                    amount={salesByChannel.shipment}
+                    count={salesByChannel.shipmentCount}
+                    money={money}
+                  />
+                </div>
+                {salesByChannel.otherCount > 0 ? (
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    Plus {money(salesByChannel.other)} from {salesByChannel.otherCount}{' '}
+                    order(s) not yet routed to a channel (or kept in store).
+                  </p>
+                ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
 
-            {/* The 14-card Layaway grid was removed by Owner request. The layaway
+          {/* The 14-card Layaway grid was removed by Owner request. The layaway
                 figures themselves are unchanged and still live below (the Layaway
                 chart and the Layaway summary card) and in the Layaway module. */}
 
-            {/* ===== Colourful visual overview (Owner request 2026-07-22) =====
+          {/* ===== Colourful visual overview (Owner request 2026-07-22) =====
                 Income mix as a donut, then General / Layaway / Scrap as colourful
                 column charts. All real SQL totals; the donut's percentages and the
                 bar heights are proportions, while every peso figure shown is the
                 authoritative amount. Visible at zero, never hidden. */}
-            <div className="grid gap-4 lg:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">
-                    Income mix — Sales · Layaway · Scrap
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <DonutChart
-                    ariaLabel="Income mix: total sales, layaway, and scrap"
-                    data={[
-                      {
-                        label: 'Total Sales',
-                        value: moneyWeight(metrics.totalSales),
-                        display: money(metrics.totalSales),
-                      },
-                      {
-                        label: 'Layaway',
-                        value: moneyWeight(
-                          sumMoney(metrics.totalLayawaySales, layaway.grandTotal),
-                        ),
-                        display: money(
-                          sumMoney(metrics.totalLayawaySales, layaway.grandTotal),
-                        ),
-                      },
-                      {
-                        label: 'Scrap',
-                        value: moneyWeight(scrapTotal.totalAmount),
-                        display: money(scrapTotal.totalAmount),
-                      },
-                    ]}
-                  />
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Share of each income stream. Percentages are proportions of the total;
-                    each peso value shown is authoritative.
-                  </p>
-                </CardContent>
-              </Card>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  Income mix — Sales · Layaway · Scrap
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <DonutChart
+                  ariaLabel="Income mix: total sales, layaway, and scrap"
+                  data={[
+                    {
+                      label: 'Total Sales',
+                      value: moneyWeight(metrics.totalSales),
+                      display: money(metrics.totalSales),
+                    },
+                    {
+                      label: 'Layaway',
+                      value: moneyWeight(
+                        sumMoney(metrics.totalLayawaySales, layaway.grandTotal),
+                      ),
+                      display: money(
+                        sumMoney(metrics.totalLayawaySales, layaway.grandTotal),
+                      ),
+                    },
+                    {
+                      label: 'Scrap',
+                      value: moneyWeight(scrapTotal.totalAmount),
+                      display: money(scrapTotal.totalAmount),
+                    },
+                  ]}
+                />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Share of each income stream. Percentages are proportions of the total;
+                  each peso value shown is authoritative.
+                </p>
+              </CardContent>
+            </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">General</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ColumnChart
-                    ariaLabel="General sales figures"
-                    data={[
-                      {
-                        label: 'Sales',
-                        value: moneyWeight(metrics.totalSales),
-                        display: money(metrics.totalSales),
-                      },
-                      {
-                        label: 'Verified',
-                        value: moneyWeight(metrics.verifiedCollections),
-                        display: money(metrics.verifiedCollections),
-                      },
-                      {
-                        label: 'Outstanding',
-                        value: moneyWeight(metrics.outstandingBalance),
-                        display: money(metrics.outstandingBalance),
-                      },
-                      {
-                        label: 'This Month',
-                        value: moneyWeight(metrics.salesMonth),
-                        display: money(metrics.salesMonth),
-                      },
-                    ]}
-                  />
-                </CardContent>
-              </Card>
-            </div>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">General</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ColumnChart
+                  ariaLabel="General sales figures"
+                  data={[
+                    {
+                      label: 'Sales',
+                      value: moneyWeight(metrics.totalSales),
+                      display: money(metrics.totalSales),
+                    },
+                    {
+                      label: 'Verified',
+                      value: moneyWeight(metrics.verifiedCollections),
+                      display: money(metrics.verifiedCollections),
+                    },
+                    {
+                      label: 'Outstanding',
+                      value: moneyWeight(metrics.outstandingBalance),
+                      display: money(metrics.outstandingBalance),
+                    },
+                    {
+                      label: 'This Month',
+                      value: moneyWeight(metrics.salesMonth),
+                      display: money(metrics.salesMonth),
+                    },
+                  ]}
+                />
+              </CardContent>
+            </Card>
+          </div>
 
-            <div className="grid gap-4 lg:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Layaway</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {/* Layaway money = order-derived arrangements + the imported
-                      ledger. The two sets are disjoint, so the sum is the truth. */}
-                  <ColumnChart
-                    ariaLabel="Layaway figures"
-                    data={[
-                      {
-                        label: 'Sales',
-                        value: moneyWeight(
-                          sumMoney(metrics.totalLayawaySales, layaway.grandTotal),
-                        ),
-                        display: money(
-                          sumMoney(metrics.totalLayawaySales, layaway.grandTotal),
-                        ),
-                      },
-                      {
-                        label: 'Collections',
-                        value: moneyWeight(
-                          sumMoney(metrics.layawayCollections, layaway.totalPayment),
-                        ),
-                        display: money(
-                          sumMoney(metrics.layawayCollections, layaway.totalPayment),
-                        ),
-                      },
-                      {
-                        label: 'Forfeited',
-                        value: moneyWeight(metrics.forfeitedAmount),
-                        display: money(metrics.forfeitedAmount),
-                      },
-                    ]}
-                  />
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Scrap — gold vs silver</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ColumnChart
-                    ariaLabel="Scrap income by material"
-                    noDataLabel="No scrap yet"
-                    data={
-                      scrapByMaterial.length > 0
-                        ? scrapByMaterial.map((r) => ({
-                            label: r.material === 'gold' ? 'Gold' : 'Silver',
-                            value: moneyWeight(r.totalAmount),
-                            display: money(r.totalAmount),
-                          }))
-                        : [
-                            { label: 'Gold', value: 0, display: money('0') },
-                            { label: 'Silver', value: 0, display: money('0') },
-                          ]
-                    }
-                  />
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Scrap income by material. Full detail is in the Scrap details table
-                    below.
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-
-
-            {/* Layaway summary — real money aggregation. */}
+          <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Layaway</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {/* Active Layaway comes from the Layaway module (imported ledger +
-                      order-derived arrangements, already summed by
-                      layaway_dashboard_metrics). The old order-only count read 0 for
-                      a shop whose layaways all live in the ledger. */}
-                  <MetricCard label="Active Layaway" value={layaway.active} accent />
-                  <MetricCard
-                    label="Layaway Sales"
-                    value={money(sumMoney(metrics.totalLayawaySales, layaway.grandTotal))}
-                  />
-                  <MetricCard
-                    label="Layaway Collections"
-                    value={money(
-                      sumMoney(metrics.layawayCollections, layaway.totalPayment),
-                    )}
-                  />
-                  <MetricCard
-                    label="Forfeited Amount"
-                    value={money(metrics.forfeitedAmount)}
-                  />
-                </div>
+                {/* Layaway money = order-derived arrangements + the imported
+                      ledger. The two sets are disjoint, so the sum is the truth. */}
+                <ColumnChart
+                  ariaLabel="Layaway figures"
+                  data={[
+                    {
+                      label: 'Sales',
+                      value: moneyWeight(
+                        sumMoney(metrics.totalLayawaySales, layaway.grandTotal),
+                      ),
+                      display: money(
+                        sumMoney(metrics.totalLayawaySales, layaway.grandTotal),
+                      ),
+                    },
+                    {
+                      label: 'Collections',
+                      value: moneyWeight(
+                        sumMoney(metrics.layawayCollections, layaway.totalPayment),
+                      ),
+                      display: money(
+                        sumMoney(metrics.layawayCollections, layaway.totalPayment),
+                      ),
+                    },
+                    {
+                      label: 'Forfeited',
+                      value: moneyWeight(metrics.forfeitedAmount),
+                      display: money(metrics.forfeitedAmount),
+                    },
+                  ]}
+                />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Scrap — gold vs silver</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ColumnChart
+                  ariaLabel="Scrap income by material"
+                  noDataLabel="No scrap yet"
+                  data={
+                    scrapByMaterial.length > 0
+                      ? scrapByMaterial.map((r) => ({
+                          label: r.material === 'gold' ? 'Gold' : 'Silver',
+                          value: moneyWeight(r.totalAmount),
+                          display: money(r.totalAmount),
+                        }))
+                      : [
+                          { label: 'Gold', value: 0, display: money('0') },
+                          { label: 'Silver', value: 0, display: money('0') },
+                        ]
+                  }
+                />
                 <p className="mt-2 text-xs text-muted-foreground">
-                  {metrics.totalOfficialOrders} Official Orders. An Active Layaway is an
-                  Official Order — never double-counted. Forfeiture needs Owner approval;
-                  no automatic stock return.
+                  Scrap income by material. Full detail is in the Scrap details table
+                  below.
                 </p>
               </CardContent>
             </Card>
+          </div>
+
+          {/* Layaway summary — real money aggregation. */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Layaway</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {/* Active Layaway comes from the Layaway module (imported ledger +
+                      order-derived arrangements, already summed by
+                      layaway_dashboard_metrics). The old order-only count read 0 for
+                      a shop whose layaways all live in the ledger. */}
+                <MetricCard label="Active Layaway" value={layaway.active} accent />
+                <MetricCard
+                  label="Layaway Sales"
+                  value={money(sumMoney(metrics.totalLayawaySales, layaway.grandTotal))}
+                />
+                <MetricCard
+                  label="Layaway Collections"
+                  value={money(
+                    sumMoney(metrics.layawayCollections, layaway.totalPayment),
+                  )}
+                />
+                <MetricCard
+                  label="Forfeited Amount"
+                  value={money(metrics.forfeitedAmount)}
+                />
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {metrics.totalOfficialOrders} Official Orders. An Active Layaway is an
+                Official Order — never double-counted. Forfeiture needs Owner approval; no
+                automatic stock return.
+              </p>
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>

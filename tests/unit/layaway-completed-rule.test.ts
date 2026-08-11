@@ -41,9 +41,13 @@ describe('Completed Layaways — inclusion rule', () => {
   });
 
   it('keeps completed records OUT of Active — completed is a terminal status', () => {
-    expect(source).toMatch(/TERMINAL_STATUSES = new Set\(\['completed', 'forfeited', 'cancelled'\]\)/);
+    expect(source).toMatch(
+      /TERMINAL_STATUSES = new Set\(\['completed', 'forfeited', 'cancelled'\]\)/,
+    );
     // Active excludes terminal statuses and overdue.
-    expect(source).toMatch(/!TERMINAL_STATUSES\.has\(normStatus\(r\.status\)\) && !overdue/);
+    expect(source).toMatch(
+      /!TERMINAL_STATUSES\.has\(normStatus\(r\.status\)\) && !overdue/,
+    );
   });
 
   it('excludes Needs Review rows everywhere', () => {

@@ -21,7 +21,15 @@ import { Modal } from '@/components/ui/modal';
 function fmtDateTime(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
 }
 
 /**
@@ -214,7 +222,12 @@ function TemplateCard({ template }: { template: MessageTemplate }) {
         >
           Reset to Default
         </Button>
-        <Button type="button" size="sm" variant="outline" onClick={() => void openHistory()}>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => void openHistory()}
+        >
           History
         </Button>
       </div>
@@ -229,7 +242,11 @@ function TemplateCard({ template }: { template: MessageTemplate }) {
         description="The current wording is replaced by the shipped default."
         footer={
           <>
-            <Button type="button" variant="outline" onClick={() => setConfirmReset(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmReset(false)}
+            >
               Cancel
             </Button>
             <Button

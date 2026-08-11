@@ -177,15 +177,21 @@ export function ReviewAttendanceView({
               {days.map((d) => (
                 <tr key={d.key} className="border-b last:border-0">
                   <td className="px-3 py-2.5 font-medium">{d.staffName ?? '—'}</td>
-                  <td className="whitespace-nowrap px-3 py-2.5 text-center">{d.workDate}</td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-center">
+                    {d.workDate}
+                  </td>
                   <td className="whitespace-nowrap px-3 py-2.5 text-center">
                     {new Date(d.firstIn).toLocaleTimeString()}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2.5 text-center">
                     {d.finalOut ? new Date(d.finalOut).toLocaleTimeString() : '—'}
                   </td>
-                  <td className="px-3 py-2.5 text-center tabular-nums">{d.sessionCount}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">{formatDuration(d.totalHours)}</td>
+                  <td className="px-3 py-2.5 text-center tabular-nums">
+                    {d.sessionCount}
+                  </td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">
+                    {formatDuration(d.totalHours)}
+                  </td>
                   <td className="px-3 py-2.5 text-center">
                     {d.hasOpen ? (
                       <StatusBadge label="Open" tone="gold" />
@@ -263,7 +269,8 @@ function ReviewDayModal({
       <div className="space-y-2">
         {day.sessions.map((s, i) => {
           const next = day.sessions[i + 1];
-          const gapH = s.row.timeOut && next ? durationHours(s.row.timeOut, next.row.timeIn) : null;
+          const gapH =
+            s.row.timeOut && next ? durationHours(s.row.timeOut, next.row.timeIn) : null;
           return (
             <div key={s.row.id}>
               <div className="rounded-md border border-border p-2.5">
@@ -276,7 +283,9 @@ function ReviewDayModal({
                       </span>
                     ) : null}
                   </span>
-                  <span className="text-sm tabular-nums">{formatDuration(s.durationHrs)}</span>
+                  <span className="text-sm tabular-nums">
+                    {formatDuration(s.durationHrs)}
+                  </span>
                 </div>
                 <div className="mt-0.5 flex items-center justify-between gap-3">
                   <span className="text-xs text-muted-foreground">

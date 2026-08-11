@@ -15,5 +15,4 @@ export type SystemCheckItem = {
 };
 
 export type SystemCheckResult =
-  | { ok: true; items: SystemCheckItem[] }
-  | { ok: false; error: string };
+  { ok: true; items: SystemCheckItem[] } | { ok: false; error: string };

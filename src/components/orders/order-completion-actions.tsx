@@ -173,8 +173,8 @@ export function OrderCompletionActions({
             : 'Move this order to Completed?'}
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Who completed it, and the date and time, are recorded. This can only be
-          done once.
+          Who completed it, and the date and time, are recorded. This can only be done
+          once.
         </p>
         {error ? (
           <p role="alert" className="mt-2 text-sm text-destructive">

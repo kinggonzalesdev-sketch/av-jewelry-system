@@ -58,7 +58,11 @@ function bytesFromText(s: string): number[] {
  * Returns null when it does not fit (a single word longer than a line, or too many
  * lines) so the caller can step down to a smaller font — never crops.
  */
-export function wrapWords(text: string, maxChars: number, maxLines: number): string[] | null {
+export function wrapWords(
+  text: string,
+  maxChars: number,
+  maxLines: number,
+): string[] | null {
   const words = text.split(/\s+/).filter(Boolean);
   if (words.length === 0) return [''];
   const lines: string[] = [];
@@ -145,13 +149,16 @@ export function tsplStickerLines(
   d: OrderReceiptData,
   fields: StickerFields = DEFAULT_STICKER_FIELDS,
 ): SizedLine[] {
-  return stickerLineItems(d, fields).flatMap((l) => fitElement(l.text, TSPL_FONT_BY_KIND[l.kind]));
+  return stickerLineItems(d, fields).flatMap((l) =>
+    fitElement(l.text, TSPL_FONT_BY_KIND[l.kind]),
+  );
 }
 
 /** Position the sized lines centered both ways and emit the TSPL TEXT commands. */
 function layoutTsplText(lines: SizedLine[]): string[] {
   const heights = lines.map((l) => cell(l.font).h);
-  const totalH = heights.reduce((a, b) => a + b, 0) + LINE_GAP * Math.max(0, lines.length - 1);
+  const totalH =
+    heights.reduce((a, b) => a + b, 0) + LINE_GAP * Math.max(0, lines.length - 1);
   let y = Math.max(8, Math.round((LABEL_H - totalH) / 2));
   const cmds: string[] = [];
   lines.forEach((l, i) => {
@@ -251,7 +258,9 @@ export function encodeReceipt(
   language: ReceiptLanguage,
   fields: StickerFields = DEFAULT_STICKER_FIELDS,
 ): Uint8Array {
-  return language === 'tspl' ? encodeLabelTspl(d, fields) : encodeReceiptEscPos(d, fields);
+  return language === 'tspl'
+    ? encodeLabelTspl(d, fields)
+    : encodeReceiptEscPos(d, fields);
 }
 
 /** ESC/POS byte stream for the combined multi-item slip (full itemized receipt). */
@@ -270,7 +279,9 @@ export function encodeSlipEscPos(d: OrderSlipData): Uint8Array {
   line('------------------------------');
   for (const it of d.items) {
     line(`${it.code}${it.name ? ` ${it.name}` : ''}${it.grams ? ` ${it.grams}g` : ''}`);
-    line(`  Qty ${it.quantity} x ${formatStickerPeso(it.unitPrice)} = ${formatStickerPeso(it.lineTotal)}`);
+    line(
+      `  Qty ${it.quantity} x ${formatStickerPeso(it.unitPrice)} = ${formatStickerPeso(it.lineTotal)}`,
+    );
   }
   line('------------------------------');
   out.push(ESC, 0x45, 0x01);

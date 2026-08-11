@@ -120,7 +120,9 @@ export function StickerSettingsCard() {
         await writeToChannel(activeChannel, encodeReceipt(sample, printLang, fields));
         setPrintMsg('Sent this exact preview to the printer.');
       } catch (err) {
-        setPrintMsg(err instanceof Error ? `Write failed: ${err.message}` : 'Write failed.');
+        setPrintMsg(
+          err instanceof Error ? `Write failed: ${err.message}` : 'Write failed.',
+        );
       }
     } else {
       printOrderReceipt(sample, fields);
@@ -130,91 +132,105 @@ export function StickerSettingsCard() {
 
   return (
     <div className="space-y-4">
-    <div className="flex flex-wrap items-start gap-6">
-      <div className="space-y-2">
-        <p className="text-xs font-medium text-muted-foreground">Show on the sticker:</p>
-        {FIELD_LABELS.map(({ key, label }) => (
-          <label key={key} className="flex cursor-pointer items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={fields[key]}
-              onChange={() => toggle(key)}
-              data-testid={`sticker-field-${key}`}
-            />
-            {label}
-          </label>
-        ))}
-        <p className="max-w-[15rem] pt-1 text-[11px] text-muted-foreground">
-          Saved on this device. Every print (New Order, Test Print, auto-print) uses
-          exactly these fields.
-        </p>
-      </div>
+      <div className="flex flex-wrap items-start gap-6">
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">
+            Show on the sticker:
+          </p>
+          {FIELD_LABELS.map(({ key, label }) => (
+            <label key={key} className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={fields[key]}
+                onChange={() => toggle(key)}
+                data-testid={`sticker-field-${key}`}
+              />
+              {label}
+            </label>
+          ))}
+          <p className="max-w-[15rem] pt-1 text-[11px] text-muted-foreground">
+            Saved on this device. Every print (New Order, Test Print, auto-print) uses
+            exactly these fields.
+          </p>
+        </div>
 
-      <div className="space-y-2.5">
-        {/* SAVED rate — the single source of truth used by every print, including the
+        <div className="space-y-2.5">
+          {/* SAVED rate — the single source of truth used by every print, including the
             screenshot-to-print auto-print (the pinned comment never carries a price). */}
-        <div className="space-y-1.5 rounded-md border border-gold/40 bg-gold/5 px-3 py-2">
-          <p className="text-xs font-semibold text-gold-strong">
-            Price per gram (saved — used on every sticker)
-          </p>
-          <SampleInput label="₱ / gram" value={pricePerGram} onChange={changePricePerGram} />
-          <p className="max-w-[15rem] text-[11px] text-muted-foreground">
-            Printed as <strong>{gramsSample.trim() || '11.5'}g • {pricePerGram.trim() ? `₱${pricePerGram.trim()}` : '₱—'}/g</strong>.
-            Used even when the captured comment has no price.
-          </p>
+          <div className="space-y-1.5 rounded-md border border-gold/40 bg-gold/5 px-3 py-2">
+            <p className="text-xs font-semibold text-gold-strong">
+              Price per gram (saved — used on every sticker)
+            </p>
+            <SampleInput
+              label="₱ / gram"
+              value={pricePerGram}
+              onChange={changePricePerGram}
+            />
+            <p className="max-w-[15rem] text-[11px] text-muted-foreground">
+              Printed as{' '}
+              <strong>
+                {gramsSample.trim() || '11.5'}g •{' '}
+                {pricePerGram.trim() ? `₱${pricePerGram.trim()}` : '₱—'}/g
+              </strong>
+              . Used even when the captured comment has no price.
+            </p>
+          </div>
+
+          {/* Preview-only samples — see how a name + weight looks; not what really prints. */}
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground">
+              Sample text (preview only):
+            </p>
+            <SampleInput label="Facebook Name" value={name} onChange={setName} />
+            <SampleInput label="Grams" value={gramsSample} onChange={setGramsSample} />
+            <p className="max-w-[14rem] pt-0.5 text-[11px] text-muted-foreground">
+              Just for the preview — the real sticker uses the order’s own name and grams.
+            </p>
+          </div>
         </div>
 
-        {/* Preview-only samples — see how a name + weight looks; not what really prints. */}
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium text-muted-foreground">Sample text (preview only):</p>
-          <SampleInput label="Facebook Name" value={name} onChange={setName} />
-          <SampleInput label="Grams" value={gramsSample} onChange={setGramsSample} />
-          <p className="max-w-[14rem] pt-0.5 text-[11px] text-muted-foreground">
-            Just for the preview — the real sticker uses the order’s own name and grams.
+        <div>
+          <p className="mb-1 text-xs font-medium text-muted-foreground">
+            Preview (40×30 mm)
           </p>
+          <div
+            className="flex flex-col items-center justify-center gap-0.5 rounded-md border border-border bg-white px-2 text-center text-black"
+            style={{ width: 210, height: 158 }}
+            data-testid="sticker-preview"
+          >
+            {lines.length === 0 ? (
+              <span className="text-xs text-neutral-400">No fields selected</span>
+            ) : (
+              lines.map((l, i) => (
+                <div
+                  key={`${l.kind}-${i}`}
+                  style={{
+                    fontSize: PREVIEW_FONT[l.kind].size,
+                    fontWeight: PREVIEW_FONT[l.kind].weight,
+                    lineHeight: 1.15,
+                    maxWidth: '100%',
+                    overflowWrap: 'break-word',
+                  }}
+                >
+                  {l.text}
+                </div>
+              ))
+            )}
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => void printPreview()}
+            className="mt-2"
+            data-testid="sticker-print-preview"
+          >
+            🖨 Print this preview
+          </Button>
+          {printMsg ? (
+            <p className="mt-1 max-w-[210px] text-[11px] text-foreground">{printMsg}</p>
+          ) : null}
         </div>
       </div>
-
-      <div>
-        <p className="mb-1 text-xs font-medium text-muted-foreground">Preview (40×30 mm)</p>
-        <div
-          className="flex flex-col items-center justify-center gap-0.5 rounded-md border border-border bg-white px-2 text-center text-black"
-          style={{ width: 210, height: 158 }}
-          data-testid="sticker-preview"
-        >
-          {lines.length === 0 ? (
-            <span className="text-xs text-neutral-400">No fields selected</span>
-          ) : (
-            lines.map((l, i) => (
-              <div
-                key={`${l.kind}-${i}`}
-                style={{
-                  fontSize: PREVIEW_FONT[l.kind].size,
-                  fontWeight: PREVIEW_FONT[l.kind].weight,
-                  lineHeight: 1.15,
-                  maxWidth: '100%',
-                  overflowWrap: 'break-word',
-                }}
-              >
-                {l.text}
-              </div>
-            ))
-          )}
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          onClick={() => void printPreview()}
-          className="mt-2"
-          data-testid="sticker-print-preview"
-        >
-          🖨 Print this preview
-        </Button>
-        {printMsg ? (
-          <p className="mt-1 max-w-[210px] text-[11px] text-foreground">{printMsg}</p>
-        ) : null}
-      </div>
-    </div>
 
       {/* Auto-print: when a floating-screenshot capture lands on this PC, print its
           sticker automatically on this printer. Set it HERE before the live — the

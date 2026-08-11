@@ -18,4 +18,6 @@ export const EXPORT_SECTIONS = [
 
 export type ExportSectionKey = (typeof EXPORT_SECTIONS)[number]['key'];
 
-export const ALL_EXPORT_SECTION_KEYS: ExportSectionKey[] = EXPORT_SECTIONS.map((s) => s.key);
+export const ALL_EXPORT_SECTION_KEYS: ExportSectionKey[] = EXPORT_SECTIONS.map(
+  (s) => s.key,
+);

@@ -131,7 +131,11 @@ export function DataTable({
   return (
     <div className={cn(tableWrap)}>
       <table
-        className={cn('data-table w-full text-left text-sm', spacious && 'data-roomy', className)}
+        className={cn(
+          'data-table w-full text-left text-sm',
+          spacious && 'data-roomy',
+          className,
+        )}
         style={minWidth ? { minWidth } : undefined}
         data-testid={testId}
       >
@@ -149,7 +153,13 @@ export function DataTable({
 }
 
 /** Header band — consistent muted, uppercase, hairline-under styling. */
-export function Thead({ children, className }: { children: ReactNode; className?: string }) {
+export function Thead({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
   return (
     <thead
       className={cn(
@@ -176,7 +186,11 @@ export function Tr({
 }) {
   return (
     <tr
-      className={cn(!plain && 'border-b last:border-0 hover:bg-accent/40', onClick && 'cursor-pointer', className)}
+      className={cn(
+        !plain && 'border-b last:border-0 hover:bg-accent/40',
+        onClick && 'cursor-pointer',
+        className,
+      )}
       onClick={onClick}
     >
       {children}
@@ -243,14 +257,22 @@ export function MoneyCell({
 }) {
   return (
     <Td kind="num" className={className}>
-      {amount === null || amount === undefined || amount === '' ? '—' : formatPeso(String(amount))}
+      {amount === null || amount === undefined || amount === ''
+        ? '—'
+        : formatPeso(String(amount))}
     </Td>
   );
 }
 
 /** A date cell — centered, long "Month Day, Year" (Owner request 2026-08-09), em
  *  dash when empty. */
-export function DateCell({ value, className }: { value: string | null | undefined; className?: string }) {
+export function DateCell({
+  value,
+  className,
+}: {
+  value: string | null | undefined;
+  className?: string;
+}) {
   return (
     <Td kind="center" className={className}>
       {value ? formatDate(value) : '—'}
@@ -262,7 +284,13 @@ export function DateCell({ value, className }: { value: string | null | undefine
  * (label + tone API) — not duplicated here. */
 
 /** Full-width empty state row (never a collapsed one-cell row). */
-export function EmptyRow({ colSpan, children }: { colSpan: number; children: ReactNode }) {
+export function EmptyRow({
+  colSpan,
+  children,
+}: {
+  colSpan: number;
+  children: ReactNode;
+}) {
   return (
     <tr>
       <td colSpan={colSpan} className={tdEmpty}>

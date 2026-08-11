@@ -41,7 +41,9 @@ export function FbChatButton({
     if (url) {
       window.open(url, '_blank', 'noopener,noreferrer');
     } else if (linked) {
-      show('Linked to a Pancake chat — no open-link saved. Add a Messenger link to open it.');
+      show(
+        'Linked to a Pancake chat — no open-link saved. Add a Messenger link to open it.',
+      );
     } else {
       show('Not linked to Facebook yet.');
     }
@@ -68,7 +70,9 @@ export function FbChatButton({
         )}
       >
         <span aria-hidden="true">f</span>
-        <span className="sr-only">{hasLink ? 'Linked to Facebook' : 'Not linked to Facebook'}</span>
+        <span className="sr-only">
+          {hasLink ? 'Linked to Facebook' : 'Not linked to Facebook'}
+        </span>
       </button>
       {notice ? (
         <span

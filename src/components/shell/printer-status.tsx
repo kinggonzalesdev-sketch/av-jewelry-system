@@ -177,13 +177,13 @@ export function PrinterStatusRow() {
 
       {!supported ? (
         <p className="mt-1 text-[10px] text-muted-foreground">
-          Use Chrome or Edge on a computer, or Chrome on Android. iPhone / Safari / Firefox
-          can&apos;t print over Bluetooth — use manual print there.
+          Use Chrome or Edge on a computer, or Chrome on Android. iPhone / Safari /
+          Firefox can&apos;t print over Bluetooth — use manual print there.
         </p>
       ) : adapterOff ? (
         <p className="mt-1 text-[10px] text-amber-600">
-          Turn on this device&apos;s Bluetooth (it&apos;s off or has no adapter), then tap the
-          switch to link the printer.
+          Turn on this device&apos;s Bluetooth (it&apos;s off or has no adapter), then tap
+          the switch to link the printer.
         </p>
       ) : null}
       {error ? (

@@ -6,8 +6,7 @@ import { PageHeader } from '@/components/ui/page-primitives';
 import { canOpenPage, hasPermission, requireActiveStaff } from '@/lib/authz/guard';
 import { listCustomers } from '@/lib/customers/service';
 
-export const metadata: Metadata = {
-};
+export const metadata: Metadata = {};
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +29,10 @@ export default async function CustomersPage({
   if (!(await canOpenPage('nav_customers'))) notFound();
   const params = await searchParams;
   const query = typeof params.q === 'string' ? params.q : '';
-  const page = typeof params.page === 'string' ? Math.max(1, Number.parseInt(params.page, 10) || 1) : 1;
+  const page =
+    typeof params.page === 'string'
+      ? Math.max(1, Number.parseInt(params.page, 10) || 1)
+      : 1;
 
   const [result, staff] = await Promise.all([
     listCustomers(query, page, 25),

@@ -7,7 +7,9 @@ import type { PrinterRow } from '@/lib/printers/types';
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 const registerMock = vi.fn(() => Promise.resolve({ ok: true as const }));
-const updateMock = vi.fn((_id: string, _c: unknown) => Promise.resolve({ ok: true as const }));
+const updateMock = vi.fn((_id: string, _c: unknown) =>
+  Promise.resolve({ ok: true as const }),
+);
 const deleteMock = vi.fn((_id: string) => Promise.resolve({ ok: true as const }));
 vi.mock('@/lib/printers/actions', () => ({
   registerPrinterAction: (_input: unknown) => registerMock(),
@@ -29,7 +31,10 @@ const printer: PrinterRow = {
 describe('PrintersPanel', () => {
   it('shows the queue snapshot and a registered printer', () => {
     render(
-      <PrintersPanel printers={[printer]} queue={{ pending: 2, claimed: 1, failed: 0 }} />,
+      <PrintersPanel
+        printers={[printer]}
+        queue={{ pending: 2, claimed: 1, failed: 0 }}
+      />,
     );
     expect(screen.getByTestId('print-queue-status')).toHaveTextContent('Pending: 2');
     expect(screen.getByTestId('printer-row-p1')).toHaveTextContent('Counter XP-236B');
@@ -48,10 +53,15 @@ describe('PrintersPanel', () => {
 
   it('sets a printer as default and removes one', async () => {
     render(
-      <PrintersPanel printers={[printer]} queue={{ pending: 0, claimed: 0, failed: 0 }} />,
+      <PrintersPanel
+        printers={[printer]}
+        queue={{ pending: 0, claimed: 0, failed: 0 }}
+      />,
     );
     fireEvent.click(screen.getByTestId('printer-default-p1'));
-    await waitFor(() => expect(updateMock).toHaveBeenCalledWith('p1', { makeDefault: true }));
+    await waitFor(() =>
+      expect(updateMock).toHaveBeenCalledWith('p1', { makeDefault: true }),
+    );
     fireEvent.click(screen.getByTestId('printer-delete-p1'));
     await waitFor(() => expect(deleteMock).toHaveBeenCalledWith('p1'));
   });

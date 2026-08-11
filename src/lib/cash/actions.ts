@@ -156,7 +156,13 @@ export async function addCashMovementAction(input: {
 
 export async function updateExpenseAction(
   id: string,
-  input: { date: string; payee: string; amount: string; category: string | null; remarks: string | null },
+  input: {
+    date: string;
+    payee: string;
+    amount: string;
+    category: string | null;
+    remarks: string | null;
+  },
 ): Promise<MutationResult> {
   const result = await updateExpense(id, input);
   if (result.ok) revalidatePath(CASH_PATH);
@@ -165,7 +171,12 @@ export async function updateExpenseAction(
 
 export async function updateRemittanceAction(
   id: string,
-  input: { date: string; amount: string; reference: string | null; remarks: string | null },
+  input: {
+    date: string;
+    amount: string;
+    reference: string | null;
+    remarks: string | null;
+  },
 ): Promise<MutationResult> {
   const result = await updateRemittance(id, input);
   if (result.ok) revalidatePath(CASH_PATH);
@@ -174,14 +185,22 @@ export async function updateRemittanceAction(
 
 export async function updateCashMovementAction(
   id: string,
-  input: { date: string; movementType: string | null; amount: string; remarks: string | null },
+  input: {
+    date: string;
+    movementType: string | null;
+    amount: string;
+    remarks: string | null;
+  },
 ): Promise<MutationResult> {
   const result = await updateCashMovement(id, input);
   if (result.ok) revalidatePath(CASH_PATH);
   return result;
 }
 
-export async function deleteCashRecordAction(table: string, id: string): Promise<MutationResult> {
+export async function deleteCashRecordAction(
+  table: string,
+  id: string,
+): Promise<MutationResult> {
   const result = await deleteCashRecord(table, id);
   if (result.ok) revalidatePath(CASH_PATH);
   return result;

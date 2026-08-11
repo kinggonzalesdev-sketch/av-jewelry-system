@@ -127,15 +127,18 @@ export function CustomerRowActions({
           }
         >
           {reqSent ? (
-            <p className="text-sm text-emerald-600" data-testid="customer-request-delete-sent">
-              Request sent. The Owner reviews it in Approvals — the customer is not deleted
-              until then.
+            <p
+              className="text-sm text-emerald-600"
+              data-testid="customer-request-delete-sent"
+            >
+              Request sent. The Owner reviews it in Approvals — the customer is not
+              deleted until then.
             </p>
           ) : (
             <div className="space-y-3">
               <p className="text-sm">
-                Ask the Owner to permanently delete <strong>{customerName}</strong>. This deletes
-                nothing now; the Owner approves it in Approvals.
+                Ask the Owner to permanently delete <strong>{customerName}</strong>. This
+                deletes nothing now; the Owner approves it in Approvals.
               </p>
               <div>
                 <Label htmlFor={`customer-req-reason-${customerId}`} className="text-xs">
@@ -201,14 +204,18 @@ export function CustomerRowActions({
           </>
         }
       >
-        <form id={`customer-delete-form-${customerId}`} action={submit} className="space-y-3">
+        <form
+          id={`customer-delete-form-${customerId}`}
+          action={submit}
+          className="space-y-3"
+        >
           <input type="hidden" name="customerId" value={customerId} />
           <p className="text-sm">
             Permanently delete <strong>{customerName}</strong>? This cannot be undone.
           </p>
           <p className="text-xs text-muted-foreground">
-            A customer with any linked order, invoice, payment, or layaway cannot be deleted —
-            its records are protected.
+            A customer with any linked order, invoice, payment, or layaway cannot be
+            deleted — its records are protected.
           </p>
           <div>
             <Label htmlFor={`customer-delete-confirm-${customerId}`} className="text-xs">

@@ -3,11 +3,7 @@ import 'server-only';
 import { recordAuditEvent } from '@/lib/audit/log';
 import { AuthorizationError, requireOwnerOrAdmin } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
-import type {
-  PrinterResult,
-  PrinterRow,
-  PrintQueueStatus,
-} from '@/lib/printers/types';
+import type { PrinterResult, PrinterRow, PrintQueueStatus } from '@/lib/printers/types';
 
 /**
  * Printer registry + print-queue readers/mutations (live-readiness). Registering and
@@ -20,7 +16,9 @@ export async function listPrinters(): Promise<PrinterRow[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from('printers')
-    .select('id, name, target, transport, label_size, is_active, is_default, last_seen_at')
+    .select(
+      'id, name, target, transport, label_size, is_active, is_default, last_seen_at',
+    )
     .order('is_default', { ascending: false })
     .order('created_at', { ascending: true });
   return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
@@ -89,13 +87,21 @@ export async function registerPrinter(input: {
     p_label_size: input.labelSize?.trim() ? input.labelSize.trim() : null,
   })) as { error: { message: string } | null };
   if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
-  await recordAuditEvent({ action: 'printer.register', entityType: 'printer', entityId: input.name.trim() });
+  await recordAuditEvent({
+    action: 'printer.register',
+    entityType: 'printer',
+    entityId: input.name.trim(),
+  });
   return { ok: true };
 }
 
 export async function updatePrinter(
   id: string,
-  changes: { name?: string | null; active?: boolean | null; makeDefault?: boolean | null },
+  changes: {
+    name?: string | null;
+    active?: boolean | null;
+    makeDefault?: boolean | null;
+  },
 ): Promise<PrinterResult> {
   if (!id) return { ok: false, error: 'A printer is required.' };
   const denied = await guardOwnerOrAdmin();
@@ -109,7 +115,11 @@ export async function updatePrinter(
     p_make_default: changes.makeDefault ?? null,
   })) as { error: { message: string } | null };
   if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
-  await recordAuditEvent({ action: 'printer.update', entityType: 'printer', entityId: id });
+  await recordAuditEvent({
+    action: 'printer.update',
+    entityType: 'printer',
+    entityId: id,
+  });
   return { ok: true };
 }
 
@@ -123,6 +133,10 @@ export async function deletePrinter(id: string): Promise<PrinterResult> {
     error: { message: string } | null;
   };
   if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
-  await recordAuditEvent({ action: 'printer.delete', entityType: 'printer', entityId: id });
+  await recordAuditEvent({
+    action: 'printer.delete',
+    entityType: 'printer',
+    entityId: id,
+  });
   return { ok: true };
 }

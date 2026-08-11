@@ -7,10 +7,7 @@ import {
   getSelectedPancakePage,
   listPancakePages,
 } from '@/lib/integrations/pancake';
-import type {
-  SystemCheckItem,
-  SystemCheckResult,
-} from '@/lib/live/system-check-types';
+import type { SystemCheckItem, SystemCheckResult } from '@/lib/live/system-check-types';
 
 /**
  * Pre-Live System Check (Owner request). ONE read-only sweep the Super Admin runs
@@ -76,9 +73,7 @@ export async function runSystemCheck(): Promise<SystemCheckResult> {
       key: 'inventory',
       label: 'Inventory Access',
       status: error ? 'failed' : (count ?? 0) > 0 ? 'ready' : 'warning',
-      detail: error
-        ? 'No inventory access.'
-        : `${count ?? 0} available item(s).`,
+      detail: error ? 'No inventory access.' : `${count ?? 0} available item(s).`,
     });
   } catch {
     items.push({
@@ -177,9 +172,7 @@ export async function runSystemCheck(): Promise<SystemCheckResult> {
       label: 'Pending Failed Jobs',
       status: failed > 0 ? 'warning' : 'ready',
       detail:
-        failed > 0
-          ? `${failed} failed job(s) to review/retry first.`
-          : 'No failed jobs.',
+        failed > 0 ? `${failed} failed job(s) to review/retry first.` : 'No failed jobs.',
     });
   } catch {
     items.push({

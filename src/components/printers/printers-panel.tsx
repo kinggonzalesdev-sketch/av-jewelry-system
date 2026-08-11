@@ -76,7 +76,10 @@ export function PrintersPanel({
             ['Failed', queue.failed],
           ] as const
         ).map(([label, n]) => (
-          <span key={label} className="rounded-md border border-border bg-muted/40 px-2 py-1">
+          <span
+            key={label}
+            className="rounded-md border border-border bg-muted/40 px-2 py-1"
+          >
             {label}: <strong className="tabular-nums">{n}</strong>
           </span>
         ))}
@@ -128,7 +131,9 @@ export function PrintersPanel({
                     size="sm"
                     variant="outline"
                     disabled={busy}
-                    onClick={() => void run(() => updatePrinterAction(p.id, { makeDefault: true }))}
+                    onClick={() =>
+                      void run(() => updatePrinterAction(p.id, { makeDefault: true }))
+                    }
                     data-testid={`printer-default-${p.id}`}
                   >
                     Set default
@@ -139,7 +144,9 @@ export function PrintersPanel({
                   size="sm"
                   variant="outline"
                   disabled={busy}
-                  onClick={() => void run(() => updatePrinterAction(p.id, { active: !p.isActive }))}
+                  onClick={() =>
+                    void run(() => updatePrinterAction(p.id, { active: !p.isActive }))
+                  }
                   data-testid={`printer-toggle-${p.id}`}
                 >
                   {p.isActive ? 'Turn off' : 'Turn on'}

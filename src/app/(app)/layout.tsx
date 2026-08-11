@@ -65,7 +65,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       {/* Persistent TEST MODE banner when a test session is active (Owner request). */}
       {testMode.active ? <TestModeBanner startedByName={testMode.startedByName} /> : null}
       {/* Emergency PAUSED banner — new order/capture intake is refused while paused. */}
-      {livePaused.paused ? <LivePausedBanner sessionName={livePaused.sessionName} /> : null}
+      {livePaused.paused ? (
+        <LivePausedBanner sessionName={livePaused.sessionName} />
+      ) : null}
       {children}
     </AppShell>
   );

@@ -31,9 +31,7 @@ export default async function MessageTemplatesPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Message Templates"
-      />
+      <PageHeader title="Message Templates" />
       <Link
         href="/settings"
         className="inline-block text-xs font-medium text-muted-foreground hover:text-foreground"

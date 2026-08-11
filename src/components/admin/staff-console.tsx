@@ -273,7 +273,6 @@ function AccountCard({
               >
                 {isSelectedAdmin ? 'Remove Selected Admin' : 'Make Selected Admin'}
               </Button>
-
             </form>
             <Result state={adminState} />
           </section>
@@ -338,7 +337,13 @@ function AccountCard({
                 {auditTrail.map((e, i) => (
                   <li key={i} className="flex flex-wrap gap-2 border-b pb-1">
                     <span className="text-muted-foreground">
-                      {new Date(e.occurredAt).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                      {new Date(e.occurredAt).toLocaleString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                      })}
                     </span>
                     <span className="font-medium">{e.action}</span>
                     <span className="text-muted-foreground">{e.entityType}</span>
@@ -384,10 +389,9 @@ export function StaffConsole({
           never the protection.
         </p>
         <p className="mt-1">
-          Selected Admins: {selectedAdminCount}. Staff invitation
-          is not available in the app: creating an account needs the service-role key,
-          which bypasses RLS and is deliberately unwired (ADR §11). Accounts are
-          provisioned out-of-band.
+          Selected Admins: {selectedAdminCount}. Staff invitation is not available in the
+          app: creating an account needs the service-role key, which bypasses RLS and is
+          deliberately unwired (ADR §11). Accounts are provisioned out-of-band.
         </p>
       </div>
 

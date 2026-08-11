@@ -72,7 +72,10 @@ describe('ReviewAttendanceView — Overtime column', () => {
     const inThumb = screen.getByAltText('In selfie');
     const outThumb = screen.getByAltText('Out selfie');
     expect(inThumb).toHaveAttribute('src', 'https://signed.example/in.jpg');
-    expect(outThumb.closest('a')).toHaveAttribute('href', 'https://signed.example/out.jpg');
+    expect(outThumb.closest('a')).toHaveAttribute(
+      'href',
+      'https://signed.example/out.jpg',
+    );
   });
 });
 
@@ -94,7 +97,9 @@ describe('AttendanceClock', () => {
 
   it('reveals the selfie step (Cancel) when Clock In is pressed, and Cancel returns', () => {
     render(<AttendanceClock staff={staff} openSessions={{}} />);
-    fireEvent.change(screen.getByTestId('clock-staff-select'), { target: { value: 's1' } });
+    fireEvent.change(screen.getByTestId('clock-staff-select'), {
+      target: { value: 's1' },
+    });
     fireEvent.click(screen.getByTestId('clock-in'));
 
     expect(screen.getByText(/Take a selfie/i)).toBeInTheDocument();
@@ -108,7 +113,9 @@ describe('AttendanceClock', () => {
     render(
       <AttendanceClock staff={staff} openSessions={{ s1: '2026-07-22T14:00:00.000Z' }} />,
     );
-    fireEvent.change(screen.getByTestId('clock-staff-select'), { target: { value: 's1' } });
+    fireEvent.change(screen.getByTestId('clock-staff-select'), {
+      target: { value: 's1' },
+    });
     const clockOut = screen.getByTestId('clock-out');
     expect(clockOut).toBeInTheDocument();
 

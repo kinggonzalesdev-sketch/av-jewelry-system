@@ -187,5 +187,4 @@ export type OrderDetail = {
 };
 
 export type OrderDetailResult =
-  | { ok: true; detail: OrderDetail }
-  | { ok: false; reason: string };
+  { ok: true; detail: OrderDetail } | { ok: false; reason: string };

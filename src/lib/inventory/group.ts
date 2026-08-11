@@ -18,6 +18,9 @@ export function inventoryGroup(
 ): string {
   const code = (itemCode ?? '').trim();
   if (isHKItem({ code, name: itemName ?? null })) return 'HK ITEM';
-  const prefix = code.replace(/[^a-zA-Z]/g, '').slice(0, 2).toUpperCase();
+  const prefix = code
+    .replace(/[^a-zA-Z]/g, '')
+    .slice(0, 2)
+    .toUpperCase();
   return KNOWN_PREFIXES.has(prefix) ? prefix : 'Other';
 }

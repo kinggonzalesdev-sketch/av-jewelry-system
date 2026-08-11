@@ -117,7 +117,8 @@ function ConversationsCard({
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setOpen(false);
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node))
+        setOpen(false);
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
@@ -142,9 +143,12 @@ function ConversationsCard({
       const res = await fetch('/api/integrations/pancake/conversations', {
         headers: { accept: 'application/json' },
       });
-      const body = (await res.json().catch(() => null)) as
-        | { ok: boolean; message: string; conversations: Conversation[]; debug?: string | null }
-        | null;
+      const body = (await res.json().catch(() => null)) as {
+        ok: boolean;
+        message: string;
+        conversations: Conversation[];
+        debug?: string | null;
+      } | null;
       if (!body) {
         setError('Pancake API unavailable. Please try again.');
         setRows([]);
@@ -196,13 +200,16 @@ function ConversationsCard({
           >
             {linkStatus.linked > 0 ? (
               <>
-                ✅ <strong>{linkStatus.linked} of {linkStatus.total}</strong> customers are linked
-                to Pancake.
+                ✅{' '}
+                <strong>
+                  {linkStatus.linked} of {linkStatus.total}
+                </strong>{' '}
+                customers are linked to Pancake.
               </>
             ) : (
               <>
-                No customers are linked yet. Click <strong>⚡ Auto-link</strong> once — the links are
-                then saved and won&apos;t disappear.
+                No customers are linked yet. Click <strong>⚡ Auto-link</strong> once —
+                the links are then saved and won&apos;t disappear.
               </>
             )}
           </p>
@@ -242,10 +249,15 @@ function ConversationsCard({
                   data-testid="pancake-linked-list"
                 >
                   {filteredLinked.length === 0 ? (
-                    <li className="px-3 py-3 text-sm text-muted-foreground">No matches.</li>
+                    <li className="px-3 py-3 text-sm text-muted-foreground">
+                      No matches.
+                    </li>
                   ) : (
                     filteredLinked.map((c) => (
-                      <li key={c.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+                      <li
+                        key={c.id}
+                        className="flex items-center gap-2 px-3 py-2 text-sm"
+                      >
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-medium">{c.displayName}</p>
                           <p className="truncate font-mono text-[10px] text-muted-foreground">
@@ -286,7 +298,10 @@ function ConversationsCard({
           </Button>
         </div>
         {syncState.error ? (
-          <p role="alert" className="whitespace-pre-wrap break-words text-sm text-destructive">
+          <p
+            role="alert"
+            className="whitespace-pre-wrap break-words text-sm text-destructive"
+          >
             {syncState.error}
           </p>
         ) : null}
@@ -299,7 +314,10 @@ function ConversationsCard({
           </p>
         ) : null}
         {error ? (
-          <p role="alert" className="whitespace-pre-wrap break-words text-sm text-destructive">
+          <p
+            role="alert"
+            className="whitespace-pre-wrap break-words text-sm text-destructive"
+          >
             {error}
           </p>
         ) : null}
@@ -333,14 +351,23 @@ function ConversationsCard({
                 </div>
                 <ul className="max-h-64 divide-y divide-border overflow-auto">
                   {filtered.length === 0 ? (
-                    <li className="px-3 py-3 text-sm text-muted-foreground">No matches.</li>
+                    <li className="px-3 py-3 text-sm text-muted-foreground">
+                      No matches.
+                    </li>
                   ) : (
                     filtered.map((c) => (
-                      <li key={c.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+                      <li
+                        key={c.id}
+                        className="flex items-center gap-2 px-3 py-2 text-sm"
+                      >
                         <div className="min-w-0 flex-1">
-                          <p className="truncate font-medium">{c.customerName ?? 'Unknown'}</p>
+                          <p className="truncate font-medium">
+                            {c.customerName ?? 'Unknown'}
+                          </p>
                           {c.snippet ? (
-                            <p className="truncate text-xs text-muted-foreground">{c.snippet}</p>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {c.snippet}
+                            </p>
                           ) : null}
                           <p className="truncate font-mono text-[11px] text-muted-foreground">
                             {c.id}
@@ -511,9 +538,9 @@ function ManagedPagesCard({
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          Load the Facebook / Instagram Pages your Pancake User Access Token manages,
-          then select <strong>A.V. Jewelry</strong> as the Page this system posts as.
-          The token stays on the server — it is never sent to your browser.
+          Load the Facebook / Instagram Pages your Pancake User Access Token manages, then
+          select <strong>A.V. Jewelry</strong> as the Page this system posts as. The token
+          stays on the server — it is never sent to your browser.
         </p>
 
         {selectedPage ? (
@@ -522,7 +549,8 @@ function ManagedPagesCard({
             data-testid="pancake-selected-page"
           >
             <p className="font-medium text-foreground">
-              Currently selected: {selectedPage.pageName ?? 'Page'} ({selectedPage.pageId})
+              Currently selected: {selectedPage.pageName ?? 'Page'} ({selectedPage.pageId}
+              )
             </p>
             {selectedPage.selectedByName || selectedPage.selectedAt ? (
               <p className="mt-0.5 text-muted-foreground">
@@ -550,7 +578,11 @@ function ManagedPagesCard({
         </div>
 
         {loadError ? (
-          <p role="alert" className="text-sm text-destructive" data-testid="pancake-load-error">
+          <p
+            role="alert"
+            className="text-sm text-destructive"
+            data-testid="pancake-load-error"
+          >
             {loadError}
           </p>
         ) : null}

@@ -51,8 +51,8 @@ export function CaptureReviewPanel({ rows }: { rows: CaptureReviewRow[] }) {
         Captures awaiting review ({rows.length})
       </h2>
       <p className="mb-3 mt-0.5 text-xs text-muted-foreground">
-        Review Mode is on — captures wait here until approved. Approve to create the
-        order (it lands in For Invoice), or reject to discard.
+        Review Mode is on — captures wait here until approved. Approve to create the order
+        (it lands in For Invoice), or reject to discard.
       </p>
       {error ? (
         <p role="alert" className="mb-2 text-sm text-destructive">

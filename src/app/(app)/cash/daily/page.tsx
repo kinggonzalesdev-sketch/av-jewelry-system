@@ -27,7 +27,9 @@ export default async function DailyCashPage({
 }) {
   await requirePermission('view_reports');
   const sp = await searchParams;
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(sp.date ?? '') ? (sp.date as string) : todayInManila();
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(sp.date ?? '')
+    ? (sp.date as string)
+    : todayInManila();
 
   // Summary + the DEFAULT tab (Sales Walk-ins) render server-side; other tabs lazy-load.
   // The walk-in item list + admin id back the in-section "Add New Sale" popup so a

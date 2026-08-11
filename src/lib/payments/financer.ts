@@ -65,7 +65,8 @@ export async function listDetectedFinancers(): Promise<string[]> {
   };
 
   for (const r of (configured.data ?? []) as Array<{ name: string }>) add(r.name, true);
-  for (const r of (ledger.data ?? []) as Array<{ remarks: string | null }>) add(r.remarks);
+  for (const r of (ledger.data ?? []) as Array<{ remarks: string | null }>)
+    add(r.remarks);
 
   return [...byKey.values()].sort((a, b) => a.localeCompare(b));
 }
@@ -87,8 +88,7 @@ export async function listFinancers(): Promise<Financer[]> {
 }
 
 export type FindOrCreateFinancerResult =
-  | { ok: true; financer: Financer }
-  | { ok: false; error: string };
+  { ok: true; financer: Financer } | { ok: false; error: string };
 
 /**
  * Find a financer by normalized name (case- and spacing-insensitive) or create it.
@@ -101,7 +101,8 @@ export async function findOrCreateFinancer(
 ): Promise<FindOrCreateFinancerResult> {
   const trimmed = (name ?? '').trim();
   if (!trimmed) return { ok: false, error: 'A financer name is required.' };
-  if (trimmed.length > 120) return { ok: false, error: 'That financer name is too long.' };
+  if (trimmed.length > 120)
+    return { ok: false, error: 'That financer name is too long.' };
 
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -132,8 +133,7 @@ export type SetLayawayDetailsInput = {
 };
 
 export type SetLayawayDetailsResult =
-  | { ok: true; message: string }
-  | { ok: false; error: string };
+  { ok: true; message: string } | { ok: false; error: string };
 
 /**
  * Set a layaway's financer, current holder, current location, and remarks.

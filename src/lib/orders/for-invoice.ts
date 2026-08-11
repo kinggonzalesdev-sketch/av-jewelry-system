@@ -1,7 +1,11 @@
 import 'server-only';
 
 import { recordAuditEvent } from '@/lib/audit/log';
-import { AuthorizationError, requireActiveStaff, requireOwnerOrAdmin } from '@/lib/authz/guard';
+import {
+  AuthorizationError,
+  requireActiveStaff,
+  requireOwnerOrAdmin,
+} from '@/lib/authz/guard';
 import {
   conversationBelongsToPage,
   getActivePancakePageId,
@@ -112,7 +116,9 @@ async function deliverOrderMessageViaPancake(
       return { attempted: false, delivered: false, error: null };
     }
     // Attach the item screenshot/photo when the order has one (best-effort).
-    const attachmentUrl = await findOrderImageUrl(supabase, officialOrderId).catch(() => null);
+    const attachmentUrl = await findOrderImageUrl(supabase, officialOrderId).catch(
+      () => null,
+    );
     const res = await sendPancakeConversationMessage({
       conversationId,
       message,
@@ -133,7 +139,12 @@ async function deliverOrderMessageViaPancake(
       debug: res.debug ?? null,
     };
   } catch {
-    return { attempted: true, delivered: false, error: 'Pancake delivery failed.', debug: null };
+    return {
+      attempted: true,
+      delivered: false,
+      error: 'Pancake delivery failed.',
+      debug: null,
+    };
   }
 }
 
@@ -189,8 +200,7 @@ async function persistSendOutcome(
  */
 
 export type ForInvoiceResult =
-  | { ok: true; pancake?: PancakeDelivery }
-  | { ok: false; error: string };
+  { ok: true; pancake?: PancakeDelivery } | { ok: false; error: string };
 
 export type OrderInvoiceMessage = {
   body: string;
@@ -302,7 +312,11 @@ export async function resendOrderInvoice(orderId: string): Promise<ForInvoiceRes
   if (!rendered.ok) return { ok: false, error: rendered.error };
 
   const supabase = await createClient();
-  const pancake = await deliverOrderMessageViaPancake(supabase, orderId, rendered.message);
+  const pancake = await deliverOrderMessageViaPancake(
+    supabase,
+    orderId,
+    rendered.message,
+  );
   if (!pancake.attempted) {
     return {
       ok: false,
@@ -367,7 +381,11 @@ export async function sendOrderInvoice(
 export async function getCustomerMatchInfo(
   customerId: string,
 ): Promise<CustomerMatchInfo> {
-  const empty: CustomerMatchInfo = { sameNameCount: 0, hasConversation: false, examples: [] };
+  const empty: CustomerMatchInfo = {
+    sameNameCount: 0,
+    hasConversation: false,
+    examples: [],
+  };
   if (!customerId) return empty;
 
   const supabase = await createClient();
@@ -419,7 +437,9 @@ export async function getForInvoiceOrders(): Promise<BulkInvoiceOrder[]> {
     .order('created_at', { ascending: true });
 
   return ((data ?? []) as Array<Record<string, unknown>>).map((r) => {
-    const c = one<{ display_name: string; facebook_conversation_url: string | null }>(r.customers);
+    const c = one<{ display_name: string; facebook_conversation_url: string | null }>(
+      r.customers,
+    );
     return {
       orderId: r.id as string,
       orderNumber: (r.order_number as string | null) ?? '—',
@@ -444,7 +464,9 @@ export async function getOrderReminders(
   const [{ data: reminders }, { data: order }] = await Promise.all([
     supabase
       .from('order_reminders')
-      .select('reminder_number, body, sent_at, sender:staff_profiles!sent_by ( full_name )')
+      .select(
+        'reminder_number, body, sent_at, sender:staff_profiles!sent_by ( full_name )',
+      )
       .eq('official_order_id', officialOrderId)
       .order('reminder_number', { ascending: true }),
     supabase
@@ -533,7 +555,9 @@ export async function advanceOrderToReminder(
   message?: string | null,
 ): Promise<ForInvoiceResult> {
   const supabase = await createClient();
-  const response = await supabase.rpc('advance_order_to_reminder', { p_order_id: orderId });
+  const response = await supabase.rpc('advance_order_to_reminder', {
+    p_order_id: orderId,
+  });
 
   if (response.error) {
     await recordAuditEvent({
@@ -571,7 +595,9 @@ export async function advanceOrderToReminder(
  * gate: the required down payment (20% of payable) must be verified. Idempotent —
  * only a still-awaiting order moves. Touches no money.
  */
-export async function advanceOrderConfirmPayment(orderId: string): Promise<ForInvoiceResult> {
+export async function advanceOrderConfirmPayment(
+  orderId: string,
+): Promise<ForInvoiceResult> {
   const supabase = await createClient();
   const response = await supabase.rpc('advance_order_confirm_payment', {
     p_order_id: orderId,
@@ -691,13 +717,18 @@ async function autoSendCaptureScreenshotOnLink(
     if (!conv) return;
 
     // Test Session — record nothing to a real customer.
-    const { data: tm } = await supabase.from('live_test_state').select('active').maybeSingle();
+    const { data: tm } = await supabase
+      .from('live_test_state')
+      .select('active')
+      .maybeSingle();
     if ((tm as { active?: boolean } | null)?.active === true) return;
 
     // The order's mined capture: idempotency flag + device/capture keys for marking.
     const { data } = (await supabase
       .from('capture_records')
-      .select('device_installation_id, capture_id, screenshot_path, message_status, is_test')
+      .select(
+        'device_installation_id, capture_id, screenshot_path, message_status, is_test',
+      )
       .eq('official_order_id', orderId)
       .not('screenshot_path', 'is', null)
       .order('captured_at', { ascending: false })
@@ -725,12 +756,17 @@ async function autoSendCaptureScreenshotOnLink(
       .maybeSingle()) as { data: { customers?: unknown } | null };
     type C = { display_name?: string | null };
     const cust = ord?.customers as C | C[] | null | undefined;
-    const name = (Array.isArray(cust) ? cust[0]?.display_name : cust?.display_name)?.trim() || '';
+    const name =
+      (Array.isArray(cust) ? cust[0]?.display_name : cust?.display_name)?.trim() || '';
     const message =
       `${name ? `Hi ${name}! ` : ''}📸 Ito po ang inyong na-mine na item. ` +
       `Ihahanda na po namin ang invoice ninyo — maraming salamat! 💛`;
 
-    const res = await sendPancakeConversationMessage({ conversationId: conv, message, attachmentUrl });
+    const res = await sendPancakeConversationMessage({
+      conversationId: conv,
+      message,
+      attachmentUrl,
+    });
 
     // Mark the capture sent/failed (idempotency) via the same RPC the mobile send uses.
     if (data.device_installation_id && data.capture_id) {
@@ -855,7 +891,8 @@ export async function setCustomerPancakeConversation(
   conversationId: string | null,
 ): Promise<ForInvoiceResult> {
   const trimmed = (conversationId ?? '').trim();
-  if (trimmed.length > 200) return { ok: false, error: 'That conversation id is too long.' };
+  if (trimmed.length > 200)
+    return { ok: false, error: 'That conversation id is too long.' };
 
   try {
     await requireOwnerOrAdmin();

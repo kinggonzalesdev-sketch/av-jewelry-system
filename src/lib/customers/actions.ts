@@ -119,7 +119,12 @@ export async function requestCustomerDeletionAction(
   }
   // Carry the customer name in the reason so the Owner sees WHO in /approvals.
   const full = `Delete customer "${customerName}": ${trimmed}`;
-  const result = await requestOwnerApproval('customer_delete', 'customer', customerId, full);
+  const result = await requestOwnerApproval(
+    'customer_delete',
+    'customer',
+    customerId,
+    full,
+  );
   if (!result.ok) return { ok: false, error: result.error };
 
   revalidatePath('/customers');

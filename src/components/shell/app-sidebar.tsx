@@ -244,7 +244,9 @@ export function AppSidebar({
 
                 // A collapsible group (e.g. Team Management). Role-filter first; a
                 // group with nothing visible renders nothing.
-                const items = row.items.filter((it) => canSeeNavItem(it, roleKey, allowed));
+                const items = row.items.filter((it) =>
+                  canSeeNavItem(it, roleKey, allowed),
+                );
                 if (items.length === 0) return null;
                 const childActive = items.some((it) => isActive(it.href));
                 const open = openSection[row.section] ?? childActive;
@@ -362,22 +364,22 @@ export function AppSidebar({
           {mobilePrimaryItems()
             .filter((item) => canSeeNavItem(item, roleKey, allowed))
             .map((item) => (
-            <li key={item.href}>
-              <Link
-                href={item.href}
-                aria-current={isActive(item.href) ? 'page' : undefined}
-                className={cn(
-                  'flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 text-[10px] font-medium',
-                  isActive(item.href) ? 'text-gold-strong' : 'text-muted-foreground',
-                )}
-              >
-                <span aria-hidden="true" className="text-sm">
-                  {item.icon}
-                </span>
-                <span className="truncate">{mobileLabel(item)}</span>
-              </Link>
-            </li>
-          ))}
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  aria-current={isActive(item.href) ? 'page' : undefined}
+                  className={cn(
+                    'flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 text-[10px] font-medium',
+                    isActive(item.href) ? 'text-gold-strong' : 'text-muted-foreground',
+                  )}
+                >
+                  <span aria-hidden="true" className="text-sm">
+                    {item.icon}
+                  </span>
+                  <span className="truncate">{mobileLabel(item)}</span>
+                </Link>
+              </li>
+            ))}
           <li>
             <button
               type="button"
@@ -402,8 +404,12 @@ export function AppSidebar({
               {/* Role-filtered so a non-Owner is not offered an Owner-only page.
                   Settings is appended (it lives in the desktop footer, not the nav). */}
               {[
-                ...mobileMoreItems().filter((item) => canSeeNavItem(item, roleKey, allowed)),
-                ...(canSeeNavItem(SETTINGS_ITEM, roleKey, allowed) ? [SETTINGS_ITEM] : []),
+                ...mobileMoreItems().filter((item) =>
+                  canSeeNavItem(item, roleKey, allowed),
+                ),
+                ...(canSeeNavItem(SETTINGS_ITEM, roleKey, allowed)
+                  ? [SETTINGS_ITEM]
+                  : []),
               ].map((item) => (
                 <li key={item.href}>
                   <Link

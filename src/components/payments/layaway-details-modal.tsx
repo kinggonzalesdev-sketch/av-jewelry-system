@@ -6,7 +6,10 @@ import {
   findOrCreateFinancerAction,
   setLayawayDetailsAction,
 } from '@/lib/payments/actions';
-import { EMPTY_PAYMENT_STATE, type PaymentActionState } from '@/lib/payments/action-state';
+import {
+  EMPTY_PAYMENT_STATE,
+  type PaymentActionState,
+} from '@/lib/payments/action-state';
 import type { Financer } from '@/lib/payments/financer';
 import type { LayawayRow } from '@/lib/payments/workspace';
 import { Button } from '@/components/ui/button';

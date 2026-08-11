@@ -67,7 +67,11 @@ function completedRow(over: Partial<CompletedInventoryRow>): CompletedInventoryR
 }
 
 const completed: CompletedInventoryRow[] = [
-  completedRow({ itemCode: 'SBA-R-2222', finalSale: '8000.00', paymentStatus: 'paid_in_full' }),
+  completedRow({
+    itemCode: 'SBA-R-2222',
+    finalSale: '8000.00',
+    paymentStatus: 'paid_in_full',
+  }),
   completedRow({
     itemCode: 'SBA-E-3333',
     completionType: 'Store Pickup',
@@ -149,7 +153,9 @@ describe('Inventory — Active vs Completed', () => {
     fireEvent.click(deletes[0]!);
     // Honest wording: the item is returned to inventory, not deleted; gated on DELETE.
     expect(
-      screen.getByRole('heading', { name: 'Delete order info & return item to inventory' }),
+      screen.getByRole('heading', {
+        name: 'Delete order info & return item to inventory',
+      }),
     ).toBeInTheDocument();
     expect(screen.getByText(/goes back to available stock/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText('DELETE')).toBeInTheDocument();

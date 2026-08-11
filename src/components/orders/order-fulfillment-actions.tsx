@@ -52,36 +52,44 @@ export function OrderFulfillmentActions({
   onMutated: () => void;
 }) {
   const router = useRouter();
-  const [releaseState, release, releasing] = useActionState<FulfillmentActionState, FormData>(
-    releaseFulfillmentAction,
-    EMPTY_FULFILLMENT_STATE,
-  );
-  const [dispatchState, dispatch, dispatching] = useActionState<FulfillmentActionState, FormData>(
-    dispatchAction,
-    EMPTY_FULFILLMENT_STATE,
-  );
-  const [completeState, complete, completing] = useActionState<FulfillmentActionState, FormData>(
-    completeFulfillmentAction,
-    EMPTY_FULFILLMENT_STATE,
-  );
-  const [deliverState, deliver, delivering] = useActionState<FulfillmentActionState, FormData>(
-    markDeliveredAction,
-    EMPTY_FULFILLMENT_STATE,
-  );
-  const [requestState, request, requesting] = useActionState<FulfillmentActionState, FormData>(
-    requestApprovalAction,
-    EMPTY_FULFILLMENT_STATE,
-  );
-  const [decideState, decide, deciding] = useActionState<FulfillmentActionState, FormData>(
-    decideApprovalAction,
-    EMPTY_FULFILLMENT_STATE,
-  );
-  const [executeState, execute, executing] = useActionState<FulfillmentActionState, FormData>(
-    executeApprovalAction,
-    EMPTY_FULFILLMENT_STATE,
-  );
+  const [releaseState, release, releasing] = useActionState<
+    FulfillmentActionState,
+    FormData
+  >(releaseFulfillmentAction, EMPTY_FULFILLMENT_STATE);
+  const [dispatchState, dispatch, dispatching] = useActionState<
+    FulfillmentActionState,
+    FormData
+  >(dispatchAction, EMPTY_FULFILLMENT_STATE);
+  const [completeState, complete, completing] = useActionState<
+    FulfillmentActionState,
+    FormData
+  >(completeFulfillmentAction, EMPTY_FULFILLMENT_STATE);
+  const [deliverState, deliver, delivering] = useActionState<
+    FulfillmentActionState,
+    FormData
+  >(markDeliveredAction, EMPTY_FULFILLMENT_STATE);
+  const [requestState, request, requesting] = useActionState<
+    FulfillmentActionState,
+    FormData
+  >(requestApprovalAction, EMPTY_FULFILLMENT_STATE);
+  const [decideState, decide, deciding] = useActionState<
+    FulfillmentActionState,
+    FormData
+  >(decideApprovalAction, EMPTY_FULFILLMENT_STATE);
+  const [executeState, execute, executing] = useActionState<
+    FulfillmentActionState,
+    FormData
+  >(executeApprovalAction, EMPTY_FULFILLMENT_STATE);
 
-  const states = [releaseState, dispatchState, deliverState, completeState, requestState, decideState, executeState];
+  const states = [
+    releaseState,
+    dispatchState,
+    deliverState,
+    completeState,
+    requestState,
+    decideState,
+    executeState,
+  ];
   const notice = states.map((s) => s.error ?? s.success).find(Boolean) ?? null;
   const isError = states.some((s) => s.error);
 
@@ -95,7 +103,15 @@ export function OrderFulfillmentActions({
       router.refresh();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [releaseState, dispatchState, deliverState, completeState, requestState, decideState, executeState]);
+  }, [
+    releaseState,
+    dispatchState,
+    deliverState,
+    completeState,
+    requestState,
+    decideState,
+    executeState,
+  ]);
 
   if (!row) {
     return (
@@ -106,7 +122,9 @@ export function OrderFulfillmentActions({
     );
   }
 
-  const terminal = ['dispatched', 'delivered', 'picked_up', 'completed'].includes(row.status);
+  const terminal = ['dispatched', 'delivered', 'picked_up', 'completed'].includes(
+    row.status,
+  );
 
   return (
     <div className="space-y-3">
@@ -196,7 +214,11 @@ export function OrderFulfillmentActions({
 
         {canRequest ? (
           <form action={request} className="flex items-end gap-2">
-            <input type="hidden" name="actionKind" value="exceptional_fulfillment_release" />
+            <input
+              type="hidden"
+              name="actionKind"
+              value="exceptional_fulfillment_release"
+            />
             <input type="hidden" name="entityType" value="official_order" />
             <input type="hidden" name="entityId" value={row.officialOrderId} />
             <div>
@@ -246,7 +268,9 @@ export function OrderFulfillmentActions({
                   {a.executedAt ? ' · executed' : ''}
                 </span>
               </div>
-              {a.reason ? <p className="mt-0.5 text-muted-foreground">{a.reason}</p> : null}
+              {a.reason ? (
+                <p className="mt-0.5 text-muted-foreground">{a.reason}</p>
+              ) : null}
 
               {isOwner && a.status === 'pending_owner_approval' ? (
                 <div className="mt-1.5 flex flex-wrap gap-2">
@@ -260,7 +284,12 @@ export function OrderFulfillmentActions({
                   <form action={decide}>
                     <input type="hidden" name="requestId" value={a.id} />
                     <input type="hidden" name="decision" value="rejected" />
-                    <Button type="submit" size="sm" variant="destructive" disabled={deciding}>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      variant="destructive"
+                      disabled={deciding}
+                    >
                       Reject
                     </Button>
                   </form>
@@ -278,7 +307,8 @@ export function OrderFulfillmentActions({
 
               {!isOwner ? (
                 <p className="mt-1 text-muted-foreground">
-                  The six Owner approvals are non-delegable — only the Owner may decide them.
+                  The six Owner approvals are non-delegable — only the Owner may decide
+                  them.
                 </p>
               ) : null}
             </div>
@@ -287,7 +317,12 @@ export function OrderFulfillmentActions({
       ) : null}
 
       {notice ? (
-        <p role="status" className={isError ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>
+        <p
+          role="status"
+          className={
+            isError ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'
+          }
+        >
           {notice}
         </p>
       ) : null}

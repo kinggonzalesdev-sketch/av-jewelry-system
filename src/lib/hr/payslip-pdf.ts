@@ -31,13 +31,14 @@ function peso(value: string | null): string {
 }
 
 function safeSegment(value: string): string {
-  return (value || '')
-    .trim()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    || 'unknown';
+  return (
+    (value || '')
+      .trim()
+      .replace(/[^\w\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '') || 'unknown'
+  );
 }
 
 /** Filename: AV-Jewelry-Payslip-[Employee]-[Pay-Period].pdf */

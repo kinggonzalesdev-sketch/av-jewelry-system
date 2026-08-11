@@ -19,12 +19,26 @@ type PancakeConv = {
   updatedAt?: string | null;
   avatar?: string | null;
 };
-type PancakeMsg = { id: string; fromPage: boolean; from: string | null; text: string | null; at: string | null };
+type PancakeMsg = {
+  id: string;
+  fromPage: boolean;
+  from: string | null;
+  text: string | null;
+  at: string | null;
+};
 
 function fmtWhen(iso: string | null | undefined): string {
   if (!iso) return '';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return Number.isNaN(d.getTime())
+    ? ''
+    : d.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
 }
 
 /** Loose name normalize for filtering (mirrors the SQL/auto-link normalizer). */
@@ -54,7 +68,10 @@ export function OrderFacebookLink({
 }: {
   orderId: string;
   order: { conversationId: string | null; url: string | null; status: string | null };
-  customer: { pancakeConversationId: string | null; facebookConversationUrl: string | null };
+  customer: {
+    pancakeConversationId: string | null;
+    facebookConversationUrl: string | null;
+  };
   customerName?: string;
   onSaved: () => void;
 }) {
@@ -65,7 +82,9 @@ export function OrderFacebookLink({
   const usingDefault = !hasOrderLink && Boolean(effConv || effUrl);
 
   const [editing, setEditing] = useState(false);
-  const [conv, setConv] = useState(order.conversationId ?? customer.pancakeConversationId ?? '');
+  const [conv, setConv] = useState(
+    order.conversationId ?? customer.pancakeConversationId ?? '',
+  );
   const [url, setUrl] = useState(order.url ?? customer.facebookConversationUrl ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +96,13 @@ export function OrderFacebookLink({
   // per open (ref-guarded); a shared/ambiguous name is left for the manual Confirm.
   const autoLinkTried = useRef(false);
   useEffect(() => {
-    if (autoLinkTried.current || hasOrderLink || effConv || effUrl || !(customerName ?? '').trim()) {
+    if (
+      autoLinkTried.current ||
+      hasOrderLink ||
+      effConv ||
+      effUrl ||
+      !(customerName ?? '').trim()
+    ) {
       return;
     }
     autoLinkTried.current = true;
@@ -87,9 +112,10 @@ export function OrderFacebookLink({
           `/api/integrations/pancake/resolve?name=${encodeURIComponent(customerName ?? '')}`,
           { headers: { accept: 'application/json' } },
         );
-        const body = (await res.json().catch(() => null)) as
-          | { ok: boolean; conversationId: string | null }
-          | null;
+        const body = (await res.json().catch(() => null)) as {
+          ok: boolean;
+          conversationId: string | null;
+        } | null;
         const cid = body?.ok ? body.conversationId : null;
         if (cid) {
           const saved = await setOrderFacebookLinkAction(orderId, {
@@ -126,12 +152,15 @@ export function OrderFacebookLink({
         `/api/integrations/pancake/resolve?name=${encodeURIComponent(customerName ?? '')}`,
         { headers: { accept: 'application/json' } },
       );
-      const body = (await res.json().catch(() => null)) as
-        | { ok: boolean; conversationId: string | null }
-        | null;
+      const body = (await res.json().catch(() => null)) as {
+        ok: boolean;
+        conversationId: string | null;
+      } | null;
       if (body?.ok && body.conversationId) {
         setConv(body.conversationId);
-        setNotice('Auto-matched from Pancake (recent). Save to confirm — or Search for older chats.');
+        setNotice(
+          'Auto-matched from Pancake (recent). Save to confirm — or Search for older chats.',
+        );
       }
     } catch {
       /* ignore — the manual Search remains available */
@@ -148,9 +177,11 @@ export function OrderFacebookLink({
       const res = await fetch('/api/integrations/pancake/conversations', {
         headers: { accept: 'application/json' },
       });
-      const body = (await res.json().catch(() => null)) as
-        | { ok: boolean; message: string; conversations: PancakeConv[] }
-        | null;
+      const body = (await res.json().catch(() => null)) as {
+        ok: boolean;
+        message: string;
+        conversations: PancakeConv[];
+      } | null;
       if (!body) {
         setConvError('Pancake is unavailable right now. Try again, or paste the id.');
       } else if (body.ok) {
@@ -161,7 +192,9 @@ export function OrderFacebookLink({
         // already set/typed, and stays silent when the match is ambiguous.
         const key = nameKey(customerName ?? '');
         if (key && !conv.trim()) {
-          const matched = body.conversations.filter((c) => nameKey(c.customerName ?? '') === key);
+          const matched = body.conversations.filter(
+            (c) => nameKey(c.customerName ?? '') === key,
+          );
           const distinct = Array.from(new Map(matched.map((c) => [c.id, c])).values());
           if (distinct.length === 1 && distinct[0]) {
             setConv(distinct[0].id);
@@ -211,9 +244,11 @@ export function OrderFacebookLink({
         `/api/integrations/pancake/messages?conversationId=${encodeURIComponent(id)}`,
         { headers: { accept: 'application/json' } },
       );
-      const body = (await res.json().catch(() => null)) as
-        | { ok: boolean; message?: string; messages?: PancakeMsg[] }
-        | null;
+      const body = (await res.json().catch(() => null)) as {
+        ok: boolean;
+        message?: string;
+        messages?: PancakeMsg[];
+      } | null;
       if (!body) setMsgError('Pancake is unavailable right now.');
       else if (body.ok) setMessages(body.messages ?? []);
       else setMsgError(body.message ?? 'Could not load messages.');
@@ -256,9 +291,15 @@ export function OrderFacebookLink({
     : usingDefault
       ? 'Linked · default'
       : 'Not linked';
-  const stateCls = hasOrderLink ? 'badge-green' : usingDefault ? 'badge-blue' : 'badge-gray';
+  const stateCls = hasOrderLink
+    ? 'badge-green'
+    : usingDefault
+      ? 'badge-blue'
+      : 'badge-gray';
 
-  const shortConv = effConv ? `${effConv.slice(0, 22)}${effConv.length > 22 ? '…' : ''}` : null;
+  const shortConv = effConv
+    ? `${effConv.slice(0, 22)}${effConv.length > 22 ? '…' : ''}`
+    : null;
 
   return (
     <div
@@ -290,8 +331,8 @@ export function OrderFacebookLink({
         </p>
       ) : (
         <p className="text-[11px] text-muted-foreground">
-          No Facebook chat is linked — Send Invoice won&apos;t reach the customer until one
-          is set.
+          No Facebook chat is linked — Send Invoice won&apos;t reach the customer until
+          one is set.
         </p>
       )}
 
@@ -334,7 +375,14 @@ export function OrderFacebookLink({
             {hasOrderLink ? (
               <button
                 type="button"
-                onClick={() => void run(() => setOrderFacebookLinkAction(orderId, { conversationId: null, url: null }))}
+                onClick={() =>
+                  void run(() =>
+                    setOrderFacebookLinkAction(orderId, {
+                      conversationId: null,
+                      url: null,
+                    }),
+                  )
+                }
                 disabled={busy}
                 className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-destructive hover:bg-accent disabled:opacity-60"
                 data-testid="order-fb-remove"
@@ -343,7 +391,9 @@ export function OrderFacebookLink({
               </button>
             ) : null}
           </div>
-          {msgError ? <p className="text-[10px] text-muted-foreground">{msgError}</p> : null}
+          {msgError ? (
+            <p className="text-[10px] text-muted-foreground">{msgError}</p>
+          ) : null}
           {messages ? (
             <ul
               className="max-h-40 space-y-1 overflow-auto rounded-md border border-border bg-background p-1.5"
@@ -353,11 +403,18 @@ export function OrderFacebookLink({
                 <li className="text-[11px] text-muted-foreground">No recent messages.</li>
               ) : (
                 messages.map((m) => (
-                  <li key={m.id} className={`text-[11px] ${m.fromPage ? 'text-right' : ''}`}>
-                    <span className="font-medium">{m.fromPage ? 'You' : m.from ?? 'Customer'}:</span>{' '}
+                  <li
+                    key={m.id}
+                    className={`text-[11px] ${m.fromPage ? 'text-right' : ''}`}
+                  >
+                    <span className="font-medium">
+                      {m.fromPage ? 'You' : (m.from ?? 'Customer')}:
+                    </span>{' '}
                     <span className="break-words">{m.text ?? '—'}</span>
                     {m.at ? (
-                      <span className="block text-[9px] text-muted-foreground">{fmtWhen(m.at)}</span>
+                      <span className="block text-[9px] text-muted-foreground">
+                        {fmtWhen(m.at)}
+                      </span>
                     ) : null}
                   </li>
                 ))
@@ -396,7 +453,9 @@ export function OrderFacebookLink({
                 data-testid="order-fb-search-results"
               >
                 {filteredConvs.length === 0 ? (
-                  <li className="px-2 py-1.5 text-[11px] text-muted-foreground">No matches.</li>
+                  <li className="px-2 py-1.5 text-[11px] text-muted-foreground">
+                    No matches.
+                  </li>
                 ) : (
                   filteredConvs.map((c) => (
                     <li key={c.id}>
@@ -404,7 +463,9 @@ export function OrderFacebookLink({
                         type="button"
                         onClick={() => {
                           setConv(c.id);
-                          setNotice(`Selected ${c.customerName ?? 'conversation'} — Save to confirm.`);
+                          setNotice(
+                            `Selected ${c.customerName ?? 'conversation'} — Save to confirm.`,
+                          );
                         }}
                         className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-[11px] hover:bg-accent"
                         data-testid={`order-fb-pick-${c.id}`}
@@ -422,7 +483,9 @@ export function OrderFacebookLink({
                           </span>
                         )}
                         <span className="min-w-0 flex-1">
-                          <span className="block font-medium">{c.customerName ?? 'Unknown'}</span>
+                          <span className="block font-medium">
+                            {c.customerName ?? 'Unknown'}
+                          </span>
                           {c.snippet ? (
                             <span className="block truncate text-[10px] text-muted-foreground">
                               {c.snippet}
@@ -443,7 +506,10 @@ export function OrderFacebookLink({
           </div>
 
           {autoResolving ? (
-            <p className="text-[10px] text-muted-foreground" data-testid="order-fb-auto-matching">
+            <p
+              className="text-[10px] text-muted-foreground"
+              data-testid="order-fb-auto-matching"
+            >
               Auto-matching from Pancake…
             </p>
           ) : null}

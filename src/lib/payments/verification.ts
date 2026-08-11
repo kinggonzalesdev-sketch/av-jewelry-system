@@ -136,8 +136,7 @@ export async function recordPayment(input: unknown): Promise<PaymentResult> {
       // caller sends no separate provider we record the method as the provider —
       // keeping the payment channel visible in the verification queue and audit.
       provider:
-        data.provider ??
-        (isCashMethod(data.paymentMethod) ? null : data.paymentMethod),
+        data.provider ?? (isCashMethod(data.paymentMethod) ? null : data.paymentMethod),
       transacted_at: data.transactedAt,
       // Cash (canonical "Cash" or legacy "cash") is attributed to the receiving
       // staff member — the DB cash-attribution constraint requires it.
@@ -305,7 +304,8 @@ export async function verifyPayment(
           entityType: 'payment',
           entityId: paymentId,
           outcome: 'denied',
-          reason: 'Verified amount exceeds the outstanding balance (overpayment blocked).',
+          reason:
+            'Verified amount exceeds the outstanding balance (overpayment blocked).',
           context: {
             verified_amount: incoming,
             outstanding_balance: balance.balance.outstandingBalance,

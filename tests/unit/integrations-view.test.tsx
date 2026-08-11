@@ -29,7 +29,9 @@ describe('IntegrationsView', () => {
         }}
       />,
     );
-    expect(screen.getByTestId('pancake-selected-page')).toHaveTextContent('588622885161430');
+    expect(screen.getByTestId('pancake-selected-page')).toHaveTextContent(
+      '588622885161430',
+    );
   });
 
   it('hides Page management from non-Primary-Super-Admins', () => {

@@ -136,7 +136,9 @@ export async function getOrderBalances(
   if (officialOrderIds.length === 0) return out;
 
   const supabase = await createClient();
-  const response = await supabase.rpc('order_balances', { p_order_ids: officialOrderIds });
+  const response = await supabase.rpc('order_balances', {
+    p_order_ids: officialOrderIds,
+  });
 
   // A whole-call failure leaves the map empty; every caller then renders each
   // row as "unavailable" (the map.get() miss), never as a fabricated ₱0.00.

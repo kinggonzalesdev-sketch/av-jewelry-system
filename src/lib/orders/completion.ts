@@ -46,7 +46,11 @@ export async function markOrderDone(orderId: string): Promise<CompletionResult> 
 export async function transferOrderToCompleted(
   orderId: string,
 ): Promise<CompletionResult> {
-  return runCompletion(orderId, 'transfer_order_to_completed', 'order.transfer_completed');
+  return runCompletion(
+    orderId,
+    'transfer_order_to_completed',
+    'order.transfer_completed',
+  );
 }
 
 async function runCompletion(
@@ -88,7 +92,11 @@ async function runCompletion(
     entityType: 'official_order',
     entityId: orderId,
     // Previous → completed, plus who/when (the DB stamps completed_by / completed_at).
-    context: { completed: true, previous_status: previousStatus, new_status: 'completed' },
+    context: {
+      completed: true,
+      previous_status: previousStatus,
+      new_status: 'completed',
+    },
   });
   return { ok: true };
 }

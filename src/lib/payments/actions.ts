@@ -20,7 +20,10 @@ import {
 } from '@/lib/payments/layaway';
 import { recordPayment, verifyPayment } from '@/lib/payments/verification';
 import { recordDirectDeletion } from '@/lib/authz/deletion-requests';
-import { requestOwnerDeletion, type RequestDeletionResult } from '@/lib/authz/request-deletion';
+import {
+  requestOwnerDeletion,
+  type RequestDeletionResult,
+} from '@/lib/authz/request-deletion';
 import {
   addLayawayInfo,
   createLayawayAccount,
@@ -363,7 +366,13 @@ export async function requestLayawayLedgerDeletionAction(
   label: string,
   reason: string,
 ): Promise<RequestDeletionResult> {
-  const result = await requestOwnerDeletion('layaway_ledger_delete', 'layaway_ledger', id, `layaway account (${label})`, reason);
+  const result = await requestOwnerDeletion(
+    'layaway_ledger_delete',
+    'layaway_ledger',
+    id,
+    `layaway account (${label})`,
+    reason,
+  );
   if (result.ok) revalidatePath('/approvals');
   return result;
 }
@@ -396,9 +405,7 @@ export async function rejectPaymentAction(
 }
 
 /** Free layaway codes for one customer-initial letter (A1–Z200). Read-only. */
-export async function loadAvailableLayawayCodesAction(
-  letter: string,
-): Promise<string[]> {
+export async function loadAvailableLayawayCodesAction(letter: string): Promise<string[]> {
   return listAvailableLayawayCodes(letter);
 }
 

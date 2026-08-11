@@ -68,7 +68,6 @@ function stageTone(stage: string): BadgeTone {
   return 'info'; // blue — still processing
 }
 
-
 /**
  * Statuses that still count as ACTIVE, sellable stock. An item consumed by ANY
  * transaction — Walk-In sale, New Order, layaway, manual entry — leaves Active
@@ -82,7 +81,9 @@ const ACTIVE_INVENTORY_STATUSES = new Set(['available', 'returned_to_available']
 function fmtEncoded(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso.slice(0, 10) : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  return Number.isNaN(d.getTime())
+    ? iso.slice(0, 10)
+    : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 /** Today as YYYY-MM-DD, for the New Entry date default. */
@@ -250,8 +251,14 @@ export function InventoryWorkspace({
       [
         { header: 'Inventory Code', value: (c) => c.itemCode },
         { header: 'Item', value: (c) => c.itemName ?? '' },
-        { header: 'Condition', value: (c) => parseInventoryCode(c.itemCode).condition ?? '' },
-        { header: 'Item Type', value: (c) => parseInventoryCode(c.itemCode).itemType ?? '' },
+        {
+          header: 'Condition',
+          value: (c) => parseInventoryCode(c.itemCode).condition ?? '',
+        },
+        {
+          header: 'Item Type',
+          value: (c) => parseInventoryCode(c.itemCode).itemType ?? '',
+        },
         { header: 'Grams', value: (c) => parseInventoryCode(c.itemCode).grams ?? '' },
         { header: 'Size', value: (c) => parseInventoryCode(c.itemCode).size ?? '' },
         { header: 'Customer', value: (c) => c.customerName ?? '' },
@@ -278,8 +285,14 @@ export function InventoryWorkspace({
       [
         { header: 'Inventory Code', value: (i) => i.itemCode },
         { header: 'Item', value: (i) => i.itemName ?? '' },
-        { header: 'Condition', value: (i) => parseInventoryCode(i.itemCode).condition ?? '' },
-        { header: 'Item Type', value: (i) => parseInventoryCode(i.itemCode).itemType ?? '' },
+        {
+          header: 'Condition',
+          value: (i) => parseInventoryCode(i.itemCode).condition ?? '',
+        },
+        {
+          header: 'Item Type',
+          value: (i) => parseInventoryCode(i.itemCode).itemType ?? '',
+        },
         { header: 'Grams', value: (i) => parseInventoryCode(i.itemCode).grams ?? '' },
         { header: 'Size', value: (i) => parseInventoryCode(i.itemCode).size ?? '' },
         { header: 'Status', value: (i) => i.availabilityStatus.replace(/_/g, ' ') },
@@ -415,8 +428,8 @@ export function InventoryWorkspace({
             </div>
           </ModalFormGrid>
           <p className="text-[11px] text-muted-foreground">
-            Item Code is required and must be unique. Date Encoded defaults to today
-            and can be changed.
+            Item Code is required and must be unique. Date Encoded defaults to today and
+            can be changed.
           </p>
           {createState.error ? (
             <p role="alert" className="text-sm text-destructive">
@@ -487,72 +500,80 @@ export function InventoryWorkspace({
             {/* The table (headers + container) stays fixed even with no rows — the
                 empty message sits inside the body so the layout never collapses. */}
             <div className="table-scroll rounded-xl border border-border bg-card">
-            <table className="data-table w-full min-w-[720px] text-left text-xs">
-              {/* Intentional column widths (Owner spec). HINTS, not table-fixed — a
+              <table className="data-table w-full min-w-[720px] text-left text-xs">
+                {/* Intentional column widths (Owner spec). HINTS, not table-fixed — a
                   column can still grow to fit a long code, nothing is clipped. */}
-              <colgroup>
-                <col style={{ width: '20%' }} /> {/* Unique Code */}
-                <col style={{ width: '15%' }} /> {/* Status */}
-                <col style={{ width: '15%' }} /> {/* Grams */}
-                <col style={{ width: '15%' }} /> {/* Date Encoded */}
-                <col style={{ width: '20%' }} /> {/* Notes */}
-                <col style={{ width: '15%' }} /> {/* Actions */}
-              </colgroup>
-              <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2.5 text-center">Unique Code</th>
-                  <th className="px-3 py-2.5 text-left">Status</th>
-                  <th className="col-num px-3 py-2.5">Grams</th>
-                  <th className="col-center px-3 py-2.5">Date Encoded</th>
-                  <th className="px-3 py-2.5 text-left">Notes</th>
-                  <th className="col-actions px-3 py-2.5">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {filteredInventory.length === 0 ? (
+                <colgroup>
+                  <col style={{ width: '20%' }} /> {/* Unique Code */}
+                  <col style={{ width: '15%' }} /> {/* Status */}
+                  <col style={{ width: '15%' }} /> {/* Grams */}
+                  <col style={{ width: '15%' }} /> {/* Date Encoded */}
+                  <col style={{ width: '20%' }} /> {/* Notes */}
+                  <col style={{ width: '15%' }} /> {/* Actions */}
+                </colgroup>
+                <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                   <tr>
-                    <td colSpan={6} className="px-3 py-10 text-center text-muted-foreground">
-                      {inventory.rows.length === 0
-                        ? 'No inventory items.'
-                        : 'No items match these filters.'}
-                    </td>
+                    <th className="px-3 py-2.5 text-center">Unique Code</th>
+                    <th className="px-3 py-2.5 text-left">Status</th>
+                    <th className="col-num px-3 py-2.5">Grams</th>
+                    <th className="col-center px-3 py-2.5">Date Encoded</th>
+                    <th className="px-3 py-2.5 text-left">Notes</th>
+                    <th className="col-actions px-3 py-2.5">Actions</th>
                   </tr>
-                ) : (
-                  pagedInventory.map((i) => (
-                  <tr key={i.inventoryItemId}>
-                    <td className="truncate px-3 py-2.5 text-center font-mono" title={i.itemCode}>
-                      {i.itemCode}
-                    </td>
-                    <td className="px-3 py-2.5 text-left">
-                      <StatusBadge
-                        label={i.availabilityStatus.replace(/_/g, ' ')}
-                        tone={availabilityTone(i.availabilityStatus)}
-                        className="capitalize"
-                      />
-                    </td>
-                    <td className="col-num px-3 py-2.5">
-                      {i.gramsPerPiece ?? parseInventoryCode(i.itemCode).grams ?? '—'}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-center">
-                      {fmtEncoded(i.createdAt)}
-                    </td>
-                    <td className="col-clip truncate px-3 py-2.5 text-muted-foreground">
-                      {i.inRtsReview ? 'In RTS review' : ''}
-                      {i.isForfeited ? ' · forfeited (excluded from auto-return)' : ''}
-                    </td>
-                    <td className="col-actions px-3 py-2.5">
-                      <InventoryItemActions
-                        row={i}
-                        canEdit={canEdit}
-                        canDelete={canDelete}
-                        canForceDelete={canForceDelete}
-                      />
-                    </td>
-                  </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y">
+                  {filteredInventory.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="px-3 py-10 text-center text-muted-foreground"
+                      >
+                        {inventory.rows.length === 0
+                          ? 'No inventory items.'
+                          : 'No items match these filters.'}
+                      </td>
+                    </tr>
+                  ) : (
+                    pagedInventory.map((i) => (
+                      <tr key={i.inventoryItemId}>
+                        <td
+                          className="truncate px-3 py-2.5 text-center font-mono"
+                          title={i.itemCode}
+                        >
+                          {i.itemCode}
+                        </td>
+                        <td className="px-3 py-2.5 text-left">
+                          <StatusBadge
+                            label={i.availabilityStatus.replace(/_/g, ' ')}
+                            tone={availabilityTone(i.availabilityStatus)}
+                            className="capitalize"
+                          />
+                        </td>
+                        <td className="col-num px-3 py-2.5">
+                          {i.gramsPerPiece ?? parseInventoryCode(i.itemCode).grams ?? '—'}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-center">
+                          {fmtEncoded(i.createdAt)}
+                        </td>
+                        <td className="col-clip truncate px-3 py-2.5 text-muted-foreground">
+                          {i.inRtsReview ? 'In RTS review' : ''}
+                          {i.isForfeited
+                            ? ' · forfeited (excluded from auto-return)'
+                            : ''}
+                        </td>
+                        <td className="col-actions px-3 py-2.5">
+                          <InventoryItemActions
+                            row={i}
+                            canEdit={canEdit}
+                            canDelete={canDelete}
+                            canForceDelete={canForceDelete}
+                          />
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
             {filteredInventory.length > invPageSize ? (
               <Pagination
@@ -573,163 +594,173 @@ export function InventoryWorkspace({
       ) : null}
 
       {tab === 'Completed Items' ? (
-          <div className="space-y-3">
-            {/* Search + completion-type filter + export (§12). */}
-            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3">
-              <SearchInput
-                value={compSearch}
-                onChange={(v) => {
-                  setCompSearch(v);
-                  setCompPage(1);
-                }}
-                placeholder="Search code, item, customer, order…"
-                aria-label="Search completed items"
-                data-testid="completed-search"
-                className="flex-1 min-w-[12rem]"
-              />
-              <Select
-                value={compType}
-                onChange={(e) => {
-                  setCompType(e.target.value);
-                  setCompPage(1);
-                }}
-                aria-label="Filter by completion type"
-                data-testid="completed-filter-type"
-                className="w-auto"
-              >
-                <option value="all">All completion types</option>
-                {completionTypeOptions.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </Select>
-              <span className="text-xs text-muted-foreground">
-                {filteredCompleted.length} of {completed.length}
-              </span>
-              <Button type="button" size="sm" variant="outline" onClick={exportCompleted}>
-                ⭳ Export CSV
-              </Button>
-            </div>
+        <div className="space-y-3">
+          {/* Search + completion-type filter + export (§12). */}
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3">
+            <SearchInput
+              value={compSearch}
+              onChange={(v) => {
+                setCompSearch(v);
+                setCompPage(1);
+              }}
+              placeholder="Search code, item, customer, order…"
+              aria-label="Search completed items"
+              data-testid="completed-search"
+              className="flex-1 min-w-[12rem]"
+            />
+            <Select
+              value={compType}
+              onChange={(e) => {
+                setCompType(e.target.value);
+                setCompPage(1);
+              }}
+              aria-label="Filter by completion type"
+              data-testid="completed-filter-type"
+              className="w-auto"
+            >
+              <option value="all">All completion types</option>
+              {completionTypeOptions.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </Select>
+            <span className="text-xs text-muted-foreground">
+              {filteredCompleted.length} of {completed.length}
+            </span>
+            <Button type="button" size="sm" variant="outline" onClick={exportCompleted}>
+              ⭳ Export CSV
+            </Button>
+          </div>
 
-            <div className="table-scroll rounded-xl border border-border bg-card">
-              <table
-                className="data-table w-full min-w-[960px] text-left text-xs"
-                data-testid="completed-items"
-              >
-                {/* Content-based sizing: Customer absorbs the slack (col-grow); the many
+          <div className="table-scroll rounded-xl border border-border bg-card">
+            <table
+              className="data-table w-full min-w-[960px] text-left text-xs"
+              data-testid="completed-items"
+            >
+              {/* Content-based sizing: Customer absorbs the slack (col-grow); the many
                     short columns (Type, Grams, Payment, Stage, dates) stay narrow. No
                     fixed equal percentages. */}
-                <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
+              <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2.5 text-center">Inventory Code</th>
+                  <th className="col-center px-3 py-2.5">Type</th>
+                  <th className="col-num px-3 py-2.5">Grams</th>
+                  <th className="col-grow px-3 py-2.5 text-left">Customer</th>
+                  <th className="px-3 py-2.5 text-left">Order</th>
+                  <th className="px-3 py-2.5 text-left">Invoice</th>
+                  <th className="col-num px-3 py-2.5">Sale Amount</th>
+                  <th className="col-center px-3 py-2.5">Payment</th>
+                  <th className="col-center px-3 py-2.5">Current Stage</th>
+                  <th className="col-center px-3 py-2.5">Completion Date</th>
+                  <th className="col-actions px-3 py-2.5">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {filteredCompleted.length === 0 ? (
                   <tr>
-                    <th className="px-3 py-2.5 text-center">Inventory Code</th>
-                    <th className="col-center px-3 py-2.5">Type</th>
-                    <th className="col-num px-3 py-2.5">Grams</th>
-                    <th className="col-grow px-3 py-2.5 text-left">Customer</th>
-                    <th className="px-3 py-2.5 text-left">Order</th>
-                    <th className="px-3 py-2.5 text-left">Invoice</th>
-                    <th className="col-num px-3 py-2.5">Sale Amount</th>
-                    <th className="col-center px-3 py-2.5">Payment</th>
-                    <th className="col-center px-3 py-2.5">Current Stage</th>
-                    <th className="col-center px-3 py-2.5">Completion Date</th>
-                    <th className="col-actions px-3 py-2.5">Actions</th>
+                    <td
+                      colSpan={11}
+                      className="px-4 py-10 text-center text-muted-foreground"
+                    >
+                      {completed.length === 0
+                        ? 'No completed items yet.'
+                        : 'No items match these filters.'}
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {filteredCompleted.length === 0 ? (
-                    <tr>
-                      <td colSpan={11} className="px-4 py-10 text-center text-muted-foreground">
-                        {completed.length === 0
-                          ? 'No completed items yet.'
-                          : 'No items match these filters.'}
-                      </td>
-                    </tr>
-                  ) : (
-                    pagedCompleted.map((c) => {
-                      const parsed = parseInventoryCode(c.itemCode);
-                      return (
-                        <tr key={c.inventoryItemId}>
-                          <td className="truncate px-3 py-2.5 text-center font-mono" title={c.itemCode}>
-                            {c.itemCode}
-                          </td>
-                          <td className="truncate px-3 py-2.5 text-center text-muted-foreground">
-                            {parsed.itemType ?? '—'}
-                          </td>
-                          <td className="col-num px-3 py-2.5">
-                            {parsed.grams ?? '—'}
-                          </td>
-                          <td className="truncate px-3 py-2.5" title={c.customerName ?? undefined}>
-                            {c.customerName ?? '—'}
-                          </td>
-                          <td className="truncate px-3 py-2.5 font-mono">{c.orderNumber ?? '—'}</td>
-                          <td className="truncate px-3 py-2.5 font-mono">
-                            {c.invoiceNumber ?? '—'}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">
-                            {c.finalSale ? <Money amount={c.finalSale} /> : '—'}
-                          </td>
-                          <td className="px-3 py-2.5 text-center">
-                            {c.paymentStatus ? (
-                              (() => {
-                                const p = paymentMeta(c.paymentStatus);
-                                return <StatusBadge label={p.label} tone={p.tone} />;
-                              })()
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
-                          </td>
-                          {/* Current Stage — derived live from the linked order. */}
-                          <td className="px-3 py-2.5 text-center">
-                            {c.currentStage === '—' ? (
-                              <span className="text-muted-foreground">—</span>
-                            ) : (
-                              <StatusBadge label={c.currentStage} tone={stageTone(c.currentStage)} />
-                            )}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-2.5 text-center">
-                            {c.completedDate ? c.completedDate.slice(0, 10) : '—'}
-                          </td>
-                          <td className="col-actions px-3 py-2.5">
-                            <div className="inline-flex items-center justify-end gap-1">
-                              <button
-                                type="button"
-                                onClick={() => setCompView(c)}
-                                data-testid={`completed-view-${c.inventoryItemId}`}
-                                className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
-                              >
-                                View
-                              </button>
-                              {canReturnCompleted ? (
-                                <CompletedItemReturn row={c} />
-                              ) : null}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-              {filteredCompleted.length > compPageSize ? (
-                <Pagination
-                  page={compPageSafe}
-                  pageCount={compPageCount}
-                  total={filteredCompleted.length}
-                  pageSize={compPageSize}
-                  onPageChange={setCompPage}
-                  onPageSizeChange={(n) => {
-                    setCompPageSize(n);
-                    setCompPage(1);
-                  }}
-                  sticky
-                />
-              ) : null}
-              <p className="px-3 py-2 text-[11px] text-muted-foreground">
-                Historical sold/released inventory — one source of truth, split by status.
-                Records are never deleted or copied.
-              </p>
-            </div>
+                ) : (
+                  pagedCompleted.map((c) => {
+                    const parsed = parseInventoryCode(c.itemCode);
+                    return (
+                      <tr key={c.inventoryItemId}>
+                        <td
+                          className="truncate px-3 py-2.5 text-center font-mono"
+                          title={c.itemCode}
+                        >
+                          {c.itemCode}
+                        </td>
+                        <td className="truncate px-3 py-2.5 text-center text-muted-foreground">
+                          {parsed.itemType ?? '—'}
+                        </td>
+                        <td className="col-num px-3 py-2.5">{parsed.grams ?? '—'}</td>
+                        <td
+                          className="truncate px-3 py-2.5"
+                          title={c.customerName ?? undefined}
+                        >
+                          {c.customerName ?? '—'}
+                        </td>
+                        <td className="truncate px-3 py-2.5 font-mono">
+                          {c.orderNumber ?? '—'}
+                        </td>
+                        <td className="truncate px-3 py-2.5 font-mono">
+                          {c.invoiceNumber ?? '—'}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">
+                          {c.finalSale ? <Money amount={c.finalSale} /> : '—'}
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          {c.paymentStatus ? (
+                            (() => {
+                              const p = paymentMeta(c.paymentStatus);
+                              return <StatusBadge label={p.label} tone={p.tone} />;
+                            })()
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        {/* Current Stage — derived live from the linked order. */}
+                        <td className="px-3 py-2.5 text-center">
+                          {c.currentStage === '—' ? (
+                            <span className="text-muted-foreground">—</span>
+                          ) : (
+                            <StatusBadge
+                              label={c.currentStage}
+                              tone={stageTone(c.currentStage)}
+                            />
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-center">
+                          {c.completedDate ? c.completedDate.slice(0, 10) : '—'}
+                        </td>
+                        <td className="col-actions px-3 py-2.5">
+                          <div className="inline-flex items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setCompView(c)}
+                              data-testid={`completed-view-${c.inventoryItemId}`}
+                              className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+                            >
+                              View
+                            </button>
+                            {canReturnCompleted ? <CompletedItemReturn row={c} /> : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+            {filteredCompleted.length > compPageSize ? (
+              <Pagination
+                page={compPageSafe}
+                pageCount={compPageCount}
+                total={filteredCompleted.length}
+                pageSize={compPageSize}
+                onPageChange={setCompPage}
+                onPageSizeChange={(n) => {
+                  setCompPageSize(n);
+                  setCompPage(1);
+                }}
+                sticky
+              />
+            ) : null}
+            <p className="px-3 py-2 text-[11px] text-muted-foreground">
+              Historical sold/released inventory — one source of truth, split by status.
+              Records are never deleted or copied.
+            </p>
           </div>
+        </div>
       ) : null}
 
       {/* Read-only Completed Item detail (§5). */}
@@ -742,68 +773,78 @@ export function InventoryWorkspace({
       >
         {compView ? (
           <>
-          <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
-            {(
-              [
-                ['Inventory Code', compView.itemCode],
-                ['Item', compView.itemName ?? '—'],
-                ['Condition', parseInventoryCode(compView.itemCode).condition ?? '—'],
-                ['Item Type', parseInventoryCode(compView.itemCode).itemType ?? '—'],
-                ['Grams', parseInventoryCode(compView.itemCode).grams ?? '—'],
-                ['Size', parseInventoryCode(compView.itemCode).size ?? '—'],
-                ['Customer', compView.customerName ?? '—'],
-                ['Order Number', compView.orderNumber ?? '—'],
-                ['Invoice Number', compView.invoiceNumber ?? '—'],
-                ['Current Stage', compView.currentStage],
-                ['Completion Type', compView.completionType],
-                ['Courier', compView.courier ?? '—'],
-                ['Tracking Number', compView.trackingNumber ?? '—'],
-                ['Completed Date', compView.completedDate?.slice(0, 10) ?? '—'],
-                ['Final Holder', compView.currentHolder ?? '—'],
-                ['Final Location', compView.currentLocation ?? '—'],
-                ['Status', compView.availabilityStatus.replace(/_/g, ' ')],
-              ] as const
-            ).map(([label, value]) => (
-              <div key={label} className="flex justify-between gap-3 border-b border-border py-1.5">
-                <span className="text-muted-foreground">{label}</span>
-                <span className="text-right font-medium">{value}</span>
-              </div>
-            ))}
-          </dl>
+            <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+              {(
+                [
+                  ['Inventory Code', compView.itemCode],
+                  ['Item', compView.itemName ?? '—'],
+                  ['Condition', parseInventoryCode(compView.itemCode).condition ?? '—'],
+                  ['Item Type', parseInventoryCode(compView.itemCode).itemType ?? '—'],
+                  ['Grams', parseInventoryCode(compView.itemCode).grams ?? '—'],
+                  ['Size', parseInventoryCode(compView.itemCode).size ?? '—'],
+                  ['Customer', compView.customerName ?? '—'],
+                  ['Order Number', compView.orderNumber ?? '—'],
+                  ['Invoice Number', compView.invoiceNumber ?? '—'],
+                  ['Current Stage', compView.currentStage],
+                  ['Completion Type', compView.completionType],
+                  ['Courier', compView.courier ?? '—'],
+                  ['Tracking Number', compView.trackingNumber ?? '—'],
+                  ['Completed Date', compView.completedDate?.slice(0, 10) ?? '—'],
+                  ['Final Holder', compView.currentHolder ?? '—'],
+                  ['Final Location', compView.currentLocation ?? '—'],
+                  ['Status', compView.availabilityStatus.replace(/_/g, ' ')],
+                ] as const
+              ).map(([label, value]) => (
+                <div
+                  key={label}
+                  className="flex justify-between gap-3 border-b border-border py-1.5"
+                >
+                  <span className="text-muted-foreground">{label}</span>
+                  <span className="text-right font-medium">{value}</span>
+                </div>
+              ))}
+            </dl>
 
-          {/* Return to Stock Review (§10) — never marks the item available; opens
+            {/* Return to Stock Review (§10) — never marks the item available; opens
               an in-review record for inspection + approval. Gated on monitoring. */}
-          {canMonitor ? (
-            <form action={returnCompletedAction} className="mt-4 space-y-2 border-t border-border pt-3">
-              <input
-                type="hidden"
-                name="inventoryItemId"
-                value={compView.inventoryItemId}
-              />
-              <Label htmlFor="ret-note" className="text-xs">
-                Return reason / condition note (optional)
-              </Label>
-              <Input id="ret-note" name="note" className="h-9" />
-              <div className="flex items-center gap-2">
-                <Button type="submit" variant="destructive" size="sm" disabled={returningItem}>
-                  {returningItem ? 'Sending…' : 'Return to Stock Review'}
-                </Button>
-                {returnCompState.error ? (
-                  <span role="alert" className="text-xs text-destructive">
-                    {returnCompState.error}
-                  </span>
-                ) : null}
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                This does NOT make the item available. It goes through Returned-to-Stock
-                Review (inspection + authorized approval) first.
-              </p>
-            </form>
-          ) : null}
+            {canMonitor ? (
+              <form
+                action={returnCompletedAction}
+                className="mt-4 space-y-2 border-t border-border pt-3"
+              >
+                <input
+                  type="hidden"
+                  name="inventoryItemId"
+                  value={compView.inventoryItemId}
+                />
+                <Label htmlFor="ret-note" className="text-xs">
+                  Return reason / condition note (optional)
+                </Label>
+                <Input id="ret-note" name="note" className="h-9" />
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="submit"
+                    variant="destructive"
+                    size="sm"
+                    disabled={returningItem}
+                  >
+                    {returningItem ? 'Sending…' : 'Return to Stock Review'}
+                  </Button>
+                  {returnCompState.error ? (
+                    <span role="alert" className="text-xs text-destructive">
+                      {returnCompState.error}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  This does NOT make the item available. It goes through Returned-to-Stock
+                  Review (inspection + authorized approval) first.
+                </p>
+              </form>
+            ) : null}
           </>
         ) : null}
       </Modal>
-
     </div>
   );
 }
@@ -877,16 +918,18 @@ function CompletedItemReturn({ row }: { row: CompletedInventoryRow }) {
         >
           <input type="hidden" name="inventoryItemId" value={row.inventoryItemId} />
           <p className="text-sm">
-            Remove the order/customer info for <span className="font-mono">{row.itemCode}</span>
+            Remove the order/customer info for{' '}
+            <span className="font-mono">{row.itemCode}</span>
             {row.customerName ? ` (${row.customerName})` : ''} and return the item to{' '}
-            <strong>Active Inventory</strong>? The item itself is <strong>not</strong> deleted —
-            it goes back to available stock.
+            <strong>Active Inventory</strong>? The item itself is <strong>not</strong>{' '}
+            deleted — it goes back to available stock.
           </p>
           <p className="text-xs text-muted-foreground">
             {row.orderNumber ? (
               <>
-                If <span className="font-mono">{row.orderNumber}</span> has no other items,
-                the whole order is removed too; otherwise only this item’s line is removed.{' '}
+                If <span className="font-mono">{row.orderNumber}</span> has no other
+                items, the whole order is removed too; otherwise only this item’s line is
+                removed.{' '}
               </>
             ) : null}
             An order with recorded payment(s), or an item in a layaway account, is{' '}
@@ -998,8 +1041,8 @@ function DeleteAllInventoryButton({ count }: { count: number }) {
             </p>
             {done.skipped > 0 ? (
               <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-700">
-                Skipped <strong>{done.skipped}</strong> item(s) linked to an order or other
-                record — those are kept safe and cannot be bulk-deleted.
+                Skipped <strong>{done.skipped}</strong> item(s) linked to an order or
+                other record — those are kept safe and cannot be bulk-deleted.
               </p>
             ) : null}
           </div>

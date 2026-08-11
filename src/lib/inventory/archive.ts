@@ -53,8 +53,7 @@ export type ArchivedInventoryRow = {
 };
 
 export type ArchivedInventoryResult =
-  | { ok: true; rows: ArchivedInventoryRow[] }
-  | { ok: false; reason: string };
+  { ok: true; rows: ArchivedInventoryRow[] } | { ok: false; reason: string };
 
 function one<T>(value: unknown): T | undefined {
   if (Array.isArray(value)) return value[0] as T | undefined;
@@ -86,21 +85,21 @@ export async function listArchivedInventory(): Promise<ArchivedInventoryResult> 
     return { ok: false, reason: error.message };
   }
 
-  const rows: ArchivedInventoryRow[] = ((data ?? []) as Array<Record<string, unknown>>).map(
-    (r) => {
-      const staff = one<{ full_name: string }>(r.archived_by_staff);
-      return {
-        inventoryItemId: r.id as string,
-        itemCode: r.item_code as string,
-        itemName: (r.item_name as string | null) ?? null,
-        archivedFromStatus: (r.archived_from_status as string | null) ?? 'unknown',
-        archiveReasonCode: (r.archive_reason_code as string | null) ?? 'unknown',
-        archiveReasonDetail: (r.archive_reason_detail as string | null) ?? null,
-        archivedByName: staff?.full_name ?? null,
-        archivedAt: r.archived_at as string,
-      };
-    },
-  );
+  const rows: ArchivedInventoryRow[] = (
+    (data ?? []) as Array<Record<string, unknown>>
+  ).map((r) => {
+    const staff = one<{ full_name: string }>(r.archived_by_staff);
+    return {
+      inventoryItemId: r.id as string,
+      itemCode: r.item_code as string,
+      itemName: (r.item_name as string | null) ?? null,
+      archivedFromStatus: (r.archived_from_status as string | null) ?? 'unknown',
+      archiveReasonCode: (r.archive_reason_code as string | null) ?? 'unknown',
+      archiveReasonDetail: (r.archive_reason_detail as string | null) ?? null,
+      archivedByName: staff?.full_name ?? null,
+      archivedAt: r.archived_at as string,
+    };
+  });
 
   return { ok: true, rows };
 }
@@ -412,8 +411,7 @@ export async function forceDeleteInventoryItem(
 }
 
 export type DeleteAllInventoryResult =
-  | { ok: true; deleted: number; skipped: number }
-  | { ok: false; error: string };
+  { ok: true; deleted: number; skipped: number } | { ok: false; error: string };
 
 /**
  * Bulk permanent delete of Active Inventory — SUPER ADMIN (owner) only (Owner

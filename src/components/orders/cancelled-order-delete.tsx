@@ -100,8 +100,8 @@ export function OrderDelete({
               </>
             ) : null}
             ? This removes the order and{' '}
-            <strong>all its records (including any payments)</strong> and returns any reserved
-            item(s) to <strong>Active Inventory</strong>. This cannot be undone.
+            <strong>all its records (including any payments)</strong> and returns any
+            reserved item(s) to <strong>Active Inventory</strong>. This cannot be undone.
           </p>
           <div>
             <Label htmlFor="delete-cancelled-confirm" className="text-xs">

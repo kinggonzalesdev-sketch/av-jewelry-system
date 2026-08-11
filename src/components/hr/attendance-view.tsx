@@ -168,8 +168,12 @@ export function AttendanceView({
                   </colgroup>
                   <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
                     <tr>
-                      <th className="whitespace-nowrap px-3 py-2.5 text-center font-medium">Employee</th>
-                      <th className="whitespace-nowrap px-3 py-2.5 text-center font-medium">Role</th>
+                      <th className="whitespace-nowrap px-3 py-2.5 text-center font-medium">
+                        Employee
+                      </th>
+                      <th className="whitespace-nowrap px-3 py-2.5 text-center font-medium">
+                        Role
+                      </th>
                       <th className="min-w-[7rem] whitespace-nowrap px-3 py-2.5 text-right font-medium">
                         Regular Hours
                       </th>
@@ -198,64 +202,69 @@ export function AttendanceView({
                       const snap = payslips[r.staffProfileId] ?? null;
                       const paid = snap?.paymentStatus === 'paid';
                       return (
-                      <tr key={r.staffProfileId} className="border-b last:border-0">
-                        <td className="whitespace-nowrap px-3 py-2.5 text-center font-medium">{r.fullName}</td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-center capitalize text-muted-foreground">
-                          {r.roleKey.replace(/_/g, ' ')}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">
-                          {formatDuration(r.totalHours)}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">
-                          {formatDuration(r.overtimeHours)}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-right">
-                          {isOwner ? (
-                            <RateCell row={r} />
-                          ) : r.dailyRate === null ? (
-                            <span className="text-[11px] text-muted-foreground">
-                              No rate set
+                        <tr key={r.staffProfileId} className="border-b last:border-0">
+                          <td className="whitespace-nowrap px-3 py-2.5 text-center font-medium">
+                            {r.fullName}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2.5 text-center capitalize text-muted-foreground">
+                            {r.roleKey.replace(/_/g, ' ')}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">
+                            {formatDuration(r.totalHours)}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">
+                            {formatDuration(r.overtimeHours)}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2.5 text-right">
+                            {isOwner ? (
+                              <RateCell row={r} />
+                            ) : r.dailyRate === null ? (
+                              <span className="text-[11px] text-muted-foreground">
+                                No rate set
+                              </span>
+                            ) : (
+                              <span className="tabular-nums">
+                                {formatPeso(r.dailyRate)}
+                                <span className="text-[10px] text-muted-foreground">
+                                  {' '}
+                                  /day
+                                </span>
+                              </span>
+                            )}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2.5 text-center capitalize">
+                            {FREQUENCY_LABEL[r.payFrequency] ?? r.payFrequency}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">
+                            {r.computedSalary === null ? (
+                              <span className="text-[11px] text-muted-foreground">
+                                No rate set
+                              </span>
+                            ) : (
+                              formatPeso(r.computedSalary)
+                            )}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2.5 text-center">
+                            <span
+                              className={`inline-block rounded-full border px-2 py-0.5 text-[11px] ${
+                                paid
+                                  ? 'border-green-600/40 bg-green-600/10 text-green-700'
+                                  : 'border-amber-500/40 bg-amber-500/10 text-amber-600'
+                              }`}
+                            >
+                              {paid ? 'Paid' : 'Unpaid'}
                             </span>
-                          ) : (
-                            <span className="tabular-nums">
-                              {formatPeso(r.dailyRate)}
-                              <span className="text-[10px] text-muted-foreground"> /day</span>
-                            </span>
-                          )}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-center capitalize">
-                          {FREQUENCY_LABEL[r.payFrequency] ?? r.payFrequency}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">
-                          {r.computedSalary === null ? (
-                            <span className="text-[11px] text-muted-foreground">
-                              No rate set
-                            </span>
-                          ) : (
-                            formatPeso(r.computedSalary)
-                          )}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-center">
-                          <span
-                            className={`inline-block rounded-full border px-2 py-0.5 text-[11px] ${
-                              paid
-                                ? 'border-green-600/40 bg-green-600/10 text-green-700'
-                                : 'border-amber-500/40 bg-amber-500/10 text-amber-600'
-                            }`}
-                          >
-                            {paid ? 'Paid' : 'Unpaid'}
-                          </span>
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-right">
-                          <PayslipButton
-                            employeeId={r.staffProfileId}
-                            from={from}
-                            to={to}
-                            existingSnapshot={snap}
-                            canManage={canManagePayrollResolved}
-                          />
-                        </td>
-                      </tr>
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2.5 text-right">
+                            <PayslipButton
+                              employeeId={r.staffProfileId}
+                              from={from}
+                              to={to}
+                              existingSnapshot={snap}
+                              canManage={canManagePayrollResolved}
+                            />
+                          </td>
+                        </tr>
                       );
                     })}
                   </tbody>
@@ -273,7 +282,11 @@ export function AttendanceView({
             <CardTitle className="text-base">Attendance records</CardTitle>
           </CardHeader>
           <CardContent>
-            <AttendanceHistory records={records} canManage={canManage} isOwner={isOwner} />
+            <AttendanceHistory
+              records={records}
+              canManage={canManage}
+              isOwner={isOwner}
+            />
           </CardContent>
         </Card>
       ) : null}
@@ -306,14 +319,20 @@ function AttendanceHistory({
 
   if (records.length === 0) {
     return (
-      <EmptyState title="No attendance yet" description="Clock in above to record a session." />
+      <EmptyState
+        title="No attendance yet"
+        description="Clock in above to record a session."
+      />
     );
   }
 
   return (
     <>
       <div className="overflow-x-auto">
-        <table className="data-table w-full min-w-[680px] text-left text-sm" data-testid="attendance-days">
+        <table
+          className="data-table w-full min-w-[680px] text-left text-sm"
+          data-testid="attendance-days"
+        >
           <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
             <tr>
               <th className="col-grow px-3 py-2.5 text-left font-medium">Staff</th>
@@ -329,13 +348,23 @@ function AttendanceHistory({
             {days.map((d) => (
               <tr key={d.key} className="border-b last:border-0">
                 <td className="px-3 py-2.5">{d.staffName ?? '—'}</td>
-                <td className="whitespace-nowrap px-3 py-2.5 text-center">{d.workDate}</td>
-                <td className="whitespace-nowrap px-3 py-2.5 text-center">{clockTime(d.firstIn)}</td>
                 <td className="whitespace-nowrap px-3 py-2.5 text-center">
-                  {d.finalOut ? clockTime(d.finalOut) : <span className="text-gold-strong">Open</span>}
+                  {d.workDate}
+                </td>
+                <td className="whitespace-nowrap px-3 py-2.5 text-center">
+                  {clockTime(d.firstIn)}
+                </td>
+                <td className="whitespace-nowrap px-3 py-2.5 text-center">
+                  {d.finalOut ? (
+                    clockTime(d.finalOut)
+                  ) : (
+                    <span className="text-gold-strong">Open</span>
+                  )}
                 </td>
                 <td className="px-3 py-2.5 text-center tabular-nums">{d.sessionCount}</td>
-                <td className="px-3 py-2.5 text-right tabular-nums">{formatDuration(d.totalHours)}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums">
+                  {formatDuration(d.totalHours)}
+                </td>
                 <td className="px-3 py-2.5 text-right">
                   <button
                     type="button"
@@ -393,7 +422,8 @@ function DaySessionsModal({
       <div className="space-y-2">
         {day.sessions.map((s, i) => {
           const next = day.sessions[i + 1];
-          const gapH = s.row.timeOut && next ? durationHours(s.row.timeOut, next.row.timeIn) : null;
+          const gapH =
+            s.row.timeOut && next ? durationHours(s.row.timeOut, next.row.timeIn) : null;
           return (
             <div key={s.row.id}>
               <div className="rounded-md border border-border p-2.5">
@@ -406,11 +436,17 @@ function DaySessionsModal({
                       </span>
                     ) : null}
                   </span>
-                  <span className="text-sm tabular-nums">{formatDuration(s.durationHrs)}</span>
+                  <span className="text-sm tabular-nums">
+                    {formatDuration(s.durationHrs)}
+                  </span>
                 </div>
                 <div className="mt-0.5 text-xs text-muted-foreground">
                   {clockTime(s.row.timeIn)} →{' '}
-                  {s.row.timeOut ? clockTime(s.row.timeOut) : <span className="text-gold-strong">Open</span>}
+                  {s.row.timeOut ? (
+                    clockTime(s.row.timeOut)
+                  ) : (
+                    <span className="text-gold-strong">Open</span>
+                  )}
                 </div>
                 {canManage ? (
                   <div className="mt-2">
@@ -440,7 +476,13 @@ function DaySessionsModal({
  * that requires typing DELETE (irreversible), then removes the record; payroll,
  * being derived, recomputes on the next read.
  */
-function AttendanceRowDelete({ row, isOwner = false }: { row: AttendanceRow; isOwner?: boolean }) {
+function AttendanceRowDelete({
+  row,
+  isOwner = false,
+}: {
+  row: AttendanceRow;
+  isOwner?: boolean;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState('');

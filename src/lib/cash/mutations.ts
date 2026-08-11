@@ -39,7 +39,10 @@ async function requireManager(): Promise<MutationResult> {
     await requireOwnerOrAdmin();
     return { ok: true };
   } catch {
-    return { ok: false, error: 'Only the Owner or a Selected Admin can edit cash records.' };
+    return {
+      ok: false,
+      error: 'Only the Owner or a Selected Admin can edit cash records.',
+    };
   }
 }
 
@@ -65,7 +68,12 @@ export async function addExpense(input: {
     remarks: input.remarks?.trim() || null,
   });
   if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
-  await recordAuditEvent({ action: 'daily_cash.expense.add', entityType: 'daily_cash_expense', entityId: input.date, context: { amount } });
+  await recordAuditEvent({
+    action: 'daily_cash.expense.add',
+    entityType: 'daily_cash_expense',
+    entityId: input.date,
+    context: { amount },
+  });
   return { ok: true };
 }
 
@@ -88,7 +96,12 @@ export async function addRemittance(input: {
     remarks: input.remarks?.trim() || null,
   });
   if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
-  await recordAuditEvent({ action: 'daily_cash.remittance.add', entityType: 'daily_cash_remittance', entityId: input.date, context: { amount } });
+  await recordAuditEvent({
+    action: 'daily_cash.remittance.add',
+    entityType: 'daily_cash_remittance',
+    entityId: input.date,
+    context: { amount },
+  });
   return { ok: true };
 }
 
@@ -113,13 +126,24 @@ export async function addCashMovement(input: {
     remarks: input.remarks?.trim() || null,
   });
   if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
-  await recordAuditEvent({ action: `daily_cash.cash_${input.direction}.add`, entityType: 'daily_cash_movement', entityId: input.date, context: { amount } });
+  await recordAuditEvent({
+    action: `daily_cash.cash_${input.direction}.add`,
+    entityType: 'daily_cash_movement',
+    entityId: input.date,
+    context: { amount },
+  });
   return { ok: true };
 }
 
 export async function updateExpense(
   id: string,
-  input: { date: string; payee: string; amount: string; category: string | null; remarks: string | null },
+  input: {
+    date: string;
+    payee: string;
+    amount: string;
+    category: string | null;
+    remarks: string | null;
+  },
 ): Promise<MutationResult> {
   const g = await requireManager();
   if (!g.ok) return g;
@@ -140,13 +164,23 @@ export async function updateExpense(
     })
     .eq('id', id);
   if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
-  await recordAuditEvent({ action: 'daily_cash.expense.update', entityType: 'daily_cash_expense', entityId: id, context: { amount } });
+  await recordAuditEvent({
+    action: 'daily_cash.expense.update',
+    entityType: 'daily_cash_expense',
+    entityId: id,
+    context: { amount },
+  });
   return { ok: true };
 }
 
 export async function updateRemittance(
   id: string,
-  input: { date: string; amount: string; reference: string | null; remarks: string | null },
+  input: {
+    date: string;
+    amount: string;
+    reference: string | null;
+    remarks: string | null;
+  },
 ): Promise<MutationResult> {
   const g = await requireManager();
   if (!g.ok) return g;
@@ -165,13 +199,23 @@ export async function updateRemittance(
     })
     .eq('id', id);
   if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
-  await recordAuditEvent({ action: 'daily_cash.remittance.update', entityType: 'daily_cash_remittance', entityId: id, context: { amount } });
+  await recordAuditEvent({
+    action: 'daily_cash.remittance.update',
+    entityType: 'daily_cash_remittance',
+    entityId: id,
+    context: { amount },
+  });
   return { ok: true };
 }
 
 export async function updateCashMovement(
   id: string,
-  input: { date: string; movementType: string | null; amount: string; remarks: string | null },
+  input: {
+    date: string;
+    movementType: string | null;
+    amount: string;
+    remarks: string | null;
+  },
 ): Promise<MutationResult> {
   const g = await requireManager();
   if (!g.ok) return g;
@@ -190,20 +234,37 @@ export async function updateCashMovement(
     })
     .eq('id', id);
   if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
-  await recordAuditEvent({ action: 'daily_cash.movement.update', entityType: 'daily_cash_movement', entityId: id, context: { amount } });
+  await recordAuditEvent({
+    action: 'daily_cash.movement.update',
+    entityType: 'daily_cash_movement',
+    entityId: id,
+    context: { amount },
+  });
   return { ok: true };
 }
 
-const DELETABLE = new Set(['daily_cash_expenses', 'daily_cash_remittances', 'daily_cash_movements']);
+const DELETABLE = new Set([
+  'daily_cash_expenses',
+  'daily_cash_remittances',
+  'daily_cash_movements',
+]);
 
-export async function deleteCashRecord(table: string, id: string): Promise<MutationResult> {
+export async function deleteCashRecord(
+  table: string,
+  id: string,
+): Promise<MutationResult> {
   const g = await requireManager();
   if (!g.ok) return g;
-  if (!DELETABLE.has(table) || !id) return { ok: false, error: 'That record cannot be deleted here.' };
+  if (!DELETABLE.has(table) || !id)
+    return { ok: false, error: 'That record cannot be deleted here.' };
   const supabase = await createClient();
   const { error } = await supabase.from(table).delete().eq('id', id);
   if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
-  await recordAuditEvent({ action: 'daily_cash.record.delete', entityType: table, entityId: id });
+  await recordAuditEvent({
+    action: 'daily_cash.record.delete',
+    entityType: table,
+    entityId: id,
+  });
   return { ok: true };
 }
 
@@ -232,6 +293,11 @@ export async function saveActualCashCount(
     { onConflict: 'close_date' },
   );
   if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
-  await recordAuditEvent({ action: 'daily_cash.close', entityType: 'daily_cash_close', entityId: date, context: { actual, expected, difference } });
+  await recordAuditEvent({
+    action: 'daily_cash.close',
+    entityType: 'daily_cash_close',
+    entityId: date,
+    context: { actual, expected, difference },
+  });
   return { ok: true };
 }

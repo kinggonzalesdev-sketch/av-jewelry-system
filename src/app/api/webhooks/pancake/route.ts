@@ -16,35 +16,44 @@ export const dynamic = 'force-dynamic';
  * Provide the secret as the `x-webhook-secret` header or a `?secret=` query param.
  * GET echoes a `challenge`/`hub.challenge` param (for providers that verify on setup).
  */
-function checkSecret(request: Request): { ok: true } | { ok: false; status: number; error: string } {
+function checkSecret(
+  request: Request,
+): { ok: true } | { ok: false; status: number; error: string } {
   const secret = process.env.PANCAKE_WEBHOOK_SECRET;
   if (!secret || !secret.trim()) {
     return { ok: false, status: 503, error: 'PANCAKE_WEBHOOK_SECRET is not configured.' };
   }
   const url = new URL(request.url);
-  const provided = request.headers.get('x-webhook-secret') ?? url.searchParams.get('secret') ?? '';
+  const provided =
+    request.headers.get('x-webhook-secret') ?? url.searchParams.get('secret') ?? '';
   if (provided !== secret) return { ok: false, status: 401, error: 'Unauthorized.' };
   return { ok: true };
 }
 
 export function GET(request: Request): Response {
   const gate = checkSecret(request);
-  if (!gate.ok) return NextResponse.json({ ok: false, error: gate.error }, { status: gate.status });
+  if (!gate.ok)
+    return NextResponse.json({ ok: false, error: gate.error }, { status: gate.status });
   const url = new URL(request.url);
-  const challenge = url.searchParams.get('challenge') ?? url.searchParams.get('hub.challenge');
+  const challenge =
+    url.searchParams.get('challenge') ?? url.searchParams.get('hub.challenge');
   if (challenge) return new NextResponse(challenge, { status: 200 });
   return NextResponse.json({ ok: true });
 }
 
 export async function POST(request: Request): Promise<Response> {
   const gate = checkSecret(request);
-  if (!gate.ok) return NextResponse.json({ ok: false, error: gate.error }, { status: gate.status });
+  if (!gate.ok)
+    return NextResponse.json({ ok: false, error: gate.error }, { status: gate.status });
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ ok: false, error: 'Invalid request body.' }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: 'Invalid request body.' },
+      { status: 400 },
+    );
   }
 
   const result = await ingestPancakeWebhookEvent(body);

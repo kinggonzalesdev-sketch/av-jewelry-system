@@ -30,14 +30,21 @@ type Item = {
   amount: string;
 };
 
-const blankItem = (): Item => ({ material: 'gold', karat: '', grams: '', perGram: '', amount: '' });
+const blankItem = (): Item => ({
+  material: 'gold',
+  karat: '',
+  grams: '',
+  perGram: '',
+  amount: '',
+});
 
 /** grams × per-gram → a 2-dp amount string, or '' when either is missing/invalid.
  *  Both come from MoneyInput/number fields as RAW (no commas). */
 function computeAmount(grams: string, perGram: string): string {
   const g = Number(grams);
   const p = Number(perGram);
-  if (!Number.isFinite(g) || !Number.isFinite(p) || g <= 0 || p < 0 || perGram === '') return '';
+  if (!Number.isFinite(g) || !Number.isFinite(p) || g <= 0 || p < 0 || perGram === '')
+    return '';
   return (Math.round(g * p * 100) / 100).toFixed(2);
 }
 
@@ -95,7 +102,9 @@ export function ScrapEntryModal({
         return;
       }
       if (!(Number(it.amount) >= 0) || it.amount === '') {
-        setError('Each item needs an amount (enter a price per gram, or type the amount).');
+        setError(
+          'Each item needs an amount (enter a price per gram, or type the amount).',
+        );
         return;
       }
     }

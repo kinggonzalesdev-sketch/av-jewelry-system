@@ -4,11 +4,14 @@ import { notFound } from 'next/navigation';
 import { ReportsView, type ReportsResult } from '@/components/reports/reports-view';
 import { ExportAllButton } from '@/components/export/export-all-button';
 import { PageHeader } from '@/components/ui/page-primitives';
-import { canOpenPage, getGrantedPermissions, requireActiveStaff } from '@/lib/authz/guard';
+import {
+  canOpenPage,
+  getGrantedPermissions,
+  requireActiveStaff,
+} from '@/lib/authz/guard';
 import { getSalesSummary } from '@/lib/dashboard/service';
 
-export const metadata: Metadata = {
-};
+export const metadata: Metadata = {};
 
 export const dynamic = 'force-dynamic';
 

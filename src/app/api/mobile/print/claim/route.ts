@@ -15,7 +15,10 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request): Promise<Response> {
   const staff = await authenticateMobile(request);
   if (!staff) {
-    return NextResponse.json({ ok: false, error: 'Session invalid or expired.' }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: 'Session invalid or expired.' },
+      { status: 401 },
+    );
   }
 
   let body: Record<string, unknown> = {};
@@ -26,7 +29,9 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const printerId =
-    typeof body.printerId === 'string' && body.printerId.trim() ? body.printerId.trim() : null;
+    typeof body.printerId === 'string' && body.printerId.trim()
+      ? body.printerId.trim()
+      : null;
   const device =
     typeof body.deviceInstallationId === 'string' && body.deviceInstallationId.trim()
       ? body.deviceInstallationId.trim()

@@ -38,7 +38,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 function fmtWhen(iso: string | null): string {
   if (!iso) return '';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return Number.isNaN(d.getTime())
+    ? ''
+    : d.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
 }
 
 export function OwnerApprovalsPanel({
@@ -56,14 +64,14 @@ export function OwnerApprovalsPanel({
     executeApprovalAction,
     EMPTY_FULFILLMENT_STATE,
   );
-  const [, acceptCancel, acceptingCancel] = useActionState<FulfillmentActionState, FormData>(
-    acceptCancellationApprovalAction,
-    EMPTY_FULFILLMENT_STATE,
-  );
-  const [, rejectCancel, rejectingCancel] = useActionState<FulfillmentActionState, FormData>(
-    rejectCancellationApprovalAction,
-    EMPTY_FULFILLMENT_STATE,
-  );
+  const [, acceptCancel, acceptingCancel] = useActionState<
+    FulfillmentActionState,
+    FormData
+  >(acceptCancellationApprovalAction, EMPTY_FULFILLMENT_STATE);
+  const [, rejectCancel, rejectingCancel] = useActionState<
+    FulfillmentActionState,
+    FormData
+  >(rejectCancellationApprovalAction, EMPTY_FULFILLMENT_STATE);
 
   // Only outstanding work belongs here: anything decided AND executed is history.
   const open = approvals.filter((a) => !a.executedAt && a.status !== 'rejected');
@@ -98,7 +106,9 @@ export function OwnerApprovalsPanel({
                     <p className="break-words text-xs font-medium text-foreground">
                       {[
                         a.orderNumber,
-                        a.invoiceNumber && a.invoiceNumber !== '—' ? a.invoiceNumber : null,
+                        a.invoiceNumber && a.invoiceNumber !== '—'
+                          ? a.invoiceNumber
+                          : null,
                       ]
                         .filter(Boolean)
                         .join(' · ')}
@@ -157,7 +167,12 @@ export function OwnerApprovalsPanel({
                   <form action={decide}>
                     <input type="hidden" name="requestId" value={a.id} />
                     <input type="hidden" name="decision" value="rejected" />
-                    <Button type="submit" size="sm" variant="destructive" disabled={deciding}>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      variant="destructive"
+                      disabled={deciding}
+                    >
                       Reject
                     </Button>
                   </form>

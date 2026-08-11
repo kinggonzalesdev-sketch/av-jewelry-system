@@ -113,7 +113,11 @@ export async function deleteCancelledOrder(
     action: 'order.delete_cancelled',
     entityType: 'official_order',
     entityId: officialOrderId,
-    context: { owner_approved: true, returned_items: returnedItems, payments_removed: paymentsRemoved },
+    context: {
+      owner_approved: true,
+      returned_items: returnedItems,
+      payments_removed: paymentsRemoved,
+    },
   });
   return { ok: true, returnedItems, paymentsRemoved };
 }
@@ -165,7 +169,11 @@ export async function deleteOrder(
     action: 'order.delete',
     entityType: 'official_order',
     entityId: officialOrderId,
-    context: { owner_approved: true, returned_items: returnedItems, payments_removed: paymentsRemoved },
+    context: {
+      owner_approved: true,
+      returned_items: returnedItems,
+      payments_removed: paymentsRemoved,
+    },
   });
   return { ok: true, returnedItems, paymentsRemoved };
 }

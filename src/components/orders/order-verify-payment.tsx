@@ -28,7 +28,15 @@ function humanize(v: string | null): string {
 function fmtDate(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
 }
 
 export function OrderVerifyPayment({
@@ -104,7 +112,12 @@ export function OrderVerifyPayment({
         size="sm"
         footer={
           <>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpen(false)}
+              disabled={pending}
+            >
               Cancel
             </Button>
             <Button
@@ -144,10 +157,13 @@ export function OrderVerifyPayment({
                         onChange={() => setSelectedId(p.paymentId)}
                         className="accent-gold"
                       />
-                      <span className="tabular-nums font-medium">{formatPeso(p.amount)}</span>
+                      <span className="tabular-nums font-medium">
+                        {formatPeso(p.amount)}
+                      </span>
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {humanize(p.paymentMethod)} · {fmtDate(p.transactedAt ?? p.recordedAt)}
+                      {humanize(p.paymentMethod)} ·{' '}
+                      {fmtDate(p.transactedAt ?? p.recordedAt)}
                     </span>
                   </label>
                 ))}
@@ -176,7 +192,11 @@ export function OrderVerifyPayment({
           ) : null}
 
           {error ? (
-            <p role="alert" className="text-sm text-destructive" data-testid="order-verify-error">
+            <p
+              role="alert"
+              className="text-sm text-destructive"
+              data-testid="order-verify-error"
+            >
               {error}
             </p>
           ) : null}
@@ -189,7 +209,9 @@ export function OrderVerifyPayment({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        {label}
+      </dt>
       <dd className="break-words font-medium">{children}</dd>
     </div>
   );

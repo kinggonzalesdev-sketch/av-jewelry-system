@@ -73,7 +73,11 @@ export async function sendPendingCaptureToMessenger(
 
   // Idempotent: never resend a capture that already went out.
   if (row.message_status === 'sent') {
-    return { ok: true, code: 'already_sent', message: 'Already sent to Messenger — not resent.' };
+    return {
+      ok: true,
+      code: 'already_sent',
+      message: 'Already sent to Messenger — not resent.',
+    };
   }
 
   const fbName = ocrStr(row.ocr, 'fbName', 'fb_name', 'name');
@@ -126,7 +130,11 @@ export async function sendPendingCaptureToMessenger(
   }
 
   const message = (messageOverride ?? '').trim() || 'Reserved ✔️';
-  const result = await sendPancakeConversationMessage({ conversationId, message, attachmentUrl });
+  const result = await sendPancakeConversationMessage({
+    conversationId,
+    message,
+    attachmentUrl,
+  });
 
   // Record the outcome + persist the resolved conversation on the capture (even on a
   // failed send: the target was explicit, so a Retry reuses the same chat). Only when

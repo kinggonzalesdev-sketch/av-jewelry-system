@@ -283,7 +283,8 @@ export function OrderCancelAction({
                 </div>
                 <div>
                   <Label htmlFor={`cancel-confirm-${orderId}`} className="text-xs">
-                    Type <span className="font-mono font-semibold">CANCEL</span> to confirm
+                    Type <span className="font-mono font-semibold">CANCEL</span> to
+                    confirm
                   </Label>
                   <Input
                     id={`cancel-confirm-${orderId}`}

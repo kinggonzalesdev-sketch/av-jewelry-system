@@ -63,7 +63,12 @@ function row(over: Partial<InventoryRow>): InventoryRow {
 describe('InventoryItemActions — per-permission Edit / Delete', () => {
   it('shows View always, and Edit + direct Delete for the Owner (canForceDelete)', () => {
     render(
-      <InventoryItemActions row={row({})} canEdit={true} canDelete={true} canForceDelete={true} />,
+      <InventoryItemActions
+        row={row({})}
+        canEdit={true}
+        canDelete={true}
+        canForceDelete={true}
+      />,
     );
     expect(screen.getByTestId('inventory-view-item-1')).toBeInTheDocument();
     expect(screen.getByTestId('inventory-edit-item-1')).toBeInTheDocument();
@@ -82,19 +87,28 @@ describe('InventoryItemActions — per-permission Edit / Delete', () => {
     expect(screen.getByTestId('inventory-view-item-1')).toBeInTheDocument();
     expect(screen.queryByTestId('inventory-edit-item-1')).not.toBeInTheDocument();
     expect(screen.queryByTestId('inventory-delete-item-1')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('inventory-request-delete-item-1')).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('inventory-request-delete-item-1'),
+    ).not.toBeInTheDocument();
   });
 
   it('gates Edit and Delete INDEPENDENTLY (edit granted, delete not)', () => {
     render(<InventoryItemActions row={row({})} canEdit={true} canDelete={false} />);
     expect(screen.getByTestId('inventory-edit-item-1')).toBeInTheDocument();
     expect(screen.queryByTestId('inventory-delete-item-1')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('inventory-request-delete-item-1')).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('inventory-request-delete-item-1'),
+    ).not.toBeInTheDocument();
   });
 
   it('View shows the compact Code / Status / Grams / Date fields', () => {
     render(
-      <InventoryItemActions row={row({})} canEdit={true} canDelete={true} canForceDelete={true} />,
+      <InventoryItemActions
+        row={row({})}
+        canEdit={true}
+        canDelete={true}
+        canForceDelete={true}
+      />,
     );
     fireEvent.click(screen.getByTestId('inventory-view-item-1'));
     expect(screen.getByText('Inventory Code')).toBeInTheDocument();
@@ -105,7 +119,12 @@ describe('InventoryItemActions — per-permission Edit / Delete', () => {
 
   it('Delete requires typing DELETE before the button enables', () => {
     render(
-      <InventoryItemActions row={row({})} canEdit={true} canDelete={true} canForceDelete={true} />,
+      <InventoryItemActions
+        row={row({})}
+        canEdit={true}
+        canDelete={true}
+        canForceDelete={true}
+      />,
     );
     fireEvent.click(screen.getByTestId('inventory-delete-item-1'));
 
@@ -122,22 +141,36 @@ describe('InventoryItemActions — per-permission Edit / Delete', () => {
   it('reveals the Super Admin force-delete ONLY after a blocked delete', async () => {
     h.deleteLinked = true;
     render(
-      <InventoryItemActions row={row({})} canEdit={true} canDelete={true} canForceDelete={true} />,
+      <InventoryItemActions
+        row={row({})}
+        canEdit={true}
+        canDelete={true}
+        canForceDelete={true}
+      />,
     );
     fireEvent.click(screen.getByTestId('inventory-delete-item-1'));
     // Not shown before an attempt — the override is a response to the DB refusal.
     expect(screen.queryByTestId('inventory-force-delete-item-1')).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText('DELETE'), { target: { value: 'DELETE' } });
+    fireEvent.change(screen.getByPlaceholderText('DELETE'), {
+      target: { value: 'DELETE' },
+    });
     fireEvent.click(screen.getByRole('button', { name: /Delete permanently/i }));
 
     // After the refusal, the Super Admin override appears.
-    expect(await screen.findByTestId('inventory-force-delete-item-1')).toBeInTheDocument();
+    expect(
+      await screen.findByTestId('inventory-force-delete-item-1'),
+    ).toBeInTheDocument();
   });
 
   it('a non-owner never reaches the direct delete or the force-delete override', async () => {
     render(
-      <InventoryItemActions row={row({})} canEdit={true} canDelete={true} canForceDelete={false} />,
+      <InventoryItemActions
+        row={row({})}
+        canEdit={true}
+        canDelete={true}
+        canForceDelete={false}
+      />,
     );
     // No direct-delete modal at all — a non-owner only gets Request delete.
     expect(screen.queryByTestId('inventory-delete-item-1')).not.toBeInTheDocument();
@@ -148,7 +181,9 @@ describe('InventoryItemActions — per-permission Edit / Delete', () => {
     expect(reason).toBeInTheDocument();
     fireEvent.change(reason, { target: { value: 'wrong encode' } });
     fireEvent.click(screen.getByTestId('inventory-request-delete-item-1-send'));
-    expect(await screen.findByTestId('inventory-request-delete-item-1-sent')).toBeInTheDocument();
+    expect(
+      await screen.findByTestId('inventory-request-delete-item-1-sent'),
+    ).toBeInTheDocument();
     expect(screen.queryByTestId('inventory-force-delete-item-1')).not.toBeInTheDocument();
   });
 });

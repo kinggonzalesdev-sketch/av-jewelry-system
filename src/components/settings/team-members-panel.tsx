@@ -195,7 +195,7 @@ export function TeamMembersPanel({
       )
     : sortedMembers;
   const selected = selectedId
-    ? members.find((m) => m.staffProfileId === selectedId) ?? null
+    ? (members.find((m) => m.staffProfileId === selectedId) ?? null)
     : null;
 
   return (
@@ -298,7 +298,12 @@ export function TeamMembersPanel({
       )}
 
       {/* Add Member — a compact modal (was an always-visible form). */}
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Add Member" size="sm">
+      <Modal
+        open={showAdd}
+        onClose={() => setShowAdd(false)}
+        title="Add Member"
+        size="sm"
+      >
         <form action={add} className="space-y-3">
           <div>
             <Label htmlFor="tm-name" className="text-xs">
@@ -339,7 +344,12 @@ export function TeamMembersPanel({
       </Modal>
 
       {/* Member details — info + every access/password/delete action in one place. */}
-      <Modal open={selected !== null} onClose={() => setSelectedId(null)} title="Member" size="sm">
+      <Modal
+        open={selected !== null}
+        onClose={() => setSelectedId(null)}
+        title="Member"
+        size="sm"
+      >
         {selected ? (
           <MemberDetail
             member={selected}

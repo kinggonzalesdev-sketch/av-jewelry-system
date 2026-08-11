@@ -3,10 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
-import {
-  generatePayslipAction,
-  markPayslipPaidAction,
-} from '@/lib/hr/payslip-actions';
+import { generatePayslipAction, markPayslipPaidAction } from '@/lib/hr/payslip-actions';
 import { downloadPayslipPdf } from '@/lib/hr/payslip-pdf';
 import { EMPTY_PAYSLIP_STATE, type PayslipSnapshot } from '@/lib/hr/payslip-types';
 import { formatPeso } from '@/lib/payments/format';
@@ -41,7 +38,15 @@ const PRINT_CSS = `
 // ONLY for the small logo mark and the single Net Pay highlight.
 const SOFT_GOLD = '#b28b3f';
 
-function Row({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function Row({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+}) {
   return (
     <div className="flex items-center justify-between py-0.5">
       <span className="text-neutral-500">{label}</span>
@@ -79,7 +84,11 @@ function PayslipDocument({ snap }: { snap: PayslipSnapshot }) {
           <p>
             {snap.payrollStartDate} – {snap.payrollEndDate}
           </p>
-          <p className={snap.paymentStatus === 'paid' ? 'text-green-700' : 'text-amber-600'}>
+          <p
+            className={
+              snap.paymentStatus === 'paid' ? 'text-green-700' : 'text-amber-600'
+            }
+          >
             {snap.paymentStatus === 'paid'
               ? `Paid${snap.paymentDate ? ` · ${snap.paymentDate}` : ''}`
               : 'Pending'}
@@ -118,7 +127,9 @@ function PayslipDocument({ snap }: { snap: PayslipSnapshot }) {
 
       {/* 3 · Signature Footer — both signatures on one row */}
       <div className="mt-8 grid grid-cols-2 gap-8 text-xs">
-        <div className="border-t border-neutral-400 pt-1 text-center">Employee signature</div>
+        <div className="border-t border-neutral-400 pt-1 text-center">
+          Employee signature
+        </div>
         <div className="border-t border-neutral-400 pt-1 text-center">Approved by</div>
       </div>
     </div>
@@ -264,7 +275,8 @@ export function PayslipButton({
                   />
                 </div>
                 <p className="text-[11px] text-muted-foreground">
-                  Overtime pay = the recorded ₱300 flat late-night overtime for the period.
+                  Overtime pay = the recorded ₱300 flat late-night overtime for the
+                  period.
                 </p>
               </>
             ) : (

@@ -55,7 +55,9 @@ type OrderRow = {
   customers: unknown;
 };
 
-export async function getOrderDetail(officialOrderId: string): Promise<OrderDetailResult> {
+export async function getOrderDetail(
+  officialOrderId: string,
+): Promise<OrderDetailResult> {
   const staff = await requireActiveStaff();
   const supabase = await createClient();
 
@@ -296,13 +298,13 @@ export async function getOrderDetail(officialOrderId: string): Promise<OrderDeta
     // Invoice + Open FB Chat use exactly this, ahead of the customer's default link.
     orderFacebook: {
       conversationId:
-        ((order as unknown as { fb_pancake_conversation_id?: string | null })
-          .fb_pancake_conversation_id) ?? null,
+        (order as unknown as { fb_pancake_conversation_id?: string | null })
+          .fb_pancake_conversation_id ?? null,
       url:
-        ((order as unknown as { fb_conversation_url?: string | null }).fb_conversation_url) ??
-        null,
+        (order as unknown as { fb_conversation_url?: string | null })
+          .fb_conversation_url ?? null,
       status:
-        ((order as unknown as { fb_link_status?: string | null }).fb_link_status) ?? null,
+        (order as unknown as { fb_link_status?: string | null }).fb_link_status ?? null,
     },
     items,
     amounts: {

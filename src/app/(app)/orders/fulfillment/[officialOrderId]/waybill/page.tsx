@@ -8,8 +8,7 @@ import { channelLabel } from '@/lib/fulfillment/format';
 import { getWaybill } from '@/lib/fulfillment/waybill';
 import { formatPeso } from '@/lib/payments/format';
 
-export const metadata: Metadata = {
-};
+export const metadata: Metadata = {};
 
 export const dynamic = 'force-dynamic';
 
@@ -90,7 +89,13 @@ export default async function WaybillPage({
             label="Dispatched"
             value={
               w.dispatchedAt
-                ? new Date(w.dispatchedAt).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+                ? new Date(w.dispatchedAt).toLocaleString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  })
                 : 'Not dispatched'
             }
           />
@@ -115,8 +120,15 @@ export default async function WaybillPage({
         </div>
 
         <div className="mt-3 border-t border-border pt-2 text-[10px] text-muted-foreground">
-          Generated {new Date(w.generatedAt).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}. This waybill reflects the
-          record at generation time.
+          Generated{' '}
+          {new Date(w.generatedAt).toLocaleString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+          })}
+          . This waybill reflects the record at generation time.
         </div>
       </div>
     </div>

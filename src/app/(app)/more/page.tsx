@@ -2,8 +2,7 @@ import type { Metadata } from 'next';
 
 import { PlaceholderPage } from '@/components/states/placeholder-page';
 
-export const metadata: Metadata = {
-};
+export const metadata: Metadata = {};
 
 /**
  * More navigation group placeholder.

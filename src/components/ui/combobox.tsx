@@ -122,10 +122,7 @@ export function Combobox({
             </li>
           ))}
           {hiddenCount > 0 ? (
-            <li
-              className="px-3 py-1.5 text-xs text-muted-foreground"
-              aria-hidden="true"
-            >
+            <li className="px-3 py-1.5 text-xs text-muted-foreground" aria-hidden="true">
               +{hiddenCount} more — keep typing to narrow…
             </li>
           ) : null}

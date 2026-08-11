@@ -64,7 +64,9 @@ export function PriceDownPaymentCalculator() {
   const [pricePerGram, setPricePerGram] = useState('');
 
   const isFixed = pricingType === 'fixed';
-  const itemCentavos = isFixed ? centavos(fixedPrice) : perGramCentavos(grams, pricePerGram);
+  const itemCentavos = isFixed
+    ? centavos(fixedPrice)
+    : perGramCentavos(grams, pricePerGram);
   const hasPrice = itemCentavos > 0n;
 
   const tiers = ([20, 30] as const).map((pct) => {
@@ -155,7 +157,9 @@ export function PriceDownPaymentCalculator() {
 
         {/* Computed Item Price */}
         <div className="flex items-center justify-between rounded-xl border border-border bg-background px-4 py-3">
-          <span className="text-sm font-medium text-muted-foreground">Computed Item Price</span>
+          <span className="text-sm font-medium text-muted-foreground">
+            Computed Item Price
+          </span>
           <span className="text-2xl font-bold tabular-nums" data-testid="calc-item-price">
             {hasPrice ? formatPeso(toMoney(itemCentavos)) : '₱0'}
           </span>

@@ -27,7 +27,9 @@ describe('hkFixedPrice — the price written after "HK ITEM"', () => {
     expect(hkFixedPrice('BNA-B-2536 K18 HK ITEM 9,600 "16"')).toBe('9600');
     expect(hkFixedPrice('X HK ITEM 37,500')).toBe('37500');
     expect(hkFixedPrice('X HK ITEM 1200.50 "6-7"')).toBe('1200.50');
-    expect(hkFixedPrice({ itemCode: 'A HK ITEM 12,000 "18"', itemName: null })).toBe('12000');
+    expect(hkFixedPrice({ itemCode: 'A HK ITEM 12,000 "18"', itemName: null })).toBe(
+      '12000',
+    );
   });
 
   it('ignores a grams token when locating the price', () => {

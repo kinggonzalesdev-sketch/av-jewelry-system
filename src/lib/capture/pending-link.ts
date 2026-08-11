@@ -80,7 +80,11 @@ async function candidateRows(supabase: SupabaseClient, name: string): Promise<Ro
   return asRows(data);
 }
 
-function linkedFromRow(row: Row, conversationId: string, matchCount: number): CaptureLink {
+function linkedFromRow(
+  row: Row,
+  conversationId: string,
+  matchCount: number,
+): CaptureLink {
   return {
     linkStatus: 'linked',
     customerId: row.id,
@@ -113,7 +117,8 @@ export async function resolveCaptureIdentity(
   existingConversationId?: string | null,
 ): Promise<CaptureLink> {
   const activePage = await getActivePancakePageId();
-  const onPage = (id: string | null | undefined) => conversationBelongsToPage(id ?? null, activePage);
+  const onPage = (id: string | null | undefined) =>
+    conversationBelongsToPage(id ?? null, activePage);
 
   // Already messageable on the active page → keep it; fill the owning customer if we can.
   const existing = (existingConversationId ?? '').trim();
@@ -152,10 +157,17 @@ export async function resolveCaptureIdentity(
     if (onPage(row.pancake_conversation_id)) {
       return linkedFromRow(row, row.pancake_conversation_id as string, 1);
     }
-    const live = await findRecentPancakeConversationByName(name, { sinceDays: 7, maxPages: 8 });
+    const live = await findRecentPancakeConversationByName(name, {
+      sinceDays: 7,
+      maxPages: 8,
+    });
     if (live.conversationId) return linkedFromRow(row, live.conversationId, 1);
     if (live.matchCount > 1) {
-      return { ...NO_MATCH, linkStatus: 'needs_confirmation', matchCount: live.matchCount };
+      return {
+        ...NO_MATCH,
+        linkStatus: 'needs_confirmation',
+        matchCount: live.matchCount,
+      };
     }
     return {
       linkStatus: 'customer_no_chat',
@@ -171,19 +183,30 @@ export async function resolveCaptureIdentity(
   // Tier 1 — EXACT full name.
   const exact = rows.filter((c) => normalizeName(c.display_name ?? '') === norm);
   const exactUsable = exact.filter((c) => onPage(c.pancake_conversation_id));
-  if (exactUsable.length === 1) return linkedFromRow(exactUsable[0]!, exactUsable[0]!.pancake_conversation_id as string, exact.length);
-  if (exact.length > 1) return { ...NO_MATCH, linkStatus: 'needs_confirmation', matchCount: exact.length };
+  if (exactUsable.length === 1)
+    return linkedFromRow(
+      exactUsable[0]!,
+      exactUsable[0]!.pancake_conversation_id as string,
+      exact.length,
+    );
+  if (exact.length > 1)
+    return { ...NO_MATCH, linkStatus: 'needs_confirmation', matchCount: exact.length };
   if (exact.length === 1) return resolveKnownCustomer(exact[0]!);
 
   // Tier 2 — FIRST+LAST (middle-name tolerant).
   const fl = rows.filter((c) => nameKey(c.display_name ?? '') === key);
   const flUsable = fl.filter((c) => onPage(c.pancake_conversation_id));
-  if (flUsable.length === 1) return linkedFromRow(flUsable[0]!, flUsable[0]!.pancake_conversation_id as string, 1);
-  if (fl.length > 1) return { ...NO_MATCH, linkStatus: 'needs_confirmation', matchCount: fl.length };
+  if (flUsable.length === 1)
+    return linkedFromRow(flUsable[0]!, flUsable[0]!.pancake_conversation_id as string, 1);
+  if (fl.length > 1)
+    return { ...NO_MATCH, linkStatus: 'needs_confirmation', matchCount: fl.length };
   if (fl.length === 1) return resolveKnownCustomer(fl[0]!);
 
   // Tier 3 — LIVE lookup for a not-yet-saved customer (single unambiguous chat only).
-  const live = await findRecentPancakeConversationByName(name, { sinceDays: 7, maxPages: 8 });
+  const live = await findRecentPancakeConversationByName(name, {
+    sinceDays: 7,
+    maxPages: 8,
+  });
   if (live.conversationId) {
     return {
       linkStatus: 'linked',
@@ -195,7 +218,8 @@ export async function resolveCaptureIdentity(
       matchCount: 1,
     };
   }
-  if (live.matchCount > 1) return { ...NO_MATCH, linkStatus: 'needs_confirmation', matchCount: live.matchCount };
+  if (live.matchCount > 1)
+    return { ...NO_MATCH, linkStatus: 'needs_confirmation', matchCount: live.matchCount };
   return NO_MATCH;
 }
 
@@ -238,7 +262,9 @@ export async function listCaptureCandidates(
   const norm = normalizeName(name);
   const key = nameKey(name);
   const picked = rows.filter(
-    (c) => normalizeName(c.display_name ?? '') === norm || nameKey(c.display_name ?? '') === key,
+    (c) =>
+      normalizeName(c.display_name ?? '') === norm ||
+      nameKey(c.display_name ?? '') === key,
   );
   return picked.slice(0, 8).map((c) => ({
     customerId: c.id,
@@ -267,10 +293,13 @@ export async function resolveChosenCustomer(
     return linkedFromRow(row, row.pancake_conversation_id as string, 1);
   }
   // Chosen customer has no on-page chat — try a live lookup by their name.
-  const live = await findRecentPancakeConversationByName((row.display_name ?? '').trim(), {
-    sinceDays: 7,
-    maxPages: 8,
-  });
+  const live = await findRecentPancakeConversationByName(
+    (row.display_name ?? '').trim(),
+    {
+      sinceDays: 7,
+      maxPages: 8,
+    },
+  );
   if (live.conversationId) return linkedFromRow(row, live.conversationId, 1);
   return {
     linkStatus: 'customer_no_chat',

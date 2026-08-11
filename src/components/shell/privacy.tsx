@@ -104,13 +104,7 @@ export function maskPhone(value: string): string {
  * authoritative string; when visible it is formatted with the shared formatter,
  * never a JS float.
  */
-export function Money({
-  amount,
-  className,
-}: {
-  amount: string;
-  className?: string;
-}) {
+export function Money({ amount, className }: { amount: string; className?: string }) {
   const { hidden } = usePrivacy();
   const real = formatPeso(amount);
   if (!hidden) {

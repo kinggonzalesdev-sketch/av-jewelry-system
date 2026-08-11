@@ -70,8 +70,8 @@ export default async function LiveOperationsPage() {
           Pre-Live System Check
         </h2>
         <p className="mb-3 text-xs text-muted-foreground">
-          Run one complete check before every live session. Resolve anything marked
-          Failed before starting Automatic Mode.
+          Run one complete check before every live session. Resolve anything marked Failed
+          before starting Automatic Mode.
         </p>
         <SystemCheckPanel />
       </section>
@@ -122,8 +122,8 @@ export default async function LiveOperationsPage() {
         </h2>
         <p className="mb-3 text-xs text-muted-foreground">
           Any invoice/reminder that failed to send or label that failed to print shows
-          here. Retry a failed send in one click; reprint a failed label from the order
-          on the capturing device.
+          here. Retry a failed send in one click; reprint a failed label from the order on
+          the capturing device.
         </p>
         <ErrorRecoveryPanel />
       </section>

@@ -19,14 +19,20 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request): Promise<Response> {
   const staff = await authenticateMobile(request);
   if (!staff) {
-    return NextResponse.json({ ok: false, error: 'Session invalid or expired.' }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: 'Session invalid or expired.' },
+      { status: 401 },
+    );
   }
 
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;
   } catch {
-    return NextResponse.json({ ok: false, error: 'Invalid request body.' }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: 'Invalid request body.' },
+      { status: 400 },
+    );
   }
 
   const str = (k: string): string => {
@@ -47,7 +53,10 @@ export async function POST(request: Request): Promise<Response> {
   });
 
   if (!result.ok) {
-    return NextResponse.json({ ok: false, code: result.code, error: result.error }, { status: 422 });
+    return NextResponse.json(
+      { ok: false, code: result.code, error: result.error },
+      { status: 422 },
+    );
   }
   return NextResponse.json(result);
 }

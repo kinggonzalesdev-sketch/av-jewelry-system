@@ -52,7 +52,10 @@ export function PrinterTestCard() {
     if (!activeChannel) return;
     setResult(null);
     try {
-      await writeToChannel(activeChannel, encodeReceipt(sample(), printLang, readStickerFields()));
+      await writeToChannel(
+        activeChannel,
+        encodeReceipt(sample(), printLang, readStickerFields()),
+      );
       setResult(
         'Sent the sample sticker to the printer. Did it print correctly? If nothing came out, try another Channel or Format below, or use the browser dialog.',
       );
@@ -62,7 +65,9 @@ export function PrinterTestCard() {
   };
 
   const printBrowser = () => {
-    setResult('Opening the browser print dialog — choose the 40×30 mm printer, then Print.');
+    setResult(
+      'Opening the browser print dialog — choose the 40×30 mm printer, then Print.',
+    );
     printOrderReceipt(sample(), readStickerFields());
   };
 
@@ -90,7 +95,12 @@ export function PrinterTestCard() {
           iPhone/Safari — tapping it surfaces a clear "use Chrome on Android" message
           rather than silently hiding the button. */}
       {!printer ? (
-        <Button type="button" size="sm" onClick={() => void connect()} disabled={connecting}>
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => void connect()}
+          disabled={connecting}
+        >
           {connecting ? 'Connecting…' : 'Connect printer'}
         </Button>
       ) : null}

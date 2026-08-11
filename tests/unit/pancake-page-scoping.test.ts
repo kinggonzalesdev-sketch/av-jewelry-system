@@ -13,12 +13,16 @@ describe('conversationBelongsToPage', () => {
   const AV_JEWELRY = '588622885161430';
 
   it('accepts a conversation on the active page', () => {
-    expect(conversationBelongsToPage(`${AV_JEWELRY}_10035481173163176`, AV_JEWELRY)).toBe(true);
+    expect(conversationBelongsToPage(`${AV_JEWELRY}_10035481173163176`, AV_JEWELRY)).toBe(
+      true,
+    );
   });
 
   it('rejects a conversation on a DIFFERENT page (the code-120 case)', () => {
     // A link synced from another page — this is exactly what was failing in the live.
-    expect(conversationBelongsToPage('2609158952867406_1017128484489433', AV_JEWELRY)).toBe(false);
+    expect(
+      conversationBelongsToPage('2609158952867406_1017128484489433', AV_JEWELRY),
+    ).toBe(false);
   });
 
   it('never treats a null/empty conversation id as usable', () => {

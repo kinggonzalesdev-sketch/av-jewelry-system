@@ -109,227 +109,234 @@ export function RecordPaymentForm({
 
   const formEl = (
     <form action={action} className="space-y-3">
-          {/* --- Order selection -------------------------------------------
+      {/* --- Order selection -------------------------------------------
               Locked to one order inside the Order Details modal (selector hidden,
               order pre-filled); a free chooser everywhere else. */}
-          {lockedOrder ? (
-            <div className="space-y-1">
-              <Label>Official Order</Label>
-              <input type="hidden" name="officialOrderId" value={lockedOrder.officialOrderId} />
-              <p className="rounded-md border border-input bg-muted/40 px-3 py-2 text-sm">
-                <span className="font-mono">{lockedOrder.orderNumber}</span>
-                <span className="text-muted-foreground"> — {lockedOrder.customerDisplayName}</span>
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-1">
-              <Label htmlFor="officialOrderId">Official Order</Label>
-              <select
-                id="officialOrderId"
-                name="officialOrderId"
-                required
-                value={orderId}
-                onChange={(e) => setOrderId(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              >
-                <option value="">Select an Official Order…</option>
-                {orders.map((o) => (
-                  <option key={o.officialOrderId} value={o.officialOrderId}>
-                    {o.orderNumber} — {o.customerDisplayName}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+      {lockedOrder ? (
+        <div className="space-y-1">
+          <Label>Official Order</Label>
+          <input
+            type="hidden"
+            name="officialOrderId"
+            value={lockedOrder.officialOrderId}
+          />
+          <p className="rounded-md border border-input bg-muted/40 px-3 py-2 text-sm">
+            <span className="font-mono">{lockedOrder.orderNumber}</span>
+            <span className="text-muted-foreground">
+              {' '}
+              — {lockedOrder.customerDisplayName}
+            </span>
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-1">
+          <Label htmlFor="officialOrderId">Official Order</Label>
+          <select
+            id="officialOrderId"
+            name="officialOrderId"
+            required
+            value={orderId}
+            onChange={(e) => setOrderId(e.target.value)}
+            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            <option value="">Select an Official Order…</option>
+            {orders.map((o) => (
+              <option key={o.officialOrderId} value={o.officialOrderId}>
+                {o.orderNumber} — {o.customerDisplayName}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
-          {/* --- Authoritative order facts, straight from the database -----
+      {/* --- Authoritative order facts, straight from the database -----
               If the balance could not be read, this says so. It NEVER renders
               ₱0.00 from a failed read: a zero balance means "nothing is owed",
               and showing that against an unpaid order is how a customer gets
               told they are square when they are not. */}
-          {selected && selected.balanceUnavailable && (
-            <div
-              role="alert"
-              data-testid="balance-unavailable"
-              className="rounded-md border border-destructive/50 p-3 text-sm"
-            >
-              <p className="font-semibold text-destructive">Balance unavailable</p>
-              <p className="mt-1 text-muted-foreground">
-                The authoritative balance for {selected.orderNumber} could not be read, so
-                it is not shown. This is <strong>not</strong> a zero balance.
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {selected.balanceUnavailable}
-              </p>
-              <p className="mt-2 text-xs">
-                You may still record evidence — the amount you enter is what the customer
-                paid, and verification decides the balance either way.
-              </p>
-            </div>
-          )}
-
-          {selected && !selected.balanceUnavailable && (
-            <dl
-              className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-md border p-3 text-sm"
-              data-testid="order-summary"
-            >
-              <dt className="text-muted-foreground">Order</dt>
-              <dd className="font-medium">{selected.orderNumber}</dd>
-
-              <dt className="text-muted-foreground">Invoice</dt>
-              <dd className="font-medium">{selected.invoiceNumber}</dd>
-
-              <dt className="text-muted-foreground">Customer</dt>
-              <dd className="font-medium">{selected.customerDisplayName}</dd>
-
-              <dt className="text-muted-foreground">Amount payable</dt>
-              <dd className="font-medium">{formatPeso(selected.totalAmountPayable)}</dd>
-
-              <dt className="text-muted-foreground">Verified so far</dt>
-              <dd className="font-medium">{formatPeso(selected.verifiedNetPayments)}</dd>
-
-              <dt className="text-muted-foreground">Outstanding balance</dt>
-              <dd className="font-semibold">{formatPeso(selected.outstandingBalance)}</dd>
-
-              {selected.overpaymentCredit !== '0' &&
-                selected.overpaymentCredit !== '0.00' && (
-                  <>
-                    <dt className="text-muted-foreground">Overpayment Credit</dt>
-                    <dd className="font-medium">
-                      {formatPeso(selected.overpaymentCredit)} — flagged for review. Never
-                      auto-refunded or moved to another order.
-                    </dd>
-                  </>
-                )}
-
-              {selected.paidInFull && (
-                <>
-                  <dt className="text-muted-foreground">Status</dt>
-                  <dd className="font-medium">
-                    Paid in Full — a further payment records an Overpayment Credit and is
-                    flagged for review.
-                  </dd>
-                </>
-              )}
-            </dl>
-          )}
-
-          {/* --- Amount + method ------------------------------------------- */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1">
-              <Label htmlFor="amount">Payment amount</Label>
-              <MoneyInput
-                id="amount"
-                name="amount"
-                placeholder="0.00"
-                required
-                className="h-9 text-sm"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor="paymentMethod">Payment method</Label>
-              <select
-                id="paymentMethod"
-                name="paymentMethod"
-                value={method}
-                onChange={(e) => setMethod(e.target.value as MethodValue)}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              >
-                {METHODS.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1">
-              <Label htmlFor="transactedAt">Transaction date &amp; time</Label>
-              <Input
-                id="transactedAt"
-                name="transactedAt"
-                type="datetime-local"
-                required
-                className="h-9 text-sm"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor="referenceNumber">Transaction / reference number</Label>
-              <Input
-                id="referenceNumber"
-                name="referenceNumber"
-                required
-                className="h-9 text-sm"
-              />
-            </div>
-          </div>
-
-          {/* --- Note (optional). The method name (GCash / BPI / BDO / Credit Card)
-              is itself the channel, so there is no separate provider field. --- */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1">
-              <Label htmlFor="note">Note (optional)</Label>
-              <Input id="note" name="note" className="h-9 text-sm" />
-            </div>
-          </div>
-
-          {spec.needsLocation && (
-            <div className="space-y-1">
-              <Label htmlFor="collectionLocation">Store / collection location</Label>
-              <Input
-                id="collectionLocation"
-                name="collectionLocation"
-                required
-                className="h-9 text-sm"
-              />
-              <p className="text-xs text-muted-foreground">
-                Cash is attributed to the receiving staff member and the receipt number. A
-                photo is optional for cash (§3).
-              </p>
-            </div>
-          )}
-
-          {/* --- The one thing that must never be misread ------------------ */}
-          <p className="rounded-md border border-dashed p-2.5 text-xs text-muted-foreground">
-            Recording is <strong>not</strong> verifying. This payment is saved as
-            <strong> unverified</strong> and reduces no balance until someone with Payment
-            Verification verifies it. Never enter a card number, CVV, or PIN — the system
-            does not store them.
+      {selected && selected.balanceUnavailable && (
+        <div
+          role="alert"
+          data-testid="balance-unavailable"
+          className="rounded-md border border-destructive/50 p-3 text-sm"
+        >
+          <p className="font-semibold text-destructive">Balance unavailable</p>
+          <p className="mt-1 text-muted-foreground">
+            The authoritative balance for {selected.orderNumber} could not be read, so it
+            is not shown. This is <strong>not</strong> a zero balance.
           </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {selected.balanceUnavailable}
+          </p>
+          <p className="mt-2 text-xs">
+            You may still record evidence — the amount you enter is what the customer
+            paid, and verification decides the balance either way.
+          </p>
+        </div>
+      )}
 
-          <Button type="submit" disabled={pending || !orderId}>
-            {pending ? 'Recording…' : 'Record payment evidence'}
-          </Button>
+      {selected && !selected.balanceUnavailable && (
+        <dl
+          className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-md border p-3 text-sm"
+          data-testid="order-summary"
+        >
+          <dt className="text-muted-foreground">Order</dt>
+          <dd className="font-medium">{selected.orderNumber}</dd>
 
-          {/* --- Authoritative server result ------------------------------- */}
-          {state.error && (
-            <p role="alert" className="text-sm font-medium text-destructive">
-              {state.error}
+          <dt className="text-muted-foreground">Invoice</dt>
+          <dd className="font-medium">{selected.invoiceNumber}</dd>
+
+          <dt className="text-muted-foreground">Customer</dt>
+          <dd className="font-medium">{selected.customerDisplayName}</dd>
+
+          <dt className="text-muted-foreground">Amount payable</dt>
+          <dd className="font-medium">{formatPeso(selected.totalAmountPayable)}</dd>
+
+          <dt className="text-muted-foreground">Verified so far</dt>
+          <dd className="font-medium">{formatPeso(selected.verifiedNetPayments)}</dd>
+
+          <dt className="text-muted-foreground">Outstanding balance</dt>
+          <dd className="font-semibold">{formatPeso(selected.outstandingBalance)}</dd>
+
+          {selected.overpaymentCredit !== '0' &&
+            selected.overpaymentCredit !== '0.00' && (
+              <>
+                <dt className="text-muted-foreground">Overpayment Credit</dt>
+                <dd className="font-medium">
+                  {formatPeso(selected.overpaymentCredit)} — flagged for review. Never
+                  auto-refunded or moved to another order.
+                </dd>
+              </>
+            )}
+
+          {selected.paidInFull && (
+            <>
+              <dt className="text-muted-foreground">Status</dt>
+              <dd className="font-medium">
+                Paid in Full — a further payment records an Overpayment Credit and is
+                flagged for review.
+              </dd>
+            </>
+          )}
+        </dl>
+      )}
+
+      {/* --- Amount + method ------------------------------------------- */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label htmlFor="amount">Payment amount</Label>
+          <MoneyInput
+            id="amount"
+            name="amount"
+            placeholder="0.00"
+            required
+            className="h-9 text-sm"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor="paymentMethod">Payment method</Label>
+          <select
+            id="paymentMethod"
+            name="paymentMethod"
+            value={method}
+            onChange={(e) => setMethod(e.target.value as MethodValue)}
+            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            {METHODS.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label htmlFor="transactedAt">Transaction date &amp; time</Label>
+          <Input
+            id="transactedAt"
+            name="transactedAt"
+            type="datetime-local"
+            required
+            className="h-9 text-sm"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor="referenceNumber">Transaction / reference number</Label>
+          <Input
+            id="referenceNumber"
+            name="referenceNumber"
+            required
+            className="h-9 text-sm"
+          />
+        </div>
+      </div>
+
+      {/* --- Note (optional). The method name (GCash / BPI / BDO / Credit Card)
+              is itself the channel, so there is no separate provider field. --- */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label htmlFor="note">Note (optional)</Label>
+          <Input id="note" name="note" className="h-9 text-sm" />
+        </div>
+      </div>
+
+      {spec.needsLocation && (
+        <div className="space-y-1">
+          <Label htmlFor="collectionLocation">Store / collection location</Label>
+          <Input
+            id="collectionLocation"
+            name="collectionLocation"
+            required
+            className="h-9 text-sm"
+          />
+          <p className="text-xs text-muted-foreground">
+            Cash is attributed to the receiving staff member and the receipt number. A
+            photo is optional for cash (§3).
+          </p>
+        </div>
+      )}
+
+      {/* --- The one thing that must never be misread ------------------ */}
+      <p className="rounded-md border border-dashed p-2.5 text-xs text-muted-foreground">
+        Recording is <strong>not</strong> verifying. This payment is saved as
+        <strong> unverified</strong> and reduces no balance until someone with Payment
+        Verification verifies it. Never enter a card number, CVV, or PIN — the system does
+        not store them.
+      </p>
+
+      <Button type="submit" disabled={pending || !orderId}>
+        {pending ? 'Recording…' : 'Record payment evidence'}
+      </Button>
+
+      {/* --- Authoritative server result ------------------------------- */}
+      {state.error && (
+        <p role="alert" className="text-sm font-medium text-destructive">
+          {state.error}
+        </p>
+      )}
+
+      {state.success && (
+        <div className="space-y-2">
+          <p role="status" className="text-sm font-medium">
+            {state.success}
+          </p>
+          {state.duplicateReferenceFlagged && (
+            <p
+              role="alert"
+              data-testid="duplicate-reference-warning"
+              className="rounded-md border border-destructive/50 p-3 text-sm font-medium text-destructive"
+            >
+              ⚠️ Duplicate reference number. This reference already exists on another
+              payment. It was <strong>flagged for review, not rejected</strong> — a human
+              decides, because silently refusing it would hide the collision.
             </p>
           )}
-
-          {state.success && (
-            <div className="space-y-2">
-              <p role="status" className="text-sm font-medium">
-                {state.success}
-              </p>
-              {state.duplicateReferenceFlagged && (
-                <p
-                  role="alert"
-                  data-testid="duplicate-reference-warning"
-                  className="rounded-md border border-destructive/50 p-3 text-sm font-medium text-destructive"
-                >
-                  ⚠️ Duplicate reference number. This reference already exists on another
-                  payment. It was <strong>flagged for review, not rejected</strong> — a
-                  human decides, because silently refusing it would hide the collision.
-                </p>
-              )}
-            </div>
-          )}
+        </div>
+      )}
     </form>
   );
 

@@ -58,7 +58,11 @@ export async function deleteTestOrderAndReturnItems(
     action: 'order.delete_test',
     entityType: 'official_order',
     entityId: officialOrderId,
-    context: { owner_approved: true, returned_items: returnedItems, payments_removed: paymentsRemoved },
+    context: {
+      owner_approved: true,
+      returned_items: returnedItems,
+      payments_removed: paymentsRemoved,
+    },
   });
   return { ok: true, returnedItems, paymentsRemoved };
 }

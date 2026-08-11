@@ -10,8 +10,7 @@ import {
   type LiveBatchItemRow,
 } from '@/lib/live/batches';
 
-export const metadata: Metadata = {
-};
+export const metadata: Metadata = {};
 
 /**
  * Live Batches (Bible §8.4, §12). Delivered by Roadmap Phase 3.

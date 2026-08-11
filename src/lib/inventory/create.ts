@@ -231,7 +231,10 @@ export async function createInventoryEntry(
     // The DB's unique lower(item_code) index is the final backstop — even a code
     // the visible check missed (e.g. an archived item) is refused here, never saved.
     if (error?.code === '23505' || /duplicate key|unique/i.test(error?.message ?? '')) {
-      return { ok: false, error: `The code “${itemCode}” is already used. Enter a unique code.` };
+      return {
+        ok: false,
+        error: `The code “${itemCode}” is already used. Enter a unique code.`,
+      };
     }
     return { ok: false, error: 'The item could not be created.' };
   }

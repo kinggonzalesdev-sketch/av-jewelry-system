@@ -8,7 +8,11 @@ import { cn } from '@/lib/utils';
  * ring, and chevron, instead of each page re-styling a raw <select>. Pass <option>s as
  * children and any native select props (value/onChange/name/required/disabled).
  */
-export function Select({ className, children, ...props }: React.ComponentProps<'select'>) {
+export function Select({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<'select'>) {
   return (
     <div className="relative">
       <select

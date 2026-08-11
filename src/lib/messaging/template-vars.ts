@@ -30,11 +30,19 @@ export const TEMPLATE_VARIABLES: ReadonlyArray<{
   { token: '{total_amount}', description: 'Total amount payable', sample: '₱34,660' },
   { token: '{balance}', description: 'Remaining balance', sample: '₱29,660' },
   { token: '{due_date}', description: 'Due date', sample: '2026-08-15' },
-  { token: '{item_name}', description: 'Item (or items) ordered', sample: 'Bangle, Ring' },
+  {
+    token: '{item_name}',
+    description: 'Item (or items) ordered',
+    sample: 'Bangle, Ring',
+  },
   { token: '{grams}', description: 'Total grams', sample: '12.5' },
   { token: '{payment_status}', description: 'Payment status', sample: 'Partially paid' },
   { token: '{shop_name}', description: 'Your shop name', sample: 'A.V. Jewelry' },
-  { token: '{contact_number}', description: 'Your contact number', sample: '0917 000 0000' },
+  {
+    token: '{contact_number}',
+    description: 'Your contact number',
+    sample: '0917 000 0000',
+  },
 ];
 
 /** Just the tokens — the whitelist a template is validated against. */

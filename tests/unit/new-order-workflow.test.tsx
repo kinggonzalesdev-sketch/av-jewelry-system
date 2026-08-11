@@ -63,7 +63,12 @@ const walkInItems: WalkInItem[] = [
   // No stored grams — the weight is in the code (1.20g).
   { id: 'w2', itemCode: 'SBA-R-5110 1.20g 7"', facebookName: null, grams: null },
   // Walk-In HK ITEM: price written after "HK ITEM", no stored grams/price.
-  { id: 'w3', itemCode: 'BNA-B-2536 K18 HK ITEM 9,600 "16"', facebookName: null, grams: null },
+  {
+    id: 'w3',
+    itemCode: 'BNA-B-2536 K18 HK ITEM 9,600 "16"',
+    facebookName: null,
+    grams: null,
+  },
 ];
 
 // Admin Name context as a NON-Super-Admin receives it: exactly one option, so the

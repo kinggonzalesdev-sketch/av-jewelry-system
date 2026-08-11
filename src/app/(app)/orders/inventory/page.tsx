@@ -2,12 +2,15 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
 import { InventoryWorkspace } from '@/components/inventory/inventory-workspace';
-import { canOpenPage, getCurrentStaffProfile, getGrantedPermissions } from '@/lib/authz/guard';
+import {
+  canOpenPage,
+  getCurrentStaffProfile,
+  getGrantedPermissions,
+} from '@/lib/authz/guard';
 import { listCompletedInventory } from '@/lib/inventory/completed';
 import { listInventory } from '@/lib/inventory/service';
 
-export const metadata: Metadata = {
-};
+export const metadata: Metadata = {};
 
 /**
  * Inventory Ops, Returned-to-Stock, Customers & Migration (Bible §19, §10).

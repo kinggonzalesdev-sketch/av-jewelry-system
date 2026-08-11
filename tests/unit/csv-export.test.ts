@@ -21,9 +21,7 @@ describe('toCsv', () => {
   });
 
   it('quotes values containing commas, quotes, or newlines', () => {
-    const csv = toCsv(columns, [
-      { code: 'X', name: 'Cruz, Ana', amount: 'say "hi"' },
-    ]);
+    const csv = toCsv(columns, [{ code: 'X', name: 'Cruz, Ana', amount: 'say "hi"' }]);
     expect(csv).toContain('"Cruz, Ana"');
     expect(csv).toContain('"say ""hi"""');
   });

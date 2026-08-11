@@ -6,7 +6,12 @@ import { cn } from '@/lib/utils';
  * screens while loading"). Theme-aware via the muted token.
  */
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cn('animate-pulse rounded-md bg-muted', className)} aria-hidden="true" />;
+  return (
+    <div
+      className={cn('animate-pulse rounded-md bg-muted', className)}
+      aria-hidden="true"
+    />
+  );
 }
 
 /** A grid of skeleton cells that stands in for a loading table. */

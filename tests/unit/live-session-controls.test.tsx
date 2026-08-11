@@ -4,8 +4,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { LiveSessionControls } from '@/components/live/live-session-controls';
 import type { LiveSessionFormData } from '@/lib/live/live-session-types';
 
-const startAction = vi.fn((_input?: unknown) => Promise.resolve({ ok: true, session: null }));
-const pauseAction = vi.fn((_paused?: boolean) => Promise.resolve({ ok: true, session: null }));
+const startAction = vi.fn((_input?: unknown) =>
+  Promise.resolve({ ok: true, session: null }),
+);
+const pauseAction = vi.fn((_paused?: boolean) =>
+  Promise.resolve({ ok: true, session: null }),
+);
 vi.mock('@/lib/live/live-ops-actions', () => ({
   startLiveSessionAction: (input: unknown) => startAction(input),
   endLiveSessionAction: vi.fn(() => Promise.resolve({ ok: true, session: null })),
@@ -70,7 +74,9 @@ describe('LiveSessionControls', () => {
     };
 
     const { rerender } = render(
-      <LiveSessionControls data={{ ...base, active: { ...activeBase, paused: false } }} />,
+      <LiveSessionControls
+        data={{ ...base, active: { ...activeBase, paused: false } }}
+      />,
     );
     // Running (not paused): a Pause button, no paused banner.
     expect(screen.getByTestId('pause-live-selling')).toBeInTheDocument();

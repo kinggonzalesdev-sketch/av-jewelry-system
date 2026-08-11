@@ -1,6 +1,9 @@
 import 'server-only';
 
-import { createClient as createSupabaseClient, type SupabaseClient } from '@supabase/supabase-js';
+import {
+  createClient as createSupabaseClient,
+  type SupabaseClient,
+} from '@supabase/supabase-js';
 
 import { getClientEnv } from '@/lib/env';
 import type { RoleKey } from '@/lib/authz/permissions';
@@ -39,11 +42,11 @@ function bearerToken(request: Request): string | null {
  *   - account_not_found: valid token, but no staff_profiles row for that user.
  *   - account_inactive : staff row exists but has been deactivated.
  */
-export type MobileAuthFailure = 'session_invalid' | 'account_not_found' | 'account_inactive';
+export type MobileAuthFailure =
+  'session_invalid' | 'account_not_found' | 'account_inactive';
 
 export type MobileAuthResult =
-  | { ok: true; staff: MobileStaff }
-  | { ok: false; reason: MobileAuthFailure };
+  { ok: true; staff: MobileStaff } | { ok: false; reason: MobileAuthFailure };
 
 /**
  * Verify the caller and return their staff context, or a typed failure reason.
@@ -82,7 +85,10 @@ export async function resolveMobileStaff(request: Request): Promise<MobileAuthRe
   // Record a lightweight heartbeat so the web System Check can show a signed-in
   // capture device + active app. Best-effort: it never blocks or fails the auth.
   try {
-    await supabase.rpc('record_capture_heartbeat', { p_device: null, p_platform: 'android' });
+    await supabase.rpc('record_capture_heartbeat', {
+      p_device: null,
+      p_platform: 'android',
+    });
   } catch {
     /* heartbeat is best-effort */
   }

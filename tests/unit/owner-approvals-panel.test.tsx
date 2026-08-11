@@ -69,8 +69,16 @@ describe('Owner Approval Center — relocated onto the Orders page', () => {
     render(
       <OwnerApprovalsPanel
         approvals={[
-          approval({ id: 'a2', status: 'approved', executedAt: '2026-07-28T01:00:00.000Z' }),
-          approval({ id: 'a3', status: 'rejected', decidedAt: '2026-07-28T01:00:00.000Z' }),
+          approval({
+            id: 'a2',
+            status: 'approved',
+            executedAt: '2026-07-28T01:00:00.000Z',
+          }),
+          approval({
+            id: 'a3',
+            status: 'rejected',
+            decidedAt: '2026-07-28T01:00:00.000Z',
+          }),
         ]}
         isOwner
       />,

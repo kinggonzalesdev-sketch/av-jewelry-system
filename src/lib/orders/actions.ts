@@ -233,7 +233,9 @@ export async function sendInvoiceMessageAction(
 }
 
 /** Orders Workflow: For Reminder → For Confirm (payment-gated in the DB). */
-export async function confirmRequiredPaymentAction(orderId: string): Promise<ForInvoiceResult> {
+export async function confirmRequiredPaymentAction(
+  orderId: string,
+): Promise<ForInvoiceResult> {
   if (!orderId) return { ok: false, error: 'An order is required.' };
   const result = await advanceOrderConfirmPayment(orderId);
   if (result.ok) revalidatePath('/orders');
@@ -241,7 +243,9 @@ export async function confirmRequiredPaymentAction(orderId: string): Promise<For
 }
 
 /** Orders Workflow: For Confirm → For Prepare (ready for preparation). */
-export async function readyForPreparationAction(orderId: string): Promise<ForInvoiceResult> {
+export async function readyForPreparationAction(
+  orderId: string,
+): Promise<ForInvoiceResult> {
   if (!orderId) return { ok: false, error: 'An order is required.' };
   const result = await advanceOrderReadyForPreparation(orderId);
   if (result.ok) revalidatePath('/orders');
@@ -383,7 +387,9 @@ export async function adminEditOrderAction(
 /** Load the prepared invoice message for an order ("View Message"). Read-only. */
 export async function loadOrderInvoiceMessageAction(
   orderId: string,
-): Promise<{ ok: true; message: OrderInvoiceMessage | null } | { ok: false; error: string }> {
+): Promise<
+  { ok: true; message: OrderInvoiceMessage | null } | { ok: false; error: string }
+> {
   if (!orderId) return { ok: false, error: 'An order is required.' };
   return getOrderInvoiceMessage(orderId);
 }
@@ -588,7 +594,9 @@ export async function captureManualOrderAction(
 }
 
 /** Save a Walk-In (no auto-complete/print). Revalidates the affected screens. */
-export async function saveWalkInOrderAction(input: SaveWalkInInput): Promise<SaveWalkInResult> {
+export async function saveWalkInOrderAction(
+  input: SaveWalkInInput,
+): Promise<SaveWalkInResult> {
   const result = await saveWalkInOrder(input);
   if (result.ok) {
     revalidatePath('/orders');

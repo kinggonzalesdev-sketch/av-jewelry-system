@@ -5,8 +5,7 @@ import { ClaimReviewView } from '@/components/claims/claim-review-view';
 import { getGrantedPermissions } from '@/lib/authz/guard';
 import { listClaimReviewQueue } from '@/lib/claims/review';
 
-export const metadata: Metadata = {
-};
+export const metadata: Metadata = {};
 
 /**
  * Claim Review (Bible §6.4, §22.6). Delivered by Roadmap Phase 4.

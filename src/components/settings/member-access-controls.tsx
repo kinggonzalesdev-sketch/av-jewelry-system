@@ -24,7 +24,10 @@ import { Modal } from '@/components/ui/modal';
 
 /** Stable slug for a module title (used for test ids and expand state). */
 function moduleSlug(title: string): string {
-  return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
 }
 
 /** Titles of modules that currently hold at least one enabled key. */
@@ -318,7 +321,9 @@ export function MemberAccessControls({
             </div>
             <div className="flex justify-between gap-3">
               <span className="text-muted-foreground">Account Status</span>
-              <span className="font-medium">{member.isActive ? 'Active' : 'Disabled'}</span>
+              <span className="font-medium">
+                {member.isActive ? 'Active' : 'Disabled'}
+              </span>
             </div>
           </div>
 
@@ -364,7 +369,9 @@ export function MemberAccessControls({
                     <div className="flex items-center justify-between gap-2 px-2.5 py-2">
                       <button
                         type="button"
-                        onClick={() => (collapsible ? toggleExpanded(m.title) : undefined)}
+                        onClick={() =>
+                          collapsible ? toggleExpanded(m.title) : undefined
+                        }
                         data-testid={`access-module-${slug}`}
                         aria-expanded={collapsible ? isOpen : undefined}
                         className={`flex items-center gap-2 text-sm font-semibold ${
@@ -372,7 +379,10 @@ export function MemberAccessControls({
                         }`}
                       >
                         {collapsible ? (
-                          <span aria-hidden="true" className="text-xs text-muted-foreground">
+                          <span
+                            aria-hidden="true"
+                            className="text-xs text-muted-foreground"
+                          >
                             {isOpen ? '▼' : '▶'}
                           </span>
                         ) : null}
@@ -388,7 +398,9 @@ export function MemberAccessControls({
                         <label className="flex items-center gap-2 text-xs">
                           <span
                             className={`font-semibold uppercase ${
-                              keys.has(m.parent.key) ? 'text-green-700' : 'text-muted-foreground'
+                              keys.has(m.parent.key)
+                                ? 'text-green-700'
+                                : 'text-muted-foreground'
                             }`}
                           >
                             {keys.has(m.parent.key) ? 'Enabled' : 'Disabled'}
@@ -433,7 +445,9 @@ export function MemberAccessControls({
           )}
 
           {!superAdminSlotFree ? (
-            <p className="text-[11px] text-muted-foreground">{MAX_SUPER_ADMINS_MESSAGE}</p>
+            <p className="text-[11px] text-muted-foreground">
+              {MAX_SUPER_ADMINS_MESSAGE}
+            </p>
           ) : null}
           {saved ? (
             <p
@@ -441,8 +455,8 @@ export function MemberAccessControls({
               role="status"
               data-testid="member-access-saved"
             >
-              <span aria-hidden="true">✓</span> Access permissions updated successfully. They
-              apply on the member&apos;s next page load.
+              <span aria-hidden="true">✓</span> Access permissions updated successfully.
+              They apply on the member&apos;s next page load.
             </p>
           ) : null}
           {error ? (

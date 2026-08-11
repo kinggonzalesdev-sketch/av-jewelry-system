@@ -4,8 +4,7 @@ import { CapabilitiesView } from '@/components/capabilities/capabilities-view';
 import { requireActiveStaff } from '@/lib/authz/guard';
 import { listCapabilities } from '@/lib/capabilities/service';
 
-export const metadata: Metadata = {
-};
+export const metadata: Metadata = {};
 
 /**
  * Conditional capabilities (Bible §27, §14, §13, §26). Roadmap Phase 10.

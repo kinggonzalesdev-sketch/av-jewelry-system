@@ -30,11 +30,16 @@ function checkRealtime(): Promise<CheckStatus> {
       };
       const timer = setTimeout(() => done('warning'), 12000);
       void channel
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'live_test_state' }, () => {})
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'live_test_state' },
+          () => {},
+        )
         .subscribe((status) => {
           const s = String(status);
           if (s === 'SUBSCRIBED') done('ready');
-          else if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT' || s === 'CLOSED') done('warning');
+          else if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT' || s === 'CLOSED')
+            done('warning');
         });
     } catch {
       resolve('warning');
@@ -45,8 +50,7 @@ function checkRealtime(): Promise<CheckStatus> {
 /** The device-local checks only the browser can observe, merged with the server's. */
 async function clientChecks(): Promise<SystemCheckItem[]> {
   const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
-  const hasBluetooth =
-    typeof navigator !== 'undefined' && 'bluetooth' in navigator;
+  const hasBluetooth = typeof navigator !== 'undefined' && 'bluetooth' in navigator;
   const realtime = await checkRealtime();
   return [
     {
@@ -113,7 +117,15 @@ export function SystemCheckPanel() {
       } else {
         setItems([...server.items, ...client]);
       }
-      setRanAt(new Date().toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' }));
+      setRanAt(
+        new Date().toLocaleString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+        }),
+      );
     } catch {
       setError('The system check could not complete. Please try again.');
     } finally {
@@ -173,8 +185,13 @@ export function SystemCheckPanel() {
                     <p className="text-sm font-medium">{it.label}</p>
                     <p className="truncate text-xs text-muted-foreground">{it.detail}</p>
                   </div>
-                  <span className={`flex shrink-0 items-center gap-1.5 text-xs font-semibold ${m.cls}`}>
-                    <span aria-hidden="true" className={`h-2 w-2 rounded-full ${m.dot}`} />
+                  <span
+                    className={`flex shrink-0 items-center gap-1.5 text-xs font-semibold ${m.cls}`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`h-2 w-2 rounded-full ${m.dot}`}
+                    />
                     {m.label}
                   </span>
                 </li>

@@ -39,7 +39,9 @@ export function LayawayImportButton({ existingKeys }: { existingKeys: string[] }
   // Preview navigation.
   const [search, setSearch] = useState('');
   const [codeFilter, setCodeFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'completed' | 'needs_review'>('all');
+  const [statusFilter, setStatusFilter] = useState<
+    'all' | 'active' | 'completed' | 'needs_review'
+  >('all');
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 50;
   const [result, setResult] = useState<{
@@ -123,7 +125,10 @@ export function LayawayImportButton({ existingKeys }: { existingKeys: string[] }
   const filteredSorted = useMemo(() => {
     const q = search.trim().toLowerCase();
     const rows = preview.filter((r) => {
-      if (codeFilter !== 'all' && (r.code ?? '').trim().charAt(0).toUpperCase() !== codeFilter) {
+      if (
+        codeFilter !== 'all' &&
+        (r.code ?? '').trim().charAt(0).toUpperCase() !== codeFilter
+      ) {
         return false;
       }
       if (statusFilter !== 'all' && r.status !== statusFilter) return false;
@@ -271,11 +276,11 @@ export function LayawayImportButton({ existingKeys }: { existingKeys: string[] }
           <div className="space-y-2 py-4 text-center" role="status">
             <p className="text-sm font-semibold text-foreground">Import complete</p>
             <p className="text-sm text-muted-foreground">
-              <span className="text-green-600">{result.inserted} accounts imported</span> ·{' '}
-              <span className="text-amber-600">{result.duplicates} duplicate</span> ·{' '}
-              <span className="text-destructive">{result.review} error(s) excluded</span>. Parsed{' '}
-              {result.installments} installment + {result.payments} payment history records.
-              They now appear in Layaway Accounts — no refresh needed.
+              <span className="text-green-600">{result.inserted} accounts imported</span>{' '}
+              · <span className="text-amber-600">{result.duplicates} duplicate</span> ·{' '}
+              <span className="text-destructive">{result.review} error(s) excluded</span>.
+              Parsed {result.installments} installment + {result.payments} payment history
+              records. They now appear in Layaway Accounts — no refresh needed.
             </p>
           </div>
         ) : !analysis ? (
@@ -319,8 +324,8 @@ export function LayawayImportButton({ existingKeys }: { existingKeys: string[] }
 
             {analysis.needsManualMapping ? (
               <p className="rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-xs text-amber-600">
-                The Customer Name column could not be identified — check that the sheet has
-                the standard A.V. layaway layout.
+                The Customer Name column could not be identified — check that the sheet
+                has the standard A.V. layaway layout.
               </p>
             ) : (
               <div className="flex flex-wrap gap-1.5 rounded-lg border border-border bg-card p-2 text-[11px]">
@@ -339,7 +344,9 @@ export function LayawayImportButton({ existingKeys }: { existingKeys: string[] }
             {/* Counts — scoped. ERROR rows are Needs Review (never imported / totaled). */}
             <div className="flex flex-wrap gap-3 rounded-lg border border-border bg-card p-2.5 text-xs">
               <span className="text-green-600">{importable.length} valid new</span>
-              <span className="text-muted-foreground">({activeCount} active · {completedCount} completed)</span>
+              <span className="text-muted-foreground">
+                ({activeCount} active · {completedCount} completed)
+              </span>
               <span className="text-amber-600">{duplicates} duplicate</span>
               <span className="text-destructive">
                 {review} error(s) — excluded (missing code / ERROR status)
@@ -450,11 +457,18 @@ export function LayawayImportButton({ existingKeys }: { existingKeys: string[] }
                         <td className="px-3 py-1 text-right tabular-nums">
                           {done ? '—' : (r.balance ?? '—')}
                         </td>
-                        <td className="px-3 py-1 text-right tabular-nums">{r.installments.length}</td>
-                        <td className="px-3 py-1 text-right tabular-nums">{r.payments.length}</td>
+                        <td className="px-3 py-1 text-right tabular-nums">
+                          {r.installments.length}
+                        </td>
+                        <td className="px-3 py-1 text-right tabular-nums">
+                          {r.payments.length}
+                        </td>
                         <td className="px-3 py-1">
                           {r.needsReview ? (
-                            <span className="font-medium text-destructive" title={r.reviewReason ?? ''}>
+                            <span
+                              className="font-medium text-destructive"
+                              title={r.reviewReason ?? ''}
+                            >
                               Error
                             </span>
                           ) : r.dup ? (
@@ -476,28 +490,53 @@ export function LayawayImportButton({ existingKeys }: { existingKeys: string[] }
                 {rangeText}
               </span>
               <div className="flex items-center gap-1">
-                <Button type="button" size="sm" variant="outline" onClick={() => setPage(1)} disabled={pageClamped <= 1}>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setPage(1)}
+                  disabled={pageClamped <= 1}
+                >
                   « First
                 </Button>
-                <Button type="button" size="sm" variant="outline" onClick={() => setPage((n) => Math.max(1, n - 1))} disabled={pageClamped <= 1}>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setPage((n) => Math.max(1, n - 1))}
+                  disabled={pageClamped <= 1}
+                >
                   ‹ Prev
                 </Button>
                 <span className="px-1 text-muted-foreground">
                   Page {pageClamped} / {totalPages}
                 </span>
-                <Button type="button" size="sm" variant="outline" onClick={() => setPage((n) => Math.min(totalPages, n + 1))} disabled={pageClamped >= totalPages}>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setPage((n) => Math.min(totalPages, n + 1))}
+                  disabled={pageClamped >= totalPages}
+                >
                   Next ›
                 </Button>
-                <Button type="button" size="sm" variant="outline" onClick={() => setPage(totalPages)} disabled={pageClamped >= totalPages}>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setPage(totalPages)}
+                  disabled={pageClamped >= totalPages}
+                >
                   Last »
                 </Button>
               </div>
             </div>
 
             <p className="text-[11px] text-muted-foreground">
-              Confirming imports {importable.length} account(s) with their installment schedule
-              + payment history into Layaway Accounts. Duplicates are skipped; flagged rows are
-              imported but marked for review (values are never overwritten).
+              Confirming imports {importable.length} account(s) with their installment
+              schedule + payment history into Layaway Accounts. Duplicates are skipped;
+              flagged rows are imported but marked for review (values are never
+              overwritten).
             </p>
             {error ? (
               <p role="alert" className="text-sm text-destructive">

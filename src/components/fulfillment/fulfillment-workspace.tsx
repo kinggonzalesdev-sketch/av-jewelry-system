@@ -44,9 +44,13 @@ type Tab = (typeof TABS)[number];
  *  transit / awaiting release, green = done, red = failed, amber = needs attention. */
 function fulfillmentTone(status: string): BadgeTone {
   if (
-    ['for_shipping', 'for_pickup', 'dispatched', 'picked_up', 'approved_for_release'].includes(
-      status,
-    )
+    [
+      'for_shipping',
+      'for_pickup',
+      'dispatched',
+      'picked_up',
+      'approved_for_release',
+    ].includes(status)
   ) {
     return 'info';
   }
@@ -60,7 +64,8 @@ function fulfillmentTone(status: string): BadgeTone {
  *  red = rejected. */
 function approvalTone(status: string): BadgeTone {
   if (status === 'pending_owner_approval') return 'warning';
-  if (['approved', 'executed', 'approved_and_executed'].includes(status)) return 'success';
+  if (['approved', 'executed', 'approved_and_executed'].includes(status))
+    return 'success';
   if (['rejected', 'denied', 'cancelled'].includes(status)) return 'danger';
   return 'neutral';
 }

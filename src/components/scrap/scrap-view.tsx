@@ -7,7 +7,15 @@ import { ScrapGroupView, groupScrapSales } from '@/components/scrap/scrap-group-
 import { ScrapEntryModal } from '@/components/scrap/scrap-entry-modal';
 import { downloadCsv } from '@/lib/export/csv';
 import { formatPeso } from '@/lib/payments/format';
-import { DataTable, Thead, Tr, Th, Td, DateCell, EmptyRow } from '@/components/ui/data-table';
+import {
+  DataTable,
+  Thead,
+  Tr,
+  Th,
+  Td,
+  DateCell,
+  EmptyRow,
+} from '@/components/ui/data-table';
 import { Pagination } from '@/components/ui/pagination';
 import { MetricCard, ReadError } from '@/components/ui/page-primitives';
 import { Button } from '@/components/ui/button';
@@ -112,7 +120,9 @@ export function ScrapView({
     <div className="space-y-4">
       {/* Page title. The ＋ Add New / Export CSV actions live on the right of the
           Scrap income card header below. */}
-      <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Scrap</h1>
+      <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+        Scrap
+      </h1>
 
       {/* Income summary — title + date filter on the LEFT of the header, ＋ Add New /
           Export CSV on the RIGHT; the per-material totals are the card body. */}
@@ -124,7 +134,13 @@ export function ScrapView({
                 <Label htmlFor="from" className="text-xs">
                   From
                 </Label>
-                <Input id="from" name="from" type="date" defaultValue={from} className="h-8" />
+                <Input
+                  id="from"
+                  name="from"
+                  type="date"
+                  defaultValue={from}
+                  className="h-8"
+                />
               </div>
               <div>
                 <Label htmlFor="to" className="text-xs">
@@ -183,7 +199,11 @@ export function ScrapView({
       </Card>
 
       {/* Record a scrap sale — multi-item "New Entry" style dialog. */}
-      <ScrapEntryModal open={showRecord} onClose={() => setShowRecord(false)} soldOnDefault={to} />
+      <ScrapEntryModal
+        open={showRecord}
+        onClose={() => setShowRecord(false)}
+        soldOnDefault={to}
+      />
 
       {/* Recent scrap sales */}
       <Card>
@@ -221,7 +241,9 @@ export function ScrapView({
             <tbody>
               {filteredGroups.length === 0 ? (
                 <EmptyRow colSpan={8}>
-                  {search.trim() ? 'No scrap sales match your search.' : 'No scrap sales recorded.'}
+                  {search.trim()
+                    ? 'No scrap sales match your search.'
+                    : 'No scrap sales recorded.'}
                 </EmptyRow>
               ) : (
                 pagedGroups.map((g) => (

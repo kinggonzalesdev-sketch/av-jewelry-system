@@ -8,7 +8,15 @@ import { Button } from '@/components/ui/button';
 
 function fmtWhen(iso: string): string {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
 }
 
 /** Humanise "layaway_ledger.add_payment" → "Layaway ledger add payment". */
@@ -21,7 +29,12 @@ function humanise(v: string): string {
 
 function outcomeClass(outcome: string): string {
   const o = outcome.toLowerCase();
-  if (o.includes('fail') || o.includes('denied') || o.includes('error') || o.includes('block')) {
+  if (
+    o.includes('fail') ||
+    o.includes('denied') ||
+    o.includes('error') ||
+    o.includes('block')
+  ) {
     return 'bg-destructive/10 text-destructive';
   }
   if (o.includes('success') || o.includes('ok') || o.includes('complete')) {
@@ -100,41 +113,51 @@ export function RecentActivityPanel() {
           </div>
 
           {failed ? (
-        <p role="alert" className="text-sm text-destructive">
-          The activity log could not be read.
-        </p>
-      ) : null}
+            <p role="alert" className="text-sm text-destructive">
+              The activity log could not be read.
+            </p>
+          ) : null}
 
-      {rows && rows.length === 0 && !loading ? (
-        <p className="text-xs text-muted-foreground" data-testid="recent-activity-empty">
-          No recorded activity yet.
-        </p>
-      ) : null}
+          {rows && rows.length === 0 && !loading ? (
+            <p
+              className="text-xs text-muted-foreground"
+              data-testid="recent-activity-empty"
+            >
+              No recorded activity yet.
+            </p>
+          ) : null}
 
-      {rows && rows.length > 0 ? (
-        <ul className="divide-y divide-border overflow-hidden rounded-md border border-border">
-          {rows.map((r) => (
-            <li key={r.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-2.5 py-1.5 text-xs">
-              <span className="font-medium">{humanise(r.action)}</span>
-              <span className="text-muted-foreground">· {humanise(r.entityType)}</span>
-              <span
-                className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase ${outcomeClass(
-                  r.outcome,
-                )}`}
-              >
-                {r.outcome}
-              </span>
-              <span className="ml-auto text-[10px] text-muted-foreground">
-                {r.actorLabel ? `${r.actorLabel} · ` : ''}
-                {fmtWhen(r.occurredAt)}
-              </span>
-              {r.reason ? (
-                <span className="w-full text-[10px] text-muted-foreground">{r.reason}</span>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      ) : null}
+          {rows && rows.length > 0 ? (
+            <ul className="divide-y divide-border overflow-hidden rounded-md border border-border">
+              {rows.map((r) => (
+                <li
+                  key={r.id}
+                  className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-2.5 py-1.5 text-xs"
+                >
+                  <span className="font-medium">{humanise(r.action)}</span>
+                  <span className="text-muted-foreground">
+                    · {humanise(r.entityType)}
+                  </span>
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase ${outcomeClass(
+                      r.outcome,
+                    )}`}
+                  >
+                    {r.outcome}
+                  </span>
+                  <span className="ml-auto text-[10px] text-muted-foreground">
+                    {r.actorLabel ? `${r.actorLabel} · ` : ''}
+                    {fmtWhen(r.occurredAt)}
+                  </span>
+                  {r.reason ? (
+                    <span className="w-full text-[10px] text-muted-foreground">
+                      {r.reason}
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </>
       ) : null}
     </div>

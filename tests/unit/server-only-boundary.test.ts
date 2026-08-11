@@ -79,7 +79,11 @@ describe('privileged Supabase client isolation', () => {
     //   - lib/integrations/pancake-webhook.ts — realtime Pancake identity ingest; no
     //     user session, so its authority is the PANCAKE_WEBHOOK_SECRET check in its only
     //     caller, the /api/webhooks/pancake route. The write is strictly fill-only.
-    const sanctioned = [/team-accounts\.ts$/, /pancake-system\.ts$/, /pancake-webhook\.ts$/];
+    const sanctioned = [
+      /team-accounts\.ts$/,
+      /pancake-system\.ts$/,
+      /pancake-webhook\.ts$/,
+    ];
 
     const sourceFiles = collectSourceFiles(srcDir).filter(
       (file) => file !== adminModulePath,

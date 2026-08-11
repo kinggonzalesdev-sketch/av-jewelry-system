@@ -77,8 +77,14 @@ describe('detectInventory — headers, blocks, HK, duplicates', () => {
 
   it('flags EVERY occurrence of a repeated code across sheets (not just the 2nd)', () => {
     const sheets = [
-      sheet('APRIL', [['CODE', 'FIXED PRICE'], ['BNA-E-2512', '22,400']]),
-      sheet('ROBERT', [['CODE', 'FIXED PRICE'], ['BNA-E 2512', '12,800']]),
+      sheet('APRIL', [
+        ['CODE', 'FIXED PRICE'],
+        ['BNA-E-2512', '22,400'],
+      ]),
+      sheet('ROBERT', [
+        ['CODE', 'FIXED PRICE'],
+        ['BNA-E 2512', '12,800'],
+      ]),
     ];
     const { candidates, summary } = detectInventory(sheets, []);
     const dups = candidates.filter((c) => c.inventoryCode === 'BNA-E-2512');

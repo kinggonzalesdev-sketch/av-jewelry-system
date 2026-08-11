@@ -49,7 +49,15 @@ function humanize(s: string): string {
 function fmtWhen(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return Number.isNaN(d.getTime())
+    ? '—'
+    : d.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
 }
 
 function statusTone(a: ApprovalRow): BadgeTone {
@@ -101,7 +109,9 @@ export function ApprovalsView({
   const rows = approvals.filter((a) => matchesTab(a, tab));
   // Derived from the fresh prop (by id) so the modal reflects a decision the moment
   // realtime refreshes the list — never a stale copy.
-  const selected = selectedId ? approvals.find((a) => a.id === selectedId) ?? null : null;
+  const selected = selectedId
+    ? (approvals.find((a) => a.id === selectedId) ?? null)
+    : null;
 
   return (
     <div className="space-y-4">
@@ -159,7 +169,12 @@ export function ApprovalsView({
           <tbody>
             {rows.map((a) => (
               <Tr key={a.id}>
-                <Td kind="center" clip title={humanize(a.actionKind)} className="font-medium capitalize">
+                <Td
+                  kind="center"
+                  clip
+                  title={humanize(a.actionKind)}
+                  className="font-medium capitalize"
+                >
                   {humanize(a.actionKind)}
                 </Td>
                 <Td clip className="font-mono text-xs">
@@ -172,7 +187,10 @@ export function ApprovalsView({
                 <Td clip title={a.reason || undefined} className="text-muted-foreground">
                   {a.reason || '—'}
                 </Td>
-                <Td kind="center" className="whitespace-nowrap text-xs text-muted-foreground">
+                <Td
+                  kind="center"
+                  className="whitespace-nowrap text-xs text-muted-foreground"
+                >
                   {fmtWhen(a.requestedAt)}
                 </Td>
                 <Td kind="center">
@@ -215,7 +233,13 @@ function DetailRow({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-function ApprovalDetail({ approval: a, isOwner }: { approval: ApprovalRow; isOwner: boolean }) {
+function ApprovalDetail({
+  approval: a,
+  isOwner,
+}: {
+  approval: ApprovalRow;
+  isOwner: boolean;
+}) {
   const [, decide, deciding] = useActionState<FulfillmentActionState, FormData>(
     decideApprovalAction,
     EMPTY_FULFILLMENT_STATE,
@@ -224,14 +248,14 @@ function ApprovalDetail({ approval: a, isOwner }: { approval: ApprovalRow; isOwn
     executeApprovalAction,
     EMPTY_FULFILLMENT_STATE,
   );
-  const [, acceptCancel, acceptingCancel] = useActionState<FulfillmentActionState, FormData>(
-    acceptCancellationApprovalAction,
-    EMPTY_FULFILLMENT_STATE,
-  );
-  const [, rejectCancel, rejectingCancel] = useActionState<FulfillmentActionState, FormData>(
-    rejectCancellationApprovalAction,
-    EMPTY_FULFILLMENT_STATE,
-  );
+  const [, acceptCancel, acceptingCancel] = useActionState<
+    FulfillmentActionState,
+    FormData
+  >(acceptCancellationApprovalAction, EMPTY_FULFILLMENT_STATE);
+  const [, rejectCancel, rejectingCancel] = useActionState<
+    FulfillmentActionState,
+    FormData
+  >(rejectCancellationApprovalAction, EMPTY_FULFILLMENT_STATE);
 
   const isPending = a.status === 'pending_owner_approval';
   const isCancellation = a.actionKind === 'official_order_cancellation';
@@ -254,7 +278,9 @@ function ApprovalDetail({ approval: a, isOwner }: { approval: ApprovalRow; isOwn
           value={<StatusBadge label={statusLabel(a)} tone={statusTone(a)} />}
         />
         {a.decidedAt ? <DetailRow label="Decided" value={fmtWhen(a.decidedAt)} /> : null}
-        {a.executedAt ? <DetailRow label="Executed" value={fmtWhen(a.executedAt)} /> : null}
+        {a.executedAt ? (
+          <DetailRow label="Executed" value={fmtWhen(a.executedAt)} />
+        ) : null}
       </dl>
 
       {/* The SAME guarded server actions as the retired panel. Cancellation is a

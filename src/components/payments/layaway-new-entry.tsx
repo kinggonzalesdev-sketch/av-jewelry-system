@@ -34,7 +34,12 @@ import { cn } from '@/lib/utils';
  */
 
 type Row = { id: string; code: string; name: string | null; grams: string | null };
-type ItemRow = { key: string; input: string; pricingType: 'fixed' | 'per_gram'; price: string };
+type ItemRow = {
+  key: string;
+  input: string;
+  pricingType: 'fixed' | 'per_gram';
+  price: string;
+};
 
 /** Monotonic key source for item rows — module scope so it is never read from a
  *  ref during render (React keys only need to be unique, not meaningful). */
@@ -195,9 +200,10 @@ function EntryForm({
     return m ? m[0] : null;
   };
   const letter = letterOf(customer.trim());
-  const [fetchedCode, setFetchedCode] = useState<{ letter: string; code: string | null } | null>(
-    null,
-  );
+  const [fetchedCode, setFetchedCode] = useState<{
+    letter: string;
+    code: string | null;
+  } | null>(null);
   useEffect(() => {
     const name = customer.trim();
     const l = letterOf(name);
@@ -238,13 +244,16 @@ function EntryForm({
     // grams line shows —).
     const grams = row && isHKItem(row) ? null : (row?.grams ?? null);
     const amountC =
-      r.pricingType === 'per_gram' ? perGramCentavos(grams ?? '', r.price) : centavos(r.price);
+      r.pricingType === 'per_gram'
+        ? perGramCentavos(grams ?? '', r.price)
+        : centavos(r.price);
     return { r, row, grams, amountC };
   });
   const totalItemC = derived.reduce((s, d) => s + d.amountC, 0n);
   // Grams are summed for interest only (a preview; the DB recomputes exactly).
   const totalGrams = derived.reduce((s, d) => s + (d.grams ? Number(d.grams) : 0), 0);
-  const monthlyC = noInterest || totalGrams <= 0 ? 0n : perGramCentavos(String(totalGrams), '150');
+  const monthlyC =
+    noInterest || totalGrams <= 0 ? 0n : perGramCentavos(String(totalGrams), '150');
   const totalInterestC = monthlyC * BigInt(term); // full term reflected
   const grandTotalC = totalItemC + totalInterestC;
   const paidC = centavos(payment);
@@ -465,7 +474,9 @@ function EntryForm({
                   data-testid={`layaway-term-${t}`}
                   className={cn(
                     'flex-1 rounded-md px-2 py-1 text-[11px] font-semibold',
-                    term === t ? 'bg-gold text-black' : 'text-muted-foreground hover:bg-accent',
+                    term === t
+                      ? 'bg-gold text-black'
+                      : 'text-muted-foreground hover:bg-accent',
                   )}
                 >
                   {t} {t === 1 ? 'mo' : 'mos'}
@@ -493,100 +504,101 @@ function EntryForm({
             const hkPrice = hk && d.row ? hkFixedPrice(d.row) : null;
             const hkLocked = hk && Boolean(hkPrice);
             return (
-            <div
-              key={d.r.key}
-              className="space-y-2 rounded-lg border border-border p-3"
-              data-testid="layaway-item-row"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Item {idx + 1}
-                </span>
-                {itemRows.length > 1 ? (
-                  <button
-                    type="button"
-                    onClick={() => removeRow(d.r.key)}
-                    className="text-[11px] text-destructive hover:underline"
-                    data-testid="layaway-remove-item"
-                  >
-                    Remove
-                  </button>
-                ) : null}
-              </div>
-              <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-3">
-                <label className="block">
-                  <L>Item</L>
-                  <Combobox
-                    className={fieldClass}
-                    placeholder="Search Active Inventory by code or name"
-                    value={d.r.input}
-                    onChange={(v) => onItem(d.r.key, v)}
-                    options={itemOptions}
-                  />
-                </label>
-                <div>
-                  <L>Pricing Type</L>
-                  <div className="flex h-10 items-center gap-1 rounded-lg border border-border px-1">
-                    {hk ? (
-                      // HK ITEM is fixed-price only — no per-gram option.
-                      <span
-                        className="flex-1 rounded-md bg-gold px-2 py-1 text-center text-[11px] font-semibold text-black"
-                        data-testid="layaway-item-hk"
-                      >
-                        Fixed Price · HK Item
-                      </span>
-                    ) : (
-                      (
-                        [
-                          ['fixed', 'Fixed Price'],
-                          ['per_gram', 'Price Per Gram'],
-                        ] as const
-                      ).map(([k, t]) => (
-                        <button
-                          key={k}
-                          type="button"
-                          onClick={() => patchRow(d.r.key, { pricingType: k })}
-                          className={cn(
-                            'flex-1 rounded-md px-2 py-1 text-[11px] font-semibold',
-                            d.r.pricingType === k
-                              ? 'bg-gold text-black'
-                              : 'text-muted-foreground hover:bg-accent',
-                          )}
-                        >
-                          {t}
-                        </button>
-                      ))
-                    )}
-                  </div>
+              <div
+                key={d.r.key}
+                className="space-y-2 rounded-lg border border-border p-3"
+                data-testid="layaway-item-row"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Item {idx + 1}
+                  </span>
+                  {itemRows.length > 1 ? (
+                    <button
+                      type="button"
+                      onClick={() => removeRow(d.r.key)}
+                      className="text-[11px] text-destructive hover:underline"
+                      data-testid="layaway-remove-item"
+                    >
+                      Remove
+                    </button>
+                  ) : null}
                 </div>
-                <label className="block">
-                  <L>{d.r.pricingType === 'per_gram' ? 'Price Per Gram' : 'Price'}</L>
-                  {hkLocked ? (
-                    // HK ITEM price comes from the code/name — read-only.
-                    <input
-                      className={cn(fieldClass, 'bg-muted/40 text-right tabular-nums')}
-                      readOnly
-                      value={formatPeso(d.r.price || hkPrice || '0')}
-                      data-testid="layaway-item-price"
-                    />
-                  ) : (
-                    <MoneyInput
+                <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-3">
+                  <label className="block">
+                    <L>Item</L>
+                    <Combobox
                       className={fieldClass}
-                      placeholder="0.00"
-                      value={d.r.price}
-                      onValueChange={(v) => patchRow(d.r.key, { price: v })}
-                      data-testid="layaway-item-price"
+                      placeholder="Search Active Inventory by code or name"
+                      value={d.r.input}
+                      onChange={(v) => onItem(d.r.key, v)}
+                      options={itemOptions}
                     />
-                  )}
-                </label>
+                  </label>
+                  <div>
+                    <L>Pricing Type</L>
+                    <div className="flex h-10 items-center gap-1 rounded-lg border border-border px-1">
+                      {hk ? (
+                        // HK ITEM is fixed-price only — no per-gram option.
+                        <span
+                          className="flex-1 rounded-md bg-gold px-2 py-1 text-center text-[11px] font-semibold text-black"
+                          data-testid="layaway-item-hk"
+                        >
+                          Fixed Price · HK Item
+                        </span>
+                      ) : (
+                        (
+                          [
+                            ['fixed', 'Fixed Price'],
+                            ['per_gram', 'Price Per Gram'],
+                          ] as const
+                        ).map(([k, t]) => (
+                          <button
+                            key={k}
+                            type="button"
+                            onClick={() => patchRow(d.r.key, { pricingType: k })}
+                            className={cn(
+                              'flex-1 rounded-md px-2 py-1 text-[11px] font-semibold',
+                              d.r.pricingType === k
+                                ? 'bg-gold text-black'
+                                : 'text-muted-foreground hover:bg-accent',
+                            )}
+                          >
+                            {t}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                  <label className="block">
+                    <L>{d.r.pricingType === 'per_gram' ? 'Price Per Gram' : 'Price'}</L>
+                    {hkLocked ? (
+                      // HK ITEM price comes from the code/name — read-only.
+                      <input
+                        className={cn(fieldClass, 'bg-muted/40 text-right tabular-nums')}
+                        readOnly
+                        value={formatPeso(d.r.price || hkPrice || '0')}
+                        data-testid="layaway-item-price"
+                      />
+                    ) : (
+                      <MoneyInput
+                        className={fieldClass}
+                        placeholder="0.00"
+                        value={d.r.price}
+                        onValueChange={(v) => patchRow(d.r.key, { price: v })}
+                        data-testid="layaway-item-price"
+                      />
+                    )}
+                  </label>
+                </div>
+                <div className="flex flex-wrap gap-x-6 gap-y-1 text-[11px] text-muted-foreground">
+                  <span>Grams: {d.grams ? `${d.grams}g` : '—'}</span>
+                  <span>
+                    Item amount:{' '}
+                    <span className="tabular-nums">{formatPeso(toStr(d.amountC))}</span>
+                  </span>
+                </div>
               </div>
-              <div className="flex flex-wrap gap-x-6 gap-y-1 text-[11px] text-muted-foreground">
-                <span>Grams: {d.grams ? `${d.grams}g` : '—'}</span>
-                <span>
-                  Item amount: <span className="tabular-nums">{formatPeso(toStr(d.amountC))}</span>
-                </span>
-              </div>
-            </div>
             );
           })}
         </div>
@@ -681,7 +693,11 @@ function EntryForm({
         </dl>
 
         {error ? (
-          <p role="alert" className="text-sm text-destructive" data-testid="layaway-error">
+          <p
+            role="alert"
+            className="text-sm text-destructive"
+            data-testid="layaway-error"
+          >
             {error}
           </p>
         ) : null}

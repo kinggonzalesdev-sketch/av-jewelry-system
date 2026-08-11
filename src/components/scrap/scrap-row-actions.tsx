@@ -22,14 +22,23 @@ import { Modal } from '@/components/ui/modal';
 function fmtDateTime(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
 }
 
 /** grams × per-gram → a 2-dp amount string, or '' when either is missing/invalid. */
 function computeAmount(grams: string, perGram: string): string {
   const g = Number(grams);
   const p = Number(perGram);
-  if (!Number.isFinite(g) || !Number.isFinite(p) || g <= 0 || p < 0 || perGram === '') return '';
+  if (!Number.isFinite(g) || !Number.isFinite(p) || g <= 0 || p < 0 || perGram === '')
+    return '';
   return (Math.round(g * p * 100) / 100).toFixed(2);
 }
 
@@ -217,7 +226,11 @@ export function ScrapRowActions({
             entityNoun="scrap sale"
             testIdBase={`scrap-request-delete-${sale.id}`}
             onRequest={(reason) =>
-              requestScrapDeletionAction(sale.id, `${sale.material} ${sale.grams}g`, reason)
+              requestScrapDeletionAction(
+                sale.id,
+                `${sale.material} ${sale.grams}g`,
+                reason,
+              )
             }
           />
         )
@@ -327,7 +340,9 @@ export function ScrapRowActions({
             <select
               id={`ed-material-${sale.id}`}
               value={ed.material}
-              onChange={(e) => setEd((s) => ({ ...s, material: e.target.value as 'gold' | 'silver' }))}
+              onChange={(e) =>
+                setEd((s) => ({ ...s, material: e.target.value as 'gold' | 'silver' }))
+              }
               className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
             >
               <option value="gold">Gold</option>
@@ -358,7 +373,11 @@ export function ScrapRowActions({
               min="0.001"
               value={ed.grams}
               onChange={(e) =>
-                setEd((s) => ({ ...s, grams: e.target.value, amount: computeAmount(e.target.value, s.perGram) || s.amount }))
+                setEd((s) => ({
+                  ...s,
+                  grams: e.target.value,
+                  amount: computeAmount(e.target.value, s.perGram) || s.amount,
+                }))
               }
               className="mt-1 h-9"
             />
@@ -371,7 +390,11 @@ export function ScrapRowActions({
               id={`ed-pergram-${sale.id}`}
               value={ed.perGram}
               onValueChange={(raw) =>
-                setEd((s) => ({ ...s, perGram: raw, amount: computeAmount(s.grams, raw) || s.amount }))
+                setEd((s) => ({
+                  ...s,
+                  perGram: raw,
+                  amount: computeAmount(s.grams, raw) || s.amount,
+                }))
               }
               className="mt-1 h-9"
             />

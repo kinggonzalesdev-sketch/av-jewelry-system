@@ -35,7 +35,9 @@ describe('access catalogue — module shape', () => {
   });
 
   it('has exactly one parentless module: Team Management (fixed rules)', () => {
-    const parentless = ACCESS_MODULES.filter((m) => m.parent === null).map((m) => m.title);
+    const parentless = ACCESS_MODULES.filter((m) => m.parent === null).map(
+      (m) => m.title,
+    );
     expect(parentless).toEqual(['Team Management']);
   });
 

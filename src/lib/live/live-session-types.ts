@@ -36,5 +36,4 @@ export type LiveSessionFormData = {
 };
 
 export type LiveSessionResult =
-  | { ok: true; session: LiveSession | null }
-  | { ok: false; error: string };
+  { ok: true; session: LiveSession | null } | { ok: false; error: string };

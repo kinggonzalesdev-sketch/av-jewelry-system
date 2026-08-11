@@ -56,7 +56,11 @@ describe('groupAttendanceDays', () => {
 
   it('keeps different days separate; an open session contributes no total yet', () => {
     const rows = [
-      row({ workDate: '2026-08-10', timeIn: '2026-08-10T01:00:00Z', timeOut: '2026-08-10T09:00:00Z' }),
+      row({
+        workDate: '2026-08-10',
+        timeIn: '2026-08-10T01:00:00Z',
+        timeOut: '2026-08-10T09:00:00Z',
+      }),
       row({ workDate: '2026-08-11', timeIn: '2026-08-11T01:00:00Z', timeOut: null }),
     ];
     const days = groupAttendanceDays(rows);
@@ -69,8 +73,18 @@ describe('groupAttendanceDays', () => {
 
   it('earns the night bonus at most ONCE per day, not per session', () => {
     const rows = [
-      row({ timeIn: '2026-08-10T14:00:00Z', timeOut: '2026-08-10T15:00:00Z', isOvertime: true, overtimeAmount: '300.00' }),
-      row({ timeIn: '2026-08-10T16:00:00Z', timeOut: '2026-08-10T17:00:00Z', isOvertime: true, overtimeAmount: '300.00' }),
+      row({
+        timeIn: '2026-08-10T14:00:00Z',
+        timeOut: '2026-08-10T15:00:00Z',
+        isOvertime: true,
+        overtimeAmount: '300.00',
+      }),
+      row({
+        timeIn: '2026-08-10T16:00:00Z',
+        timeOut: '2026-08-10T17:00:00Z',
+        isOvertime: true,
+        overtimeAmount: '300.00',
+      }),
     ];
     const d = groupAttendanceDays(rows)[0]!;
     expect(d.isOvertime).toBe(true);

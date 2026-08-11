@@ -131,7 +131,11 @@ export function TestModeControls({ initial }: { initial: TestMode }) {
       </p>
 
       {resetMsg ? (
-        <p role="status" className="text-xs font-medium text-green-700" data-testid="reset-result">
+        <p
+          role="status"
+          className="text-xs font-medium text-green-700"
+          data-testid="reset-result"
+        >
           {resetMsg}
         </p>
       ) : null}
@@ -167,8 +171,8 @@ export function TestModeControls({ initial }: { initial: TestMode }) {
       >
         <div className="space-y-2">
           <p className="text-sm">
-            Production records (orders, payments, invoices not created in a test
-            session) are <strong>not</strong> touched. Type{' '}
+            Production records (orders, payments, invoices not created in a test session)
+            are <strong>not</strong> touched. Type{' '}
             <span className="font-mono font-semibold">DELETE</span> to confirm.
           </p>
           <input

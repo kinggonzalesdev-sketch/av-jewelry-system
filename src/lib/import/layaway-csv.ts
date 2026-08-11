@@ -132,7 +132,14 @@ function scoreHeaderRow(row: string[]): number {
 export function analyzeLayawayCsv(text: string): LayawayCsvAnalysis {
   const grid = parseCsvGrid(text);
   if (grid.length === 0) {
-    return { ok: false, error: 'That file is empty.', headerRowIndex: -1, detectedColumns: [], needsManualMapping: false, records: [] };
+    return {
+      ok: false,
+      error: 'That file is empty.',
+      headerRowIndex: -1,
+      detectedColumns: [],
+      needsManualMapping: false,
+      records: [],
+    };
   }
 
   // 1 — detect the header row within the first 10 rows.
@@ -148,7 +155,8 @@ export function analyzeLayawayCsv(text: string): LayawayCsvAnalysis {
   if (bestScore < 4) {
     return {
       ok: false,
-      error: 'Could not find the layaway header row (Status, Item, Interest, G. Total, Payment, Balance).',
+      error:
+        'Could not find the layaway header row (Status, Item, Interest, G. Total, Payment, Balance).',
       headerRowIndex: -1,
       detectedColumns: [],
       needsManualMapping: true,
@@ -158,7 +166,8 @@ export function analyzeLayawayCsv(text: string): LayawayCsvAnalysis {
 
   const header = grid[headerRowIndex] ?? [];
   const findFirst = (pred: (h: string, i: number) => boolean, from = 0): number => {
-    for (let i = from; i < header.length; i++) if (pred(norm(header[i] ?? ''), i)) return i;
+    for (let i = from; i < header.length; i++)
+      if (pred(norm(header[i] ?? ''), i)) return i;
     return -1;
   };
 
@@ -255,9 +264,18 @@ export function analyzeLayawayCsv(text: string): LayawayCsvAnalysis {
 
     // Row detection: skip fully-blank rows, and rows with no Customer Name (even
     // when a Code / Status is present — template + spacer rows).
-    const anyValue = [code, name, statusRaw, remarks, datePurchased, item, interest, grandTotal, payment, balance].some(
-      (v) => v && String(v).length > 0,
-    );
+    const anyValue = [
+      code,
+      name,
+      statusRaw,
+      remarks,
+      datePurchased,
+      item,
+      interest,
+      grandTotal,
+      payment,
+      balance,
+    ].some((v) => v && String(v).length > 0);
     if (!anyValue) continue;
     if (!name) continue;
 
@@ -267,7 +285,12 @@ export function analyzeLayawayCsv(text: string): LayawayCsvAnalysis {
       const d = toDate(cell(row, c.date));
       const iv = money(cell(row, c.interest));
       if (d || iv) {
-        installments.push({ sequence: installments.length + 1, dueDate: d, interest: iv, sourcePosition: c.date });
+        installments.push({
+          sequence: installments.length + 1,
+          dueDate: d,
+          interest: iv,
+          sourcePosition: c.date,
+        });
       }
     });
 
@@ -278,23 +301,34 @@ export function analyzeLayawayCsv(text: string): LayawayCsvAnalysis {
       const amt = money(cell(row, c.dp));
       const mop = cell(row, c.mop) || null;
       if (d || amt) {
-        payments.push({ sequence: payments.length + 1, paymentDate: d, amount: amt, mop, sourcePosition: c.date });
+        payments.push({
+          sequence: payments.length + 1,
+          paymentDate: d,
+          amount: amt,
+          mop,
+          sourcePosition: c.date,
+        });
       }
     });
 
     // Derived fields (never invented when the source is blank).
-    const upcoming = installments.find((i) => i.dueDate && i.dueDate >= today) ?? installments.find((i) => i.dueDate) ?? null;
+    const upcoming =
+      installments.find((i) => i.dueDate && i.dueDate >= today) ??
+      installments.find((i) => i.dueDate) ??
+      null;
     const nextDueDate = upcoming?.dueDate ?? null;
     const monthlyInterest = upcoming?.interest ?? null;
     const totalCol = money(cell(row, idxTotal));
     const totalInstallmentInterest =
       totalCol ??
       (installments.length
-        ? installments
-            .reduce((sum, i) => sum + (centavos(i.interest) ?? 0n), 0n) === 0n
+        ? installments.reduce((sum, i) => sum + (centavos(i.interest) ?? 0n), 0n) === 0n
           ? null
           : ((): string => {
-              const c = installments.reduce((sum, i) => sum + (centavos(i.interest) ?? 0n), 0n);
+              const c = installments.reduce(
+                (sum, i) => sum + (centavos(i.interest) ?? 0n),
+                0n,
+              );
               return `${c / 100n}.${String(c % 100n).padStart(2, '0')}`;
             })()
         : null);
@@ -311,7 +345,11 @@ export function analyzeLayawayCsv(text: string): LayawayCsvAnalysis {
     let interestType: 'standard' | 'zero' | 'custom';
     if (/0\s*%|ZERO\s*INTEREST|NO\s*INTEREST/.test(rawType) || rawType === '0') {
       interestType = 'zero';
-    } else if (/CUSTOM/.test(rawType) || interestRate !== null || fixedInterest !== null) {
+    } else if (
+      /CUSTOM/.test(rawType) ||
+      interestRate !== null ||
+      fixedInterest !== null
+    ) {
       interestType = 'custom';
     } else if (/STANDARD/.test(rawType)) {
       interestType = 'standard';
@@ -320,15 +358,21 @@ export function analyzeLayawayCsv(text: string): LayawayCsvAnalysis {
       const iC = centavos(interest);
       const gC = centavos(grandTotal);
       const itC = centavos(item);
-      const zeroInterest = iC === 0n || (interest === null && gC !== null && itC !== null && gC === itC);
+      const zeroInterest =
+        iC === 0n || (interest === null && gC !== null && itC !== null && gC === itC);
       interestType = zeroInterest ? 'zero' : 'standard';
     }
 
     // Term: header, else derived from the installment count (1..3).
     const termCell = money(cell(row, idxTerm));
-    let layawayTerm: number | null = termCell ? Math.min(3, Math.max(1, Math.round(Number(termCell)))) : null;
+    let layawayTerm: number | null = termCell
+      ? Math.min(3, Math.max(1, Math.round(Number(termCell))))
+      : null;
     if (layawayTerm === null && installments.length > 0) {
-      layawayTerm = Math.min(3, installments.filter((i) => i.dueDate).length || installments.length);
+      layawayTerm = Math.min(
+        3,
+        installments.filter((i) => i.dueDate).length || installments.length,
+      );
     }
 
     // Balance validation: Balance = Grand Total − Payment (flag, never overwrite).
@@ -352,9 +396,18 @@ export function analyzeLayawayCsv(text: string): LayawayCsvAnalysis {
       reviewReason = 'ERROR status — correct before import';
     } else if (noCode) {
       reviewReason = 'Missing layaway code — a code is required to upload.';
-    } else if (interestType === 'zero' && centavos(interest) !== null && centavos(interest) !== 0n) {
+    } else if (
+      interestType === 'zero' &&
+      centavos(interest) !== null &&
+      centavos(interest) !== 0n
+    ) {
       reviewReason = '0% interest but a non-zero interest value';
-    } else if (interestType !== 'zero' && layawayTerm === null && centavos(interest) !== 0n && interest !== null) {
+    } else if (
+      interestType !== 'zero' &&
+      layawayTerm === null &&
+      centavos(interest) !== 0n &&
+      interest !== null
+    ) {
       reviewReason = 'Interest present but term could not be determined';
     } else if (balanceMismatch) {
       reviewReason = 'Balance ≠ Grand Total − Payment';

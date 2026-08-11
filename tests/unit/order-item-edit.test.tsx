@@ -5,7 +5,9 @@ import { OrderItemEditControls } from '@/components/orders/order-item-edit';
 import type { OrderLineItemDetail } from '@/lib/orders/detail-types';
 
 const remove = vi.fn(() => Promise.resolve({ ok: true as const }));
-const split = vi.fn(() => Promise.resolve({ ok: true as const, orderNumber: 'ORD-2026-000999' }));
+const split = vi.fn(() =>
+  Promise.resolve({ ok: true as const, orderNumber: 'ORD-2026-000999' }),
+);
 vi.mock('@/lib/orders/actions', () => ({
   removeOrderItemAction: () => remove(),
   splitOrderItemAction: () => split(),
@@ -24,7 +26,10 @@ function item(over: Partial<OrderLineItemDetail> = {}): OrderLineItemDetail {
   };
 }
 
-const twoItems = [item(), item({ claimId: 'claim-b', claimReference: 'CLM-B', itemCode: 'SBA-R-2' })];
+const twoItems = [
+  item(),
+  item({ claimId: 'claim-b', claimReference: 'CLM-B', itemCode: 'SBA-R-2' }),
+];
 
 function renderControls(over?: {
   status?: string;

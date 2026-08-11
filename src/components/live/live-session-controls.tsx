@@ -8,10 +8,7 @@ import {
   setLivePausedAction,
   startLiveSessionAction,
 } from '@/lib/live/live-ops-actions';
-import type {
-  LiveMode,
-  LiveSessionFormData,
-} from '@/lib/live/live-session-types';
+import type { LiveMode, LiveSessionFormData } from '@/lib/live/live-session-types';
 import { Button } from '@/components/ui/button';
 
 /**
@@ -151,8 +148,10 @@ export function LiveSessionControls({ data }: { data: LiveSessionFormData }) {
     );
   }
 
-  const label = 'mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground';
-  const field = 'h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold';
+  const label =
+    'mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground';
+  const field =
+    'h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold';
 
   return (
     <div className="space-y-3" data-testid="live-session-start">
@@ -194,7 +193,9 @@ export function LiveSessionControls({ data }: { data: LiveSessionFormData }) {
                 type="button"
                 onClick={() => setMode(m)}
                 className={`rounded-md px-2 py-1 text-[11px] font-semibold ${
-                  mode === m ? 'bg-gold text-black' : 'text-muted-foreground hover:bg-accent'
+                  mode === m
+                    ? 'bg-gold text-black'
+                    : 'text-muted-foreground hover:bg-accent'
                 }`}
                 data-testid={`live-session-mode-${m}`}
               >
@@ -212,7 +213,9 @@ export function LiveSessionControls({ data }: { data: LiveSessionFormData }) {
                 type="button"
                 onClick={() => setIsTest(t)}
                 className={`rounded-md px-2 py-1 text-[11px] font-semibold ${
-                  isTest === t ? 'bg-gold text-black' : 'text-muted-foreground hover:bg-accent'
+                  isTest === t
+                    ? 'bg-gold text-black'
+                    : 'text-muted-foreground hover:bg-accent'
                 }`}
                 data-testid={`live-session-type-${t ? 'test' : 'production'}`}
               >
@@ -225,9 +228,9 @@ export function LiveSessionControls({ data }: { data: LiveSessionFormData }) {
 
       <p className="text-xs text-muted-foreground">
         Facebook Page: {data.facebookPageName ?? data.facebookPageId ?? 'none selected'}.
-        A <strong>Test</strong> session turns Test Mode on (no real inventory or
-        customer messages). Screenshot/printer device selection joins here with the
-        device registry.
+        A <strong>Test</strong> session turns Test Mode on (no real inventory or customer
+        messages). Screenshot/printer device selection joins here with the device
+        registry.
       </p>
 
       <Button

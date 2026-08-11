@@ -16,7 +16,10 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request): Promise<Response> {
   const staff = await authenticateMobile(request);
   if (!staff) {
-    return NextResponse.json({ ok: false, error: 'Session invalid or expired.' }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: 'Session invalid or expired.' },
+      { status: 401 },
+    );
   }
 
   let body: Record<string, unknown> = {};

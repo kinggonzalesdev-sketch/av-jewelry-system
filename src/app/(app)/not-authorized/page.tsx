@@ -2,8 +2,7 @@ import type { Metadata } from 'next';
 
 import { NotAuthorized } from '@/components/states/not-authorized';
 
-export const metadata: Metadata = {
-};
+export const metadata: Metadata = {};
 
 /**
  * Not-authorized destination.

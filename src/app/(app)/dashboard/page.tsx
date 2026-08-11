@@ -12,8 +12,7 @@ import {
 import { getLayawayDashboard } from '@/lib/payments/layaway-ledger';
 import { getScrapIncome, getScrapTotal } from '@/lib/scrap/service';
 
-export const metadata: Metadata = {
-};
+export const metadata: Metadata = {};
 
 /**
  * Dashboard (Bible §7, §8.3, §23, §25, §26, §31). Roadmap Phase 9.
@@ -65,9 +64,7 @@ export default async function DashboardPage({
 
   return (
     <div>
-      <PageHeader
-        title="Dashboard Profile"
-      />
+      <PageHeader title="Dashboard Profile" />
 
       <DashboardView
         counts={counts}

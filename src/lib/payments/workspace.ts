@@ -596,9 +596,10 @@ export async function listLayaways(statuses?: string[]): Promise<LayawayRow[]> {
         invoice_number: string;
         customers: unknown;
       }>(r.official_orders);
-      const customer = one<{ display_name: string; facebook_conversation_url: string | null }>(
-        order?.customers,
-      );
+      const customer = one<{
+        display_name: string;
+        facebook_conversation_url: string | null;
+      }>(order?.customers);
       const financer = one<{ name: string }>(r.financers);
 
       const balanceResponse = await supabase.rpc('order_balance', {

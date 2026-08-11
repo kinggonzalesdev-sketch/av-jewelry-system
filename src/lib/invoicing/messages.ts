@@ -45,7 +45,11 @@ export function renderInvoiceMessage(input: {
   /** Downpayment / payment instructions (from shop settings). */
   paymentDetails: string;
 }): string {
-  const hold = new Date(input.holdExpiresAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const hold = new Date(input.holdExpiresAt).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
 
   return [
     'Thank you for choosing A.V. Jewelry! 💍',

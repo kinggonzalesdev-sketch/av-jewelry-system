@@ -16,7 +16,9 @@ function str(v: unknown): string {
   return '';
 }
 function obj(v: unknown): Record<string, unknown> | null {
-  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  return v && typeof v === 'object' && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : null;
 }
 
 export type WebhookIdentity = { conversationId: string; name: string; avatar: string };
@@ -29,8 +31,13 @@ export type WebhookIdentity = { conversationId: string; name: string; avatar: st
  */
 export function parsePancakeWebhookIdentity(body: unknown): WebhookIdentity {
   const root = obj(body) ?? {};
-  const layers = [root, obj(root.data), obj(root.message), obj(root.conversation), obj(root.payload)]
-    .filter((l): l is Record<string, unknown> => l !== null);
+  const layers = [
+    root,
+    obj(root.data),
+    obj(root.message),
+    obj(root.conversation),
+    obj(root.payload),
+  ].filter((l): l is Record<string, unknown> => l !== null);
 
   let conversationId = '';
   for (const l of layers) {
@@ -56,17 +63,21 @@ export function parsePancakeWebhookIdentity(body: unknown): WebhookIdentity {
 
   let name = '';
   for (const p of people) name = name || str(p.name);
-  for (const l of layers) name = name || str(l.customer_name) || str(l.name) || str(l.title);
+  for (const l of layers)
+    name = name || str(l.customer_name) || str(l.name) || str(l.title);
 
   let avatar = '';
-  for (const p of people) avatar = avatar || str(p.avatar) || str(p.avatar_url) || str(p.picture);
+  for (const p of people)
+    avatar = avatar || str(p.avatar) || str(p.avatar_url) || str(p.picture);
 
   return { conversationId, name, avatar };
 }
 
 export type WebhookIngestResult = { ok: boolean } & Record<string, unknown>;
 
-export async function ingestPancakeWebhookEvent(body: unknown): Promise<WebhookIngestResult> {
+export async function ingestPancakeWebhookEvent(
+  body: unknown,
+): Promise<WebhookIngestResult> {
   const id = parsePancakeWebhookIdentity(body);
   if (!id.conversationId) return { ok: true, skipped: 'no_conversation' };
 

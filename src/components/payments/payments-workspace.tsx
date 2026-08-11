@@ -72,7 +72,6 @@ export type Tab = (typeof TABS)[number];
 
 const RANGES: DateRangeKey[] = ['today', '7d', '14d', '30d', 'month', 'custom'];
 
-
 /** Layaway status → unified tone (§13) — same colour language as Orders. Colour +
  *  the written label, never colour alone. */
 function layawayStatusTone(rawStatus: string): BadgeTone {
@@ -258,7 +257,11 @@ function isCompletedStatus(status: string): boolean {
 /** Statuses where an account is closed — never active and never overdue. */
 const TERMINAL_STATUSES = new Set(['completed', 'forfeited', 'cancelled']);
 /** Order-derived statuses the database already computed as past due. */
-const DERIVED_OVERDUE_STATUSES = new Set(['overdue', 'grace_period', 'forfeiture_eligible']);
+const DERIVED_OVERDUE_STATUSES = new Set([
+  'overdue',
+  'grace_period',
+  'forfeiture_eligible',
+]);
 /** Imported rows flagged ERROR — never counted, listed, or summed anywhere. */
 const EXCLUDED_STATUSES = new Set(['needs_review']);
 
@@ -483,7 +486,9 @@ export function PaymentsWorkspace({
   const summary = {
     qty: accountRows.length,
     interest: centavosToPesoString(sumPesoCentavos(accountRows.map((r) => r.interest))),
-    grandTotal: centavosToPesoString(sumPesoCentavos(accountRows.map((r) => r.grandTotal))),
+    grandTotal: centavosToPesoString(
+      sumPesoCentavos(accountRows.map((r) => r.grandTotal)),
+    ),
     payment: centavosToPesoString(sumPesoCentavos(accountRows.map((r) => r.payment))),
     balance: centavosToPesoString(sumPesoCentavos(accountRows.map((r) => r.balance))),
   };
@@ -539,69 +544,69 @@ export function PaymentsWorkspace({
           whole top section (title + summary cards + filters) scrolls normally so it
           never eats the small screen; on desktop it pins as before. */}
       <div className="space-y-4 sm:sticky sm:top-0 sm:z-20 sm:-mx-5 sm:border-b sm:border-border sm:bg-background sm:px-5 sm:py-3">
-      {title ? <PageHeader title={title} /> : null}
-      {/* Financial summary for the selected section + date range (Owner request
+        {title ? <PageHeader title={title} /> : null}
+        {/* Financial summary for the selected section + date range (Owner request
           2026-07-27). Totals are computed from the rows currently shown. */}
-      <div
-        className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"
-        data-testid="layaway-financial-summary"
-      >
-        {(
-          [
-            ['Total Qty (Items)', String(summary.qty), false],
-            ['Total Interest', summary.interest, true],
-            ['Grand Total', summary.grandTotal, true],
-            ['Payment', summary.payment, true],
-            ['Balance', summary.balance, true],
-          ] as const
-        ).map(([label, value, isMoney]) => (
-          <div key={label} className="rounded-xl border border-border bg-card p-4 pt-5">
-            <p className="text-[11px] leading-tight text-muted-foreground">{label}</p>
-            <p className="mt-1 text-xl font-bold tabular-nums">
-              {isMoney ? money(value) : value}
-            </p>
-          </div>
-        ))}
-      </div>
-
-      {/* Date filters — the range is resolved server-side. */}
-      <Card>
-        <CardContent className="flex flex-wrap items-center gap-1.5 pt-6">
-          {RANGES.map((r) => (
-            <form key={r} method="GET">
-              <input type="hidden" name="range" value={r} />
-              <Button
-                type="submit"
-                size="sm"
-                variant={range === r ? 'default' : 'outline'}
-                aria-pressed={range === r}
-              >
-                {RANGE_LABEL[r]}
-              </Button>
-            </form>
+        <div
+          className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"
+          data-testid="layaway-financial-summary"
+        >
+          {(
+            [
+              ['Total Qty (Items)', String(summary.qty), false],
+              ['Total Interest', summary.interest, true],
+              ['Grand Total', summary.grandTotal, true],
+              ['Payment', summary.payment, true],
+              ['Balance', summary.balance, true],
+            ] as const
+          ).map(([label, value, isMoney]) => (
+            <div key={label} className="rounded-xl border border-border bg-card p-4 pt-5">
+              <p className="text-[11px] leading-tight text-muted-foreground">{label}</p>
+              <p className="mt-1 text-xl font-bold tabular-nums">
+                {isMoney ? money(value) : value}
+              </p>
+            </div>
           ))}
-          {range === 'custom' ? (
-            <form method="GET" className="flex items-end gap-2">
-              <input type="hidden" name="range" value="custom" />
-              <div>
-                <Label htmlFor="from" className="text-xs">
-                  Start date
-                </Label>
-                <Input id="from" name="from" type="date" className="h-8" />
-              </div>
-              <div>
-                <Label htmlFor="to" className="text-xs">
-                  End date
-                </Label>
-                <Input id="to" name="to" type="date" className="h-8" />
-              </div>
-              <Button type="submit" size="sm" variant="outline">
-                Apply
-              </Button>
-            </form>
-          ) : null}
-        </CardContent>
-      </Card>
+        </div>
+
+        {/* Date filters — the range is resolved server-side. */}
+        <Card>
+          <CardContent className="flex flex-wrap items-center gap-1.5 pt-6">
+            {RANGES.map((r) => (
+              <form key={r} method="GET">
+                <input type="hidden" name="range" value={r} />
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant={range === r ? 'default' : 'outline'}
+                  aria-pressed={range === r}
+                >
+                  {RANGE_LABEL[r]}
+                </Button>
+              </form>
+            ))}
+            {range === 'custom' ? (
+              <form method="GET" className="flex items-end gap-2">
+                <input type="hidden" name="range" value="custom" />
+                <div>
+                  <Label htmlFor="from" className="text-xs">
+                    Start date
+                  </Label>
+                  <Input id="from" name="from" type="date" className="h-8" />
+                </div>
+                <div>
+                  <Label htmlFor="to" className="text-xs">
+                    End date
+                  </Label>
+                  <Input id="to" name="to" type="date" className="h-8" />
+                </div>
+                <Button type="submit" size="sm" variant="outline">
+                  Apply
+                </Button>
+              </form>
+            ) : null}
+          </CardContent>
+        </Card>
       </div>
 
       {notices.map((n, i) =>
@@ -699,7 +704,15 @@ export function PaymentsWorkspace({
                           {p.provider ? ` · ${p.provider}` : ''}
                         </p>
                         <p className="truncate text-xs text-muted-foreground">
-                          Submitted {new Date(p.recordedAt).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })} ·{' '}
+                          Submitted{' '}
+                          {new Date(p.recordedAt).toLocaleString('en-US', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                            hour: 'numeric',
+                            minute: '2-digit',
+                          })}{' '}
+                          ·{' '}
                           <span className="font-medium">
                             {p.status.replace(/_/g, ' ')}
                           </span>
@@ -1172,114 +1185,119 @@ function LayawayTable({
   }, [rows]);
   const layPageCount = Math.max(1, Math.ceil(rows.length / layPageSize));
   const layPageSafe = Math.min(layPage, layPageCount);
-  const pagedRows = rows.slice((layPageSafe - 1) * layPageSize, layPageSafe * layPageSize);
+  const pagedRows = rows.slice(
+    (layPageSafe - 1) * layPageSize,
+    layPageSafe * layPageSize,
+  );
 
   return (
     <div>
-    <div className="table-scroll rounded-xl border border-border bg-card">
-      <table
-        className="data-table data-roomy lay-table w-full min-w-[1000px] text-left text-xs"
-        data-testid="layaway-table"
-      >
-        {/* Owner width spec: Unique Code + Customer Name are the two widest; Code and
+      <div className="table-scroll rounded-xl border border-border bg-card">
+        <table
+          className="data-table data-roomy lay-table w-full min-w-[1000px] text-left text-xs"
+          data-testid="layaway-table"
+        >
+          {/* Owner width spec: Unique Code + Customer Name are the two widest; Code and
             Overdue stay compact; Actions pinned right. Width HINTS (no table-fixed), so
             a column can still grow to fit its content and nothing is clipped. */}
-        <colgroup>
-          <col style={{ width: '17%' }} />
-          <col style={{ width: '18%' }} />
-          <col style={{ width: '8%' }} />
-          <col style={{ width: '13%' }} />
-          <col style={{ width: '12%' }} />
-          <col style={{ width: '12%' }} />
-          <col style={{ width: '8%' }} />
-          <col style={{ width: '12%' }} />
-        </colgroup>
-        <thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
-          <tr>
-            <th className="col-center px-3 py-2">Unique Code</th>
-            <th className="px-3 py-2 text-left">Customer Name</th>
-            <th className="col-center px-3 py-2">Code</th>
-            <th className="col-center px-3 py-2">Remarks / Financer</th>
-            <th className="col-center px-3 py-2">Total Amount</th>
-            <th className="col-center px-3 py-2">Date Purchased</th>
-            <th className="col-center px-3 py-2">Overdue</th>
-            <th className="col-actions px-3 py-2">Actions</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {rows.length === 0 ? (
+          <colgroup>
+            <col style={{ width: '17%' }} />
+            <col style={{ width: '18%' }} />
+            <col style={{ width: '8%' }} />
+            <col style={{ width: '13%' }} />
+            <col style={{ width: '12%' }} />
+            <col style={{ width: '12%' }} />
+            <col style={{ width: '8%' }} />
+            <col style={{ width: '12%' }} />
+          </colgroup>
+          <thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
             <tr>
-              <td colSpan={8} className="px-2.5 py-6 text-center text-muted-foreground">
-                No layaway accounts found.
-              </td>
+              <th className="col-center px-3 py-2">Unique Code</th>
+              <th className="px-3 py-2 text-left">Customer Name</th>
+              <th className="col-center px-3 py-2">Code</th>
+              <th className="col-center px-3 py-2">Remarks / Financer</th>
+              <th className="col-center px-3 py-2">Total Amount</th>
+              <th className="col-center px-3 py-2">Date Purchased</th>
+              <th className="col-center px-3 py-2">Overdue</th>
+              <th className="col-actions px-3 py-2">Actions</th>
             </tr>
-          ) : (
-            pagedRows.map((r) => (
-              <tr key={r.key} className="hover:bg-accent/40">
-                <td
-                  className="truncate px-3 py-2 text-center font-mono text-[11px]"
-                  title={`Unique Code${r.uniqueCode ? `: ${r.uniqueCode}` : ' — not linked'} · Order/Account No. ${r.accountNo}`}
-                >
-                  {r.officialOrderId ? (
-                    <OrderNumberButton
-                      orderId={r.officialOrderId}
-                      label={r.uniqueCode ?? 'Not linked'}
-                      onOpen={onOpenOrder}
-                    />
-                  ) : r.uniqueCode ? (
-                    r.uniqueCode
-                  ) : (
-                    <span className="text-muted-foreground">Not linked</span>
-                  )}
+          </thead>
+          <tbody className="divide-y">
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="px-2.5 py-6 text-center text-muted-foreground">
+                  No layaway accounts found.
                 </td>
-                <td className="truncate px-3 py-2 font-medium" title={r.customerName}>
-                  {r.customerName}
-                </td>
-                <td className="col-center truncate px-3 py-2 font-mono font-semibold">
-                  {r.code ?? '—'}
-                </td>
-                <td
-                  className="col-clip truncate px-3 py-2 text-center text-muted-foreground"
-                  title={[r.financer, r.remarks].filter(Boolean).join(' · ') || undefined}
-                >
-                  {[r.financer, r.remarks].filter(Boolean).join(' · ') || '—'}
-                </td>
-                {/* A Completed account is fully paid, so its Total Amount shows
-                    nothing (Owner request). Full money detail stays in View. */}
-                <td className="col-center px-3 py-2 tabular-nums">
-                  {isCompletedStatus(r.status) ? '—' : cash(r.item)}
-                </td>
-                <td className="col-center whitespace-nowrap px-3 py-2">
-                  {r.datePurchased ? formatDate(r.datePurchased) : '—'}
-                </td>
-                <td className="col-center px-3 py-2">
-                  {(() => {
-                    const o = overdueLabel(r);
-                    return o === 'Yes' ? (
-                      <span className="font-medium text-destructive">Yes</span>
+              </tr>
+            ) : (
+              pagedRows.map((r) => (
+                <tr key={r.key} className="hover:bg-accent/40">
+                  <td
+                    className="truncate px-3 py-2 text-center font-mono text-[11px]"
+                    title={`Unique Code${r.uniqueCode ? `: ${r.uniqueCode}` : ' — not linked'} · Order/Account No. ${r.accountNo}`}
+                  >
+                    {r.officialOrderId ? (
+                      <OrderNumberButton
+                        orderId={r.officialOrderId}
+                        label={r.uniqueCode ?? 'Not linked'}
+                        onOpen={onOpenOrder}
+                      />
+                    ) : r.uniqueCode ? (
+                      r.uniqueCode
                     ) : (
-                      <span className="text-muted-foreground">{o}</span>
-                    );
-                  })()}
-                </td>
-                <td className="col-actions px-3 py-2">
-                  {r.officialOrderId && r.layawayRow ? (
-                    <div className="flex flex-wrap justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => onOpenOrder(r.officialOrderId as string)}
-                        data-testid={`layaway-view-${r.layawayRow.layawayId}`}
-                        className="rounded-md border border-border px-1.5 py-0.5 text-[11px] hover:bg-accent"
-                      >
-                        View
-                      </button>
-                      {canManage ? (
-                        <LayawayDetailsModal row={r.layawayRow} financers={financers} />
-                      ) : null}
-                    </div>
-                  ) : r.ledgerId ? (
-                    <div className="flex flex-nowrap items-center justify-end gap-2">
-                      {/* Actions are View · Edit · Delete only, on ONE line. "Add
+                      <span className="text-muted-foreground">Not linked</span>
+                    )}
+                  </td>
+                  <td className="truncate px-3 py-2 font-medium" title={r.customerName}>
+                    {r.customerName}
+                  </td>
+                  <td className="col-center truncate px-3 py-2 font-mono font-semibold">
+                    {r.code ?? '—'}
+                  </td>
+                  <td
+                    className="col-clip truncate px-3 py-2 text-center text-muted-foreground"
+                    title={
+                      [r.financer, r.remarks].filter(Boolean).join(' · ') || undefined
+                    }
+                  >
+                    {[r.financer, r.remarks].filter(Boolean).join(' · ') || '—'}
+                  </td>
+                  {/* A Completed account is fully paid, so its Total Amount shows
+                    nothing (Owner request). Full money detail stays in View. */}
+                  <td className="col-center px-3 py-2 tabular-nums">
+                    {isCompletedStatus(r.status) ? '—' : cash(r.item)}
+                  </td>
+                  <td className="col-center whitespace-nowrap px-3 py-2">
+                    {r.datePurchased ? formatDate(r.datePurchased) : '—'}
+                  </td>
+                  <td className="col-center px-3 py-2">
+                    {(() => {
+                      const o = overdueLabel(r);
+                      return o === 'Yes' ? (
+                        <span className="font-medium text-destructive">Yes</span>
+                      ) : (
+                        <span className="text-muted-foreground">{o}</span>
+                      );
+                    })()}
+                  </td>
+                  <td className="col-actions px-3 py-2">
+                    {r.officialOrderId && r.layawayRow ? (
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => onOpenOrder(r.officialOrderId as string)}
+                          data-testid={`layaway-view-${r.layawayRow.layawayId}`}
+                          className="rounded-md border border-border px-1.5 py-0.5 text-[11px] hover:bg-accent"
+                        >
+                          View
+                        </button>
+                        {canManage ? (
+                          <LayawayDetailsModal row={r.layawayRow} financers={financers} />
+                        ) : null}
+                      </div>
+                    ) : r.ledgerId ? (
+                      <div className="flex flex-nowrap items-center justify-end gap-2">
+                        {/* Actions are View · Edit · Delete only, on ONE line. "Add
                           Payment" and "Cancel Order" live INSIDE the View modal. They
                           now show for EVERY active account — Owner, Admin, and Staff
                           (Owner request: all Admin/Staff need them on a layaway
@@ -1287,46 +1305,47 @@ function LayawayTable({
                           destination stays manager-only (canDeleteLedger). Edit and
                           Delete are each gated by their own Manage Access permission
                           (the Owner holds both implicitly). */}
-                      <LayawayLedgerViewModal
-                        ledgerId={r.ledgerId}
-                        canAddPayment={!TERMINAL_STATUSES.has(normStatus(r.status))}
-                        canTransfer={canDeleteLedger}
-                      />
-                      {canEditLayaway ? (
-                        <LedgerEditAccount id={r.ledgerId} accountNo={r.accountNo} />
-                      ) : null}
-                      {canDeleteLayaway ? (
-                        <LedgerRowDelete isSuperAdmin={isSuperAdmin}
-                          id={r.ledgerId}
-                          accountNo={r.accountNo}
-                          customerName={r.customerName}
+                        <LayawayLedgerViewModal
+                          ledgerId={r.ledgerId}
+                          canAddPayment={!TERMINAL_STATUSES.has(normStatus(r.status))}
+                          canTransfer={canDeleteLedger}
                         />
-                      ) : null}
-                    </div>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
-    {rows.length > 0 ? (
-      <Pagination
-        page={layPageSafe}
-        pageCount={layPageCount}
-        total={rows.length}
-        pageSize={layPageSize}
-        onPageChange={setLayPage}
-        onPageSizeChange={(n) => {
-          setLayPageSize(n);
-          setLayPage(1);
-        }}
-        sticky
-      />
-    ) : null}
+                        {canEditLayaway ? (
+                          <LedgerEditAccount id={r.ledgerId} accountNo={r.accountNo} />
+                        ) : null}
+                        {canDeleteLayaway ? (
+                          <LedgerRowDelete
+                            isSuperAdmin={isSuperAdmin}
+                            id={r.ledgerId}
+                            accountNo={r.accountNo}
+                            customerName={r.customerName}
+                          />
+                        ) : null}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      {rows.length > 0 ? (
+        <Pagination
+          page={layPageSafe}
+          pageCount={layPageCount}
+          total={rows.length}
+          pageSize={layPageSize}
+          onPageChange={setLayPage}
+          onPageSizeChange={(n) => {
+            setLayPageSize(n);
+            setLayPage(1);
+          }}
+          sticky
+        />
+      ) : null}
     </div>
   );
 }
@@ -1382,7 +1401,9 @@ function CompletedLayawayTable({
           ) : (
             rows.map((r) => (
               <tr key={r.key} className="hover:bg-accent/40">
-                <td className="col-center px-3 py-2 font-mono font-semibold">{r.code ?? '—'}</td>
+                <td className="col-center px-3 py-2 font-mono font-semibold">
+                  {r.code ?? '—'}
+                </td>
                 <td className="px-3 py-2 font-medium">{r.customerName}</td>
                 <td className="px-3 py-2 text-muted-foreground">
                   {[r.financer, r.remarks].filter(Boolean).join(' · ') || '—'}
@@ -1426,7 +1447,8 @@ function CompletedLayawayTable({
                     <div className="flex flex-wrap justify-end gap-1">
                       <LayawayLedgerViewModal ledgerId={r.ledgerId} />
                       {canDeleteLayaway ? (
-                        <LedgerRowDelete isSuperAdmin={isSuperAdmin}
+                        <LedgerRowDelete
+                          isSuperAdmin={isSuperAdmin}
                           id={r.ledgerId}
                           accountNo={r.accountNo}
                           customerName={r.customerName}
@@ -1542,8 +1564,7 @@ function LedgerRowDelete({
       >
         <div className="space-y-3">
           <p className="text-sm">
-            Delete the imported account{' '}
-            <span className="font-mono">{accountNo}</span> for{' '}
+            Delete the imported account <span className="font-mono">{accountNo}</span> for{' '}
             <strong>{customerName}</strong>? This removes only this imported ledger row.
           </p>
           <div>
@@ -1743,9 +1764,8 @@ function LayawayList({
               {/* Unresolved states stay visible — they block completion. */}
               {l.overpaymentCredit !== '0.00' ? (
                 <p className="mt-2 rounded border border-amber-500 px-2 py-1.5 text-xs">
-                  Overpayment Credit {money(l.overpaymentCredit)} — unresolved.
-                  Completion is blocked until it is handled through the correction
-                  workflow.
+                  Overpayment Credit {money(l.overpaymentCredit)} — unresolved. Completion
+                  is blocked until it is handled through the correction workflow.
                 </p>
               ) : null}
 

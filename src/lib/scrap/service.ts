@@ -157,7 +157,8 @@ export async function recordScrapSales(input: {
     if (!Number.isFinite(amount) || amount < 0) {
       return { ok: false, error: 'Each item needs a valid, non-negative amount.' };
     }
-    const perGramNum = it.perGram === null || it.perGram === '' ? null : Number(it.perGram);
+    const perGramNum =
+      it.perGram === null || it.perGram === '' ? null : Number(it.perGram);
     if (perGramNum !== null && (!Number.isFinite(perGramNum) || perGramNum < 0)) {
       return { ok: false, error: 'Price per gram must be a valid, non-negative number.' };
     }

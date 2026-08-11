@@ -225,7 +225,8 @@ export async function mergeCustomers(
     throw cause;
   }
 
-  if (!survivorId || !duplicateId) return { ok: false, error: 'Two customers are required.' };
+  if (!survivorId || !duplicateId)
+    return { ok: false, error: 'Two customers are required.' };
   if (survivorId === duplicateId) {
     return { ok: false, error: 'A customer cannot be merged into itself.' };
   }
@@ -320,7 +321,11 @@ export async function updateCustomer(
     action: 'customer.update_details',
     entityType: 'customer',
     entityId: input.id,
-    context: { name, has_contact: Boolean(contact), has_address: Boolean(input.address?.trim()) },
+    context: {
+      name,
+      has_contact: Boolean(contact),
+      has_address: Boolean(input.address?.trim()),
+    },
   });
   return { ok: true };
 }

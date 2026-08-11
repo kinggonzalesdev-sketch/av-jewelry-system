@@ -79,13 +79,7 @@ export function MetricCard({
 }
 
 export type BadgeTone =
-  | 'gold'
-  | 'neutral'
-  | 'strong'
-  | 'warning'
-  | 'danger'
-  | 'success'
-  | 'info';
+  'gold' | 'neutral' | 'strong' | 'warning' | 'danger' | 'success' | 'info';
 
 /**
  * ONE colour per meaning across the whole system (Owner spec), via the `.badge-*`

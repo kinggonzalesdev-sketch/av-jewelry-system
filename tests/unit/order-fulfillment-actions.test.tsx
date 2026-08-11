@@ -126,7 +126,9 @@ describe('OrderFulfillmentActions', () => {
         onMutated={vi.fn()}
       />,
     );
-    expect(screen.queryByRole('button', { name: /mark delivered/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /mark delivered/i }),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^complete$/i })).toBeInTheDocument();
   });
 });
