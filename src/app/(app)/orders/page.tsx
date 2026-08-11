@@ -10,11 +10,9 @@ import {
   getCurrentStaffProfile,
   getGrantedPermissions,
 } from '@/lib/authz/guard';
-import { getAdminNameContext } from '@/lib/authz/admin-name';
-import { listCaptureCustomers } from '@/lib/live/batches';
 import { listPendingCaptureReviews } from '@/lib/capture/review';
 import { countPendingCaptures } from '@/lib/capture/pending';
-import { listCaptureItems, listOrders, listWalkInItems } from '@/lib/orders/service';
+import { listOrders } from '@/lib/orders/service';
 import { listKeepLayawayAccounts } from '@/lib/payments/layaway-ledger';
 
 export const metadata: Metadata = {};
@@ -47,26 +45,22 @@ export default async function OrdersPage({
   const params = await searchParams;
   const openForInvoice = params.view === 'invoice';
 
+  // NOTE: the New Order form's data (~4,500 inventory rows: capture items, walk-in
+  // items, customers, admin-name context) is NO LONGER loaded here. It is fetched ON
+  // DEMAND by New Order / the capture strip the first time the form opens, so the
+  // Orders LIST paints without waiting on it. See loadNewOrderDataAction.
   const [
     result,
     permissions,
-    customers,
-    items,
-    walkInItems,
     profile,
     keepLayaways,
-    admins,
     pendingReviews,
     pendingCaptureCount,
   ] = await Promise.all([
     listOrders(),
     getGrantedPermissions(),
-    listCaptureCustomers(),
-    listCaptureItems(),
-    listWalkInItems(),
     getCurrentStaffProfile(),
     listKeepLayawayAccounts(),
-    getAdminNameContext(),
     listPendingCaptureReviews(),
     countPendingCaptures(),
   ]);
@@ -86,14 +80,7 @@ export default async function OrdersPage({
         ) : null}
         {/* Incoming Captures — floating-screenshot uploads waiting to become orders on
             this PC. Realtime; self-hides when empty. Same permission as capture. */}
-        {permissions.has('claim_capture') ? (
-          <IncomingCapturesStrip
-            customers={customers}
-            items={items}
-            walkInItems={walkInItems}
-            admins={admins}
-          />
-        ) : null}
+        {permissions.has('claim_capture') ? <IncomingCapturesStrip /> : null}
         <OrdersView
           title="Orders"
           result={result}
@@ -106,13 +93,7 @@ export default async function OrdersPage({
           // Passed as a slot so Send All Invoices can sit beside it: the active-card
           // state that decides when to show that button lives inside OrdersView.
           newOrderAction={
-            <NewOrderWorkflow
-              customers={customers}
-              items={items}
-              walkInItems={walkInItems}
-              canCreate={permissions.has('claim_capture')}
-              admins={admins}
-            />
+            <NewOrderWorkflow canCreate={permissions.has('claim_capture')} />
           }
         />
       </div>

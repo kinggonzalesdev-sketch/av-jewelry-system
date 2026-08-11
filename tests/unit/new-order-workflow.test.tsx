@@ -11,6 +11,9 @@ import type { AdminNameContext } from '@/lib/authz/admin-name';
 vi.mock('@/lib/orders/actions', () => ({
   captureManualOrderAction: vi.fn(),
   captureWalkInOrderAction: vi.fn(),
+  // Present so the lazy-load path is safe; tests inject `initialData`, so New Order
+  // opens synchronously and this is never actually called.
+  loadNewOrderDataAction: vi.fn(),
   recordOrderPrintAction: vi.fn(),
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
@@ -83,11 +86,8 @@ const admins: AdminNameContext = {
 function renderWorkflow(canCreate = true) {
   return render(
     <NewOrderWorkflow
-      customers={customers}
-      items={items}
-      walkInItems={walkInItems}
       canCreate={canCreate}
-      admins={admins}
+      initialData={{ customers, items, walkInItems, admins }}
     />,
   );
 }
@@ -338,11 +338,8 @@ describe('NewOrderWorkflow — Admin Name is read-only session identity', () => 
   function openAs(ctx: AdminNameContext) {
     render(
       <NewOrderWorkflow
-        customers={customers}
-        items={items}
-        walkInItems={walkInItems}
         canCreate
-        admins={ctx}
+        initialData={{ customers, items, walkInItems, admins: ctx }}
       />,
     );
     fireEvent.click(screen.getByTestId('orders-new-order'));

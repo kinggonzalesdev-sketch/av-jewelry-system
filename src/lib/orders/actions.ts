@@ -71,9 +71,12 @@ import {
 } from '@/lib/orders/order-payment';
 import {
   getOrderLineItems,
+  listCaptureItems,
+  listWalkInItems,
   searchCaptureItems,
   type CaptureItem,
   type OrderLineItem,
+  type WalkInItem,
 } from '@/lib/orders/service';
 import {
   completeWalkInOrder,
@@ -86,12 +89,57 @@ import {
   type WalkInItemInput,
   type WalkInResult,
 } from '@/lib/orders/walkin';
+import { getGrantedPermissions } from '@/lib/authz/guard';
+import { getAdminNameContext, type AdminNameContext } from '@/lib/authz/admin-name';
+import { listCaptureCustomers } from '@/lib/live/batches';
 
 /**
  * New Order actions (transport only). Authority, validation, the multi-item
  * atomic save, and the For-Invoice / Completed rules live in the domain modules
  * and the database.
  */
+
+/** Everything the New Order form needs — loaded on demand (see below). */
+export type NewOrderData = {
+  customers: Awaited<ReturnType<typeof listCaptureCustomers>>;
+  items: CaptureItem[];
+  walkInItems: WalkInItem[];
+  admins: AdminNameContext;
+};
+
+export type NewOrderDataResult =
+  { ok: true; data: NewOrderData } | { ok: false; error: string };
+
+/**
+ * Loads the New Order form's data (item pickers, walk-in items, customer list, admin
+ * name context) ON DEMAND — the first time a member opens New Order or converts an
+ * incoming capture — instead of eagerly on every Orders page load. The list used to
+ * carry ~4,500 inventory rows just to render, even though nobody had opened the form;
+ * moving it here lets the Orders list paint immediately.
+ *
+ * Permission is re-checked here (claim_capture), exactly as the page gate did, so
+ * lazy-loading widens no access. On any failure it returns a typed error the caller
+ * surfaces as a retry — the form never opens on partial data.
+ */
+export async function loadNewOrderDataAction(): Promise<NewOrderDataResult> {
+  if (!(await getGrantedPermissions()).has('claim_capture')) {
+    return { ok: false, error: 'You do not have permission to create an order.' };
+  }
+  try {
+    const [customers, items, walkInItems, admins] = await Promise.all([
+      listCaptureCustomers(),
+      listCaptureItems(),
+      listWalkInItems(),
+      getAdminNameContext(),
+    ]);
+    return { ok: true, data: { customers, items, walkInItems, admins } };
+  } catch {
+    return {
+      ok: false,
+      error: 'Could not load the order form. Check your connection and try again.',
+    };
+  }
+}
 
 /**
  * Load an Official Order's line items on demand (for the Order Details drawer).

@@ -25,6 +25,7 @@ import {
   NewOrderModal,
   type CapturePrefill,
 } from '@/components/orders/new-order-workflow';
+import { loadNewOrderDataAction, type NewOrderData } from '@/lib/orders/actions';
 import { useDashboardSync } from '@/components/shell/dashboard-sync';
 import { createClient } from '@/lib/supabase/client';
 import { authorizeRealtime } from '@/lib/supabase/realtime-auth';
@@ -37,8 +38,6 @@ import {
   type OrderReceiptData,
 } from '@/lib/print/order-receipt';
 import { readStickerFields, readStickerPricePerGram } from '@/lib/print/sticker-fields';
-import type { CaptureItem, WalkInItem } from '@/lib/orders/service';
-import type { AdminNameContext } from '@/lib/authz/admin-name';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 
@@ -52,15 +51,12 @@ import { Modal } from '@/components/ui/modal';
  * Self-hides when nothing is waiting.
  */
 export function IncomingCapturesStrip({
-  customers,
-  items,
-  walkInItems,
-  admins,
+  initialData,
 }: {
-  customers: { id: string; displayName: string }[];
-  items: CaptureItem[];
-  walkInItems: WalkInItem[];
-  admins: AdminNameContext;
+  // The New Order data (~4,500 inventory rows) is loaded ON DEMAND when a capture is
+  // "Used" — the Orders page no longer ships it eagerly for a strip that is usually
+  // empty. Injectable for tests / eager callers.
+  initialData?: NewOrderData;
 }) {
   const { lastSyncedAt } = useDashboardSync();
   const { activeChannel, printLang } = usePrinter();
@@ -71,6 +67,10 @@ export function IncomingCapturesStrip({
   // is unaffected); only the visible panel is gated on `open`.
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<PendingCaptureRow | null>(null);
+  // New Order form data — loaded on demand the first time a capture is "Used", then
+  // cached. `preparingUse` is the capture whose data is currently loading.
+  const [orderData, setOrderData] = useState<NewOrderData | null>(initialData ?? null);
+  const [preparingUse, setPreparingUse] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   // The capture whose screenshot is mid-send to Messenger (per-row spinner).
   const [sendingId, setSendingId] = useState<string | null>(null);
@@ -373,6 +373,25 @@ export function IncomingCapturesStrip({
       });
   };
 
+  // "Use" a capture → convert it to a New Order. The form's data is loaded lazily on
+  // the first Use (then cached), so the Orders page never ships it eagerly. The New
+  // Order modal only opens once the data is present — never on partial data.
+  const handleUse = async (r: PendingCaptureRow) => {
+    setError(null);
+    if (!orderData) {
+      setPreparingUse(r.captureRecordId);
+      const res = await loadNewOrderDataAction();
+      setPreparingUse(null);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setOrderData(res.data);
+    }
+    setSelected(r);
+    setOpen(false);
+  };
+
   const prefillFor = (r: PendingCaptureRow): CapturePrefill => {
     // A REAL claim is a pinned "<Facebook Name> / Mine <grams>" comment — its
     // signal is a confident weight (the "Mine 10.5" number). Without it (a
@@ -528,13 +547,11 @@ export function IncomingCapturesStrip({
                     <Button
                       type="button"
                       size="sm"
-                      onClick={() => {
-                        setSelected(r);
-                        setOpen(false);
-                      }}
+                      disabled={preparingUse === r.captureRecordId}
+                      onClick={() => void handleUse(r)}
                       data-testid={`incoming-use-${r.captureRecordId}`}
                     >
-                      Use
+                      {preparingUse === r.captureRecordId ? 'Loading…' : 'Use'}
                     </Button>
                     <Button
                       type="button"
@@ -569,12 +586,12 @@ export function IncomingCapturesStrip({
         </div>
       </Modal>
 
-      {selected ? (
+      {selected && orderData ? (
         <NewOrderModal
-          customers={customers}
-          items={items}
-          walkInItems={walkInItems}
-          admins={admins}
+          customers={orderData.customers}
+          items={orderData.items}
+          walkInItems={orderData.walkInItems}
+          admins={orderData.admins}
           prefill={prefillFor(selected)}
           onClose={() => {
             setSelected(null);

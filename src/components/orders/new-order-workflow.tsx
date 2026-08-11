@@ -12,11 +12,13 @@ import { AdminNameField } from '@/components/orders/admin-name-field';
 import {
   captureManualOrderAction,
   completeWalkInOrderAction,
+  loadNewOrderDataAction,
   recordOrderPrintAction,
   saveWalkInOrderAction,
   searchCaptureItemsAction,
   transferWalkInToReminderAction,
   updateInventoryGramsAction,
+  type NewOrderData,
 } from '@/lib/orders/actions';
 import {
   printOrderStickers,
@@ -1445,27 +1447,45 @@ export function NewOrderModal({
 }
 
 export function NewOrderWorkflow({
-  customers,
-  items,
-  walkInItems,
   canCreate,
-  admins,
+  initialData,
 }: {
-  customers: Customer[];
-  items: CaptureItem[];
-  walkInItems: WalkInItem[];
   canCreate: boolean;
-  admins: AdminNameContext;
+  // When omitted (production), the form's data (~4,500 inventory rows) is loaded ON
+  // DEMAND the first time New Order is opened, so the Orders list never waits on it.
+  // When provided, it is used directly (tests + any eager caller).
+  initialData?: NewOrderData;
 }) {
   const [open, setOpen] = useState(false);
+  const [data, setData] = useState<NewOrderData | null>(initialData ?? null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const openForm = async () => {
+    setError(null);
+    // Already have the data (cached from a previous open, or injected) → open at once.
+    if (data) {
+      setOpen(true);
+      return;
+    }
+    setLoading(true);
+    const res = await loadNewOrderDataAction();
+    setLoading(false);
+    if (res.ok) {
+      setData(res.data);
+      setOpen(true);
+    } else {
+      setError(res.error);
+    }
+  };
 
   return (
     <>
       <div>
         <Button
           type="button"
-          onClick={() => setOpen(true)}
-          disabled={!canCreate}
+          onClick={() => void openForm()}
+          disabled={!canCreate || loading}
           data-testid="orders-new-order"
           className="font-semibold"
           title={
@@ -1474,16 +1494,29 @@ export function NewOrderWorkflow({
               : 'Creating an entry needs the claim capture permission.'
           }
         >
-          ＋ New Order
+          {loading ? 'Loading…' : '＋ New Order'}
         </Button>
+        {/* A failed load shows a retry — the form NEVER opens on partial data. */}
+        {error ? (
+          <p role="alert" className="mt-1 text-xs text-destructive">
+            {error}{' '}
+            <button
+              type="button"
+              className="underline underline-offset-2"
+              onClick={() => void openForm()}
+            >
+              Try again
+            </button>
+          </p>
+        ) : null}
       </div>
 
-      {open ? (
+      {open && data ? (
         <NewOrderModal
-          customers={customers}
-          items={items}
-          walkInItems={walkInItems}
-          admins={admins}
+          customers={data.customers}
+          items={data.items}
+          walkInItems={data.walkInItems}
+          admins={data.admins}
           onClose={() => setOpen(false)}
         />
       ) : null}
