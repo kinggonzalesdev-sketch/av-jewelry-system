@@ -26,6 +26,7 @@ import {
   type CapturePrefill,
 } from '@/components/orders/new-order-workflow';
 import { useDashboardSync } from '@/components/shell/dashboard-sync';
+import { createClient } from '@/lib/supabase/client';
 import { usePrinter } from '@/components/print/printer-context';
 import { writeToChannel } from '@/lib/print/bluetooth-printer';
 import { encodeReceipt } from '@/lib/print/receipt-encoders';
@@ -85,6 +86,10 @@ export function IncomingCapturesStrip({
   // Captures we've already kicked a resolution for, so each resolves exactly once.
   const resolvedRef = useRef<Set<string>>(new Set());
 
+  // Set by the auto-print effect below; lets the realtime handler kick an INSTANT drain
+  // the moment a capture arrives (null while no printer is connected / auto-print off).
+  const drainRef = useRef<(() => void) | null>(null);
+
   // The capture ids already printed on THIS station, persisted so a reload/re-poll
   // never reprints. Seeded on mount (ref mutation only — no re-render).
   const printedRef = useRef<Set<string>>(new Set());
@@ -137,6 +142,35 @@ export function IncomingCapturesStrip({
   useEffect(() => {
     const iv = setInterval(load, 30000);
     return () => clearInterval(iv);
+  }, [load]);
+
+  // FAST PATH (~0.5–1s): a DEDICATED realtime subscription on capture_records fires the
+  // instant a phone capture is inserted — independent of the debounced, heavier
+  // whole-page router.refresh(). It immediately reloads the strip (the capture appears)
+  // AND kicks the auto-print drain (its sticker prints), giving ~1s end-to-end. The 30s
+  // poll above stays only as a socket-drop fallback; realtime carries the normal case.
+  // Its own channel (separate from the app-wide DashboardSync one), cleaned up on unmount.
+  useEffect(() => {
+    let supabase: ReturnType<typeof createClient>;
+    try {
+      supabase = createClient();
+    } catch {
+      return; // no browser env — the 30s fallback + DashboardSync still surface captures
+    }
+    const channel = supabase
+      .channel('incoming-captures-fast')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'capture_records' },
+        () => {
+          load();
+          drainRef.current?.();
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
   }, [load]);
 
   // Open/close when the "Capture Pending" pill (in OrdersView) is clicked. The
@@ -249,14 +283,17 @@ export function IncomingCapturesStrip({
         draining = false;
       }
     };
-    // 2.5s meant a steady claim call every 2.5s from every printer station for the whole
-    // live. 10s still auto-prints a new capture's sticker within a few seconds of it
-    // arriving (hands-off; the operator isn't blocked) while cutting the claim-poll load
-    // ~4×. Only runs at all when a printer is connected + auto-print is enabled.
-    const iv = setInterval(() => void tick(), 10000);
+    // Realtime is the FAST path now: the dedicated capture_records channel above calls
+    // this drain the instant a capture arrives, so a sticker prints within ~1s. Expose
+    // it via drainRef for that handler; the 15s interval is only a socket-drop fallback
+    // (the drain is idempotent + guarded by the server's exactly-once claim, so an extra
+    // realtime-triggered call can never double-print). Runs only with a printer connected.
+    drainRef.current = () => void tick();
+    const iv = setInterval(() => void tick(), 15000);
     void tick();
     return () => {
       alive = false;
+      drainRef.current = null;
       clearInterval(iv);
     };
   }, [activeChannel, printLang]);
