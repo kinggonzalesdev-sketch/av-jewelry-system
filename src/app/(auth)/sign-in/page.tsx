@@ -18,7 +18,7 @@ export default function SignInPage() {
   return (
     <main
       id="main-content"
-      className="relative flex min-h-dvh items-center justify-center overflow-hidden px-4 py-10"
+      className="relative flex min-h-dvh flex-col items-center overflow-hidden px-4 py-6"
     >
       {/* Same premium background as the landing hero: gradient fallback + jewelry
           video + dark overlay so the card stays readable. Video degrades to the
@@ -41,17 +41,17 @@ export default function SignInPage() {
       </video>
       <div aria-hidden="true" className="absolute inset-0 bg-black/70" />
 
-      <div className="relative w-full max-w-sm">
-        {/* Brand: the official A.V. Jewelry logo (transparent PNG), centered above the
-            form — no box or card behind it, so it sits directly on the dark page.
-            Responsive: ~180px desktop/tablet, ~150px mobile, never past 55vw of the
-            viewport. `h-auto` keeps the original aspect ratio (never stretched/cropped). */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/av-jewelry-logo.png"
-          alt="A.V. Jewelry"
-          className="mx-auto mb-6 block h-auto w-[240px] max-w-[72vw] object-contain sm:w-[320px]"
-        />
+      {/* Logo pinned near the TOP with a little space above it (not vertically
+          centered). Transparent PNG, no box behind it — sits on the dark page bg. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/av-jewelry-logo.png"
+        alt="A.V. Jewelry"
+        className="relative mt-2 block h-auto w-[240px] max-w-[72vw] object-contain sm:w-[320px]"
+      />
+
+      {/* Sign-in card centered in the remaining space below the logo. */}
+      <div className="relative flex w-full max-w-sm flex-1 flex-col justify-center">
         <Card>
           <CardContent className="pt-6">
             {/* Large, bold form heading above the email field (Owner request). */}

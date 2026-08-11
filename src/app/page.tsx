@@ -69,47 +69,35 @@ export default function LandingPage() {
         </span>
         <Link
           href="/sign-in"
-          className="rounded-md bg-gold px-4 py-2 text-sm font-semibold text-black transition-colors hover:bg-gold/90"
+          className="rounded-md bg-gold px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-gold/90"
         >
-          Staff Sign In
+          Sign in
         </Link>
       </header>
 
       <main id="main-content">
         {/* Hero with background video + gradient fallback + dark overlay */}
         <section className="relative overflow-hidden">
-          {/* Premium gradient — always visible, and the fallback if the video is
-              missing or blocked. */}
-          <div
+          {/* Hero background: the A.V. Jewelry photo, stretched to cover the section. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/av-jewelry-hero.png"
+            alt=""
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0 bg-gradient-to-br from-gold/20 via-background to-background"
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover"
           />
-          {/* Background video: autoplay, muted, looped, inline. Optimized: metadata
-              preload only, and it degrades to the gradient above if it fails. */}
-          <video
-            autoPlay
-            muted
-            loop
-            playsInline
-            preload="metadata"
-            poster="/hero-jewelry.jpg"
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-40"
-          >
-            <source src="/hero-jewelry.mp4" type="video/mp4" />
-          </video>
-          {/* Dark overlay so text stays readable at all sizes. */}
-          <div aria-hidden="true" className="absolute inset-0 bg-black/60" />
+          {/* Dark overlay so the light hero text stays readable over the photo. */}
+          <div aria-hidden="true" className="absolute inset-0 bg-black/55" />
 
           <div className="relative mx-auto max-w-6xl px-4 py-20 text-center sm:px-6 sm:py-28">
-            <span className="inline-flex items-center rounded-full border border-gold/40 bg-gold/10 px-3 py-1 text-xs font-medium text-gold-strong">
+            <span className="inline-flex items-center rounded-full border border-emerald-400/50 bg-black/30 px-3 py-1 text-xs font-medium text-emerald-300 backdrop-blur">
               Fine Jewelry. Fair Value.
             </span>
-            <h1 className="mx-auto mt-5 max-w-3xl text-3xl font-bold tracking-tight sm:text-5xl">
+            <h1 className="mx-auto mt-5 max-w-3xl text-3xl font-bold tracking-tight text-white drop-shadow sm:text-5xl">
               Trusted gold jewelry &amp; assessment in{' '}
-              <span className="text-gold-strong">Guiguinto, Bulacan</span>.
+              <span className="text-emerald-400">Guiguinto, Bulacan</span>.
             </h1>
-            <p className="mx-auto mt-4 max-w-2xl text-base text-muted-foreground sm:text-lg">
+            <p className="mx-auto mt-4 max-w-2xl text-base text-white/90 sm:text-lg">
               A.V. Jewelry offers quality gold jewelry, customization, repair, live
               selling, layaway, and trusted buying — through clear and honest
               transactions.
@@ -117,15 +105,15 @@ export default function LandingPage() {
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
               <a
                 href="#offerings"
-                className="rounded-md bg-gold px-6 py-3 text-sm font-semibold text-black transition-colors hover:bg-gold/90"
+                className="rounded-md bg-gold px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-gold/90"
               >
                 See our offerings
               </a>
               <Link
                 href="/sign-in"
-                className="rounded-md border border-border bg-background/40 px-6 py-3 text-sm font-medium backdrop-blur transition-colors hover:bg-accent"
+                className="rounded-md border border-white/40 bg-white/10 px-6 py-3 text-sm font-medium text-white backdrop-blur transition-colors hover:bg-white/20"
               >
-                Staff Sign In
+                Sign in
               </Link>
             </div>
           </div>
