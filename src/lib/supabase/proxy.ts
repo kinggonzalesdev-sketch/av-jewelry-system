@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 import { getClientEnv } from '@/lib/env';
 import { toSessionCookie } from '@/lib/supabase/cookies';
+import { createRetryingFetch } from '@/lib/supabase/retry-fetch';
 
 /**
  * Session refresh + unauthenticated redirect (ADR §6).
@@ -60,6 +61,11 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     env.NEXT_PUBLIC_SUPABASE_URL,
     env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
+      // The per-request session refresh (`getUser` below) runs on every navigation.
+      // Retry a transient network blip for idempotent GET/HEAD reads so a one-off
+      // hiccup doesn't fail the whole request right after sign-in. Never retries a
+      // write — see retry-fetch.ts.
+      global: { fetch: createRetryingFetch() },
       cookies: {
         getAll() {
           return request.cookies.getAll();

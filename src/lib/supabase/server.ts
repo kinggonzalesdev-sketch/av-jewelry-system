@@ -5,6 +5,7 @@ import { cookies } from 'next/headers';
 
 import { getClientEnv } from '@/lib/env';
 import { toSessionCookie } from '@/lib/supabase/cookies';
+import { createRetryingFetch } from '@/lib/supabase/retry-fetch';
 
 /**
  * Server-side Supabase client, scoped to the caller's session (ADR §7).
@@ -22,6 +23,11 @@ export async function createClient() {
     env.NEXT_PUBLIC_SUPABASE_URL,
     env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
+      // Transient network blips on the read path (a dropped connection, a cold-start
+      // timeout, a momentary 502/503) are retried for idempotent GET/HEAD requests so
+      // a one-off hiccup self-heals instead of tripping the app-wide error boundary.
+      // Writes/RPCs (POST) are never retried — see retry-fetch.ts.
+      global: { fetch: createRetryingFetch() },
       cookies: {
         getAll() {
           return cookieStore.getAll();
