@@ -1,20 +1,27 @@
 import { NextResponse } from 'next/server';
 
-import { ingestPancakeWebhookEvent } from '@/lib/integrations/pancake-webhook';
+import {
+  logLiveCommentReceipt,
+  parsePancakeLiveComment,
+  storePancakeLiveComment,
+} from '@/lib/integrations/pancake-webhook';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * Pancake webhook (A.1) — realtime customer identity from live messages/comments.
+ * Pancake webhook — PRODUCTION endpoint, MILESTONE 1: receive Facebook Live comments.
  *
- * SECURITY: gated on PANCAKE_WEBHOOK_SECRET (a shared secret you set in the env AND in
- * the Pancake webhook config). Fails CLOSED: if the secret is unset the endpoint does
- * nothing (503). The write it performs is strictly NON-DESTRUCTIVE — it only fills a
- * missing link for a unique exact-name customer and refreshes the avatar; it never
- * resets an existing link and never creates a customer.
+ * SECURITY: gated on PANCAKE_WEBHOOK_SECRET (a shared secret set in the env AND in the
+ * Pancake webhook config, passed as `?secret=` or the `x-webhook-secret` header). Fails
+ * CLOSED: unset secret → 503; wrong/missing secret → 401. The secret is NEVER logged.
  *
- * Provide the secret as the `x-webhook-secret` header or a `?secret=` query param.
- * GET echoes a `challenge`/`hub.challenge` param (for providers that verify on setup).
+ * WHAT IT DOES (this phase): validate → detect a Live comment (`data.post.type ===
+ * 'livestream'`) → store its exact identity fields ONCE (idempotent on page_id +
+ * comment_id) in `pancake_webhook_events` → log a sanitized summary → return 200 fast.
+ * It creates NO orders, runs NO Capture auto-match, and changes NO existing customer
+ * links / conversations / production records — those are later phases. Any other
+ * messaging event is acknowledged (200) and ignored. GET echoes a `challenge` /
+ * `hub.challenge` param for providers that verify on setup.
  */
 function checkSecret(
   request: Request,
@@ -56,6 +63,28 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const result = await ingestPancakeWebhookEvent(body);
-  return NextResponse.json(result, { status: result.ok ? 200 : 502 });
+  // MILESTONE 1: ONLY receive → validate → store Facebook Live comments → log → 200,
+  // fast. No orders, no Capture auto-match, no customer-link changes yet (later phases).
+  // We never call a slow Pancake API before acknowledging — just one fast idempotent
+  // insert — so the 200 returns well within Pancake's window.
+  const live = parsePancakeLiveComment(body);
+  if (!live) {
+    // Any other messaging event: acknowledge and ignore safely for now.
+    logLiveCommentReceipt({ isLive: false, http: 200 });
+    return NextResponse.json({ ok: true, ignored: true }, { status: 200 });
+  }
+
+  const res = await storePancakeLiveComment(live, body);
+  if (!res.ok) {
+    // A store failure returns non-200 so Pancake RETRIES; the (page_id, comment_id)
+    // unique key makes that retry idempotent (no duplicate row).
+    logLiveCommentReceipt({ isLive: true, live, stored: false, http: 500 });
+    return NextResponse.json({ ok: false, error: 'store_failed' }, { status: 500 });
+  }
+
+  logLiveCommentReceipt({ isLive: true, live, stored: res.stored, http: 200 });
+  return NextResponse.json(
+    { ok: true, live_comment: true, stored: res.stored },
+    { status: 200 },
+  );
 }

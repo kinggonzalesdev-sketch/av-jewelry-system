@@ -91,3 +91,127 @@ export async function ingestPancakeWebhookEvent(
   if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
   return { ok: true, result: data };
 }
+
+// ── Milestone 1: Facebook Live comment storage ──────────────────────────────
+//
+// Receive → validate → store → log, idempotently. This phase performs NO order
+// creation, NO capture auto-match, and NO customer-link changes (those are later
+// phases): the ONLY write is one row in `pancake_webhook_events`, keyed uniquely on
+// (page_id, comment_id) so a Pancake retry can never duplicate a Live comment.
+
+export type PancakeLiveComment = {
+  pageId: string;
+  commentId: string;
+  commentText: string | null;
+  /** Raw `data.message.inserted_at`; parsed to a timestamp DB-side (bad value → null). */
+  eventTimestamp: string | null;
+  livestreamPostId: string | null;
+  postType: string | null;
+  conversationId: string | null;
+  facebookPsid: string | null;
+  pancakePageCustomerId: string | null;
+  facebookName: string | null;
+};
+
+/**
+ * Returns the extracted Live-comment fields when the event is a Facebook livestream
+ * comment (`data.post.type === 'livestream'`), or null for any other messaging event.
+ * Tolerant of missing keys; requires page_id + comment_id (the idempotency key).
+ */
+export function parsePancakeLiveComment(body: unknown): PancakeLiveComment | null {
+  const root = obj(body) ?? {};
+  const data = obj(root.data) ?? {};
+  const post = obj(data.post) ?? {};
+  if (str(post.type) !== 'livestream') return null;
+
+  const message = obj(data.message) ?? {};
+  const from = obj(message.from) ?? {};
+  const conversation = obj(data.conversation) ?? {};
+  const page = obj(data.page) ?? {};
+
+  // page_id may arrive at the root, on data, on the conversation, or on data.page.
+  const pageId =
+    str(root.page_id) || str(data.page_id) || str(conversation.page_id) || str(page.id);
+  const commentId = str(message.id);
+  // Both are required — without them there is no idempotency key, so we cannot store.
+  if (!pageId || !commentId) return null;
+
+  return {
+    pageId,
+    commentId,
+    commentText: str(message.message) || null,
+    eventTimestamp: str(message.inserted_at) || null,
+    livestreamPostId: str(post.id) || null,
+    postType: str(post.type) || null,
+    conversationId: str(conversation.id) || null,
+    facebookPsid: str(from.id) || null,
+    pancakePageCustomerId: str(from.page_customer_id) || null,
+    facebookName: str(from.name) || null,
+  };
+}
+
+/**
+ * Store one Live comment idempotently via the service-role RPC. `stored` is true for a
+ * NEW row, false when it was a duplicate retry. Does NO slow Pancake API call — just the
+ * single fast insert — so the route acknowledges with 200 well within Pancake's window.
+ */
+export async function storePancakeLiveComment(
+  c: PancakeLiveComment,
+  raw: unknown,
+): Promise<{ ok: true; stored: boolean } | { ok: false; error: string }> {
+  const admin = createAdminClient();
+  const { data, error } = (await admin.rpc('webhook_store_pancake_live_comment', {
+    p_page_id: c.pageId,
+    p_comment_id: c.commentId,
+    p_conversation_id: c.conversationId,
+    p_livestream_post_id: c.livestreamPostId,
+    p_post_type: c.postType,
+    p_comment_text: c.commentText,
+    p_event_timestamp: c.eventTimestamp,
+    p_facebook_psid: c.facebookPsid,
+    p_pancake_page_customer_id: c.pancakePageCustomerId,
+    p_facebook_name: c.facebookName,
+    p_raw: raw ?? null,
+  })) as { data: unknown; error: { message: string } | null };
+  if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  return { ok: true, stored: data === true };
+}
+
+/** Mask an id for logs — reveal only the last 4 chars, never the whole value. */
+function maskId(v: string | null): string {
+  if (!v) return '—';
+  return v.length <= 4 ? '••••' : `••••${v.slice(-4)}`;
+}
+
+/**
+ * Sanitized diagnostic line for the server logs. NEVER logs the webhook secret, any
+ * access token, or the raw comment text — only masked ids + the person's name + outcome.
+ */
+export function logLiveCommentReceipt(args: {
+  isLive: boolean;
+  live?: PancakeLiveComment | null;
+  stored?: boolean;
+  http: number;
+}): void {
+  if (!args.isLive || !args.live) {
+    console.log(
+      `Pancake webhook received\nEvent: messaging\nLive Comment: no\nHTTP: ${args.http}`,
+    );
+    return;
+  }
+  const l = args.live;
+  console.log(
+    [
+      'Pancake webhook received',
+      'Event: messaging',
+      'Live Comment: yes',
+      `Page: ${maskId(l.pageId)}`,
+      `Comment ID: ${maskId(l.commentId)}`,
+      `Conversation ID: ${maskId(l.conversationId)}`,
+      `Customer ID: ${maskId(l.pancakePageCustomerId)}`,
+      `Facebook Name: ${l.facebookName ?? '—'}`,
+      `Stored: ${args.stored ? 'yes' : 'no'}`,
+      `HTTP: ${args.http}`,
+    ].join('\n'),
+  );
+}
