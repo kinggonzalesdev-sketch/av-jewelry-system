@@ -616,7 +616,9 @@ function ForInvoiceView({
           ? `Send attempted, but Pancake could not deliver it${
               res.pancake?.error ? `: ${res.pancake.error}` : ''
             }. Copy the message and send it manually, or retry.`
-          : 'Recorded, but NOT delivered — no Pancake chat is linked to this customer. Link a Pancake chat above to actually send it to their chat.',
+          : res.pancake?.reason === 'test_session'
+            ? 'Test session active — the invoice was NOT sent to the customer.'
+            : 'Not delivered — no Facebook conversation is linked to this order.',
     );
     onDone(); // refresh the list (revalidated); the order stays in For Invoice.
   };

@@ -220,6 +220,38 @@ describe('OrderDetailsModal', () => {
     expect(sendInvoiceMessageAction).toHaveBeenCalledWith('o1', null);
   });
 
+  it('Send Invoice shows a clear error (and sends nothing) when no Facebook conversation is linked', async () => {
+    const { sendInvoiceMessageAction } = await import('@/lib/orders/actions');
+    (sendInvoiceMessageAction as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: false,
+      error:
+        'Cannot send invoice — no Facebook conversation is linked to this order. Link the customer’s Facebook chat, then try again.',
+    });
+    loadOrderDetailAction.mockResolvedValue({
+      ok: true,
+      detail: detail({
+        status: 'invoiced',
+        permissions: {
+          isOwner: true,
+          canRecordPayment: false,
+          canPrepareFulfillment: false,
+          canReleaseFulfillment: false,
+          canPrepareInvoice: true,
+          canRequestApproval: false,
+        },
+      }),
+    });
+    render(<OrderDetailsModal orderId="o1" onClose={vi.fn()} />);
+
+    fireEvent.click(await screen.findByTestId('order-send-invoice'));
+    fireEvent.click(screen.getByTestId('order-send-invoice-confirm'));
+    // The exact "no conversation linked" message is surfaced — never a silent fail,
+    // never a name-matched fallback send.
+    expect(
+      await screen.findByText(/no Facebook conversation is linked to this order/i),
+    ).toBeInTheDocument();
+  });
+
   it('Open FB Chat reports when no chat link is on file (and never sends anything)', async () => {
     const { sendInvoiceMessageAction } = await import('@/lib/orders/actions');
     (sendInvoiceMessageAction as ReturnType<typeof vi.fn>).mockClear();

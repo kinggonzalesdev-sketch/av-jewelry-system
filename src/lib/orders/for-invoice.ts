@@ -24,6 +24,8 @@ export type PancakeDelivery = {
   error: string | null;
   /** Raw Pancake response snippet (token stripped) for diagnosing a rejection. */
   debug?: string | null;
+  /** Why a send was NOT attempted, so the caller can message it precisely. */
+  reason?: 'no_conversation' | 'test_session' | null;
 };
 
 /**
@@ -77,7 +79,14 @@ async function deliverOrderMessageViaPancake(
   supabase: Awaited<ReturnType<typeof createClient>>,
   officialOrderId: string,
   message: string,
+  opts?: { attachOrderPhoto?: boolean; resolveConversationByName?: boolean },
 ): Promise<PancakeDelivery> {
+  // Send Invoice passes BOTH false: it sends TEXT ONLY and uses ONLY the order's/customer's
+  // stored conversation_id (never guesses a customer by Facebook name). Reminders / advance
+  // keep the historical behaviour (photo attach + live name fallback) by defaulting to true,
+  // so this change is scoped to the invoice send and touches no other flow.
+  const attachOrderPhoto = opts?.attachOrderPhoto ?? true;
+  const resolveByName = opts?.resolveConversationByName ?? true;
   try {
     // In a Test Session, NEVER send a real message to a real customer — the message
     // is still recorded (is_test), it is just not delivered through Pancake.
@@ -86,7 +95,7 @@ async function deliverOrderMessageViaPancake(
       .select('active')
       .maybeSingle();
     if ((tm as { active?: boolean } | null)?.active === true) {
-      return { attempted: false, delivered: false, error: null };
+      return { attempted: false, delivered: false, error: null, reason: 'test_session' };
     }
 
     const response = (await supabase
@@ -115,12 +124,13 @@ async function deliverOrderMessageViaPancake(
       : conversationBelongsToPage(custConv, activePage)
         ? custConv
         : '';
-    // No STORED on-page link? Resolve the chat LIVE the same way the capture flow does —
-    // the webhook fast-match (every recent commenter/messager the webhook captured) plus a
-    // bounded live lookup — so an invoice DELIVERS to anyone Pancake knows, with no manual
-    // "copy conversation ID". A shared/ambiguous name resolves to nothing (never a wrong
-    // send). This is what makes an invoice "just send" once the webhook is flowing.
-    if (!conversationId) {
+    // No STORED on-page link? For NON-invoice sends (reminders / advance) resolve the chat
+    // LIVE the way the capture flow does — the webhook fast-match plus a bounded live lookup
+    // — so they still reach anyone Pancake knows. Send Invoice passes resolveByName=false:
+    // it must use ONLY the order's/customer's stored conversation_id and NEVER guess a
+    // customer by Facebook name (Owner requirement), so a missing link is reported, not
+    // resolved. A shared/ambiguous name resolves to nothing (never a wrong send).
+    if (!conversationId && resolveByName) {
       const custName = (one?.display_name ?? '').trim();
       if (custName) {
         const resolved = await resolveConversationForName(supabase, custName, {
@@ -136,12 +146,16 @@ async function deliverOrderMessageViaPancake(
       }
     }
     if (!conversationId) {
-      return { attempted: false, delivered: false, error: null };
+      return { attempted: false, delivered: false, error: null, reason: 'no_conversation' };
     }
-    // Attach the item screenshot/photo when the order has one (best-effort).
-    const attachmentUrl = await findOrderImageUrl(supabase, officialOrderId).catch(
-      () => null,
-    );
+    // Attach the item screenshot/photo ONLY for non-invoice sends that opt in. Send Invoice
+    // is TEXT ONLY (attachOrderPhoto=false): the mined screenshot belongs to the Capture
+    // auto-send workflow, not the invoice. sendPancakeConversationMessage sends the photo
+    // ALONE when an attachment is present (it drops the text) — which is exactly why an
+    // attachment here made Send Invoice deliver the screenshot instead of the invoice text.
+    const attachmentUrl = attachOrderPhoto
+      ? await findOrderImageUrl(supabase, officialOrderId).catch(() => null)
+      : null;
     const res = await sendPancakeConversationMessage({
       conversationId,
       message,
@@ -335,11 +349,12 @@ export async function resendOrderInvoice(orderId: string): Promise<ForInvoiceRes
   if (!rendered.ok) return { ok: false, error: rendered.error };
 
   const supabase = await createClient();
-  const pancake = await deliverOrderMessageViaPancake(
-    supabase,
-    orderId,
-    rendered.message,
-  );
+  // Same rules as Send Invoice: TEXT ONLY, stored conversation_id only (no name guess, no
+  // capture screenshot).
+  const pancake = await deliverOrderMessageViaPancake(supabase, orderId, rendered.message, {
+    attachOrderPhoto: false,
+    resolveConversationByName: false,
+  });
   if (!pancake.attempted) {
     return {
       ok: false,
@@ -379,7 +394,23 @@ export async function sendOrderInvoice(
   }
 
   const supabase = await createClient();
-  const pancake = await deliverOrderMessageViaPancake(supabase, orderId, body);
+  // TEXT ONLY, and NEVER re-match the customer by Facebook name: Send Invoice delivers the
+  // resolved saved Invoice Message to the order's OWN stored conversation_id (else the linked
+  // customer's) — no screenshot, no name guessing.
+  const pancake = await deliverOrderMessageViaPancake(supabase, orderId, body, {
+    attachOrderPhoto: false,
+    resolveConversationByName: false,
+  });
+
+  // No linked conversation → send NOTHING and say so plainly (Owner requirement); never fall
+  // back to a guessed customer or to the capture screenshot.
+  if (!pancake.attempted && pancake.reason === 'no_conversation') {
+    return {
+      ok: false,
+      error:
+        'Cannot send invoice — no Facebook conversation is linked to this order. Link the customer’s Facebook chat, then try again.',
+    };
+  }
 
   await recordAuditEvent({
     action: 'order.invoice_sent',
@@ -390,6 +421,7 @@ export async function sendOrderInvoice(
       attempted: pancake.attempted,
       delivered: pancake.delivered,
       advanced: false,
+      text_only: true,
     },
   });
   return { ok: true, pancake };
