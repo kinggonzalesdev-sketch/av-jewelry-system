@@ -1,0 +1,39 @@
+{
+  "savepoint": "savepoint_20260814",
+  "git_tag": "savepoint-2026-08-14",
+  "git_commit": "4e1a27e",
+  "known_good_prod_deployment": "av-jewelry-kyo0drqe3 (dpl_FhSMT2nenegJAHg9NZi3havYemkD)",
+  "taken_utc": "2026-08-14T15:40:00Z",
+  "verified_business_table_counts": {
+    "official_orders": 653,
+    "layaway_ledger": 818,
+    "layaway_ledger_payments": 995,
+    "layaway_ledger_installments": 2020,
+    "layaway_ledger_items": 116,
+    "layaway_interest_charges": 432,
+    "layaway_code_pool": 817,
+    "customers": 683,
+    "inventory_items": 2923,
+    "payments": 245,
+    "payment_verifications": 245,
+    "claims": 937,
+    "official_order_claims": 929,
+    "scrap_sales": 125,
+    "staff_permission_grants": 415,
+    "deletion_requests": 216,
+    "attendance_records": 27,
+    "capture_records": 11
+  },
+  "logic_captured": {
+    "functions_rpcs": 243,
+    "rls_policies": 163,
+    "indexes": 210,
+    "views": 0
+  },
+  "excluded_append_only_logs": [
+    "pancake_webhook_events (17182)",
+    "audit_events (8906)",
+    "capture_device_heartbeats (4)"
+  ],
+  "note": "All critical business tables verified: live count == snapshot count. See README.md for restore instructions."
+}
