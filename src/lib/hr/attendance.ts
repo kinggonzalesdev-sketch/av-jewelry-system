@@ -435,6 +435,54 @@ export async function listAttendanceSelfies(): Promise<AttendanceSelfies> {
 }
 
 /**
+ * Signed selfie URLs for a BOUNDED set of attendance records — used to LAZY-load only the
+ * one day a reviewer actually opens, instead of minting a signed URL for EVERY selfie ever
+ * on page load (~2 Storage round-trips per record over ALL history — the Review Attendance
+ * page's main delay). RLS still scopes what the caller may read. Empty input → {}.
+ */
+export async function listAttendanceSelfiesFor(
+  recordIds: string[],
+): Promise<AttendanceSelfies> {
+  const ids = [...new Set(recordIds.filter((id) => Boolean(id?.trim())))];
+  if (ids.length === 0) return {};
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('attachments')
+    .select('related_entity_id, file_name, storage_path')
+    .eq('related_entity_type', 'attendance_record')
+    .in('related_entity_id', ids)
+    .order('uploaded_at', { ascending: true });
+
+  if (error || !data) return {};
+
+  const rows = data as Array<{
+    related_entity_id: string;
+    file_name: string | null;
+    storage_path: string;
+  }>;
+
+  const out: AttendanceSelfies = {};
+  await Promise.all(
+    rows.map(async (r) => {
+      const signed = await supabase.storage
+        .from(ATTACHMENTS_BUCKET)
+        .createSignedUrl(r.storage_path, 300, {
+          download: r.file_name ?? 'attendance-selfie.jpg',
+        })
+        .then((res) => res.data?.signedUrl ?? null)
+        .catch(() => null);
+
+      const entry = out[r.related_entity_id] ?? { inUrl: null, outUrl: null };
+      if ((r.file_name ?? '').includes('clock-out')) entry.outUrl = signed;
+      else entry.inUrl = signed;
+      out[r.related_entity_id] = entry;
+    }),
+  );
+
+  return out;
+}
+
+/**
  * Attendance rows the caller may see (RLS: own rows, or all for the Owner).
  * Newest first.
  */

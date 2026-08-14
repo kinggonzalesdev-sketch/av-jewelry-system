@@ -168,10 +168,14 @@ function OrderRow({
   order,
   onOpen,
   canManageOrders,
+  isOwner,
 }: {
   order: OrderListRow;
   onOpen: (order: OrderListRow) => void;
+  /** Owner OR admin: whether to SHOW the Edit/Delete buttons at all. */
   canManageOrders: boolean;
+  /** Owner = act directly; admin (non-owner) = the buttons submit for Owner approval. */
+  isOwner: boolean;
 }) {
   // The whole row opens the in-page Order Details drawer (no navigation). Keyboard
   // accessible: focusable with Enter/Space. The cells hold only text/badges (no
@@ -231,9 +235,9 @@ function OrderRow({
       </Td>
       <Td kind="actions">
         <span className="inline-flex items-center gap-2">
-          {/* View (everyone) opens the order detail drawer. Edit + Delete are
-              Super-Admin only: Edit corrects the customer name + total; Delete removes
-              the order. */}
+          {/* View (everyone) opens the order detail drawer. Edit + Delete show for the
+              Owner AND admins: the Owner acts directly; an admin submits the change/
+              deletion for Owner approval (nothing happens until the Owner approves). */}
           <button
             type="button"
             onClick={(e) => {
@@ -252,6 +256,7 @@ function OrderRow({
               currentTotal={
                 order.paymentStatus === 'unavailable' ? '' : order.totalAmountPayable
               }
+              isOwner={isOwner}
             />
           ) : null}
           {canManageOrders ? (
@@ -262,6 +267,7 @@ function OrderRow({
               }
               customerName={order.customerDisplayName}
               orderStatus={humanize(order.status)}
+              isOwner={isOwner}
             />
           ) : null}
         </span>
@@ -420,6 +426,7 @@ export function OrdersView({
   keepLayaways = [],
   newOrderAction,
   canManageOrders = false,
+  isOwner = false,
   pendingCaptureCount = 0,
   title,
 }: {
@@ -437,9 +444,11 @@ export function OrdersView({
   openForInvoice?: boolean;
   /** Layaway accounts marked KEEP — surfaced under the Keep card (Owner request). */
   keepLayaways?: KeepLayawayRow[];
-  /** Super Admin (Owner): show a Delete button in the Actions column for cancelled
-   *  orders. The DB re-checks Owner + cancelled-status, so this only gates the UI. */
+  /** Show the Edit/Delete buttons in the Actions column (Owner OR admin). The DB
+   *  re-checks authority + routes an admin's action through approval. */
   canManageOrders?: boolean;
+  /** Owner = the Edit/Delete buttons act directly; admin = they submit for approval. */
+  isOwner?: boolean;
 }) {
   // Hooks must run unconditionally; the error/empty branches come after. Memoized
   // so the derived useMemo hooks below keep a stable dependency identity.
@@ -463,8 +472,9 @@ export function OrdersView({
   // nowhere, so search/filters/scroll are preserved automatically.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
-  const [orderDate, setOrderDate] = useState('');
-  const [shipDate, setShipDate] = useState('');
+  // Order-date RANGE (inclusive). Empty = open-ended on that side.
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   // Render pagination — only the current page of rows goes in the DOM (default 50).
   const [ordPage, setOrdPage] = useState(1);
   const [ordPageSize, setOrdPageSize] = useState(25);
@@ -494,8 +504,10 @@ export function OrdersView({
     const q = query.trim().toLowerCase();
     const matched = rows.filter((o) => {
       if (!matchesCard(o, card)) return false;
-      if (orderDate && o.createdAt.slice(0, 10) !== orderDate) return false;
-      if (shipDate && (o.shipDate?.slice(0, 10) ?? '') !== shipDate) return false;
+      // Inclusive order-date range (ISO YYYY-MM-DD compares correctly as strings).
+      const day = o.createdAt.slice(0, 10);
+      if (dateFrom && day < dateFrom) return false;
+      if (dateTo && day > dateTo) return false;
       if (!q) return true;
       return [
         o.orderNumber,
@@ -510,13 +522,13 @@ export function OrdersView({
     // Latest activity first (Completed by completed_at); filters/search above are
     // untouched — only the display order is applied here.
     return sortOrdersForCard(matched, card);
-  }, [rows, card, query, orderDate, shipDate]);
+  }, [rows, card, query, dateFrom, dateTo]);
 
   // Reset to page 1 whenever the filters change, so results start at the top.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setOrdPage(1);
-  }, [card, query, orderDate, shipDate]);
+  }, [card, query, dateFrom, dateTo]);
 
   const ordPageCount = Math.max(1, Math.ceil(filtered.length / ordPageSize));
   const ordPageSafe = Math.min(ordPage, ordPageCount);
@@ -656,31 +668,37 @@ export function OrdersView({
               ))}
             </select>
 
-            {/* Approved date filters. Order Date filters on the order's created day,
-              Ship Date on the fulfillment dispatch day. */}
+            {/* Order-date RANGE (From–To, inclusive) on the order's created day. Set
+              From = To for a single day; leave one side blank for an open-ended range.
+              Replaces the old exact Order-date / Ship-date pair, which returned nothing
+              when the two were used as a range. */}
             <label className="flex items-center gap-1 text-xs text-muted-foreground">
-              <span className="sr-only">Order date</span>
+              <span className="sr-only">Orders from date</span>
               <span aria-hidden="true">🗓</span>
               <input
                 type="date"
-                value={orderDate}
-                onChange={(e) => setOrderDate(e.target.value)}
-                aria-label="Filter by order date"
-                data-testid="orders-filter-order-date"
-                title="Order date"
+                value={dateFrom}
+                max={dateTo || undefined}
+                onChange={(e) => setDateFrom(e.target.value)}
+                aria-label="Orders from date"
+                data-testid="orders-filter-date-from"
+                title="Orders from (order date)"
                 className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
               />
             </label>
+            <span className="text-xs text-muted-foreground" aria-hidden="true">
+              –
+            </span>
             <label className="flex items-center gap-1 text-xs text-muted-foreground">
-              <span className="sr-only">Ship date</span>
-              <span aria-hidden="true">🚚</span>
+              <span className="sr-only">Orders to date</span>
               <input
                 type="date"
-                value={shipDate}
-                onChange={(e) => setShipDate(e.target.value)}
-                aria-label="Filter by ship date"
-                data-testid="orders-filter-ship-date"
-                title="Ship date"
+                value={dateTo}
+                min={dateFrom || undefined}
+                onChange={(e) => setDateTo(e.target.value)}
+                aria-label="Orders to date"
+                data-testid="orders-filter-date-to"
+                title="Orders to (order date)"
                 className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
               />
             </label>
@@ -730,6 +748,7 @@ export function OrdersView({
                   order={order}
                   onOpen={(o) => setSelectedId(o.officialOrderId)}
                   canManageOrders={canManageOrders}
+                  isOwner={isOwner}
                 />
               ))}
             </tbody>

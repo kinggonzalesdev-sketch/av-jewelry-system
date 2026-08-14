@@ -36,12 +36,13 @@ function row(over: Partial<InventoryRow>): InventoryRow {
   };
 }
 
+// The Active page result now comes from the server (the `inventory_active_ids_page` RPC),
+// which returns ONLY sellable stock — completed / released / committed items are excluded
+// THERE (verified against real data), not filtered again in the browser. So the active
+// page fixture contains only the sellable item; the rest live in `completed` (below) and
+// surface under the Completed Items tab.
 const rows: InventoryRow[] = [
   row({ itemCode: 'SBA-N-1111', availabilityStatus: 'available' }),
-  row({ itemCode: 'SBA-R-2222', availabilityStatus: 'released' }),
-  row({ itemCode: 'SBA-E-3333', availabilityStatus: 'completed' }),
-  // Consumed by a New Order — reserved to it, so no longer sellable stock.
-  row({ itemCode: 'SBA-C-4444', availabilityStatus: 'committed' }),
 ];
 
 function completedRow(over: Partial<CompletedInventoryRow>): CompletedInventoryRow {
@@ -91,7 +92,7 @@ const completed: CompletedInventoryRow[] = [
 function renderWorkspace() {
   return render(
     <InventoryWorkspace
-      inventory={{ ok: true, rows }}
+      initialPage={{ ok: true, rows, total: rows.length, groupCounts: {}, statusOptions: [] }}
       completed={completed}
       canMonitor={false}
     />,
@@ -141,7 +142,7 @@ describe('Inventory — Active vs Completed', () => {
   it('shows a Super-Admin Delete that removes the order info + returns the item', () => {
     render(
       <InventoryWorkspace
-        inventory={{ ok: true, rows }}
+        initialPage={{ ok: true, rows, total: rows.length, groupCounts: {}, statusOptions: [] }}
         completed={completed}
         canMonitor={false}
         canReturnCompleted

@@ -122,19 +122,31 @@ export function parsePancakeLiveComment(body: unknown): PancakeLiveComment | nul
   const root = obj(body) ?? {};
   const data = obj(root.data) ?? {};
   const post = obj(data.post) ?? {};
-  if (str(post.type) !== 'livestream') return null;
-
   const message = obj(data.message) ?? {};
   const from = obj(message.from) ?? {};
   const conversation = obj(data.conversation) ?? {};
   const page = obj(data.page) ?? {};
 
-  // page_id may arrive at the root, on data, on the conversation, or on data.page.
+  // page_id may arrive at the root, on data, on the message, on the conversation, or on
+  // data.page.
   const pageId =
-    str(root.page_id) || str(data.page_id) || str(conversation.page_id) || str(page.id);
+    str(root.page_id) ||
+    str(data.page_id) ||
+    str(message.page_id) ||
+    str(conversation.page_id) ||
+    str(page.id);
   const commentId = str(message.id);
-  // Both are required — without them there is no idempotency key, so we cannot store.
-  if (!pageId || !commentId) return null;
+  const psid = str(from.id);
+  const name = str(from.name);
+
+  // Capture ANY person-event that carries a sender we can message: a page_id, a stable
+  // message id (the idempotency key), and a sender PSID + name that is NOT the page
+  // itself. This covers Facebook LIVE comments whether the post is typed 'livestream' OR
+  // 'video' (a Reels/video live — the shape our real live actually sends) AND inbox
+  // messages; each yields a messageable {page_id}_{psid} identity for the pinned-name
+  // fast-match. The OLD code required post.type === 'livestream', which SILENTLY DROPPED
+  // every comment on a video live — so nothing was ever stored and no name could match.
+  if (!pageId || !commentId || !psid || !name || psid === pageId) return null;
 
   return {
     pageId,
@@ -143,10 +155,10 @@ export function parsePancakeLiveComment(body: unknown): PancakeLiveComment | nul
     eventTimestamp: str(message.inserted_at) || null,
     livestreamPostId: str(post.id) || null,
     postType: str(post.type) || null,
-    conversationId: str(conversation.id) || null,
-    facebookPsid: str(from.id) || null,
+    conversationId: str(conversation.id) || str(message.conversation_id) || null,
+    facebookPsid: psid,
     pancakePageCustomerId: str(from.page_customer_id) || null,
-    facebookName: str(from.name) || null,
+    facebookName: name,
   };
 }
 

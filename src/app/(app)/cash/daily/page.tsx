@@ -1,9 +1,12 @@
 import type { Metadata } from 'next';
 
-import { getGrantedPermissions, requirePermission } from '@/lib/authz/guard';
+import {
+  getGrantedPermissions,
+  requireActiveStaff,
+  requirePermission,
+} from '@/lib/authz/guard';
 import { getAdminNameContext } from '@/lib/authz/admin-name';
 import { getDailyCashSummary, getWalkIns } from '@/lib/cash/service';
-import { listWalkInItems } from '@/lib/orders/service';
 import { DailyCashView } from '@/components/cash/daily-cash-view';
 
 export const metadata: Metadata = {};
@@ -32,14 +35,15 @@ export default async function DailyCashPage({
     : todayInManila();
 
   // Summary + the DEFAULT tab (Sales Walk-ins) render server-side; other tabs lazy-load.
-  // The walk-in item list + admin id back the in-section "Add New Sale" popup so a
-  // walk-in can be recorded WITHOUT leaving Daily Cash (owner request).
-  const [summary, firstTab, walkInItems, permissions, admins] = await Promise.all([
+  // The walk-in item picker (~1,900 rows via listInventory) is NO LONGER loaded here — that
+  // eager read was the page's main delay even though "Add New Sale" was closed. The modal
+  // fetches it on demand via loadWalkInItemsAction the first time it opens.
+  const [summary, firstTab, permissions, admins, staff] = await Promise.all([
     getDailyCashSummary(date),
     getWalkIns(date, 1, 8),
-    listWalkInItems(),
     getGrantedPermissions(),
     getAdminNameContext(),
+    requireActiveStaff(),
   ]);
 
   return (
@@ -47,9 +51,9 @@ export default async function DailyCashPage({
       date={date}
       summary={summary}
       initialWalkIns={firstTab}
-      walkInItems={walkInItems}
-      adminId={admins.selfId}
+      admins={admins}
       canAddWalkIn={permissions.has('claim_capture')}
+      isOwner={staff.roleKey === 'owner'}
     />
   );
 }

@@ -7,6 +7,7 @@ import {
   conversationBelongsToPage,
   findRecentPancakeConversationByName,
   getActivePancakePageId,
+  resolveConversationFromWebhook,
 } from '@/lib/integrations/pancake';
 
 /**
@@ -157,6 +158,16 @@ export async function resolveCaptureIdentity(
     if (onPage(row.pancake_conversation_id)) {
       return linkedFromRow(row, row.pancake_conversation_id as string, 1);
     }
+    // FAST PATH FIRST: a recent webhook (Live comment / DM) gives a messageable chat
+    // straight from the stored PSID — a single indexed DB lookup, no slow rate-limited
+    // conversations crawl. A saved customer with no stored chat (very common — the link
+    // is filled lazily) otherwise fell straight to the 8-page crawl below, which is why
+    // "Resolving Facebook customer…" hung for seconds even for people the webhook knew.
+    const whk = await resolveConversationFromWebhook(supabase, name, activePage);
+    if (whk.conversationId) return linkedFromRow(row, whk.conversationId, 1);
+    if (whk.matchCount > 1) {
+      return { ...NO_MATCH, linkStatus: 'needs_confirmation', matchCount: whk.matchCount };
+    }
     const live = await findRecentPancakeConversationByName(name, {
       sinceDays: 7,
       maxPages: 8,
@@ -201,6 +212,29 @@ export async function resolveCaptureIdentity(
   if (fl.length > 1)
     return { ...NO_MATCH, linkStatus: 'needs_confirmation', matchCount: fl.length };
   if (fl.length === 1) return resolveKnownCustomer(fl[0]!);
+
+  // Tier 2.5 — WEBHOOK FAST-MATCH: a recent Live commenter whose comment the Pancake
+  // webhook captured (it stores page_id + the person's PSID + name). Builds the
+  // messageable {page_id}_{psid} chat straight from that stored identity — no slow,
+  // rate-limited conversations API — so a pinned commenter who is NOT yet a saved
+  // customer still resolves to a Facebook match and can be sent to. This is the SAME
+  // source the manual "Send to Messenger" resolver uses; wiring it here keeps the
+  // strip's match, the Android auto-send, and Send consistent. Unique name only (a
+  // shared name never guesses); a blank/wrong-page id falls through to the live lookup.
+  const wh = await resolveConversationFromWebhook(supabase, name, activePage);
+  if (wh.conversationId) {
+    return {
+      linkStatus: 'linked',
+      customerId: null,
+      customerName: name,
+      conversationId: wh.conversationId,
+      conversationAvailable: true,
+      fbUrl: null,
+      matchCount: 1,
+    };
+  }
+  if (wh.matchCount > 1)
+    return { ...NO_MATCH, linkStatus: 'needs_confirmation', matchCount: wh.matchCount };
 
   // Tier 3 — LIVE lookup for a not-yet-saved customer (single unambiguous chat only).
   const live = await findRecentPancakeConversationByName(name, {

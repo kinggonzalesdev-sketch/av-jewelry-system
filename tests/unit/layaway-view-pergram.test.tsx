@@ -20,6 +20,7 @@ function detail(over: Partial<LayawayLedgerDetail> = {}): LayawayLedgerDetail {
     id: 'L1',
     code: 'A5',
     uniqueCode: 'SBA-N-2683',
+    sourceKind: 'manual',
     accountNo: 'LAY-2026-000101',
     customerName: 'Abby Santos',
     status: 'active',

@@ -97,8 +97,12 @@ export const ACCESS_MODULES: AccessModule[] = [
     children: [],
   },
   {
-    title: 'Reports',
-    parent: { key: 'view_reports', label: 'Reports' },
+    // One key (view_reports) gates BOTH the Daily Cash Summary (/cash/daily) and
+    // Reports (/reports) — they share the nav "Cash & Reports" section too. Labelled to
+    // match, so granting this to a client visibly hands them the Daily Cash module, not
+    // just "Reports". No grant migration: the underlying key is unchanged.
+    title: 'Cash & Reports',
+    parent: { key: 'view_reports', label: 'Cash & Reports' },
     // The single export key covers data/report exports system-wide.
     children: [{ key: 'export_data_reports', label: 'Export Data' }],
   },

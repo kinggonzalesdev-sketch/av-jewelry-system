@@ -26,14 +26,30 @@ export const dynamic = 'force-dynamic';
 function checkSecret(
   request: Request,
 ): { ok: true } | { ok: false; status: number; error: string } {
-  const secret = process.env.PANCAKE_WEBHOOK_SECRET;
-  if (!secret || !secret.trim()) {
+  // ZERO-DOWNTIME ROTATION: accept EITHER the current secret OR a "next" secret, so the
+  // secret can be rotated without a window where Pancake's calls are rejected. To rotate:
+  //   1. set PANCAKE_WEBHOOK_SECRET_NEXT to the new value in Vercel + redeploy (both work),
+  //   2. change Pancake's webhook ?secret= to the new value (still accepted — no break),
+  //   3. confirm comments still flow, then promote NEXT → PANCAKE_WEBHOOK_SECRET, clear NEXT.
+  // The secret is NEVER logged; a blank provided secret is never accepted.
+  const secrets = [
+    process.env.PANCAKE_WEBHOOK_SECRET,
+    process.env.PANCAKE_WEBHOOK_SECRET_NEXT,
+  ]
+    .map((s) => (s ?? '').trim())
+    .filter((s) => s.length > 0);
+  if (secrets.length === 0) {
     return { ok: false, status: 503, error: 'PANCAKE_WEBHOOK_SECRET is not configured.' };
   }
   const url = new URL(request.url);
-  const provided =
-    request.headers.get('x-webhook-secret') ?? url.searchParams.get('secret') ?? '';
-  if (provided !== secret) return { ok: false, status: 401, error: 'Unauthorized.' };
+  const provided = (
+    request.headers.get('x-webhook-secret') ??
+    url.searchParams.get('secret') ??
+    ''
+  ).trim();
+  if (provided.length === 0 || !secrets.includes(provided)) {
+    return { ok: false, status: 401, error: 'Unauthorized.' };
+  }
   return { ok: true };
 }
 

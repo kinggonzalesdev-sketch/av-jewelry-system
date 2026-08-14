@@ -23,6 +23,14 @@ object PrintJobPoller {
     private const val TAG = "MineFlowPrintPoll"
     private const val POLL_MS = 2500L
 
+    // Keep the printer socket warm: an idle RFCOMM link drops when the printer sleeps /
+    // powers-saves / briefly goes out of range, which the operator sees as the printer
+    // "disconnecting" on its own. Between jobs we re-open it so it stays connected and the
+    // next sticker prints instantly. Throttled so a genuinely OFF printer is not hammered
+    // (each failed connect blocks a few seconds).
+    private const val KEEPALIVE_MS = 8000L
+    @Volatile private var lastKeepAlive = 0L
+
     @Volatile private var running = false
     private var worker: Thread? = null
 
@@ -54,9 +62,11 @@ object PrintJobPoller {
                 } catch (e: Exception) {
                     Log.w(TAG, "poll error: ${e.javaClass.simpleName}")
                 }
-                // Drain the queue fast on success; otherwise wait before the next poll
-                // so a failing printer never becomes a hot retry loop.
+                // Drain the queue fast on success; otherwise keep the printer connection
+                // warm (re-open it if it dropped) and wait before the next poll so a
+                // failing printer never becomes a hot retry loop.
                 if (!drainedOne) {
+                    keepPrinterWarm(app, store)
                     try { Thread.sleep(POLL_MS) } catch (_: InterruptedException) { break }
                 }
             }
@@ -67,6 +77,28 @@ object PrintJobPoller {
         running = false
         worker?.interrupt()
         worker = null
+    }
+
+    /**
+     * Re-open the printer socket if it has dropped, so the connection stays live between
+     * jobs instead of silently disconnecting when the printer idles or sleeps. Skipped
+     * while already connected, when no printer is selected, or when Bluetooth is off;
+     * throttled to KEEPALIVE_MS between attempts so a powered-off printer is not hammered.
+     * Runs on the poll thread, serialised with printing, so it never races a live job.
+     */
+    private fun keepPrinterWarm(context: Context, store: SecureStore) {
+        val address = store.printerAddress
+        if (address.isNullOrBlank()) return
+        if (BluetoothPrinterManager.isConnected(address)) return
+        val now = System.currentTimeMillis()
+        if (now - lastKeepAlive < KEEPALIVE_MS) return
+        lastKeepAlive = now
+        if (!BluetoothPrinterManager.isBluetoothOn(context)) return
+        try {
+            BluetoothPrinterManager.connect(context, address)
+        } catch (e: Exception) {
+            Log.w(TAG, "keep-warm reconnect failed: ${e.javaClass.simpleName}")
+        }
     }
 
     /** Print a claimed LIVE capture sticker (shared PC+phone queue). Returns true when

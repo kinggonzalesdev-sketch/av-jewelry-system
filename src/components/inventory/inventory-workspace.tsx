@@ -1,17 +1,20 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   createInventoryItemAction,
   deleteAllInventoryItemsAction,
+  loadCompletedInventoryAction,
+  loadInventoryActivePageAction,
+  loadInventoryForExportAction,
   returnCompletedItemAction,
   returnCompletedItemToInventoryAction,
 } from '@/lib/inventory/actions';
 import type { InventoryActionState } from '@/lib/inventory/action-state';
 import { EMPTY_INVENTORY_STATE } from '@/lib/inventory/action-state';
-import type { InventoryListResult } from '@/lib/inventory/service';
+import type { InventoryPageResult, InventoryRow } from '@/lib/inventory/service';
 import type { CompletedInventoryRow } from '@/lib/inventory/completed';
 import { parseInventoryCode } from '@/lib/inventory/code-parser';
 import { inventoryGroup } from '@/lib/inventory/group';
@@ -95,8 +98,8 @@ function todayISO(): string {
 }
 
 export function InventoryWorkspace({
-  inventory,
-  completed = [],
+  initialPage,
+  completed: completedProp = [],
   canMonitor,
   canCreate = false,
   canEdit = false,
@@ -106,7 +109,7 @@ export function InventoryWorkspace({
   canReturnCompleted = false,
   canImportExport = false,
 }: {
-  inventory: InventoryListResult;
+  initialPage: InventoryPageResult;
   completed?: CompletedInventoryRow[];
   canMonitor: boolean;
   /** Holds `post_live_item_entry` — shows the "New Entry" (Add Item) control. When
@@ -128,7 +131,29 @@ export function InventoryWorkspace({
   canImportExport?: boolean;
 }) {
   const router = useRouter();
+  // Bumped after a create/edit/delete so the client-fetched Active page RE-FETCHES. The
+  // list is loaded via a server action (below), so router.refresh() — which only re-runs
+  // the RSC — would otherwise leave a just-deleted row on screen until a full reload.
+  const [reloadToken, setReloadToken] = useState(0);
+  const reloadActive = useCallback(() => setReloadToken((t) => t + 1), []);
   const [tab, setTab] = useState<Tab>('Active Inventory');
+  // Completed Items is LAZY-LOADED (900+ rows with order/customer/fulfillment joins) — it is
+  // off the initial page load so Inventory opens fast; we fetch it the first time the tab is
+  // opened. Seeded from the prop (empty now), so a non-empty prop still counts as loaded.
+  const [completed, setCompleted] = useState<CompletedInventoryRow[]>(completedProp);
+  const [completedLoaded, setCompletedLoaded] = useState(completedProp.length > 0);
+  const [completedLoading, setCompletedLoading] = useState(false);
+  const openCompletedTab = () => {
+    setTab('Completed Items');
+    if (completedLoaded || completedLoading) return;
+    setCompletedLoading(true);
+    void loadCompletedInventoryAction()
+      .then((rows) => {
+        setCompleted(rows);
+        setCompletedLoaded(true);
+      })
+      .finally(() => setCompletedLoading(false));
+  };
   const [showNewEntry, setShowNewEntry] = useState(false);
   // Completed Items: search + completion-type filter (§12) + read-only detail (§5).
   const [compSearch, setCompSearch] = useState('');
@@ -158,61 +183,93 @@ export function InventoryWorkspace({
     if (createState.success && createState.success !== lastCreate.current) {
       lastCreate.current = createState.success;
       setShowNewEntry(false);
+      reloadActive();
     }
-  }, [createState.success]);
+  }, [createState.success, reloadActive]);
 
-  // --- Inventory search + status filter — client-side over the loaded rows.
+  // --- Active Inventory: search + status/group filter + pagination — SERVER-SIDE now.
+  // The current page's rows + total + group counts + status options come from ONE SQL RPC
+  // so the browser never loads all 2,000+ rows. The list SEEDS from the server-rendered
+  // page 1 (initialPage), then refetches on any search/filter/page change.
   const [invSearch, setInvSearch] = useState('');
   const [invStatus, setInvStatus] = useState('all');
   const [invGroup, setInvGroup] = useState('all');
-  // Render pagination — only the current page of rows is put in the DOM (thousands of
-  // rows would otherwise bloat memory + slow the browser). Filtering/search is
-  // unchanged; the page just windows the already-filtered list.
   const [invPage, setInvPage] = useState(1);
   const [invPageSize, setInvPageSize] = useState(25);
   const [compPage, setCompPage] = useState(1);
   const [compPageSize, setCompPageSize] = useState(25);
 
-  const invRows = useMemo(() => (inventory.ok ? inventory.rows : []), [inventory]);
-  // Group counts (§16): BN / SB / HK ITEM / Other over the ACTIVE items, so a new or
-  // edited item appears under the right group with an updated count on refresh.
-  const groupCounts = useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const r of invRows) {
-      if (!ACTIVE_INVENTORY_STATUSES.has(r.availabilityStatus)) continue;
-      const g = inventoryGroup(r.itemCode, r.itemName);
-      m[g] = (m[g] ?? 0) + 1;
-    }
-    return m;
-  }, [invRows]);
-  const groupOptions = useMemo(() => Object.keys(groupCounts).sort(), [groupCounts]);
-  // Active statuses only in the filter dropdown — completed/released live under
-  // the Completed Items tab, never offered as an "available" filter (§4).
-  const statusOptions = useMemo(
-    () =>
-      [
-        ...new Set(
-          invRows
-            .map((r) => r.availabilityStatus)
-            .filter((s) => ACTIVE_INVENTORY_STATUSES.has(s)),
-        ),
-      ].sort(),
-    [invRows],
+  type ActivePage = {
+    rows: InventoryRow[];
+    total: number;
+    groupCounts: Record<string, number>;
+    statusOptions: string[];
+  };
+  const [active, setActive] = useState<ActivePage>(
+    initialPage.ok
+      ? {
+          rows: initialPage.rows,
+          total: initialPage.total,
+          groupCounts: initialPage.groupCounts,
+          statusOptions: initialPage.statusOptions,
+        }
+      : { rows: [], total: 0, groupCounts: {}, statusOptions: [] },
   );
-  const filteredInventory = useMemo(() => {
-    const q = invSearch.trim().toLowerCase();
-    return invRows.filter((row) => {
-      // Active Inventory shows ONLY sellable stock. Anything consumed by a
-      // transaction lives under Completed Items instead (§4).
-      if (!ACTIVE_INVENTORY_STATUSES.has(row.availabilityStatus)) return false;
-      if (invStatus !== 'all' && row.availabilityStatus !== invStatus) return false;
-      if (invGroup !== 'all' && inventoryGroup(row.itemCode, row.itemName) !== invGroup) {
-        return false;
+  const [activeLoading, setActiveLoading] = useState(false);
+  const activeError = initialPage.ok ? null : initialPage.reason;
+
+  // Debounce the search box so typing doesn't fire a request per keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(invSearch.trim()), 300);
+    return () => clearTimeout(t);
+  }, [invSearch]);
+
+  // Refetch the page whenever the query changes. Skips the FIRST run while the state still
+  // matches the server-rendered page 1 (no wasted round-trip on load).
+  const firstFetch = useRef(true);
+  useEffect(() => {
+    if (firstFetch.current) {
+      firstFetch.current = false;
+      if (
+        debouncedSearch === '' &&
+        invStatus === 'all' &&
+        invGroup === 'all' &&
+        invPage === 1 &&
+        invPageSize === 25
+      ) {
+        return;
       }
-      if (!q) return true;
-      return `${row.itemCode} ${row.itemName ?? ''}`.toLowerCase().includes(q);
-    });
-  }, [invRows, invSearch, invStatus, invGroup]);
+    }
+    let alive = true;
+    setActiveLoading(true);
+    void loadInventoryActivePageAction({
+      search: debouncedSearch,
+      status: invStatus,
+      group: invGroup,
+      page: invPage,
+      size: invPageSize,
+    })
+      .then((res) => {
+        if (!alive || !res.ok) return;
+        setActive({
+          rows: res.rows,
+          total: res.total,
+          groupCounts: res.groupCounts,
+          statusOptions: res.statusOptions,
+        });
+      })
+      .finally(() => {
+        if (alive) setActiveLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [debouncedSearch, invStatus, invGroup, invPage, invPageSize, reloadToken]);
+
+  const groupCounts = active.groupCounts;
+  const groupOptions = useMemo(() => Object.keys(groupCounts).sort(), [groupCounts]);
+  const statusOptions = active.statusOptions;
 
   // Completed Items — historical sold/released inventory with order/customer
   // context (§5), searchable + filterable by completion type (§12).
@@ -233,12 +290,10 @@ export function InventoryWorkspace({
 
   // Window the filtered lists to the current page (clamped so a filter that shrinks the
   // list never strands the user past the last page).
-  const invPageCount = Math.max(1, Math.ceil(filteredInventory.length / invPageSize));
+  const invPageCount = Math.max(1, Math.ceil(active.total / invPageSize));
   const invPageSafe = Math.min(invPage, invPageCount);
-  const pagedInventory = filteredInventory.slice(
-    (invPageSafe - 1) * invPageSize,
-    invPageSafe * invPageSize,
-  );
+  // The server already returned exactly this page's rows (ordered by item_code).
+  const pagedInventory = active.rows;
   const compPageCount = Math.max(1, Math.ceil(filteredCompleted.length / compPageSize));
   const compPageSafe = Math.min(compPage, compPageCount);
   const pagedCompleted = filteredCompleted.slice(
@@ -279,7 +334,21 @@ export function InventoryWorkspace({
 
   // Export the CURRENTLY FILTERED inventory (respects search + filters) with the
   // parsed columns (§18/D). Never exports mock data — these are the real rows.
-  const exportInventory = () => {
+  const exportInventory = async () => {
+    const res = await loadInventoryForExportAction();
+    if (!res.ok) return;
+    const q = invSearch.trim().toLowerCase();
+    // Export = ALL filtered rows (not just the visible page): apply the SAME active +
+    // search + status + group filter the server uses, over the full list fetched on demand.
+    const filtered = res.rows.filter((row) => {
+      if (!ACTIVE_INVENTORY_STATUSES.has(row.availabilityStatus)) return false;
+      if (invStatus !== 'all' && row.availabilityStatus !== invStatus) return false;
+      if (invGroup !== 'all' && inventoryGroup(row.itemCode, row.itemName) !== invGroup) {
+        return false;
+      }
+      if (!q) return true;
+      return `${row.itemCode} ${row.itemName ?? ''}`.toLowerCase().includes(q);
+    });
     downloadCsv(
       `inventory-${new Date().toISOString().slice(0, 10)}`,
       [
@@ -302,7 +371,7 @@ export function InventoryWorkspace({
         { header: 'Custody Holder', value: (i) => i.custodyHolder ?? '' },
         { header: 'Storage Location', value: (i) => i.storageLocation ?? '' },
       ],
-      filteredInventory,
+      filtered,
     );
   };
 
@@ -336,12 +405,12 @@ export function InventoryWorkspace({
           </Button>
         ) : null}
         {canImportExport ? <InventoryImportButton /> : null}
-        {canImportExport && inventory.ok && inventory.rows.length > 0 ? (
+        {canImportExport && !activeError && active.total > 0 ? (
           <Button
             type="button"
             size="sm"
             variant="outline"
-            onClick={exportInventory}
+            onClick={() => void exportInventory()}
             data-testid="inventory-export"
           >
             ⭳ Export CSV
@@ -354,14 +423,14 @@ export function InventoryWorkspace({
           aria-selected={tab === 'Completed Items'}
           size="sm"
           variant={tab === 'Completed Items' ? 'default' : 'outline'}
-          onClick={() => setTab('Completed Items')}
+          onClick={openCompletedTab}
         >
           Completed Items
         </Button>
 
-        {canDeleteAll && inventory.ok && inventory.rows.length > 0 ? (
+        {canDeleteAll && !activeError && active.total > 0 ? (
           <span className="ml-auto">
-            <DeleteAllInventoryButton count={inventory.rows.length} />
+            <DeleteAllInventoryButton count={active.total} />
           </span>
         ) : null}
       </div>
@@ -440,9 +509,9 @@ export function InventoryWorkspace({
       </Modal>
 
       {tab === 'Active Inventory' ? (
-        !inventory.ok ? (
+        activeError ? (
           // A FAILED read, not an empty result — say so, never a false "no items".
-          <ReadError title="Inventory could not be loaded" detail={inventory.reason} />
+          <ReadError title="Inventory could not be loaded" detail={activeError} />
         ) : (
           <div className="space-y-3">
             {/* Spreadsheet-style search + filters over the loaded items. */}
@@ -493,7 +562,9 @@ export function InventoryWorkspace({
                 ))}
               </Select>
               <span className="text-xs text-muted-foreground">
-                {filteredInventory.length} of {inventory.rows.length}
+                {activeLoading
+                  ? 'Loading…'
+                  : `${active.total} item${active.total === 1 ? '' : 's'}`}
               </span>
             </div>
 
@@ -522,13 +593,15 @@ export function InventoryWorkspace({
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {filteredInventory.length === 0 ? (
+                  {active.total === 0 ? (
                     <tr>
                       <td
                         colSpan={6}
                         className="px-3 py-10 text-center text-muted-foreground"
                       >
-                        {inventory.rows.length === 0
+                        {invSearch.trim() === '' &&
+                        invStatus === 'all' &&
+                        invGroup === 'all'
                           ? 'No inventory items.'
                           : 'No items match these filters.'}
                       </td>
@@ -567,6 +640,7 @@ export function InventoryWorkspace({
                             canEdit={canEdit}
                             canDelete={canDelete}
                             canForceDelete={canForceDelete}
+                            onMutated={reloadActive}
                           />
                         </td>
                       </tr>
@@ -575,11 +649,11 @@ export function InventoryWorkspace({
                 </tbody>
               </table>
             </div>
-            {filteredInventory.length > invPageSize ? (
+            {active.total > invPageSize ? (
               <Pagination
                 page={invPageSafe}
                 pageCount={invPageCount}
-                total={filteredInventory.length}
+                total={active.total}
                 pageSize={invPageSize}
                 onPageChange={setInvPage}
                 onPageSizeChange={(n) => {
@@ -625,8 +699,10 @@ export function InventoryWorkspace({
                 </option>
               ))}
             </Select>
-            <span className="text-xs text-muted-foreground">
-              {filteredCompleted.length} of {completed.length}
+            <span className="text-xs text-muted-foreground" data-testid="completed-count">
+              {completedLoading
+                ? 'Loading…'
+                : `${filteredCompleted.length} of ${completed.length}`}
             </span>
             <Button type="button" size="sm" variant="outline" onClick={exportCompleted}>
               ⭳ Export CSV
@@ -663,9 +739,11 @@ export function InventoryWorkspace({
                       colSpan={11}
                       className="px-4 py-10 text-center text-muted-foreground"
                     >
-                      {completed.length === 0
-                        ? 'No completed items yet.'
-                        : 'No items match these filters.'}
+                      {completedLoading
+                        ? 'Loading completed items…'
+                        : completed.length === 0
+                          ? 'No completed items yet.'
+                          : 'No items match these filters.'}
                     </td>
                   </tr>
                 ) : (

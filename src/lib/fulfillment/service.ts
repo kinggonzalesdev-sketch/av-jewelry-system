@@ -42,6 +42,8 @@ export const OWNER_APPROVAL_KINDS = [
   'scrap_sale_delete',
   'attendance_delete',
   'layaway_ledger_delete',
+  'order_details_edit',
+  'official_order_delete',
 ] as const;
 
 export type OwnerApprovalKind = (typeof OWNER_APPROVAL_KINDS)[number];
@@ -492,6 +494,7 @@ export async function requestOwnerApproval(
   entityType: string,
   entityId: string,
   reason: string,
+  payload?: Record<string, unknown> | null,
 ): Promise<{ ok: true; requestId: string } | { ok: false; error: string }> {
   let staff;
   try {
@@ -524,6 +527,7 @@ export async function requestOwnerApproval(
       entity_type: entityType,
       entity_id: entityId,
       reason: trimmed,
+      payload: payload ?? null,
       requested_by: staff.staffProfileId,
     })
     .select('id')
@@ -645,7 +649,7 @@ export async function executeOwnerApproval(
   // Re-read the stored request. The screen's view of it is not evidence.
   const { data: request } = await supabase
     .from('owner_approval_requests')
-    .select('id, status, action_kind, entity_id, executed_at')
+    .select('id, status, action_kind, entity_id, payload, executed_at')
     .eq('id', requestId)
     .maybeSingle();
 
@@ -702,6 +706,57 @@ export async function executeOwnerApproval(
         p_id: eid,
       }));
       break;
+    // Order edits (2026-08-13): entity_id = the order; payload carries the params. Each
+    // replays the SAME proven function the Owner-direct path uses, which re-validates the
+    // preconditions — so an approval granted earlier can still refuse if state has changed.
+    case 'order_add_item': {
+      const pl = (request.payload ?? {}) as {
+        item_id?: string;
+        price?: string | number;
+        qty?: number;
+      };
+      ({ error: delError } = await supabase.rpc('add_order_item', {
+        p_order_id: eid,
+        p_item_id: pl.item_id,
+        p_price: pl.price == null ? '0' : String(pl.price),
+        p_qty: pl.qty ?? 1,
+      }));
+      break;
+    }
+    case 'order_remove_item': {
+      const pl = (request.payload ?? {}) as { claim_id?: string };
+      ({ error: delError } = await supabase.rpc('remove_order_item', {
+        p_order_id: eid,
+        p_claim_id: pl.claim_id,
+      }));
+      break;
+    }
+    case 'order_split_item': {
+      const pl = (request.payload ?? {}) as { claim_id?: string };
+      ({ error: delError } = await supabase.rpc('split_order_item', {
+        p_order_id: eid,
+        p_claim_id: pl.claim_id,
+      }));
+      break;
+    }
+    // Order-level admin actions (2026-08-13): entity_id = the order. Delete needs no
+    // payload; the details edit carries its new name/total. Both replay the Owner-gated
+    // admin_edit_order / delete_order — executed here BY the Owner, so their gate passes.
+    case 'official_order_delete':
+      ({ error: delError } = await supabase.rpc('delete_order', { p_order_id: eid }));
+      break;
+    case 'order_details_edit': {
+      const pl = (request.payload ?? {}) as {
+        customer_name?: string | null;
+        total_amount?: string | null;
+      };
+      ({ error: delError } = await supabase.rpc('admin_edit_order', {
+        p_order_id: eid,
+        p_customer_name: pl.customer_name ?? null,
+        p_total_amount: pl.total_amount ?? null,
+      }));
+      break;
+    }
     default:
       break;
   }

@@ -4,12 +4,15 @@ import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useRouter } from 'next/navigation';
 
-import { deleteAttendanceRecordAction } from '@/lib/hr/actions';
+import {
+  deleteAttendanceRecordAction,
+  loadAttendanceSelfiesAction,
+} from '@/lib/hr/actions';
 import { EMPTY_HR_STATE, type HrActionState } from '@/lib/hr/action-state';
 import type { AttendanceRow, AttendanceSelfies } from '@/lib/hr/attendance';
 import { durationHours, formatDuration } from '@/lib/hr/format';
 import { groupAttendanceDays, type AttendanceDay } from '@/lib/hr/sessions';
-import { formatPeso } from '@/lib/payments/format';
+import { Money } from '@/components/shell/privacy';
 import { EmptyState } from '@/components/states/empty-state';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -51,11 +54,9 @@ function SelfieThumb({ label, url }: { label: string; url: string | null }) {
 
 export function ReviewAttendanceView({
   records,
-  selfies = {},
   canManage = true,
 }: {
   records: AttendanceRow[];
-  selfies?: AttendanceSelfies;
   /** Owner/Admin: shows the Actions column that can permanently delete a record.
    *  The review page is Owner-only, so this defaults on; the server action is the
    *  real gate regardless. */
@@ -79,6 +80,18 @@ export function ReviewAttendanceView({
   // Filter the raw sessions, then group into ONE row per (employee, day). The status
   // filter then applies to the day (open = it still has a session running).
   const [viewing, setViewing] = useState<AttendanceDay | null>(null);
+  // Selfies are LAZY-loaded per opened day (not on page load — that eager read of every
+  // selfie ever was the page's main delay). Fetch just this day's records' signed URLs.
+  const [daySelfies, setDaySelfies] = useState<AttendanceSelfies>({});
+  const [loadingSelfies, setLoadingSelfies] = useState(false);
+  const openDay = (d: AttendanceDay) => {
+    setViewing(d);
+    setDaySelfies({});
+    setLoadingSelfies(true);
+    void loadAttendanceSelfiesAction(d.sessions.map((s) => s.row.id))
+      .then((sel) => setDaySelfies(sel))
+      .finally(() => setLoadingSelfies(false));
+  };
   const days = useMemo(() => {
     const filteredRecords = records.filter((r) => {
       if (employee !== 'all' && r.staffProfileId !== employee) return false;
@@ -202,7 +215,7 @@ export function ReviewAttendanceView({
                   <td className="px-3 py-2.5 text-right tabular-nums">
                     {d.isOvertime ? (
                       <span className="font-medium text-gold-strong">
-                        {formatPeso(d.overtimeAmount)}
+                        <Money amount={d.overtimeAmount} />
                       </span>
                     ) : (
                       <span className="text-muted-foreground">—</span>
@@ -211,7 +224,7 @@ export function ReviewAttendanceView({
                   <td className="col-actions px-3 py-2.5 text-right">
                     <button
                       type="button"
-                      onClick={() => setViewing(d)}
+                      onClick={() => openDay(d)}
                       data-testid={`review-day-view-${d.key}`}
                       className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
                     >
@@ -228,7 +241,8 @@ export function ReviewAttendanceView({
       {viewing ? (
         <ReviewDayModal
           day={viewing}
-          selfies={selfies}
+          selfies={daySelfies}
+          loadingSelfies={loadingSelfies}
           canManage={canManage}
           onClose={() => setViewing(null)}
         />
@@ -245,11 +259,13 @@ export function ReviewAttendanceView({
 function ReviewDayModal({
   day,
   selfies,
+  loadingSelfies,
   canManage,
   onClose,
 }: {
   day: AttendanceDay;
   selfies: AttendanceSelfies;
+  loadingSelfies: boolean;
   canManage: boolean;
   onClose: () => void;
 }) {
@@ -297,13 +313,21 @@ function ReviewDayModal({
                     )}
                   </span>
                   <div className="flex items-center gap-2">
-                    <SelfieThumb label="In" url={selfies[s.row.id]?.inUrl ?? null} />
-                    <SelfieThumb label="Out" url={selfies[s.row.id]?.outUrl ?? null} />
+                    {loadingSelfies ? (
+                      <span className="text-[10px] text-muted-foreground">
+                        Loading selfies…
+                      </span>
+                    ) : (
+                      <>
+                        <SelfieThumb label="In" url={selfies[s.row.id]?.inUrl ?? null} />
+                        <SelfieThumb label="Out" url={selfies[s.row.id]?.outUrl ?? null} />
+                      </>
+                    )}
                   </div>
                 </div>
                 {s.row.isOvertime ? (
                   <p className="mt-1 text-[11px] text-gold-strong">
-                    Overtime (night) · {formatPeso(s.row.overtimeAmount)}
+                    Overtime (night) · <Money amount={s.row.overtimeAmount} />
                   </p>
                 ) : null}
                 {canManage ? (

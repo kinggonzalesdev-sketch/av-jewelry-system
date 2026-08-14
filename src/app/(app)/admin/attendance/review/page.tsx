@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import { ReviewAttendanceView } from '@/components/hr/review-attendance-view';
 import { canOpenPage } from '@/lib/authz/guard';
 import { PageHeader } from '@/components/ui/page-primitives';
-import { listAttendance, listAttendanceSelfies } from '@/lib/hr/attendance';
+import { listAttendance } from '@/lib/hr/attendance';
 
 export const metadata: Metadata = {};
 
@@ -22,15 +22,15 @@ export default async function ReviewAttendancePage() {
   // the page — by link OR by typing the URL. A Super Admin holds it implicitly.
   if (!(await canOpenPage('hr_review_attendance'))) notFound();
 
-  const [records, selfies] = await Promise.all([
-    listAttendance(500),
-    listAttendanceSelfies(),
-  ]);
+  // Selfies are NO LONGER loaded here — minting a signed URL for EVERY selfie ever (~2
+  // Storage round-trips per record across all history) was the page's main delay. The review
+  // modal lazy-loads just the opened day's selfies via loadAttendanceSelfiesAction.
+  const records = await listAttendance(500);
 
   return (
     <div>
       <PageHeader title="Review Attendance" />
-      <ReviewAttendanceView records={records} selfies={selfies} />
+      <ReviewAttendanceView records={records} />
     </div>
   );
 }

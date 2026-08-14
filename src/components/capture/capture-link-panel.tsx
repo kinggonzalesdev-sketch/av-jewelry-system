@@ -39,10 +39,15 @@ export function CaptureLinkPanel({
   captureRecordId,
   link,
   onChanged,
+  onRecheck,
 }: {
   captureRecordId: string;
   link: EffectiveCaptureLink;
   onChanged: (result: CaptureLinkResult) => void;
+  /** Re-run the full resolver for this capture (pulls the live post's comments from
+   *  Pancake and retries the match) — the fix for a commenter the realtime webhook was
+   *  slow to deliver. Returns the fresh link. When omitted, no Re-check button shows. */
+  onRecheck?: (captureRecordId: string) => Promise<CaptureLinkResult>;
 }) {
   const [picking, setPicking] = useState(false);
   const [candidates, setCandidates] = useState<CaptureCandidateOption[] | null>(null);
@@ -79,6 +84,14 @@ export function CaptureLinkPanel({
       onChanged(res);
       setPicking(false);
     }
+  };
+
+  const recheck = async () => {
+    if (busy || !onRecheck) return;
+    setBusy(true);
+    const res = await onRecheck(captureRecordId);
+    setBusy(false);
+    if (res.ok) onChanged(res);
   };
 
   const dot = DOT[status ?? ''] ?? 'bg-muted-foreground';
@@ -129,6 +142,18 @@ export function CaptureLinkPanel({
               >
                 Open chat
               </a>
+            ) : null}
+            {onRecheck && (status === 'no_match' || status === 'customer_no_chat') ? (
+              <button
+                type="button"
+                onClick={() => void recheck()}
+                disabled={busy}
+                data-testid={`capture-link-recheck-${captureRecordId}`}
+                className="rounded border border-border px-1.5 py-0.5 font-medium hover:bg-accent"
+                title="Pull the live's comments from Pancake and try to match again"
+              >
+                {busy ? 'Checking…' : '🔄 Re-check FB'}
+              </button>
             ) : null}
             <button
               type="button"

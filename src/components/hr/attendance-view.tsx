@@ -15,7 +15,7 @@ import type { AttendanceRow } from '@/lib/hr/attendance';
 import { durationHours, formatDuration } from '@/lib/hr/format';
 import { groupAttendanceDays, type AttendanceDay } from '@/lib/hr/sessions';
 import type { PayrollResult, PayrollRow } from '@/lib/hr/payroll';
-import { formatPeso } from '@/lib/payments/format';
+import { Money } from '@/components/shell/privacy';
 import type { PayslipSnapshot } from '@/lib/hr/payslip-types';
 import { AttendanceClock, type ClockStaffMember } from '@/components/hr/attendance-clock';
 import { PayrollSummaryButton } from '@/components/hr/payroll-summary-button';
@@ -224,7 +224,7 @@ export function AttendanceView({
                               </span>
                             ) : (
                               <span className="tabular-nums">
-                                {formatPeso(r.dailyRate)}
+                                <Money amount={r.dailyRate} />
                                 <span className="text-[10px] text-muted-foreground">
                                   {' '}
                                   /day
@@ -241,7 +241,7 @@ export function AttendanceView({
                                 No rate set
                               </span>
                             ) : (
-                              formatPeso(r.computedSalary)
+                              <Money amount={r.computedSalary} />
                             )}
                           </td>
                           <td className="whitespace-nowrap px-3 py-2.5 text-center">
@@ -616,7 +616,7 @@ function RateCell({ row }: { row: PayrollRow }) {
         aria-label={`Edit salary rate for ${row.fullName}`}
         className="rounded-md border border-border px-2 py-1 text-xs tabular-nums hover:bg-accent"
       >
-        {row.dailyRate ? formatPeso(row.dailyRate) : 'Set rate'}
+        {row.dailyRate ? <Money amount={row.dailyRate} /> : 'Set rate'}
       </button>
 
       <Modal

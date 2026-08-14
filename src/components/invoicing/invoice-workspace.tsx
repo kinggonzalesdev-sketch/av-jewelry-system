@@ -15,16 +15,11 @@ import {
 import type { InvoiceActionState } from '@/lib/invoicing/action-state';
 import { EMPTY_INVOICE_STATE } from '@/lib/invoicing/action-state';
 import type { DraftSummary } from '@/lib/invoicing/drafts';
-import { formatPeso, moneyString } from '@/lib/payments/format';
+import { moneyString } from '@/lib/payments/format';
+import { Money } from '@/components/shell/privacy';
 import { EmptyState } from '@/components/states/empty-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-
-/** Reuse the one centralized peso formatter (₱1,000 · ₱1,250.50). The draft totals
- *  arrive as numbers; moneyString converts without arithmetic before formatting. */
-function peso(n: number): string {
-  return formatPeso(moneyString(n));
-}
 
 /** One draft card: summary, Print invoice (reprintable), Review/Approve, and — for
  *  an open (unsent) draft — the claims with a rule-safe Remove (before approval).
@@ -60,7 +55,8 @@ function DraftCard({
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">{draft.customerDisplayName}</p>
             <p className="truncate text-xs text-muted-foreground">
-              {draft.claimCount} claim(s) · {peso(draft.totalAmount)} ·{' '}
+              {draft.claimCount} claim(s) · <Money amount={moneyString(draft.totalAmount)} />{' '}
+              ·{' '}
               {draft.paymentArrangement?.replace('_', ' ') ?? 'unset'} ·{' '}
               {draft.fulfillmentArrangement ?? 'unset'}
             </p>
@@ -125,7 +121,7 @@ function DraftCard({
                       </span>
                       <span className="flex items-center gap-2">
                         <span className="font-medium tabular-nums">
-                          {peso(c.lineTotal)}
+                          <Money amount={moneyString(c.lineTotal)} />
                         </span>
                         {editable && removingId !== c.claimId ? (
                           <button

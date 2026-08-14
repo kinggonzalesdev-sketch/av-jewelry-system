@@ -5,6 +5,8 @@ import { AppSidebar } from '@/components/shell/app-sidebar';
 import { DashboardSyncProvider } from '@/components/shell/dashboard-sync';
 import { IdleLogout } from '@/components/shell/idle-logout';
 import { PrivacyProvider } from '@/components/shell/privacy';
+import { StickerSettingsSync } from '@/components/print/sticker-settings-sync';
+import { IncomingCapturesStrip } from '@/components/capture/incoming-captures-strip';
 
 /**
  * Production application shell — the Owner-approved prototype LAYOUT dressed in
@@ -36,10 +38,19 @@ export function AppShell({
       <PrivacyProvider>
         {/* Auto sign-out after 30 min idle; session-only cookies handle browser close. */}
         <IdleLogout minutes={30} />
+        {/* Pull the ONE shared Sticker Settings the Owner saved into this device's
+            localStorage cache, so every account's prints use the same config. */}
+        <StickerSettingsSync />
         {/* Live reflection: Realtime nudges re-render the current page from the
             official server records (no full reload, no duplicate client totals).
             Wraps the app so any page can read the sync status for its indicator. */}
         <DashboardSyncProvider>
+          {/* Capture engine — mounted app-wide (not just the Orders page) so incoming
+              captures appear + auto-print in real time NO MATTER which page the operator
+              is on, and the subscription persists across navigations instead of
+              restarting. The panel itself stays a popup (opened from the Orders "Capture
+              Pending" pill); only its always-on background processing moved up here. */}
+          {allowedPages?.includes('claim_capture') ? <IncomingCapturesStrip /> : null}
           <AppSidebar
             fullName={fullName}
             roleKey={roleKey}

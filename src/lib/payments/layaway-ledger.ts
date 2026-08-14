@@ -26,6 +26,10 @@ export type LayawayLedgerRow = {
   /** The linked inventory item's Unique Code (item_code). Null for historical /
    *  imported rows with no inventory link — the UI shows "Not linked". */
   uniqueCode: string | null;
+  /** Row origin: 'imported' (legacy Excel — often a balance-only account with no item)
+   *  or 'manual'. Lets the UI show "Imported (no item)" for a legacy row instead of a
+   *  scary "Not linked" (the item Unique Code was never part of the import). */
+  sourceKind: string | null;
   /** Stored Facebook Messenger URL for a quick "Open Chat" button (or null). */
   facebookUrl: string | null;
   accountNo: string;
@@ -50,6 +54,8 @@ export type LayawayLedgerDetail = {
   code: string | null;
   /** Linked inventory Unique Code (item_code); null → "Not linked". */
   uniqueCode: string | null;
+  /** Row origin: 'imported' (legacy Excel, often no item) or 'manual'. */
+  sourceKind: string | null;
   accountNo: string;
   customerName: string;
   status: string;
@@ -206,13 +212,66 @@ function toStr(value: unknown): string | null {
   return null;
 }
 
+/** Supabase embeds a to-one relation as an object (or a 1-element array); read either. */
+function one<T>(v: unknown): T | null {
+  if (Array.isArray(v)) return (v[0] ?? null) as T | null;
+  return (v ?? null) as T | null;
+}
+
+/**
+ * Resolve each ledger's inventory Unique Code(s) from its LINKED ORDER.
+ *
+ * A layaway created from an order (create_layaway_from_order) keeps the item on the
+ * ORDER — the ledger's own inventory_item_id stays null — so the ledger→item join yields
+ * nothing and the row would read "Not linked". Here we follow
+ * official_orders.converted_layaway_ledger_id → claims → inventory items and return a map
+ * ledger_id → "CODE1, CODE2". Isolated and guarded: any failure yields no codes and the
+ * row simply keeps its legacy label, never breaking the list.
+ */
+async function resolveLedgerOrderCodes(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ledgerIds: string[],
+): Promise<Map<string, string>> {
+  const byLedger = new Map<string, string>();
+  if (ledgerIds.length === 0) return byLedger;
+  // Fetch ALL order-linked orders in ONE query (order-derived layaways are a small set) and
+  // keep only the ledgers we were asked about — NEVER a giant `.in(ledgerIds)`. The LIST can
+  // feed 700+ ids, which overflowed the request URL so the query silently returned nothing
+  // and EVERY row read "Not linked" — while the single-id detail lookup still worked (which
+  // is exactly the "column says Not linked but the Account Summary shows the code" report).
+  const want = new Set(ledgerIds);
+  const { data } = await supabase
+    .from('official_orders')
+    .select(
+      'converted_layaway_ledger_id, official_order_claims ( claims ( inventory_items ( item_code ) ) )',
+    )
+    .not('converted_layaway_ledger_id', 'is', null);
+  for (const o of (data ?? []) as Array<Record<string, unknown>>) {
+    const lid = o.converted_layaway_ledger_id as string | null;
+    if (!lid || !want.has(lid)) continue;
+    const claimRows = (o.official_order_claims ?? []) as Array<Record<string, unknown>>;
+    const codes = claimRows
+      .map((oc) => {
+        const claim = one<{ inventory_items: unknown }>(oc.claims);
+        const inv = one<{ item_code?: string }>(claim?.inventory_items);
+        return inv?.item_code ?? null;
+      })
+      .filter((c): c is string => Boolean(c && c.trim()));
+    if (codes.length > 0) {
+      const existing = byLedger.get(lid);
+      byLedger.set(lid, existing ? `${existing}, ${codes.join(', ')}` : codes.join(', '));
+    }
+  }
+  return byLedger;
+}
+
 /** All imported ledger rows the caller may read (RLS: any active staff). */
 export async function listLayawayLedger(): Promise<LayawayLedgerRow[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('layaway_ledger')
     .select(
-      'id, layaway_code, account_no, customer_name, status, remarks, date_purchased, item_amount, interest, grand_total, payment, balance, balance_mismatch, next_due_date, last_payment_date, created_at, inventory:inventory_items!layaway_ledger_inventory_item_id_fkey ( item_code ), customer:customers ( facebook_conversation_url )',
+      'id, layaway_code, account_no, customer_name, status, remarks, date_purchased, item_amount, interest, grand_total, payment, balance, balance_mismatch, next_due_date, last_payment_date, created_at, source_kind, inventory:inventory_items!layaway_ledger_inventory_item_id_fkey ( item_code ), customer:customers ( facebook_conversation_url )',
     )
     // A 'transferred' account has moved into the Orders workflow — it leaves ACTIVE
     // layaway (and all its filters/counts) but stays in the DB + audit for history.
@@ -221,10 +280,11 @@ export async function listLayawayLedger(): Promise<LayawayLedgerRow[]> {
 
   if (error || !data) return [];
 
-  return (data as Array<Record<string, unknown>>).map((r) => ({
+  const rows = (data as Array<Record<string, unknown>>).map((r) => ({
     id: r.id as string,
     code: (r.layaway_code as string | null) ?? null,
     uniqueCode: (r.inventory as { item_code?: string } | null)?.item_code ?? null,
+    sourceKind: (r.source_kind as string | null) ?? null,
     facebookUrl:
       (r.customer as { facebook_conversation_url?: string | null } | null)
         ?.facebook_conversation_url ?? null,
@@ -243,6 +303,24 @@ export async function listLayawayLedger(): Promise<LayawayLedgerRow[]> {
     balanceMismatch: r.balance_mismatch === true,
     createdAt: r.created_at as string,
   }));
+
+  // Order-derived layaways (created from an order) carry their item on the linked ORDER,
+  // not the ledger — so the ledger→item join is null and they'd read "Not linked". Surface
+  // the real Unique Code from the linked order so it shows in the list.
+  const orderCodes = await resolveLedgerOrderCodes(
+    supabase,
+    rows.filter((r) => !r.uniqueCode).map((r) => r.id),
+  );
+  if (orderCodes.size > 0) {
+    for (const r of rows) {
+      if (!r.uniqueCode) {
+        const code = orderCodes.get(r.id);
+        if (code) r.uniqueCode = code;
+      }
+    }
+  }
+
+  return rows;
 }
 
 /** A layaway ledger account marked KEEP (in remarks) — surfaced in Orders → Keep
@@ -430,6 +508,41 @@ export async function addLayawayItem(
   return { ok: true };
 }
 
+/**
+ * Apply a TERM change (1/2/3 months) to an EXISTING account, then recompute interest /
+ * grand total / balance / installment charges from the new term via the same authoritative
+ * `recompute_layaway_from_items`. The DB refuses accounts with no itemized pieces (an
+ * amount-only import would otherwise be zeroed by the recompute). Owner/Admin only.
+ */
+export async function setLayawayTerm(
+  ledgerId: string,
+  term: number,
+): Promise<LayawayItemResult> {
+  if (!ledgerId) return { ok: false, error: 'A layaway account is required.' };
+  if (![1, 2, 3].includes(term))
+    return { ok: false, error: 'Choose a term of 1, 2 or 3 months.' };
+  try {
+    await requireOwnerOrAdmin();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
+    throw cause;
+  }
+  const supabase = await createClient();
+  const res = (await supabase.rpc('set_layaway_term', {
+    p_ledger: ledgerId,
+    p_term: term,
+  })) as { error: { message: string } | null };
+  if (res.error)
+    return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  await recordAuditEvent({
+    action: 'layaway.set_term',
+    entityType: 'layaway_ledger',
+    entityId: ledgerId,
+    context: { term },
+  });
+  return { ok: true };
+}
+
 export async function removeLayawayItem(
   ledgerId: string,
   itemId: string,
@@ -582,7 +695,7 @@ export async function getLayawayLedgerDetail(
     supabase
       .from('layaway_ledger')
       .select(
-        'id, layaway_code, account_no, customer_name, status, remarks, date_purchased, item_amount, interest, grand_total, payment, balance, balance_mismatch, next_due_date, monthly_interest, total_installment_interest, last_payment_date, mode_of_payment, latest_payment_dp, resize, screw, notes, interest_type, layaway_term, interest_rate, fixed_interest, grams, inventory:inventory_items!layaway_ledger_inventory_item_id_fkey ( item_code )',
+        'id, layaway_code, account_no, customer_name, status, remarks, date_purchased, item_amount, interest, grand_total, payment, balance, balance_mismatch, next_due_date, monthly_interest, total_installment_interest, last_payment_date, mode_of_payment, latest_payment_dp, resize, screw, notes, interest_type, layaway_term, interest_rate, fixed_interest, grams, source_kind, inventory:inventory_items!layaway_ledger_inventory_item_id_fkey ( item_code )',
       )
       .eq('id', id)
       .maybeSingle(),
@@ -605,6 +718,14 @@ export async function getLayawayLedgerDetail(
 
   const r = acct.data as Record<string, unknown> | null;
   if (!r) return null;
+
+  // Unique Code: the ledger's own linked item, else (for an order-derived layaway) the
+  // code(s) from the linked order, so the modal shows the real code instead of "Not linked".
+  let resolvedUnique = (r.inventory as { item_code?: string } | null)?.item_code ?? null;
+  if (!resolvedUnique) {
+    const oc = await resolveLedgerOrderCodes(supabase, [r.id as string]);
+    resolvedUnique = oc.get(r.id as string) ?? null;
+  }
 
   // Per-gram interest summary — authoritative figures from SQL, computed from the
   // real posted charges. Legacy/imported accounts return basis null → no summary.
@@ -675,7 +796,8 @@ export async function getLayawayLedgerDetail(
   return {
     id: r.id as string,
     code: (r.layaway_code as string | null) ?? null,
-    uniqueCode: (r.inventory as { item_code?: string } | null)?.item_code ?? null,
+    uniqueCode: resolvedUnique,
+    sourceKind: (r.source_kind as string | null) ?? null,
     accountNo: (r.account_no as string) ?? '—',
     customerName: (r.customer_name as string) ?? 'Unknown',
     status: (r.status as string) ?? 'active',

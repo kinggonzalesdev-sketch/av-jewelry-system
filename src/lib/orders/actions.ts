@@ -4,9 +4,14 @@ import { revalidatePath } from 'next/cache';
 
 import { getOrderDetail } from '@/lib/orders/detail';
 import {
+  addOrderItem,
   removeOrderItem,
   splitOrderItem,
+  requestOrderEdit,
+  type AddOrderItemResult,
   type EditItemResult,
+  type OrderEditKind,
+  type RequestOrderEditResult,
   type SplitItemResult,
 } from '@/lib/orders/edit-items';
 import {
@@ -49,8 +54,11 @@ import {
   adminEditOrder,
   deleteCancelledOrder,
   deleteOrder,
+  requestOrderDetailsEdit,
+  requestOrderDelete,
   type AdminEditOrderResult,
   type DeleteCancelledOrderResult,
+  type RequestOrderAdminResult,
 } from '@/lib/orders/cancelled-order';
 import {
   finalizeOrderCancellation,
@@ -193,6 +201,39 @@ export async function splitOrderItemAction(
   if (result.ok) {
     revalidatePath('/orders');
     revalidatePath('/orders/inventory');
+  }
+  return result;
+}
+
+/** Add an item to an existing order (Owner only). Revalidates Orders + Inventory +
+ *  Payments so the total, item list, Active Inventory, and balance all update. */
+export async function addOrderItemAction(
+  officialOrderId: string,
+  itemId: string,
+  price: string,
+  quantity = 1,
+): Promise<AddOrderItemResult> {
+  const result = await addOrderItem(officialOrderId, itemId, price, quantity);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/inventory');
+    revalidatePath('/orders/payments');
+  }
+  return result;
+}
+
+/** A non-owner admin's "Request edit" (add/remove/split) → Owner approval. Changes
+ *  nothing now; refreshes Orders + the Approvals queue so the pending request shows. */
+export async function requestOrderEditAction(
+  actionKind: OrderEditKind,
+  officialOrderId: string,
+  payload: Record<string, unknown>,
+  reason: string,
+): Promise<RequestOrderEditResult> {
+  const result = await requestOrderEdit(actionKind, officialOrderId, payload, reason);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/approvals');
   }
   return result;
 }
@@ -428,6 +469,39 @@ export async function adminEditOrderAction(
     revalidatePath('/orders');
     revalidatePath('/orders/inventory');
     revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+/** A non-owner admin's "Request edit" of an order's name/total → Owner approval. */
+export async function requestOrderDetailsEditAction(
+  orderId: string,
+  customerName: string | null,
+  totalAmount: string | null,
+  reason: string,
+): Promise<RequestOrderAdminResult> {
+  const result = await requestOrderDetailsEdit(
+    orderId,
+    { customerName, totalAmount },
+    reason,
+  );
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/approvals');
+  }
+  return result;
+}
+
+/** A non-owner admin's "Request delete" of an order → Owner approval. */
+export async function requestOrderDeleteAction(
+  orderId: string,
+  orderLabel: string,
+  reason: string,
+): Promise<RequestOrderAdminResult> {
+  const result = await requestOrderDelete(orderId, orderLabel, reason);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/approvals');
   }
   return result;
 }

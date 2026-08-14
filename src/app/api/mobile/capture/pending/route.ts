@@ -43,6 +43,8 @@ export async function POST(request: Request): Promise<Response> {
     captureId: str('captureId'),
     screenshotPath: str('screenshotPath') || null,
     ocr: body.ocr ?? null,
+    // 'printed' when the phone printed the sticker locally before this row existed.
+    printStatus: str('printStatus') || null,
   });
 
   if (!result.ok) {

@@ -187,9 +187,6 @@ export function DashboardView({
     if (!p) return isAllTime;
     return rangeFrom === p.from && rangeTo === p.to;
   };
-  const isCustom =
-    !isAllTime && !RANGE_PRESETS.some((r) => r.key !== 'all' && activePreset(r.key));
-
   const [refreshState, refresh, refreshing] = useActionState<
     DashboardActionState,
     FormData
@@ -222,21 +219,6 @@ export function DashboardView({
                 {r.label}
               </Button>
             ))}
-            <Button
-              type="button"
-              size="sm"
-              variant={isCustom ? 'default' : 'outline'}
-              aria-pressed={isCustom}
-              onClick={() =>
-                goRange({
-                  from: customFrom || rangeFrom || isoDay(new Date()),
-                  to: customTo || rangeTo || isoDay(new Date()),
-                })
-              }
-              data-testid="dash-range-custom"
-            >
-              Custom
-            </Button>
             <div className="ml-auto flex items-center gap-1.5">
               <span
                 className="flex items-center gap-1.5 text-[11px] text-muted-foreground"

@@ -6,8 +6,10 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
+import android.location.LocationManager
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.text.InputType
 import android.view.Gravity
 import android.view.ViewGroup
@@ -124,6 +126,14 @@ class BluetoothPrinterActivity : AppCompatActivity() {
             return
         }
         if (!BluetoothPrinterManager.isBluetoothOn(this)) { toast("Turn on Bluetooth first."); return }
+        // Android ≤11 finds NOTHING on discovery unless Location services are ON (a system
+        // requirement, separate from the permission). Guide the operator to enable it.
+        if (!locationServicesOn()) {
+            toast("Turn ON Location — Android needs it to scan for Bluetooth printers.")
+            try { startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) } catch (_: Exception) {}
+            loadBonded(); renderList()
+            return
+        }
         if (scanning) { BluetoothPrinterManager.stopDiscovery(this); scanning = false; scanBtn.text = "Scan for printers"; return }
         loadBonded()
         scanning = true
@@ -174,7 +184,7 @@ class BluetoothPrinterActivity : AppCompatActivity() {
         val selected = store.printerAddress
         if (found.isEmpty()) {
             list.addView(TextView(this).apply {
-                text = "No printers yet. Tap Scan, or pair the printer in Android Bluetooth settings."
+                text = "No printers yet. Turn ON Location + Bluetooth, then tap Scan — or pair the printer in Android Bluetooth settings (PIN 0000) and reopen this screen."
                 setTextColor(beige); textSize = 12f; setPadding(0, dp(6), 0, dp(6))
             }, wide())
             return
@@ -242,6 +252,19 @@ class BluetoothPrinterActivity : AppCompatActivity() {
 
     private fun hasBtPermissions(): Boolean = requiredPerms().all {
         ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /** Android ≤11 needs Location SERVICES on (separate from the permission) for BT
+     *  discovery — otherwise startDiscovery finds nothing. Android 12+ doesn't need it. */
+    private fun locationServicesOn(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) return true
+        val lm = getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return true
+        return try {
+            lm.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+        } catch (_: Exception) {
+            true
+        }
     }
 
     // ---- View helpers --------------------------------------------------------

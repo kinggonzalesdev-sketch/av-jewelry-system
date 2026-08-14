@@ -27,6 +27,7 @@ function detail(over: Partial<LayawayLedgerDetail> = {}): LayawayLedgerDetail {
     id: 'L1',
     code: 'A1',
     uniqueCode: null,
+    sourceKind: null,
     accountNo: 'LAY-2026-000101',
     customerName: 'Allyn Mae',
     status: 'active',
@@ -110,6 +111,20 @@ describe('Layaway View — Add Payment moved inside, Order-Summary layout', () =
     // Unique Code was moved into the Account Summary card.
     expect(screen.getByText('Unique Code')).toBeInTheDocument();
     expect(screen.getByText('SBA-N-2683')).toBeInTheDocument();
+  });
+
+  it('labels an imported no-item account "Imported (no item)" instead of "Not linked"', async () => {
+    // Legacy amount-only import: no inventory Unique Code was ever captured, so the scary
+    // "Not linked" is replaced with a clear legacy marker.
+    await openView(detail({ uniqueCode: null, sourceKind: 'imported' }), true);
+    expect(screen.getByText('Imported (no item)')).toBeInTheDocument();
+    expect(screen.queryByText('Not linked')).not.toBeInTheDocument();
+  });
+
+  it('still shows "Not linked" for a non-imported account with no item', async () => {
+    await openView(detail({ uniqueCode: null, sourceKind: 'manual' }), true);
+    expect(screen.getByText('Not linked')).toBeInTheDocument();
+    expect(screen.queryByText('Imported (no item)')).not.toBeInTheDocument();
   });
 
   it('does NOT show Add Payment / Cancel Order inside View when the caller disallows it', async () => {

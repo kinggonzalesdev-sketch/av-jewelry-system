@@ -230,12 +230,20 @@ class ApiClient(context: Context) {
      * the PC's "Incoming Captures" for the operator to confirm/correct into an order.
      * Idempotent per device+capture on the backend, so a repeated tap is one row.
      */
-    fun createPendingCapture(captureId: String, screenshotPath: String?, ocr: JSONObject?): Result {
+    fun createPendingCapture(
+        captureId: String,
+        screenshotPath: String?,
+        ocr: JSONObject?,
+        printStatus: String? = null,
+    ): Result {
         val payload = JSONObject()
             .put("deviceInstallationId", store.deviceInstallationId)
             .put("captureId", captureId)
             .putOpt("screenshotPath", screenshotPath)
             .putOpt("ocr", ocr)
+            // 'printed' when this phone already printed the sticker locally, so the row is
+            // born printed and the PC never double-prints it.
+            .putOpt("printStatus", printStatus)
         return post("/api/mobile/capture/pending", payload)
     }
 
@@ -284,6 +292,20 @@ class ApiClient(context: Context) {
      */
     fun claimCaptureSticker(): JSONObject {
         val payload = JSONObject().put("deviceInstallationId", store.deviceInstallationId)
+        val res = post("/api/mobile/print/capture-claim", payload)
+        return if (res.ok) res.body else JSONObject().put("claimed", false)
+    }
+
+    /**
+     * Claim ONE specific capture sticker BY ID — the fast local-print path: the phone
+     * that just captured claims its own sticker so it can print in ~0.5-1s without the
+     * poll. Atomic + exactly-once on the backend, so the PC / poller can't also take it.
+     * Returns { claimed:false } when it is already claimed/printed or not yet eligible.
+     */
+    fun claimCaptureStickerById(captureRecordId: String): JSONObject {
+        val payload = JSONObject()
+            .put("deviceInstallationId", store.deviceInstallationId)
+            .put("captureRecordId", captureRecordId)
         val res = post("/api/mobile/print/capture-claim", payload)
         return if (res.ok) res.body else JSONObject().put("claimed", false)
     }

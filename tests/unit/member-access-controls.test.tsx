@@ -126,7 +126,7 @@ describe('Manage Access — module-based permission toggles', () => {
       'Payments',
       'Layaway',
       'Scrap',
-      'Reports',
+      'Cash & Reports',
       'Settings',
       'Team Management',
     ]) {

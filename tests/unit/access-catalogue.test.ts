@@ -18,7 +18,7 @@ describe('access catalogue — module shape', () => {
       'Payments',
       'Layaway',
       'Scrap',
-      'Reports',
+      'Cash & Reports',
       'Settings',
       'Team Management',
     ]);

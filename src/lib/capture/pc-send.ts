@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { recordAuditEvent } from '@/lib/audit/log';
 import { requirePermission } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 import {
@@ -99,8 +100,8 @@ export async function sendPendingCaptureToMessenger(
       };
     }
     const resolved = await resolveConversationForName(supabase, fbName, {
-      sinceDays: 7,
-      maxPages: 8,
+      sinceDays: 14,
+      maxPages: 12,
     });
     conversationId = resolved.conversationId;
     if (!conversationId) {
@@ -153,6 +154,25 @@ export async function sendPendingCaptureToMessenger(
     });
   }
 
-  if (!result.ok) return { ok: false, code: result.code, error: result.message };
+  if (!result.ok) {
+    // Persist the EXACT Pancake response (token-free `debug`) so a rejected send is
+    // diagnosable after the fact — the generic operator message hides the real cause
+    // (e.g. an attachment Facebook could not fetch vs. a policy block).
+    const debug = (result as { debug?: string }).debug ?? null;
+    await recordAuditEvent({
+      action: 'capture.send_failed',
+      entityType: 'capture_record',
+      entityId: id,
+      outcome: 'failed',
+      reason: result.code,
+      context: {
+        code: result.code,
+        conversationId,
+        hadAttachment: Boolean(attachmentUrl),
+        debug,
+      },
+    }).catch(() => undefined);
+    return { ok: false, code: result.code, error: result.message };
+  }
   return { ok: true, code: 'sent', message: 'Sent to Messenger ✓' };
 }

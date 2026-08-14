@@ -974,10 +974,11 @@ function ForInvoiceView({
                   className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-800"
                   data-testid="order-send-no-chat"
                 >
-                  ⚠ No Pancake chat is linked, so this will <strong>not</strong> reach the
-                  customer&apos;s chat — it only advances the order. Link a Pancake chat
-                  above (Integrations → Load conversations → Copy ID) to actually deliver
-                  it.
+                  ⚠ No chat is linked to this order yet. If{' '}
+                  {detail.customer.displayName} commented or messaged on a recent live,
+                  Send Invoice will still deliver it <strong>automatically</strong> (the
+                  system now resolves the chat from Pancake). If not, it only advances the
+                  order — you can link a chat above to be certain.
                 </p>
               )}
               <p className="text-[11px] text-muted-foreground">
@@ -1056,9 +1057,13 @@ function ForInvoiceView({
  *     in SQL is the authority), confirms first, records previous → completed status +
  *     completed by / date / time, and refreshes the row + counts without a reload.
  *
- * Everything else the generic modal offers is removed here: Add Payment, the Save /
- * Keep-note editor, the payment section, other destinations, reminders, and any
- * extra action cards or empty containers.
+ * Plus Transfer to Destination (Owner request 2026-08-13): the shared control that
+ * routes the Keep order onward to Ship Confirmed / For Delivery / Pickup / Layaway /
+ * Complete Order, guarded by the same permission + DB gate as every other stage.
+ *
+ * Everything else the generic modal offers is still removed here: Add Payment, the
+ * Save / Keep-note editor, the payment section, reminders, and any extra action cards
+ * or empty containers.
  */
 function KeepView({
   detail,
@@ -1202,6 +1207,21 @@ function KeepView({
             onDone={onDone}
           />
         </div>
+
+        {/* Transfer to Destination (Owner request 2026-08-13): a Keep order can now be
+            routed onward from here — Ship Confirmed, For Delivery, Pickup, Layaway, or
+            Complete Order — via the SAME shared control + DB gate used by other stages. */}
+        {detail.permissions.canPrepareFulfillment ? (
+          <OrderDestinationTransfer
+            orderId={detail.officialOrderId}
+            destination={detail.fulfillmentDestination}
+            destinationSetByName={detail.destinationSetByName}
+            destinationSetAt={detail.destinationSetAt}
+            canTransfer={detail.permissions.canPrepareFulfillment}
+            completionBlock={detail.completionBlock}
+            onTransferred={onDone}
+          />
+        ) : null}
       </div>
     </>
   );
@@ -1528,13 +1548,15 @@ function DetailBody({
               </div>
             )}
 
-            {/* Edit Items (Super Admin) — Remove a piece or Split it to a new order.
-              Self-hides for non-owners, locked statuses, and the last item. */}
+            {/* Edit Items — Add / Remove / Split. Owner edits directly; an approval-capable
+              admin (initiate_high_risk_action) instead REQUESTS the edit for Owner approval.
+              Self-hides for everyone else, locked statuses, and (Remove/Split) the last item. */}
             <OrderItemEditControls
               orderId={detail.officialOrderId}
               status={detail.status}
               items={detail.items}
               isOwner={detail.permissions.isOwner}
+              canRequestEdit={detail.permissions.canRequestApproval}
               onRefresh={onRefresh}
             />
 
@@ -1667,17 +1689,6 @@ function OrderActionsBar({
   const showVerify =
     detail.permissions.canRecordPayment && !a.paidInFull && unverifiedPayments.length > 0;
 
-  // Add Payment inside the Actions section too (Owner request 2026-08-10): so a stage
-  // that still has a balance — e.g. an order in Pickup awaiting payment — offers it in
-  // the workflow body, not only the header. Same gate as the header (canOfferPayment),
-  // so it never shows for a paid-in-full order or a viewer who cannot record payments.
-  const showPayment = canOfferPayment({
-    status: detail.status,
-    paidInFull: a.paidInFull,
-    balanceUnavailable,
-    canRecordPayment: detail.permissions.canRecordPayment,
-  });
-
   return (
     <div className="no-print space-y-3">
       {/* Actions card — the forward workflow for this stage. */}
@@ -1687,18 +1698,8 @@ function OrderActionsBar({
         subtitle="Move this order forward in its workflow."
       >
         <div className="space-y-2">
-          {showPayment ? (
-            <OrderPaymentActions
-              orderId={detail.officialOrderId}
-              remaining={a.outstandingBalance}
-              paidInFull={a.paidInFull}
-              canRecord={detail.permissions.canRecordPayment}
-              onRefresh={onRefresh}
-              asButton
-              total={a.unavailable ? undefined : a.totalAmountPayable}
-              paid={a.unavailable ? undefined : a.verifiedNetPayments}
-            />
-          ) : null}
+          {/* Add Payment was REMOVED from the Actions body (Owner request 2026-08-13) —
+              it stays ONLY in the modal header, beside Cancel Order (no duplicate here). */}
           {/* Ship Confirm shows the Waybill Number first — a shipping order can't
               complete without it. */}
           {isShipConfirm ? (

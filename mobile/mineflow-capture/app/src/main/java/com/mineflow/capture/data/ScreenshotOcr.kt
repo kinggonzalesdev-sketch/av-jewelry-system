@@ -47,6 +47,16 @@ object ScreenshotOcr {
             "\\bprivate group\\b|\\bfinish\\b",
         RegexOption.IGNORE_CASE,
     )
+    // Hard blocklist: text that is NEVER a buyer's name — this app's own overlay/
+    // notification chrome ("Capture Service", "MineFlow", "Floating Button", "Open App")
+    // and a Live batch/badge label burned into the video ("LIVE", "GLIVE", "LIVE 01").
+    // These were being printed as the Facebook name; drop them before name selection so
+    // no sticker ever prints them and a blank name goes to the PC for review instead.
+    private val BLOCK = Regex(
+        "\\bmineflow\\b|\\bcapture\\b|\\bglive\\b|\\bcamera\\b|\\bfloating button\\b|" +
+            "\\bopen app\\b|^g?\\s*live(\\s*\\d+)?$",
+        RegexOption.IGNORE_CASE,
+    )
     // An inventory-code-ish token, e.g. BN-A-1001, SBA-P 2265, K18.
     private val CODE = Regex("[A-Za-z]{1,4}[\\-\\s]?[A-Za-z]?[\\-\\s]?\\d{2,}")
     // A comment that reads like a claim.
@@ -74,7 +84,8 @@ object ScreenshotOcr {
     }
 
     private fun isUiNoise(s: String): Boolean =
-        UI_NOISE.containsMatchIn(s) || WATCHING.containsMatchIn(s) || s.length < 2
+        UI_NOISE.containsMatchIn(s) || WATCHING.containsMatchIn(s) ||
+            BLOCK.containsMatchIn(s) || s.length < 2
 
     /** A name-like line: 1–5 words, mostly letters, no long digit runs, Title Case. */
     private fun looksLikeName(s: String): Boolean {
@@ -137,9 +148,11 @@ object ScreenshotOcr {
             return OcrGuess(fbName, grams, grams, lines)
         }
 
-        // Ambiguous or no weight — conservative name-only guess (grams null → review).
-        val itemQuery = clean.firstOrNull { CODE.containsMatchIn(it) }
-        val fbName = clean.firstOrNull { looksLikeName(it) && it != itemQuery }
-        return OcrGuess(fbName, itemQuery, null, lines)
+        // NO CONFIDENT PINNED COMMENT (no "Mine" claim, and not exactly one bare-weight
+        // line). Do NOT guess a name or grams here: grabbing the first name-like line was
+        // surfacing spectators / UI chrome as the buyer. Return BLANK so the capture reaches
+        // the PC with nothing pre-filled — the operator keys the customer in (Owner request
+        // 2026-08-13: "don't add any name/grams if no pinned comment is detected").
+        return OcrGuess(null, null, null, lines)
     }
 }

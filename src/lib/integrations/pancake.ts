@@ -470,6 +470,98 @@ function extractMessageId(body: unknown): string | null {
   return null;
 }
 
+/**
+ * Upload a screenshot's BYTES to Pancake and return its `content_id` (Pancake's confirmed
+ * image flow, replacing the old `content_url` reference which reply_inbox rejects together
+ * with everything). Endpoint: `POST /pages/{page_id}/upload_contents` (env-overridable),
+ * multipart/form-data, field name `file`, token as `?page_access_token=`. Response:
+ * `{ success: true, id: "<content_id>", type: "PHOTO" }`. The image is read server-side
+ * from its short-lived signed URL. Never logs the token.
+ */
+async function uploadPancakeImageContent(
+  imageUrl: string,
+): Promise<
+  | { ok: true; contentId: string }
+  | { ok: false; code: PancakeSendCode; message: string; debug?: string }
+> {
+  const pageToken = process.env.PANCAKE_PAGE_ACCESS_TOKEN;
+  const token = pageToken || process.env.PANCAKE_USER_ACCESS_TOKEN;
+  const tokenParam =
+    process.env.PANCAKE_SEND_TOKEN_PARAM ||
+    (pageToken ? 'page_access_token' : 'access_token');
+  if (!token || !token.trim()) {
+    return { ok: false, code: 'token_missing', message: 'Access token missing.' };
+  }
+  const pageId = await getActivePancakePageId();
+  if (!pageId) {
+    return { ok: false, code: 'page_missing', message: 'No Page selected.' };
+  }
+
+  // Read the screenshot bytes from its short-lived signed URL (server-side).
+  let imgBlob: Blob;
+  try {
+    const imgRes = await fetch(imageUrl, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!imgRes.ok) {
+      return {
+        ok: false,
+        code: 'unavailable',
+        message: `Could not read the screenshot (HTTP ${imgRes.status}).`,
+      };
+    }
+    imgBlob = await imgRes.blob();
+  } catch {
+    return { ok: false, code: 'unavailable', message: 'Could not read the screenshot.' };
+  }
+
+  const base = resolvePancakeApiBase();
+  const template =
+    process.env.PANCAKE_UPLOAD_PATH || '/pages/{page_id}/upload_contents';
+  const path = template.replace('{page_id}', encodeURIComponent(pageId.trim()));
+  const endpoint = `${base}${path}${path.includes('?') ? '&' : '?'}${tokenParam}=${encodeURIComponent(token.trim())}`;
+
+  const fd = new FormData();
+  // undici/Node sets the multipart boundary + content-type from the FormData automatically.
+  fd.set('file', imgBlob, 'capture.jpg');
+
+  let res: Response;
+  try {
+    res = await fetch(endpoint, {
+      method: 'POST',
+      cache: 'no-store',
+      body: fd,
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch {
+    return { ok: false, code: 'unavailable', message: 'Pancake upload unavailable.' };
+  }
+
+  const rawText = await res.text().catch(() => '');
+  let body: unknown = null;
+  try {
+    body = rawText ? JSON.parse(rawText) : null;
+  } catch {
+    body = null;
+  }
+  const debug = `HTTP ${res.status} · upload_contents · ${rawText.slice(0, 300)}`;
+  const obj = body && typeof body === 'object' ? (body as Record<string, unknown>) : null;
+  const rawId = obj?.id;
+  const contentId =
+    typeof rawId === 'string' ? rawId : typeof rawId === 'number' ? String(rawId) : '';
+  const failed = !res.ok || (obj ? obj.success === false : true) || !contentId;
+  if (failed) {
+    return {
+      ok: false,
+      code: 'failed',
+      message: 'Pancake rejected the image upload.',
+      debug,
+    };
+  }
+  return { ok: true, contentId };
+}
+
 export async function sendPancakeConversationMessage(input: {
   conversationId: string;
   message: string;
@@ -524,17 +616,41 @@ export async function sendPancakeConversationMessage(input: {
     .replace('{page_id}', encodeURIComponent(pageId.trim()))
     .replace('{conversation_id}', encodeURIComponent(conversationId));
 
+  // When a screenshot is attached, upload its BYTES to Pancake first to obtain a
+  // content_id (the confirmed flow), then attach it as a PHOTO below. reply_inbox forbids a
+  // text `message` alongside content, so with an image we send the photo alone.
+  let contentId: string | null = null;
+  if (input.attachmentUrl) {
+    const up = await uploadPancakeImageContent(input.attachmentUrl);
+    if (!up.ok) {
+      return {
+        ok: false,
+        code: up.code,
+        message:
+          'The screenshot could not be uploaded to Pancake. The reminder is saved — retry, or send it via Open FB Chat.',
+        pancakeMessageId: null,
+        ...(up.debug ? { debug: up.debug } : {}),
+      };
+    }
+    contentId = up.contentId;
+  }
+
   let res: Response;
   try {
     const endpoint = `${base}${path}${path.includes('?') ? '&' : '?'}${tokenParam}=${encodeURIComponent(token.trim())}`;
-    // pages.fm's public API is FORM/QUERY based (the conversations list uses query
-    // params, not JSON). A JSON body is rejected with a generic "Something went
-    // wrong", so we send `application/x-www-form-urlencoded`. `action=reply_inbox`
-    // is the reply mode; `content_url` carries an image when attached.
+    // pages.fm's public API is FORM/QUERY based (a JSON body is rejected), so we send
+    // `application/x-www-form-urlencoded`. `action=reply_inbox` is the reply mode. An image
+    // is sent as its uploaded `content_ids` + `attachment_type=PHOTO` (Pancake's confirmed
+    // flow); a text `message` is used ONLY when there is no image — the two are mutually
+    // exclusive (sending both returns error_code 100).
     const form = new URLSearchParams();
     form.set('action', 'reply_inbox');
-    form.set('message', input.message);
-    if (input.attachmentUrl) form.set('content_url', input.attachmentUrl);
+    if (contentId) {
+      form.set('content_ids[]', contentId);
+      form.set('attachment_type', 'PHOTO');
+    } else {
+      form.set('message', input.message);
+    }
     // NOTE ON THE 24-HOUR WINDOW: Facebook blocks a message sent >24h after the
     // customer's last message (error #10, subcode 2018278). The old order tags
     // (POST_PURCHASE_UPDATE / CONFIRMED_EVENT_UPDATE / ACCOUNT_UPDATE) were RETIRED by
@@ -1297,6 +1413,179 @@ export async function findRecentPancakeConversationByName(
   return { conversationId: null, matchCount: 0 };
 }
 
+/* Throttle the on-demand live-comment discovery so a burst of captures during a live
+ * doesn't hammer Pancake — ONE crawl backfills EVERY commenter of the live thread, so
+ * the captures that follow within the gap resolve straight from those backfilled rows. */
+let lastLiveDiscoveryAt = 0;
+const LIVE_DISCOVERY_MIN_GAP_MS = 6000;
+
+/** (psid, name) pairs from a Pancake messages/comments response, tolerating the shapes
+ *  pages.fm uses (a `from` object per message, or flat sender fields). */
+function extractCommenters(body: unknown): Array<{ psid: string; name: string }> {
+  const root =
+    body && typeof body === 'object' ? (body as Record<string, unknown>) : null;
+  const arr = (key: string): unknown[] => {
+    const v = root?.[key];
+    return Array.isArray(v) ? v : [];
+  };
+  // Whichever envelope pages.fm uses; overlaps are harmless (deduped by PSID below).
+  const list: unknown[] = Array.isArray(body)
+    ? body
+    : [...arr('messages'), ...arr('data'), ...arr('comments')];
+  const out: Array<{ psid: string; name: string }> = [];
+  for (const m of list) {
+    if (!m || typeof m !== 'object') continue;
+    const mm = m as Record<string, unknown>;
+    const from =
+      mm.from && typeof mm.from === 'object'
+        ? (mm.from as Record<string, unknown>)
+        : null;
+    const psid = asText(from?.id) || asText(mm.from_id) || asText(mm.sender_id);
+    const name =
+      asText(from?.name) || asText(mm.from_name) || asText(mm.sender_name);
+    if (psid) out.push({ psid, name });
+  }
+  return out;
+}
+
+/**
+ * FALLBACK — on-demand live-comment discovery. When the realtime Pancake webhook MISSED a
+ * live comment, we still know the LIVE POST (from the comments it DID deliver). Pull that
+ * post's comments from the Pancake API and backfill each commenter (page_id + PSID + name)
+ * into pancake_webhook_events, so webhook_resolve_conversation_by_name can then resolve the
+ * pinned name to a messageable {page_id}_{psid} chat. Best-effort, THROTTLED, never throws.
+ * The endpoint template is env-overridable (PANCAKE_POST_COMMENTS_PATH) so the exact
+ * pages.fm contract can be corrected without a code change. Returns how many were backfilled.
+ */
+export async function discoverAndBackfillLiveCommenters(
+  supabase: SupabaseClient,
+): Promise<number> {
+  const nowMs = Date.now();
+  if (nowMs - lastLiveDiscoveryAt < LIVE_DISCOVERY_MIN_GAP_MS) return 0;
+  lastLiveDiscoveryAt = nowMs;
+
+  const pageToken = process.env.PANCAKE_PAGE_ACCESS_TOKEN;
+  const token = (pageToken || process.env.PANCAKE_USER_ACCESS_TOKEN || '').trim();
+  const tokenParam =
+    process.env.PANCAKE_SEND_TOKEN_PARAM ||
+    (pageToken ? 'page_access_token' : 'access_token');
+  const pageId = await getActivePancakePageId();
+  if (!token || !pageId) return 0;
+
+  const { data: threads } = (await supabase.rpc('webhook_recent_live_threads', {
+    p_active_page: pageId,
+  })) as {
+    data: Array<{
+      page_id: string;
+      livestream_post_id: string | null;
+      raw_post_id: string | null;
+    }> | null;
+  };
+  if (!threads || threads.length === 0) return 0;
+
+  const base = resolvePancakeApiBase();
+  const template =
+    process.env.PANCAKE_POST_COMMENTS_PATH ||
+    '/pages/{page_id}/conversations/{conversation_id}/messages';
+
+  // The candidate conversation ids that might address the whole live thread's comments —
+  // both the "{page_id}_{post}" form and the raw post id, since we can't be sure which
+  // one pages.fm keys the comment feed on.
+  const candidates = new Set<string>();
+  for (const t of threads) {
+    const full = (t.livestream_post_id ?? '').trim();
+    const raw = (t.raw_post_id ?? '').trim();
+    if (full) candidates.add(full);
+    if (raw) candidates.add(raw);
+  }
+
+  let backfilled = 0;
+  const seen = new Set<string>();
+  for (const conv of candidates) {
+    const path = template
+      .replace('{page_id}', encodeURIComponent(pageId))
+      .replace('{conversation_id}', encodeURIComponent(conv));
+    let commenters: Array<{ psid: string; name: string }> = [];
+    try {
+      const endpoint = `${base}${path}${path.includes('?') ? '&' : '?'}${tokenParam}=${encodeURIComponent(token)}`;
+      const res = await fetch(endpoint, {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) continue;
+      const body = (await res.json().catch(() => null)) as unknown;
+      if (
+        body &&
+        typeof body === 'object' &&
+        (body as { success?: boolean }).success === false
+      ) {
+        continue;
+      }
+      commenters = extractCommenters(body);
+    } catch {
+      continue;
+    }
+    for (const c of commenters) {
+      if (seen.has(c.psid)) continue;
+      seen.add(c.psid);
+      try {
+        await supabase.rpc('webhook_backfill_live_commenter', {
+          p_page_id: pageId,
+          p_psid: c.psid,
+          p_name: c.name || null,
+          p_conversation_id: null,
+          p_livestream_post_id: conv,
+        });
+        backfilled += 1;
+      } catch {
+        /* best-effort — a single backfill failure never blocks the rest */
+      }
+    }
+  }
+  return backfilled;
+}
+
+/**
+ * The webhook fast-match, WITH the on-demand fallback: resolve a name to a messageable
+ * {page_id}_{psid} chat from the stored Live-comment identities; if none matches and the
+ * name isn't ambiguous, pull the live post's comments from Pancake (backfilling them) and
+ * try ONCE more. Returns the raw conversation id + match count; each caller maps it to its
+ * own link shape. Unique-gated inside the RPC — a shared name never guesses.
+ */
+export async function resolveConversationFromWebhook(
+  supabase: SupabaseClient,
+  name: string,
+  activePage: string,
+): Promise<{ conversationId: string | null; matchCount: number }> {
+  const call = async () => {
+    const r = (await supabase.rpc('webhook_resolve_conversation_by_name', {
+      p_name: name,
+      p_active_page: activePage,
+    })) as { data: { conversationId?: string | null; matchCount?: number } | null };
+    const id = (r.data?.conversationId ?? '').trim();
+    return {
+      conversationId: id && conversationBelongsToPage(id, activePage) ? id : null,
+      matchCount: r.data?.matchCount ?? 0,
+    };
+  };
+  let res = await call();
+  // Missed by the realtime webhook (and not a shared name) → OPTIONALLY pull the live
+  // post's comments and retry once. OPT-IN (PANCAKE_LIVE_DISCOVERY=1), OFF by default:
+  // the webhook parser now captures EVERY commenter (video-live payload fix), so the
+  // fast-match above already resolves them. The crawl uses a best-guess endpoint and would
+  // otherwise add several seconds of latency to this HOT resolve path (mobile auto-send +
+  // Send Invoice) for a not-yet-captured name. Kept behind the flag so it can be re-enabled.
+  if (
+    !res.conversationId &&
+    res.matchCount <= 1 &&
+    process.env.PANCAKE_LIVE_DISCOVERY === '1'
+  ) {
+    const found = await discoverAndBackfillLiveCommenters(supabase);
+    if (found > 0) res = await call();
+  }
+  return res;
+}
+
 export type ResolvedConversation = {
   conversationId: string | null;
   /** How many candidates matched — >1 means ambiguous, so the id is null. */
@@ -1377,6 +1666,19 @@ export async function resolveConversationForName(
   }
   if (flUsable.length > 1) {
     return { conversationId: null, matchCount: flUsable.length, source: 'none' };
+  }
+
+  // Tier 1.5 — WEBHOOK FAST-MATCH: a recent Live commenter resolved from the webhook
+  // identities (the exact person, straight from Pancake — no slow/rate-limited
+  // conversations API). Builds the messageable inbox conversation {page_id}_{psid}; unique
+  // name only (never guesses a shared name); a wrong-page/blank id is ignored so tier 2
+  // still runs. This is what makes "tap the pinned comment → Send now" work during a live.
+  const wh = await resolveConversationFromWebhook(supabase, name, activePage);
+  if (wh.conversationId) {
+    return { conversationId: wh.conversationId, matchCount: 1, source: 'pancake_live' };
+  }
+  if (wh.matchCount > 1) {
+    return { conversationId: null, matchCount: wh.matchCount, source: 'none' };
   }
 
   // Tier 2 — LIVE lookup (returns a single unambiguous conversation, else null).

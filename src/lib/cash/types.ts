@@ -75,6 +75,25 @@ export type CashMovementRow = {
   createdAt: string;
 };
 
+/**
+ * One row of the combined "Trades & Expenses" box: a manual Expense (counted in the
+ * Cash Breakdown) or a manual Trade (display-only, never reduces Expected Cash). The
+ * `type` drives the badge + which type-specific fields the View/Edit modal shows.
+ */
+export type TradeExpenseRow = {
+  id: string;
+  type: 'expense' | 'trade';
+  name: string;
+  amount: string;
+  /** Expense only. */
+  category: string | null;
+  /** Trade only — the related sale / customer, if noted. */
+  relatedSale: string | null;
+  remarks: string | null;
+  createdByName: string;
+  createdAt: string;
+};
+
 /** The Details tabs, in the approved order. */
 export const CASH_TABS = [
   'sales_walkins',

@@ -146,6 +146,9 @@ type LayawayAccountRow = {
   accountNo: string;
   /** Linked inventory Unique Code(s); null → "Not linked". */
   uniqueCode: string | null;
+  /** Row origin for imported ledger rows ('imported' | 'manual'); null for order-derived
+   *  rows. Drives the "Imported (no item)" label instead of a scary "Not linked". */
+  sourceKind: string | null;
   /** Facebook Messenger URL for a quick "Open Chat" button (or null). */
   facebookUrl: string | null;
   balanceMismatch: boolean;
@@ -154,6 +157,21 @@ type LayawayAccountRow = {
   /** Set only for imported ledger rows — the id used to delete them. */
   ledgerId: string | null;
 };
+
+/** Unique-Code cell label: the linked item code, else a legacy-aware placeholder.
+ *  Imported balance-only accounts never carried an item Unique Code, so we say
+ *  "Imported (no item)" rather than "Not linked" (which reads like a broken link). */
+function uniqueCodeLabel(r: LayawayAccountRow): string {
+  if (r.uniqueCode) {
+    // A multi-item account resolves to several codes ("CODE1, CODE2, CODE3"). Show only the
+    // FIRST in the column so it stays readable — with a "+N" hint that more exist. The full
+    // list still lives in `r.uniqueCode` for SEARCH (see the filter below) and in the cell's
+    // title tooltip, so a hidden code is still findable and hover-visible.
+    const codes = r.uniqueCode.split(/,\s*/).filter(Boolean);
+    return codes.length > 1 ? `${codes[0]} +${codes.length - 1}` : r.uniqueCode;
+  }
+  return r.sourceKind === 'imported' ? 'Imported (no item)' : 'Not linked';
+}
 
 function fromDerived(l: LayawayRow): LayawayAccountRow {
   return {
@@ -173,6 +191,7 @@ function fromDerived(l: LayawayRow): LayawayAccountRow {
     balance: l.outstandingBalance,
     accountNo: l.orderNumber,
     uniqueCode: l.uniqueCode,
+    sourceKind: null,
     facebookUrl: l.facebookUrl,
     balanceMismatch: false,
     officialOrderId: l.officialOrderId,
@@ -199,6 +218,7 @@ function fromLedger(l: LayawayLedgerRow): LayawayAccountRow {
     balance: l.balance,
     accountNo: l.accountNo,
     uniqueCode: l.uniqueCode,
+    sourceKind: l.sourceKind,
     facebookUrl: l.facebookUrl,
     balanceMismatch: l.balanceMismatch,
     officialOrderId: null,
@@ -523,7 +543,7 @@ export function PaymentsWorkspace({
         { header: 'Grand Total', value: (r) => r.grandTotal ?? '' },
         { header: 'Payment', value: (r) => r.payment ?? '' },
         { header: 'Balance', value: (r) => r.balance ?? '' },
-        { header: 'Unique Code', value: (r) => r.uniqueCode ?? 'Not linked' },
+        { header: 'Unique Code', value: (r) => uniqueCodeLabel(r) },
         { header: 'Order / Account No.', value: (r) => r.accountNo },
       ],
       accountRows,
@@ -1239,13 +1259,13 @@ function LayawayTable({
                     {r.officialOrderId ? (
                       <OrderNumberButton
                         orderId={r.officialOrderId}
-                        label={r.uniqueCode ?? 'Not linked'}
+                        label={uniqueCodeLabel(r)}
                         onOpen={onOpenOrder}
                       />
                     ) : r.uniqueCode ? (
-                      r.uniqueCode
+                      uniqueCodeLabel(r)
                     ) : (
-                      <span className="text-muted-foreground">Not linked</span>
+                      <span className="text-muted-foreground">{uniqueCodeLabel(r)}</span>
                     )}
                   </td>
                   <td className="truncate px-3 py-2 font-medium" title={r.customerName}>
@@ -1425,13 +1445,13 @@ function CompletedLayawayTable({
                   {r.officialOrderId ? (
                     <OrderNumberButton
                       orderId={r.officialOrderId}
-                      label={r.uniqueCode ?? 'Not linked'}
+                      label={uniqueCodeLabel(r)}
                       onOpen={onOpenOrder}
                     />
                   ) : r.uniqueCode ? (
-                    r.uniqueCode
+                    uniqueCodeLabel(r)
                   ) : (
-                    <span className="text-muted-foreground">Not linked</span>
+                    <span className="text-muted-foreground">{uniqueCodeLabel(r)}</span>
                   )}
                 </td>
                 <td className="col-actions px-3 py-2">

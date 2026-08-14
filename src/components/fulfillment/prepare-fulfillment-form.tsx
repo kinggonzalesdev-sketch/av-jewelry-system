@@ -6,7 +6,7 @@ import { prepareFulfillmentAction } from '@/lib/fulfillment/actions';
 import type { FulfillmentActionState } from '@/lib/fulfillment/action-state';
 import { EMPTY_FULFILLMENT_STATE } from '@/lib/fulfillment/action-state';
 import type { FulfillmentRow } from '@/lib/fulfillment/service';
-import { formatPeso } from '@/lib/payments/format';
+import { Money } from '@/components/shell/privacy';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -85,12 +85,12 @@ export function PrepareFulfillmentForm({ row }: { row: FulfillmentRow }) {
 
             <dt className="text-muted-foreground">Verified payments</dt>
             <dd className="font-medium">
-              {row.balanceUnavailable ? '—' : formatPeso(row.verifiedNetPayments)}
+              {row.balanceUnavailable ? '—' : <Money amount={row.verifiedNetPayments} />}
             </dd>
 
             <dt className="text-muted-foreground">Amount payable</dt>
             <dd className="font-medium">
-              {row.balanceUnavailable ? '—' : formatPeso(row.totalAmountPayable)}
+              {row.balanceUnavailable ? '—' : <Money amount={row.totalAmountPayable} />}
             </dd>
 
             <dt className="text-muted-foreground">Meets ₱1,000 deposit floor</dt>

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 
 import { AuthorizationError, requirePrimarySuperAdmin } from '@/lib/authz/guard';
-import { findRecentPancakeConversationByName } from '@/lib/integrations/pancake';
+import { resolveConversationForName } from '@/lib/integrations/pancake';
+import { createClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -29,10 +30,12 @@ export async function GET(request: Request): Promise<Response> {
     return NextResponse.json({ ok: true, conversationId: null, matchCount: 0 });
   }
 
-  // Search deep but with early-stop: up to ~4 months, up to 12 pages — the lookup stops
-  // the moment the name is found, so a recent person is instant and an older one is
-  // still reachable (instead of being missed after only a few pages).
-  const res = await findRecentPancakeConversationByName(name, {
+  // Resolve via the SAME source-of-truth resolver the capture + Send-Invoice flows use:
+  // a pre-linked customer, then the WEBHOOK fast-match (every recent commenter/messager —
+  // this is what finds video-live commenters the conversations API omits), then a bounded
+  // live lookup. Unique-gated, so a shared name never auto-fills the wrong chat.
+  const supabase = await createClient();
+  const res = await resolveConversationForName(supabase, name, {
     sinceDays: 120,
     maxPages: 12,
   });

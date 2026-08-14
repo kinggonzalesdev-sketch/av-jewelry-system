@@ -12,22 +12,26 @@ import { DEFAULT_STICKER_FIELDS, type StickerFields } from '@/lib/print/order-re
 const KEY = 'mineflow-sticker-fields-v2';
 
 export function readStickerFields(): StickerFields {
-  if (typeof window === 'undefined') return DEFAULT_STICKER_FIELDS;
+  // FIXED layout (Owner request 2026-08-13): Facebook Name + Price per gram + Date ALWAYS
+  // print; item + price never do. These are no longer toggles — the ONLY editable sticker
+  // value is the ₱/gram RATE (a separate key). Forcing them here means any old saved config
+  // that turned price-per-gram or date off is ignored, so every device prints the same
+  // three-line sticker. The real name + grams come from the order/capture at print time.
+  const forced: Partial<StickerFields> = {
+    name: true,
+    pricePerGram: true,
+    date: true,
+    item: false,
+    price: false,
+  };
+  if (typeof window === 'undefined') return { ...DEFAULT_STICKER_FIELDS, ...forced };
   try {
     const raw = window.localStorage.getItem(KEY);
-    if (!raw) return DEFAULT_STICKER_FIELDS;
+    if (!raw) return { ...DEFAULT_STICKER_FIELDS, ...forced };
     const parsed = JSON.parse(raw) as Partial<StickerFields>;
-    // Merge over defaults, then FORCE the removed fields off so an older saved config
-    // (or a crafted value) can never print the item name or price again. Price-per-gram
-    // is now a real toggle, so it is NOT forced.
-    return {
-      ...DEFAULT_STICKER_FIELDS,
-      ...parsed,
-      item: false,
-      price: false,
-    };
+    return { ...DEFAULT_STICKER_FIELDS, ...parsed, ...forced };
   } catch {
-    return DEFAULT_STICKER_FIELDS;
+    return { ...DEFAULT_STICKER_FIELDS, ...forced };
   }
 }
 

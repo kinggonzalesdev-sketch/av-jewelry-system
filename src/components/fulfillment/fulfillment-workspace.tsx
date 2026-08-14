@@ -15,7 +15,7 @@ import {
 import type { FulfillmentActionState } from '@/lib/fulfillment/action-state';
 import { EMPTY_FULFILLMENT_STATE } from '@/lib/fulfillment/action-state';
 import type { ApprovalRow, FulfillmentListResult } from '@/lib/fulfillment/service';
-import { formatPeso } from '@/lib/payments/format';
+import { Money } from '@/components/shell/privacy';
 import { CollectionRemittanceControls } from '@/components/fulfillment/collection-controls';
 import { PrepareFulfillmentForm } from '@/components/fulfillment/prepare-fulfillment-form';
 import { EmptyState } from '@/components/states/empty-state';
@@ -220,13 +220,21 @@ export function FulfillmentWorkspace({
                       <div>
                         <dt className="text-muted-foreground">Verified paid</dt>
                         <dd className="font-medium tabular-nums">
-                          {f.balanceUnavailable ? '—' : formatPeso(f.verifiedNetPayments)}
+                          {f.balanceUnavailable ? (
+                            '—'
+                          ) : (
+                            <Money amount={f.verifiedNetPayments} />
+                          )}
                         </dd>
                       </div>
                       <div>
                         <dt className="text-muted-foreground">Total payable</dt>
                         <dd className="font-medium tabular-nums">
-                          {f.balanceUnavailable ? '—' : formatPeso(f.totalAmountPayable)}
+                          {f.balanceUnavailable ? (
+                            '—'
+                          ) : (
+                            <Money amount={f.totalAmountPayable} />
+                          )}
                         </dd>
                       </div>
                       <div>

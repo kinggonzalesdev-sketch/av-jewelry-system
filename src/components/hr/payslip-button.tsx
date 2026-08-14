@@ -1,12 +1,12 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import { generatePayslipAction, markPayslipPaidAction } from '@/lib/hr/payslip-actions';
 import { downloadPayslipPdf } from '@/lib/hr/payslip-pdf';
 import { EMPTY_PAYSLIP_STATE, type PayslipSnapshot } from '@/lib/hr/payslip-types';
-import { formatPeso } from '@/lib/payments/format';
+import { Money } from '@/components/shell/privacy';
 import { Button } from '@/components/ui/button';
 import { MoneyInput } from '@/components/ui/money-input';
 import { Label } from '@/components/ui/label';
@@ -44,7 +44,7 @@ function Row({
   accent,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   accent?: boolean;
 }) {
   return (
@@ -61,7 +61,11 @@ function Row({
 }
 
 function PayslipDocument({ snap }: { snap: PayslipSnapshot }) {
-  const rate = snap.hourlyRate ? formatPeso(snap.hourlyRate) : 'No rate set';
+  const rate: ReactNode = snap.hourlyRate ? (
+    <Money amount={snap.hourlyRate} />
+  ) : (
+    'No rate set'
+  );
   return (
     <div id="payslip-doc" className="rounded-lg bg-white p-6 text-sm text-black">
       {/* 1 · Header — small logo, employee, role, period, status */}
@@ -117,11 +121,18 @@ function PayslipDocument({ snap }: { snap: PayslipSnapshot }) {
           )}
         </div>
         <div>
-          <Row label="Regular salary" value={formatPeso(snap.regularSalary)} />
-          <Row label="Overtime pay" value={formatPeso(snap.overtimePay)} />
-          <Row label="Gross salary" value={formatPeso(snap.grossSalary)} />
-          <Row label="Deductions" value={`- ${formatPeso(snap.deductions)}`} />
-          <Row label="Net pay" value={formatPeso(snap.netSalary)} accent />
+          <Row label="Regular salary" value={<Money amount={snap.regularSalary} />} />
+          <Row label="Overtime pay" value={<Money amount={snap.overtimePay} />} />
+          <Row label="Gross salary" value={<Money amount={snap.grossSalary} />} />
+          <Row
+            label="Deductions"
+            value={
+              <>
+                - <Money amount={snap.deductions} />
+              </>
+            }
+          />
+          <Row label="Net pay" value={<Money amount={snap.netSalary} />} accent />
         </div>
       </div>
 

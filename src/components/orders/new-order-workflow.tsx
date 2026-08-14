@@ -4,6 +4,13 @@ import { useRouter } from 'next/navigation';
 import { useMemo, useRef, useState } from 'react';
 
 import type { CaptureItem, WalkInItem } from '@/lib/orders/service';
+import {
+  centavosToStr,
+  effectiveGrams,
+  priceCentavos,
+  PRICE_RE,
+  rowTotalCentavos,
+} from '@/lib/orders/item-pricing';
 import { parseInventoryCode } from '@/lib/inventory/code-parser';
 import { hkFixedPrice, isHKItem } from '@/lib/inventory/hk-item';
 import { DEFAULT_PAYMENT_METHOD, PAYMENT_METHOD_OPTIONS } from '@/lib/payments/methods';
@@ -16,6 +23,7 @@ import {
   recordOrderPrintAction,
   saveWalkInOrderAction,
   searchCaptureItemsAction,
+  transferOrderDestinationAction,
   transferWalkInToReminderAction,
   updateInventoryGramsAction,
   type NewOrderData,
@@ -94,8 +102,6 @@ const L = ({ children }: { children: React.ReactNode }) => (
 const fieldClass =
   'h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold';
 
-const PRICE_RE = /^\d{1,12}(\.\d{1,2})?$/;
-
 let rowSeq = 0;
 function newRow(): Row {
   rowSeq += 1;
@@ -122,45 +128,14 @@ function newPay(method: string = DEFAULT_PAYMENT_METHOD): PayRow {
 
 const PAYMENT_METHODS = PAYMENT_METHOD_OPTIONS;
 
+// "Trade" (trade-in / barter) is now a CANONICAL Mode of Payment offered on every
+// dropdown (Owner request 2026-08-13), so it comes from PAYMENT_METHOD_OPTIONS like any
+// other method. The Walk-In list is now just an alias for the shared options (kept for
+// readability at the call site).
+const WALKIN_PAYMENT_METHODS = PAYMENT_METHOD_OPTIONS;
+
 function methodLabel(value: string): string {
   return PAYMENT_METHODS.find((m) => m.value === value)?.label ?? value;
-}
-
-/** Raw price string → exact centavos (never a float). '' / invalid → 0. */
-function priceCentavos(raw: string): bigint {
-  const s = (raw ?? '').trim();
-  if (!PRICE_RE.test(s)) return 0n;
-  const [w = '0', f = ''] = s.split('.');
-  return BigInt(w || '0') * 100n + BigInt(`${f}00`.slice(0, 2) || '0');
-}
-function centavosToStr(c: bigint): string {
-  return `${c / 100n}.${String(c % 100n).padStart(2, '0')}`;
-}
-/** Total from Price Per Gram × grams, in EXACT integer units: grams → milligrams
- *  (×1000), rate → centavos (×100), total centavos = rateCentavos × gramsMilli /
- *  1000, rounded to the nearest centavo. */
-function perGramTotalCentavos(grams: string, perGram: string): bigint {
-  const g = (grams ?? '').trim();
-  const pg = (perGram ?? '').trim();
-  if (!/^\d*\.?\d*$/.test(g) || !PRICE_RE.test(pg)) return 0n;
-  const [gw = '0', gf = ''] = g.split('.');
-  const gramsMilli = BigInt(gw || '0') * 1000n + BigInt(`${gf}000`.slice(0, 3) || '0');
-  const rateCentavos = priceCentavos(pg);
-  if (gramsMilli === 0n || rateCentavos === 0n) return 0n;
-  return (rateCentavos * gramsMilli + 500n) / 1000n;
-}
-/** The grams actually used for a row: the Walk-In override when set, else the item's
- *  own grams. Fixed-price rows ignore grams entirely. */
-function effectiveGrams(r: Row, item: PickItem | null): string {
-  const override = (r.grams ?? '').trim();
-  return override || item?.grams || '';
-}
-
-/** A row's total price (one unique item — no quantity). */
-function rowTotalCentavos(r: Row, item: PickItem | null): bigint {
-  return r.priceMode === 'per_gram'
-    ? perGramTotalCentavos(effectiveGrams(r, item), r.perGram)
-    : priceCentavos(r.price);
 }
 
 /** The shared item-rows editor + order summary. Used by both modes. */
@@ -548,27 +523,67 @@ export type CapturePrefill = {
   screenshotUrl?: string | null | undefined;
 };
 
+/**
+ * Walk-In Transfer Destination (Owner request 2026-08-13). ONE dropdown routes the saved
+ * sale onward. The sale + its payments are written ONCE (save_walkin_order); the chosen
+ * destination only changes the order's status afterward, so nothing is double-counted.
+ *   - completed        → the walk-in completion gate (needs full payment; retires items).
+ *   - pending_payment  → leaves the balance owing (appears under Pending Payment).
+ *   - ship_confirm/delivery/layaway → the shared transfer_order_destination router.
+ * "layaway" only PARKS the order in For Layaway; interest/term/code are set in the
+ * existing Layaway module (never rebuilt here — Owner decision 2026-08-13).
+ */
+const WALKIN_DESTINATIONS = [
+  { value: 'completed', label: 'Completed' },
+  { value: 'ship_confirm', label: 'Ship Confirm' },
+  { value: 'delivery', label: 'For Delivery' },
+  { value: 'layaway', label: 'Layaway' },
+  { value: 'pending_payment', label: 'Pending Payment' },
+] as const;
+type WalkInDestination = (typeof WALKIN_DESTINATIONS)[number]['value'];
+
 export function NewOrderModal({
-  customers,
-  items,
+  customers = [],
+  items = [],
   walkInItems,
   admins,
   onClose,
   prefill,
+  walkInOnly = false,
+  newEntryOnly = false,
+  onSaved,
+  defaultSaleDate,
 }: {
-  customers: Customer[];
-  items: CaptureItem[];
+  customers?: Customer[];
+  items?: CaptureItem[];
   walkInItems: WalkInItem[];
   admins: AdminNameContext;
   onClose: () => void;
   /** Optional pre-fill from a floating-screenshot pending capture (OCR guess). */
   prefill?: CapturePrefill;
+  /** Daily Cash "+ Add New Sale" reuses this modal WALK-IN ONLY: the New Entry toggle is
+   *  hidden and it opens straight to the walk-in form. New Entry needs `customers`/`items`;
+   *  walk-in-only can omit them (type the name; CustomerMatchHint still de-dupes). */
+  walkInOnly?: boolean;
+  /** Orders + capture reuse this modal NEW-ENTRY ONLY: the "Walk In" tab is hidden (the
+   *  Walk-In sale flow now lives ONLY in Daily Cash → + Add New Sale). Owner 2026-08-13. */
+  newEntryOnly?: boolean;
+  /** Fired after a successful walk-in save so the host (e.g. Daily Cash) refreshes its
+   *  Sales Walk-ins table + totals without a full reload. */
+  onSaved?: () => void;
+  /** Default sale date (YYYY-MM-DD) for a walk-in. Daily Cash passes the day being VIEWED
+   *  so the saved sale files under that same day and appears in its Sales & Walk-ins box. */
+  defaultSaleDate?: string;
 }) {
   const router = useRouter();
   const { activeChannel, printLang } = usePrinter();
 
-  const [mode, setMode] = useState<'order' | 'walkin'>('order');
-  const today = new Date().toISOString().slice(0, 10);
+  const [mode, setMode] = useState<'order' | 'walkin'>(walkInOnly ? 'walkin' : 'order');
+  // Manila local date (NOT UTC). The walk-in reader (daily_cash_walkins) buckets by
+  // Asia/Manila, and a walk-in is stamped at midnight-of-saleDate; defaulting to the UTC
+  // date filed a sale under the WRONG day during the Manila 00:00–08:00 window (it never
+  // showed in "today"'s Sales & Walk-ins). 'en-CA' yields YYYY-MM-DD.
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 
   // Customer (shared, pick-OR-type).
   // Admin Name is ALWAYS the signed-in account — read-only, no picker, no
@@ -594,8 +609,15 @@ export function NewOrderModal({
   // Walk-In extras: up to two payment methods (each with its own amount) + a sale
   // date. A review overlay confirms everything before the sale is saved.
   const [pays, setPays] = useState<PayRow[]>([newPay()]);
-  const [saleDate, setSaleDate] = useState(today);
+  const [saleDate, setSaleDate] = useState(defaultSaleDate ?? today);
   const [reviewing, setReviewing] = useState(false);
+  // Walk-In Transfer Destination — where the saved sale is routed on confirm.
+  const [walkDest, setWalkDest] = useState<WalkInDestination>('completed');
+  // Walk-In scan-to-add: a USB barcode scanner types an item CODE + Enter; we add the
+  // matching Active-Inventory item automatically (Owner request 2026-08-13). No camera —
+  // it matches the SAME item set the picker uses, so the saved row resolves identically.
+  const [scanCode, setScanCode] = useState('');
+  const [scanErr, setScanErr] = useState<string | null>(null);
 
   // Normalized pick-lists. New Entry offers AVAILABLE catalogue items; Walk-In uses
   // the pre-filtered sellable list.
@@ -670,8 +692,10 @@ export function NewOrderModal({
     total: string;
     stickers: OrderReceiptData[];
     walkIn: boolean;
-    /** Walk-In only: where the saved sale was transferred. */
-    destination?: 'reminder' | 'completed';
+    /** Walk-In only: label of the chosen Transfer Destination (e.g. "Ship Confirm"). */
+    destinationLabel?: string;
+    /** Walk-In only: true when routed to Completed (all items retired to inventory). */
+    completed?: boolean;
     /** Walk-In only: the DB-authoritative remaining balance. */
     balance?: string;
   } | null>(null);
@@ -697,6 +721,30 @@ export function NewOrderModal({
 
   const patchPay = (key: string, next: Partial<PayRow>) =>
     setPays((ps) => ps.map((p) => (p.key === key ? { ...p, ...next } : p)));
+
+  /** Scan / type an item CODE → add that Active-Inventory item to the walk-in list. */
+  const scanAdd = (raw: string) => {
+    const code = raw.trim();
+    if (!code) return;
+    const match = walkPickItems.find((p) => p.code.toLowerCase() === code.toLowerCase());
+    if (!match) {
+      setScanErr(`No Active Inventory item with code “${code}”.`);
+      return;
+    }
+    if (walkRows.some((r) => r.itemInput.trim() === match.label)) {
+      setScanErr(`${match.code} is already in the list.`);
+      setScanCode('');
+      return;
+    }
+    // Fill the first empty row, else append — so a scan never leaves a blank row behind.
+    setWalkRows((rs) => {
+      const filled: Row = { ...newRow(), itemInput: match.label };
+      const emptyIdx = rs.findIndex((r) => r.itemInput.trim() === '');
+      return emptyIdx >= 0 ? rs.map((r, i) => (i === emptyIdx ? filled : r)) : [...rs, filled];
+    });
+    setScanErr(null);
+    setScanCode('');
+  };
 
   const validate = (): string | null => {
     const resolved = resolvedRows();
@@ -860,6 +908,14 @@ export function NewOrderModal({
       setError(err);
       return;
     }
+    // "Completed" needs the full amount (the DB completion gate refuses a balance). Catch
+    // it here so the operator picks Pending Payment (or pays in full) BEFORE the save.
+    if (walkDest === 'completed' && balanceCentavos > 0n) {
+      setError(
+        'Completed needs full payment. Pick “Pending Payment” (or another destination), or collect the full amount first.',
+      );
+      return;
+    }
     setError(null);
     setReviewing(true);
   };
@@ -913,21 +969,28 @@ export function NewOrderModal({
         return;
       }
 
-      // 3) Transfer per the DB-authoritative balance: fully paid → Completed, else
-      //    For Reminder. A failed transfer leaves the saved order in For Invoice,
-      //    which the operator can still move by hand — so it is reported, not hidden.
-      const fullyPaid = priceCentavos(res.balance) <= 0n;
-      let destination: 'reminder' | 'completed' = fullyPaid ? 'completed' : 'reminder';
-      const transfer = fullyPaid
-        ? await completeWalkInOrderAction(res.officialOrderId)
-        : await transferWalkInToReminderAction(res.officialOrderId);
-      if (!transfer.ok) {
+      // 3) Route to the CHOSEN Transfer Destination (Owner 2026-08-13). The order + its
+      //    payments were written ONCE above; this step only changes the order's STATUS, so
+      //    no cash/inventory is double-counted. A failed transfer leaves the saved order in
+      //    For Invoice (reported, not hidden) — the operator can still move it from Orders.
+      const destLabel =
+        WALKIN_DESTINATIONS.find((d) => d.value === walkDest)?.label ?? 'For Invoice';
+      let transferErr: string | null = null;
+      if (walkDest === 'completed') {
+        const t = await completeWalkInOrderAction(res.officialOrderId);
+        if (!t.ok) transferErr = t.error;
+      } else if (walkDest === 'pending_payment') {
+        const t = await transferWalkInToReminderAction(res.officialOrderId);
+        if (!t.ok) transferErr = t.error;
+      } else {
+        // ship_confirm | delivery | layaway → the SAME shared router the Orders flow uses.
+        const t = await transferOrderDestinationAction(res.officialOrderId, walkDest);
+        if (!t.ok) transferErr = t.error;
+      }
+      if (transferErr) {
         setError(
-          `Saved as ${res.orderNumber}, but moving it to ${
-            fullyPaid ? 'Completed' : 'For Invoice'
-          } failed: ${transfer.error}. You can move it from the Orders list.`,
+          `Saved as ${res.orderNumber}, but moving it to ${destLabel} failed: ${transferErr}. You can move it from the Orders list.`,
         );
-        destination = fullyPaid ? 'completed' : 'reminder';
       }
 
       setReviewing(false);
@@ -938,9 +1001,11 @@ export function NewOrderModal({
         total: res.total,
         stickers: buildStickers(),
         walkIn: true,
-        destination,
+        destinationLabel: destLabel,
+        completed: walkDest === 'completed' && !transferErr,
         balance: res.balance,
       });
+      onSaved?.();
       router.refresh();
     } finally {
       setPending(false);
@@ -969,7 +1034,11 @@ export function NewOrderModal({
         title={
           <span className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-gold" aria-hidden="true" />
-            {saved.walkIn ? 'New Entry Walk-In' : 'New Order Entry'}
+            {saved.walkIn
+              ? walkInOnly
+                ? 'New Walk-In Sale'
+                : 'New Entry Walk-In'
+              : 'New Order Entry'}
           </span>
         }
         footer={
@@ -982,9 +1051,7 @@ export function NewOrderModal({
           <div className="rounded-lg border border-gold/40 bg-gold/10 px-3 py-3">
             <p className="text-sm font-semibold">
               {saved.walkIn
-                ? saved.destination === 'completed'
-                  ? 'Walk-in saved and completed'
-                  : 'Walk-in saved and moved to For Invoice'
+                ? `Walk-in saved · moved to ${saved.destinationLabel ?? 'For Invoice'}`
                 : 'Order saved to For Invoice'}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -992,7 +1059,7 @@ export function NewOrderModal({
               {saved.itemCount === 1 ? '' : 's'} · Total{' '}
               <strong>{formatPeso(saved.total)}</strong>
               {saved.walkIn ? (
-                saved.destination === 'completed' ? (
+                saved.completed ? (
                   <> · fully paid. All items were retired to Completed inventory.</>
                 ) : (
                   <>
@@ -1218,7 +1285,11 @@ export function NewOrderModal({
       title={
         <span className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-gold" aria-hidden="true" />
-          {mode === 'walkin' ? 'New Entry Walk-In' : 'New Order Entry'}
+          {mode === 'walkin'
+            ? walkInOnly
+              ? 'New Walk-In Sale'
+              : 'New Entry Walk-In'
+            : 'New Order Entry'}
         </span>
       }
       footer={
@@ -1232,7 +1303,11 @@ export function NewOrderModal({
         </Button>
       }
     >
-      {/* Mode toggle: New Entry (saved to For Invoice) vs instant Walk-In sale. */}
+      {/* Mode toggle: New Entry (saved to For Invoice) vs instant Walk-In sale. Hidden when
+          the modal is reused single-mode: WALK-IN ONLY (Daily Cash "+ Add New Sale") or
+          NEW-ENTRY ONLY (Orders + capture) — the Walk-In sale now lives ONLY in Daily Cash
+          (Owner request 2026-08-13). */}
+      {!walkInOnly && !newEntryOnly ? (
       <div className="mb-3 grid grid-cols-2 gap-1 rounded-lg border border-border p-1">
         <button
           type="button"
@@ -1261,6 +1336,7 @@ export function NewOrderModal({
           Walk In
         </button>
       </div>
+      ) : null}
 
       <div className="space-y-3">
         {/* Captured screenshot (from the floating button) shown for reference so the
@@ -1308,6 +1384,39 @@ export function NewOrderModal({
         </div>
 
         <hr className="border-border" />
+
+        {/* Walk-In scan-to-add: a USB barcode scanner types the code + Enter → the item is
+            added to the list below automatically (Owner request 2026-08-13). */}
+        {mode === 'walkin' ? (
+          <div data-testid="walkin-scan">
+            <L>Scan / enter item code</L>
+            <input
+              value={scanCode}
+              onChange={(e) => {
+                setScanCode(e.target.value);
+                setScanErr(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  scanAdd(scanCode);
+                }
+              }}
+              placeholder="Scan a barcode or type a code, then Enter"
+              className={fieldClass}
+              data-testid="walkin-scan-code"
+            />
+            {scanErr ? (
+              <p className="mt-1 text-[11px] text-destructive" data-testid="walkin-scan-err">
+                {scanErr}
+              </p>
+            ) : (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                A USB barcode scanner types the code + Enter — the item is added below.
+              </p>
+            )}
+          </div>
+        ) : null}
 
         <ItemRows
           items={pickItems}
@@ -1357,7 +1466,7 @@ export function NewOrderModal({
                       onChange={(e) => patchPay(p.key, { method: e.target.value })}
                       className={fieldClass}
                     >
-                      {PAYMENT_METHODS.map((m) => (
+                      {WALKIN_PAYMENT_METHODS.map((m) => (
                         <option key={m.value} value={m.value}>
                           {m.label}
                         </option>
@@ -1429,11 +1538,43 @@ export function NewOrderModal({
               </div>
               <p className="mt-1 text-[11px] text-muted-foreground">
                 {balanceCentavos <= 0n && totalCentavos > 0n
-                  ? 'Fully paid — this will be saved and moved to Completed.'
-                  : 'With a balance, this will be saved and moved to For Invoice.'}
+                  ? 'Fully paid.'
+                  : 'A balance remains — pick “Pending Payment” below if this is not fully paid.'}
               </p>
             </div>
           </div>
+        ) : null}
+
+        {/* Transfer Destination (Owner request 2026-08-13) — sits AFTER Payment, before
+            SAVE. Routes the saved sale onward; the sale + payments are still written once,
+            so nothing double-counts. "Completed" is gated on full payment above. */}
+        {mode === 'walkin' ? (
+          <label className="block" data-testid="walkin-destination">
+            <L>Transfer Destination</L>
+            <select
+              value={walkDest}
+              onChange={(e) => setWalkDest(e.target.value as WalkInDestination)}
+              className={fieldClass}
+              data-testid="walkin-destination-select"
+            >
+              {WALKIN_DESTINATIONS.map((d) => (
+                <option key={d.value} value={d.value}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {walkDest === 'completed'
+                ? 'Needs full payment — items retire to Completed inventory.'
+                : walkDest === 'pending_payment'
+                  ? 'Leaves the balance owing — appears under Pending Payment.'
+                  : walkDest === 'layaway'
+                    ? 'Parks the order in For Layaway — set interest/term in the Layaway module.'
+                    : `Moves the order to ${
+                        WALKIN_DESTINATIONS.find((d) => d.value === walkDest)?.label
+                      }.`}
+            </p>
+          </label>
         ) : null}
 
         {error ? (
@@ -1517,6 +1658,7 @@ export function NewOrderWorkflow({
           items={data.items}
           walkInItems={data.walkInItems}
           admins={data.admins}
+          newEntryOnly
           onClose={() => setOpen(false)}
         />
       ) : null}

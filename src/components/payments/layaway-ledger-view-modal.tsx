@@ -9,7 +9,7 @@ import {
 } from '@/lib/payments/actions';
 import type { LayawayLedgerDetail } from '@/lib/payments/layaway-ledger';
 import { LayawayEditItems } from '@/components/payments/layaway-edit-items';
-import { formatPeso } from '@/lib/payments/format';
+import { usePrivacyMoney } from '@/components/shell/privacy';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import {
@@ -34,9 +34,6 @@ function fmtDate(iso: string | null): string {
   return Number.isNaN(d.getTime())
     ? iso
     : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-}
-function peso(v: string | null): string {
-  return v ? formatPeso(v) : '—';
 }
 function humanize(v: string | null): string {
   if (!v) return '—';
@@ -142,6 +139,10 @@ export function LayawayLedgerViewModal({
   canTransfer?: boolean;
 }) {
   const router = useRouter();
+  // Privacy Mode (batch 2): mask peso amounts on screen; '—' for a null/unavailable
+  // value stays as-is. Screen-only — print/export read the underlying data.
+  const pmoney = usePrivacyMoney();
+  const peso = (v: string | null): string => (v ? pmoney(v) : '—');
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<LayawayLedgerDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -333,7 +334,11 @@ export function LayawayLedgerViewModal({
                   {detail.uniqueCode ? (
                     <span className="font-mono">{detail.uniqueCode}</span>
                   ) : (
-                    <span className="text-muted-foreground">Not linked</span>
+                    <span className="text-muted-foreground">
+                      {detail.sourceKind === 'imported'
+                        ? 'Imported (no item)'
+                        : 'Not linked'}
+                    </span>
                   )}
                 </SummaryItem>
                 <SummaryItem icon="◈" label="Status">
@@ -415,6 +420,11 @@ export function LayawayLedgerViewModal({
               ledgerId={ledgerId}
               items={detail.items}
               canManage={canTransfer}
+              layawayTerm={detail.layawayTerm}
+              existingPayment={detail.payment}
+              datePurchased={detail.datePurchased}
+              remarks={detail.remarks}
+              interestType={detail.interestType}
               onRefresh={() => void reload()}
             />
 

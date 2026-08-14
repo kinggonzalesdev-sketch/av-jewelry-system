@@ -35,11 +35,15 @@ describe('the Owner approvals', () => {
       // Approvals unification: the imported-layaway-ledger delete joins the SAME
       // queue as the others (was the separate deletion_requests register).
       'layaway_ledger_delete',
+      // Order-level admin actions (2026-08-13): an admin's Edit (name/total) or Delete of
+      // an order routes through this SAME Owner-approval queue.
+      'order_details_edit',
+      'official_order_delete',
     ]);
   });
 
-  it('has exactly eleven — nothing else may be smuggled in', () => {
-    expect(OWNER_APPROVAL_KINDS).toHaveLength(11);
+  it('has exactly thirteen — nothing else may be smuggled in', () => {
+    expect(OWNER_APPROVAL_KINDS).toHaveLength(13);
   });
 });
 

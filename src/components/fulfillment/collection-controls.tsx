@@ -18,7 +18,7 @@ import {
 } from '@/lib/fulfillment/action-state';
 import { channelLabel } from '@/lib/fulfillment/format';
 import type { FulfillmentRow } from '@/lib/fulfillment/service';
-import { formatPeso } from '@/lib/payments/format';
+import { usePrivacyMoney } from '@/components/shell/privacy';
 
 /**
  * COD collection & remittance controls + the Waybill link (#3 deeper).
@@ -34,6 +34,7 @@ export function CollectionRemittanceControls({
   row: FulfillmentRow;
   canRelease: boolean;
 }) {
+  const money = usePrivacyMoney();
   const [chState, setChannel, settingChannel] = useActionState<
     FulfillmentActionState,
     FormData
@@ -85,9 +86,9 @@ export function CollectionRemittanceControls({
         {row.isCod ? (
           <span className="text-xs text-muted-foreground">
             {row.remitted
-              ? `Collected ${row.collectedAmount ? formatPeso(row.collectedAmount) : ''} via ${channelLabel(row.collectionChannel)} · Remitted`
+              ? `Collected ${row.collectedAmount ? money(row.collectedAmount) : ''} via ${channelLabel(row.collectionChannel)} · Remitted`
               : row.collected
-                ? `Collected ${row.collectedAmount ? formatPeso(row.collectedAmount) : ''} via ${channelLabel(row.collectionChannel)} · awaiting remittance`
+                ? `Collected ${row.collectedAmount ? money(row.collectedAmount) : ''} via ${channelLabel(row.collectionChannel)} · awaiting remittance`
                 : row.collectionChannel
                   ? `To collect via ${channelLabel(row.collectionChannel)}`
                   : 'COD — collection channel not set'}

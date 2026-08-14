@@ -41,6 +41,19 @@ import { readStickerFields, readStickerPricePerGram } from '@/lib/print/sticker-
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 
+/** Read one string field off the (untyped) OCR JSON, tolerating shape/casing. A client
+ *  mirror of the server reader, used to map a realtime capture_records row optimistically
+ *  without a refetch. */
+function ocrStr(ocr: unknown, ...keys: string[]): string | null {
+  if (!ocr || typeof ocr !== 'object') return null;
+  const o = ocr as Record<string, unknown>;
+  for (const k of keys) {
+    const v = o[k];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return null;
+}
+
 /**
  * Incoming Captures — the PC's live station. Floating-screenshot captures uploaded
  * from the phone appear here in realtime (no refresh). "Use" opens New Order
@@ -117,16 +130,87 @@ export function IncomingCapturesStrip({
 
   const load = useCallback(() => {
     loadPendingCapturesAction()
-      .then((data) => {
-        setRows(data);
-        // Tell the "Capture Pending" pill the exact live count so its badge always
-        // matches this popup's "(N)" — same query, one source of truth.
-        window.dispatchEvent(
-          new CustomEvent(CAPTURE_COUNT_EVENT, { detail: data.length }),
-        );
-      })
+      .then((data) => setRows(data))
       .catch(() => undefined);
   }, []);
+
+  // Tell the "Capture Pending" pill the exact live count whenever the list changes.
+  // Driven by local state, so it updates the INSTANT a realtime insert/removal lands
+  // (Capture Pending 4 → 5) — not only after a server refetch. One source of truth.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(CAPTURE_COUNT_EVENT, { detail: rows.length }));
+  }, [rows.length]);
+
+  // Map a raw capture_records realtime row → the strip's row shape so a new capture
+  // appears the INSTANT the event arrives — no server round-trip on the appearance path
+  // (the spec's "INSERT → prepend row", not "INSERT → refetch all"). The signed
+  // screenshot URL + customer join are filled by the debounced reconcile load() that
+  // follows; meanwhile the row already shows with its name/grams. Idempotent on id.
+  const applyRealtimeRow = useCallback(
+    (raw: Record<string, unknown> | null | undefined) => {
+      if (!raw) return;
+      const id = typeof raw.id === 'string' ? raw.id : '';
+      if (!id) return;
+      // Mirror listPendingCaptures' filter EXACTLY: a pending floating capture has
+      // source 'floating', no linked order, and confirmed still null (jsonb).
+      const isPending =
+        raw.source === 'floating' &&
+        raw.official_order_id === null &&
+        raw.confirmed === null;
+      if (!isPending) {
+        // Used / dismissed / confirmed → it leaves the pending list.
+        setRows((cur) => cur.filter((r) => r.captureRecordId !== id));
+        return;
+      }
+      const ocr = raw.ocr;
+      setRows((cur) => {
+        const prev = cur.find((r) => r.captureRecordId === id);
+        const row: PendingCaptureRow = {
+          captureRecordId: id,
+          capturedAt:
+            (typeof raw.captured_at === 'string' ? raw.captured_at : prev?.capturedAt) ??
+            new Date().toISOString(),
+          // Keep any already-signed thumbnail; a newly-attached screenshot is picked up
+          // by the reconcile load() (a signed URL can't be minted on the client).
+          screenshotUrl: prev?.screenshotUrl ?? null,
+          fbName: ocrStr(ocr, 'fbName', 'fb_name', 'name') ?? prev?.fbName ?? null,
+          itemQuery:
+            ocrStr(ocr, 'itemQuery', 'item_query', 'item') ?? prev?.itemQuery ?? null,
+          grams:
+            normalizeGrams(
+              ocrStr(ocr, 'grams', 'weight') ??
+                ocrStr(ocr, 'itemQuery', 'item_query', 'item'),
+            ) ??
+            prev?.grams ??
+            null,
+          isTest: raw.is_test === true,
+          linkStatus:
+            (raw.link_status as PendingCaptureRow['linkStatus']) ??
+            prev?.linkStatus ??
+            null,
+          linkedCustomerName: prev?.linkedCustomerName ?? null,
+          linkedCustomerId:
+            (typeof raw.customer_id === 'string'
+              ? raw.customer_id
+              : prev?.linkedCustomerId) ?? null,
+          conversationAvailable:
+            (typeof raw.pancake_conversation_id === 'string' &&
+              raw.pancake_conversation_id.trim() !== '') ||
+            prev?.conversationAvailable ||
+            false,
+          fbUrl: prev?.fbUrl ?? null,
+          messageStatus:
+            (typeof raw.message_status === 'string'
+              ? raw.message_status
+              : prev?.messageStatus) ?? null,
+        };
+        return prev
+          ? cur.map((r) => (r.captureRecordId === id ? row : r))
+          : [row, ...cur];
+      });
+    },
+    [],
+  );
 
   // Load on mount + on every realtime nudge, so a new upload from the phone appears
   // here without a manual refresh (debounced upstream by DashboardSyncProvider).
@@ -134,50 +218,99 @@ export function IncomingCapturesStrip({
     load();
   }, [load, lastSyncedAt]);
 
-  // Realtime (lastSyncedAt above) is the FAST path — a phone capture triggers a load
-  // near-instantly. This interval is ONLY a fallback for when the socket drops. It ran
-  // every 2.5s, which meant a steady ~24 server-action calls/min from every open station
-  // for the whole live (a large share of Vercel invocations + CPU on the Hobby plan). At
-  // 30s it still self-heals a dropped socket within half a minute while cutting that
-  // steady load ~12×; realtime keeps normal appearance instant.
+  // Realtime (below) is the FAST path — a phone capture appears near-instantly. This
+  // interval is only a RECOVERY fallback for when the socket SILENTLY misses an event.
+  // It was 30s, so a missed event took up to half a minute to show on the PC ("bumagal"
+  // vs the old 2.5s). 5s restores a fast recovery — only ~12 lightweight strip-loads/min
+  // from the ~1 open station — while realtime + the reconnect/visibility reconcile below
+  // carry the normal case in ~1s, so this timer rarely decides appearance at all.
   useEffect(() => {
-    const iv = setInterval(load, 30000);
+    const iv = setInterval(load, 5000);
     return () => clearInterval(iv);
   }, [load]);
 
   // FAST PATH (~0.5–1s): a DEDICATED realtime subscription on capture_records fires the
   // instant a phone capture is inserted — independent of the debounced, heavier
   // whole-page router.refresh(). It immediately reloads the strip (the capture appears)
-  // AND kicks the auto-print drain (its sticker prints), giving ~1s end-to-end. The 30s
-  // poll above stays only as a socket-drop fallback; realtime carries the normal case.
+  // AND kicks the auto-print drain (its sticker prints), giving ~1s end-to-end. The 5s
+  // poll above stays only as a recovery fallback; realtime carries the normal case.
   // Its own channel (separate from the app-wide DashboardSync one), cleaned up on unmount.
   useEffect(() => {
     let supabase: ReturnType<typeof createClient>;
     try {
       supabase = createClient();
     } catch {
-      return; // no browser env — the 30s fallback + DashboardSync still surface captures
+      return; // no browser env — the 5s fallback + DashboardSync still surface captures
     }
     // Authorize the socket with the user's JWT so RLS-filtered capture_records events
     // actually arrive (an unauthorized socket is rejected with 401) — this is what makes
     // a new capture appear + auto-print in ~1s instead of waiting for the 30s fallback.
     const stopRealtimeAuth = authorizeRealtime(supabase);
+    // Reconcile = a real server load() to fetch the signed screenshot URL + customer
+    // join. Debounced so the insert → OCR → screenshot burst for one capture collapses
+    // into a single refetch; the row is already on screen optimistically, so this never
+    // sits on the appearance path.
+    let reconcileTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleReconcile = () => {
+      if (reconcileTimer) clearTimeout(reconcileTimer);
+      reconcileTimer = setTimeout(() => {
+        reconcileTimer = null;
+        load();
+      }, 600);
+    };
     const channel = supabase
       .channel('incoming-captures-fast')
+      // INSERT/UPDATE: update ONLY the affected row from the event payload (no full
+      // reload), then kick the auto-print drain and a debounced reconcile.
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'capture_records' },
-        () => {
-          load();
+        { event: 'INSERT', schema: 'public', table: 'capture_records' },
+        (payload) => {
+          applyRealtimeRow(payload.new);
           drainRef.current?.();
+          scheduleReconcile();
         },
       )
-      .subscribe();
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'capture_records' },
+        (payload) => {
+          applyRealtimeRow(payload.new);
+          drainRef.current?.();
+          scheduleReconcile();
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'capture_records' },
+        (payload) => {
+          const deletedId = (payload.old as { id?: string } | null)?.id;
+          if (deletedId)
+            setRows((cur) => cur.filter((r) => r.captureRecordId !== deletedId));
+        },
+      )
+      .subscribe((status) => {
+        // Reconcile on first connect AND every reconnect: a socket that dropped and came
+        // back would otherwise miss the captures inserted during the gap until the 5s
+        // poll. Compared as a string to stay decoupled from the realtime enum typing.
+        if (String(status) === 'SUBSCRIBED') load();
+      });
+    // Self-heal the instant the tab regains focus or the network returns (the common
+    // causes of a silently-missed event) so a capture never waits on the timer.
+    const onOnline = () => load();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') load();
+    };
+    window.addEventListener('online', onOnline);
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
+      if (reconcileTimer) clearTimeout(reconcileTimer);
+      window.removeEventListener('online', onOnline);
+      document.removeEventListener('visibilitychange', onVisible);
       stopRealtimeAuth();
       void supabase.removeChannel(channel);
     };
-  }, [load]);
+  }, [load, applyRealtimeRow]);
 
   // Open/close when the "Capture Pending" pill (in OrdersView) is clicked. The
   // pill dispatches a window event so the two siblings stay decoupled; clicking it
@@ -443,15 +576,6 @@ export function IncomingCapturesStrip({
         size="lg"
       >
         <div data-testid="incoming-captures" className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            Screenshots from the floating button. The label prints{' '}
-            <strong>Name / grams • ₱rate/g / date</strong> — the rate comes from{' '}
-            <strong>Sticker Settings</strong>. Confirm the grams and tap{' '}
-            <strong>Print</strong> for the label, <strong>Send</strong> to push the
-            screenshot to the customer&apos;s Messenger, <strong>Use</strong> to create
-            the order, or Dismiss to discard. Auto-print (set in Sticker Settings) prints
-            on its own only when the weight was read confidently.
-          </p>
           {error ? (
             <p role="alert" className="text-sm text-destructive">
               {error}
@@ -576,6 +700,19 @@ export function IncomingCapturesStrip({
                             [r.captureRecordId]: res,
                           }))
                         }
+                        onRecheck={async (id) => {
+                          // Re-run the full resolver — it pulls the live post's comments
+                          // from Pancake and retries, catching a commenter the realtime
+                          // webhook was slow to deliver. Surface an auto-send if it fires.
+                          const res = await resolveCaptureLinkAction(id);
+                          if (res.ok && res.sent) {
+                            setNotes((cur) => ({
+                              ...cur,
+                              [id]: 'Sent to Messenger ✓',
+                            }));
+                          }
+                          return res;
+                        }}
                       />
                     </div>
                   ) : null}
@@ -593,6 +730,7 @@ export function IncomingCapturesStrip({
           walkInItems={orderData.walkInItems}
           admins={orderData.admins}
           prefill={prefillFor(selected)}
+          newEntryOnly
           onClose={() => {
             setSelected(null);
             load();

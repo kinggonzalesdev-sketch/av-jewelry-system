@@ -2,7 +2,14 @@
 
 import { revalidatePath } from 'next/cache';
 
-import { deleteAttendanceRecord, kioskClockIn, kioskClockOut } from '@/lib/hr/attendance';
+import {
+  deleteAttendanceRecord,
+  kioskClockIn,
+  kioskClockOut,
+  listAttendanceSelfiesFor,
+  type AttendanceSelfies,
+} from '@/lib/hr/attendance';
+import { requirePermission } from '@/lib/authz/guard';
 import {
   requestOwnerDeletion,
   type RequestDeletionResult,
@@ -20,6 +27,19 @@ import type { HrActionState } from '@/lib/hr/action-state';
 function text(formData: FormData, name: string): string | null {
   const value = formData.get(name);
   return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/**
+ * Lazy-load the signed selfie URLs for ONE day's attendance records — invoked when the
+ * reviewer opens a day in Review Attendance. Keeps the page load from minting a signed URL
+ * for EVERY selfie ever (that eager read was the page's main delay). Gated on
+ * hr_review_attendance, the same permission the page requires.
+ */
+export async function loadAttendanceSelfiesAction(
+  recordIds: string[],
+): Promise<AttendanceSelfies> {
+  await requirePermission('hr_review_attendance');
+  return listAttendanceSelfiesFor(recordIds);
 }
 
 export async function clockInAction(

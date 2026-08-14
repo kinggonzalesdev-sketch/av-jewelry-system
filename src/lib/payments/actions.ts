@@ -39,6 +39,7 @@ import {
 import { completeOrderForPaymentIfPaidInFull } from '@/lib/orders/complete-on-payment';
 import {
   addLayawayItem,
+  setLayawayTerm,
   addLayawayLedgerPayment,
   addLayawayPaymentAndTransfer,
   cancelLayawayLedger,
@@ -255,6 +256,18 @@ export async function addLayawayItemAction(
   if (result.ok) {
     revalidatePath('/orders/payments');
     revalidatePath('/orders/inventory');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+export async function setLayawayTermAction(
+  ledgerId: string,
+  term: number,
+): Promise<LayawayItemResult> {
+  const result = await setLayawayTerm(ledgerId, term);
+  if (result.ok) {
+    revalidatePath('/orders/payments');
     revalidatePath('/dashboard');
   }
   return result;

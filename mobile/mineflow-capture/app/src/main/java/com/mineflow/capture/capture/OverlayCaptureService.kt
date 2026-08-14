@@ -8,7 +8,6 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
@@ -23,6 +22,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.util.DisplayMetrics
+import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -36,7 +36,10 @@ import com.mineflow.capture.App
 import com.mineflow.capture.data.ApiClient
 import com.mineflow.capture.data.ScreenshotOcr
 import com.mineflow.capture.data.SecureStore
+import com.mineflow.capture.printer.BluetoothPrinterManager
+import com.mineflow.capture.printer.StickerEncoder
 import com.mineflow.capture.ui.MainActivity
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -330,8 +333,8 @@ class OverlayCaptureService : Service() {
                 // requested it — otherwise just drop the frame to keep the pipeline free.
                 if (pendingCapture) {
                     pendingCapture = false
-                    val file = imageToPng(image)
-                    handler.post { onCaptured(file) }
+                    val bmp = imageToBitmap(image)
+                    handler.post { onCaptured(bmp) }
                 }
             } catch (_: Throwable) {
                 handler.post { onCaptureFailed("Screenshot failed — please try again.") }
@@ -359,8 +362,8 @@ class OverlayCaptureService : Service() {
                 if (image != null) {
                     try {
                         pendingCapture = false
-                        val file = imageToPng(image)
-                        handler.post { onCaptured(file) }
+                        val bmp = imageToBitmap(image)
+                        handler.post { onCaptured(bmp) }
                     } catch (_: Throwable) {
                         handler.post { onCaptureFailed("Screenshot failed — please try again.") }
                     } finally {
@@ -371,19 +374,21 @@ class OverlayCaptureService : Service() {
         }, 400)
     }
 
-    private fun imageToPng(image: android.media.Image): File {
+    /** Convert the captured frame STRAIGHT to a Bitmap — no PNG encode + file write +
+     *  re-decode round-trip (that double image conversion of a full phone-screen added
+     *  ~0.5–1s per capture). The caller (onCaptured) owns the returned bitmap + recycles it. */
+    private fun imageToBitmap(image: android.media.Image): Bitmap {
         val plane = image.planes[0]
         val rowStride = plane.rowStride
         val pixelStride = plane.pixelStride
         val rowPadding = rowStride - pixelStride * captureW
-        val bmp = Bitmap.createBitmap(
+        val padded = Bitmap.createBitmap(
             captureW + rowPadding / pixelStride, captureH, Bitmap.Config.ARGB_8888,
         )
-        bmp.copyPixelsFromBuffer(plane.buffer)
-        val cropped = Bitmap.createBitmap(bmp, 0, 0, captureW, captureH)
-        val file = savePng(cropped)
-        bmp.recycle(); cropped.recycle()
-        return file
+        padded.copyPixelsFromBuffer(plane.buffer)
+        val cropped = Bitmap.createBitmap(padded, 0, 0, captureW, captureH)
+        padded.recycle()
+        return cropped
     }
 
     private fun teardownCapture() {
@@ -401,69 +406,113 @@ class OverlayCaptureService : Service() {
      * operator to confirm/correct, then Send Invoice delivers the screenshot to that
      * customer's Facebook/Pancake chat. A quick toast is the only on-phone feedback.
      */
-    private fun onCaptured(file: File) {
+    private fun onCaptured(bmp: Bitmap) {
         restoreButton()
         val ctx = this
         if (!SecureStore.get(ctx).isLoggedIn) {
             toastMain("Sign in to MineFlow Capture first.")
-            runCatching { file.delete() }
+            bmp.recycle()
             return
         }
-        toastMain("Sending to MineFlow…")
+        toastMain("Captured ✓")
         val api = ApiClient(ctx)
-        val captureId = file.nameWithoutExtension.ifBlank { "cap-${System.currentTimeMillis()}" }
+        val captureId = "cap-${System.currentTimeMillis()}"
+        val tapAt = System.currentTimeMillis()
         thread {
-            val bmp = BitmapFactory.decodeFile(file.absolutePath)
-            // 1) Compress to a small JPEG and upload FIRST, so the capture appears in the
-            //    PC's Incoming Captures in ~1s. (The OCR reads the full bitmap below.)
-            val bytes = if (bmp != null) toJpeg(bmp) else file.readBytes()
-            val path = runCatching { api.uploadScreenshot(captureId, "image/jpeg", bytes) }.getOrNull()
-            val res = api.createPendingCapture(captureId, path, null)
-            if (!res.ok) {
-                toastMain("Send failed: ${res.body.optString("error", "please try again")}")
-                bmp?.recycle(); runCatching { file.delete() }
-                return@thread
-            }
-
-            // 2) OCR on-device: the pinned Facebook name + mined item. Update the same
-            //    pending row's guess (create_pending_capture is idempotent on
-            //    device+capture), so the PC's Incoming Captures shows the pre-fill.
-            val guess = if (bmp != null) ocrBlocking(bmp) else null
+            // 1) OCR FIRST — on-device, offline, ~<1s, with NO network in front of it, so the
+            //    sticker is NEVER gated on a slow live-venue upload (Owner priority 2026-08-14:
+            //    the right-name / right-grams sticker must come out FIRST; the row, upload, and
+            //    send all follow). A blank read (no pinned comment) leaves name/grams empty.
+            val guess = ocrBlocking(bmp)
             val name = guess?.fbName?.trim().orEmpty()
-            if (guess != null &&
-                (name.isNotEmpty() || !guess.itemQuery.isNullOrBlank() || !guess.grams.isNullOrBlank())
-            ) {
-                val ocr = JSONObject()
+            // ALWAYS attach the OCR result — including the RAW recognised lines — whenever OCR
+            // ran, even on a blank/low-confidence read. `fbName`/`itemQuery`/`grams` stay set only
+            // when confidently read (so auto-send never fires on a guess), but `rawLines` lets the
+            // server record EXACTLY what ML Kit saw, so a missed name is diagnosable and the name
+            // extraction can be fixed precisely instead of blindly loosened. rawLines is the
+            // Owner's own capture text (RLS-scoped); it is not shown on the sticker.
+            val ocr = if (guess != null) {
+                JSONObject()
                     .putOpt("fbName", guess.fbName)
                     .putOpt("itemQuery", guess.itemQuery)
                     .putOpt("grams", guess.grams)
-                runCatching { api.createPendingCapture(captureId, path, ocr) }
+                    .put("rawLines", JSONArray(guess.rawLines))
+            } else {
+                null
             }
 
-            // 3) AUTO-SEND: if the pinned name resolves to EXACTLY ONE linked customer
-            //    with a Facebook/Pancake chat, deliver the screenshot to them now — the
-            //    one-tap goal. A shared or unrecognised name is NOT sent; it waits on the
-            //    PC for the operator to link and confirm, so a wrong guess never reaches
-            //    a customer. The backend send is idempotent, so a repeat tap won't dupe.
-            var sentTo: String? = null
-            if (!path.isNullOrBlank() && name.length >= 2) {
-                val convId = runCatching { api.resolveConversation(name) }.getOrNull()
-                if (!convId.isNullOrBlank()) {
-                    val msg = "Hi $name! 📸 Ito po ang inyong na-mine na item. " +
-                        "Ihahanda na po namin ang invoice ninyo — maraming salamat! 💛"
-                    val sent = runCatching { api.send(captureId, convId, msg, path) }.getOrNull()
-                    if (sent?.ok == true) sentTo = name
-                }
+            // 2) PRINT THE STICKER NOW — the moment OCR gives a confident name + grams, print
+            //    it straight over Bluetooth. NO create, NO claim, NO network wait (~0.5–1s).
+            //    The row is created below already-'printed', so the PC never double-prints it.
+            val printedLocally = maybePrintDirect(name, guess?.grams)
+
+            // 3) Create the PENDING row (network). Born 'printed' when we printed, so the PC's
+            //    auto-print claim always fails — race-free, no double-print. Idempotent per
+            //    device+capture; it appears in the PC's Incoming Captures with the name/grams.
+            val created = api.createPendingCapture(
+                captureId, null, ocr, if (printedLocally) "printed" else null,
+            )
+            if (!created.ok) {
+                toastMain(
+                    (if (printedLocally) "Sticker printed ✓ " else "") +
+                        "Upload failed: ${created.body.optString("error", "please try again")}",
+                )
+                bmp.recycle()
+                return@thread
             }
+            Log.i(TAG, "capture $captureId visible in ${System.currentTimeMillis() - tapAt}ms")
+
+            // 4) Upload the screenshot in the BACKGROUND — a slow / failed upload can no longer
+            //    delay the sticker or the capture's appearance on the PC.
+            val bytes = toJpeg(bmp)
+            val upAt = System.currentTimeMillis()
+            val path = runCatching { api.uploadScreenshot(captureId, "image/jpeg", bytes) }.getOrNull()
+            if (!path.isNullOrBlank()) {
+                runCatching {
+                    api.createPendingCapture(captureId, path, ocr, if (printedLocally) "printed" else null)
+                }
+                Log.i(TAG, "capture $captureId screenshot uploaded in ${System.currentTimeMillis() - upAt}ms")
+            }
+
+            // 5) THE PC SENDS the screenshot when the Facebook match resolves — and keeps
+            //    retrying as the webhook catches up (the "di agad na-detect ang Facebook" case).
+            //    The phone is done: sticker printed + capture posted. One screenshot, sent once,
+            //    by the PC (the phone's own auto-send was removed 2026-08-13 to kill the double).
+            val printNote = if (printedLocally) "Sticker printed ✓ " else ""
             toastMain(
                 when {
-                    sentTo != null -> "Sent the screenshot to $sentTo on Facebook. 💛"
-                    name.isNotEmpty() -> "Read \"$name\" — confirm & link on the PC to send."
-                    else -> "Sent to MineFlow — confirm it on the PC."
+                    name.isNotEmpty() ->
+                        "${printNote}Read \"$name\" — the PC will send it once the chat matches."
+                    else -> "${printNote}Sent to MineFlow — confirm it on the PC."
                 },
             )
-            bmp?.recycle()
-            runCatching { file.delete() }
+            bmp.recycle()
+        }
+    }
+
+    /**
+     * DIRECT sticker print — NO DB claim, NO network. Called RIGHT AFTER OCR (before the
+     * capture row even exists) so the sticker comes out FIRST (~0.5–1s) — the Owner's
+     * priority. Exactly-once is handled by the caller: it then creates the row already-
+     * 'printed' (create_pending_capture printStatus='printed'), so the PC's auto-print claim
+     * always fails and the sticker is never double-printed. Returns true when it actually
+     * printed. Safe no-op when this phone has no printer set, or the name/weight is unread
+     * (a needs-review capture is left for the operator on the PC — never blind-printed).
+     */
+    private fun maybePrintDirect(fbName: String, grams: String?): Boolean {
+        val store = SecureStore.get(this)
+        val address = store.printerAddress
+        if (address.isNullOrBlank()) return false
+        if (fbName.length < 2 || grams.isNullOrBlank()) return false
+        return try {
+            val sticker = StickerEncoder.fromCapture(fbName, grams, store.pricePerGram)
+            val bytes = StickerEncoder.encode(sticker, store.printerTspl)
+            val res = BluetoothPrinterManager.print(this, address, bytes)
+            if (res.ok) Log.i(TAG, "capture printed locally (direct, pre-row)")
+            res.ok
+        } catch (e: Exception) {
+            Log.w(TAG, "direct print failed: ${e.javaClass.simpleName}")
+            false
         }
     }
 
@@ -496,13 +545,6 @@ class OverlayCaptureService : Service() {
     private fun restoreButton() {
         busy = false
         button?.visibility = View.VISIBLE
-    }
-
-    private fun savePng(bmp: Bitmap): File {
-        val dir = File(cacheDir, "captures").apply { mkdirs() }
-        val file = File(dir, "capture-${System.currentTimeMillis()}.png")
-        FileOutputStream(file).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        return file
     }
 
     // ---- Notification ---------------------------------------------------------
@@ -549,6 +591,8 @@ class OverlayCaptureService : Service() {
         /** True while the capture service is alive — read by the Setup screen. */
         @Volatile var isRunning: Boolean = false
             private set
+
+        private const val TAG = "MineFlowCapture"
 
         private const val ACTION_STOP = "com.mineflow.capture.STOP"
         private const val ACTION_HIDE = "com.mineflow.capture.HIDE"

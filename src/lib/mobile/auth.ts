@@ -28,6 +28,16 @@ export type MobileStaff = {
   supabase: SupabaseClient;
 };
 
+/**
+ * Throttle the best-effort "device active" heartbeat OFF the hot path. During a live,
+ * a single capture makes several mobile calls (create pending → attach OCR → attach
+ * screenshot), and each one authenticates — running the heartbeat RPC on every one adds
+ * a needless Supabase round-trip to the latency-critical capture path. Once per window
+ * per user (per warm instance) keeps the web System Check fresh at no per-call cost.
+ */
+const HEARTBEAT_WINDOW_MS = 25_000;
+const lastHeartbeatByUser = new Map<string, number>();
+
 function bearerToken(request: Request): string | null {
   const header = request.headers.get('authorization') ?? '';
   if (!header.toLowerCase().startsWith('bearer ')) return null;
@@ -83,14 +93,19 @@ export async function resolveMobileStaff(request: Request): Promise<MobileAuthRe
   if (data.is_active !== true) return { ok: false, reason: 'account_inactive' };
 
   // Record a lightweight heartbeat so the web System Check can show a signed-in
-  // capture device + active app. Best-effort: it never blocks or fails the auth.
-  try {
-    await supabase.rpc('record_capture_heartbeat', {
-      p_device: null,
-      p_platform: 'android',
-    });
-  } catch {
-    /* heartbeat is best-effort */
+  // capture device + active app. Best-effort AND throttled: skipped when this user was
+  // seen within the window, so it never adds a round-trip to a rapid capture burst.
+  const now = Date.now();
+  if (now - (lastHeartbeatByUser.get(user.id) ?? 0) > HEARTBEAT_WINDOW_MS) {
+    lastHeartbeatByUser.set(user.id, now);
+    try {
+      await supabase.rpc('record_capture_heartbeat', {
+        p_device: null,
+        p_platform: 'android',
+      });
+    } catch {
+      /* heartbeat is best-effort */
+    }
   }
 
   return {

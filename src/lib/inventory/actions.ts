@@ -36,12 +36,20 @@ import {
 } from '@/lib/inventory/workbook-import';
 import {
   decideRtsReview,
+  listInventory,
+  listInventoryActivePage,
   openMigrationBatch,
   returnItemToAvailable,
   reviewDuplicate,
   updateItemCustody,
   type FreedUnitOutcome,
+  type InventoryListResult,
+  type InventoryPageResult,
 } from '@/lib/inventory/service';
+import {
+  listCompletedInventory,
+  type CompletedInventoryRow,
+} from '@/lib/inventory/completed';
 
 /**
  * Phase 8 server actions (Bible §19, §10, §22.15–22.16).
@@ -53,6 +61,32 @@ import {
 function text(formData: FormData, name: string): string | null {
   const value = formData.get(name);
   return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/** Load one PAGE of Active Inventory (server-side pagination, Owner request). The active
+ *  filter + search + status + group + count all happen in SQL; safe + cheap to call from
+ *  the workspace on every search / filter / page change. */
+export async function loadInventoryActivePageAction(opts: {
+  search?: string;
+  status?: string;
+  group?: string;
+  page?: number;
+  size?: number;
+}): Promise<InventoryPageResult> {
+  return listInventoryActivePage(opts);
+}
+
+/** Load the FULL Active Inventory for a CSV export (a rare action) — reuses the proven
+ *  full reader so the export still contains EVERY filtered row, not just the page. */
+export async function loadInventoryForExportAction(): Promise<InventoryListResult> {
+  return listInventory();
+}
+
+/** Lazy-load Completed Items ON DEMAND — it is 900+ rows with order/customer/fulfillment
+ *  joins, so it is NO LONGER on the initial page load (that made opening Inventory slow).
+ *  The workspace fetches it only when the operator actually opens the Completed Items tab. */
+export async function loadCompletedInventoryAction(): Promise<CompletedInventoryRow[]> {
+  return listCompletedInventory();
 }
 
 /** New Entry: create an inventory item from a required, unique item code, an

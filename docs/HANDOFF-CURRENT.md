@@ -1,121 +1,119 @@
-# Handoff — current state (2026-07-18)
+# Handoff — current state (2026-08-12)
 
-Read this first in a new session. Concise state so you can pick up cleanly.
+Read this first in a new session. Concise pickup state. For the full system
+audit (73 tables, every module's status, env vars, cron, perf), read
+**`docs/HANDOFF-CURRENT-STATE-2026-08-11.md`** — this doc is the *delta on top of
+it* plus what's pending.
 
-## Branch & git
+## Branch, deploy, verify
 
-- **Branch:** `production-ui-integration` (all work here). **Nothing pushed, nothing merged.**
-- `main` / `master` untouched. Commits are local only.
-- The 16 "modified" files in `git status` with zero content diff are CRLF
-  artifacts — ignore them; commit only files you actually change.
+- **Branch:** `production-ui-integration`. **Main:** `main`.
+- **Production is LIVE, in daily use.** Deploy the working tree with
+  `npx vercel --prod --yes` (standing instruction: auto-deploy every finished
+  change without asking). App + DB co-located in Singapore
+  (Vercel `sin1` / Supabase `eqfddwxsmzzojuasffjx`, `ap-southeast-1`).
+- **Verify (all green as of this session):** `npm run typecheck` (tc=0) ·
+  `npm run lint` (clean) · `npm run test` (**1,102 unit pass**). Latest prod
+  deploys reached `READY`.
+- Public demo: `av-jewelry.vercel.app` (demo login `UatPass123!`). Local
+  "Invalid credentials" almost always = Docker/Supabase down, not a bad password.
+- Migrations apply via Supabase MCP `apply_migration` (NOT `supabase db push` —
+  blocked by pre-existing migration drift).
 
-## How to run locally
+## ⏭️ Owner's #1 priority — TOMORROW's live test
 
-1. **Docker Desktop must be running** (it has stopped on its own twice — if login
-   shows "Invalid credentials", that's Docker being down, not the password).
-   - Start Docker Desktop, wait ~1 min, then `npx supabase start`.
-2. Dev server: it's launched via the Browser pane's `preview_start` (name
-   `mineflow-dev`, port 3000), or `npx next dev`.
-3. **Login:** http://localhost:3000 → `uat-owner@uat.local` / `UatPass123!`
-   (Owner, sees everything). Other UAT accounts use the same password.
-4. **Landing page** is public at `/` (no login).
+Everything below is code-complete + deployed. The remaining work is the Owner's,
+on-device:
 
-### If a migration is added
+1. **Install the freshly rebuilt APK** (image-pipeline + OCR fixes are only in the
+   new build). 2. **Connect the Bluetooth thermal printer to the phone** (the
+   phone prints locally now — sub-second — instead of round-tripping to the PC).
+3. **Test the one-tap live flow:** pinned-comment name → print in <2s → auto-send
+   the screenshot to that Facebook name. 4. Re-run **"Sync Pancake
+   Conversations"** once before going live.
 
-- To preserve seeded data: `npx supabase migration up`.
-- pgTAP tests assume a CLEAN db, so to run them: `npx supabase db reset` →
-  `npx supabase test db` → then RE-SEED:
-  `export UAT_PASSWORD='UatPass123!' && bash supabase/seed-uat-accounts.sh` then
-  `docker exec -i <supabase_db_container> psql -U postgres -d postgres < supabase/seed-uat.sql`.
+## ✅ What changed THIS session (2026-08-12)
 
-## Verify commands
+**The big one — "No Facebook match" ROOT CAUSE fixed.** A real Facebook *video/Reels*
+live sends comments as `data.post.type: "video"`, but the webhook parser
+hard-required `"livestream"` and silently dropped **every** comment. Fix in
+`src/lib/integrations/pancake-webhook.ts` (`parsePancakeLiveComment`): store ANY
+messaging event that has `page_id` + `data.message.id` + `data.message.from.id`
+(PSID, ≠ page) + `from.name` — covers video comments, livestream, AND inbox DMs.
+Verified live: `pancake_webhook_events` went **2 → 281+**, and every recent
+commenter now resolves to exactly one sendable chat. (Full write-up +
+the PSID constraint is in memory `av-jewelry-capture-facebook-match`.)
 
-`npm run format:check` · `npm run lint` · `npm run typecheck` · `npm run test`
-(708 pass) · `npx supabase test db` (530 pgTAP pass) · `npx next build` (clean).
+- ✅ **Auto-link is now automatic** (no manual Sync needed for new commenters):
+  - Real-time customer link inside `webhook_store_pancake_live_comment` RPC —
+    fills `customers.pancake_conversation_id = {page_id}_{psid}` on a UNIQUE
+    active-name match. Uses `(array_agg(id))[1]` (NOT `min(uuid)` — doesn't exist
+    in PG) and is wrapped in `begin…exception when others then null` so it can
+    NEVER roll back a stored event.
+  - Order-level auto-link (pancake `/resolve` route) + **Send Invoice** dynamic
+    resolve (`for-invoice.ts`) both now call `resolveConversationForName`
+    (webhook fast-match) instead of the old live-API-only lookup that omitted
+    video-live commenters.
+  - **Two name→conversation resolvers are kept in sync** —
+    `resolveConversationForName` (pancake.ts) and `resolveCaptureIdentity`
+    (pending-link.ts) both call the webhook RPC tier.
+- ✅ **OCR garbage fix** — `ScreenshotOcr.kt` `BLOCK` regex drops app/live chrome
+  (GLIVE, "LIVE 01", MineFlow, "Capture Service", Floating Button, Open App) so
+  they never print as the FB name (blank → PC review instead).
+- ✅ **Android image pipeline** — removed dead `savePng` PNG round-trip; capture
+  now local-prints + auto-sends the screenshot. **APK rebuilt + sent.**
+- ✅ **Capture speed** — the incoming-captures engine (realtime + auto-print) was
+  mounted ONLY on the Orders page → captures crawled when the operator was on
+  another page. Moved to `AppShell` (`allowedPages.includes('claim_capture')`) so
+  it runs app-wide + persists across nav. Removed the modal help-text; added a
+  "🔄 Re-check FB" button.
+- ✅ **Inventory server-side pagination** — DONE + deployed. `inventory_active_ids_page`
+  RPC returns page ids + counts (its SQL group CASE mirrors `lib/inventory/group.ts`
+  exactly, verified vs all 2,784 items); `listInventoryActivePage` reuses the
+  proven monitor+custody row-builder so availability is identical; workspace
+  rewired to `initialPage` + debounced server fetch. It's a DISPLAY screen, so
+  pagination never touches stock — can't oversell.
+- ✅ **Privacy Mode batch 2** — masked money in HR (payroll summary, review/attendance,
+  **payslip** — print/PDF keep real values), Invoicing, Fulfillment (workspace,
+  prepare form, collection controls), Layaway ledger modal, Daily Cash. Removed
+  the Dashboard "Custom" range button.
+- ✅ **Daily Cash** — "⋯ More" modal (Remittance / Other Cash In/Out), manual
+  Trades added to CSV export.
+- ✅ **Webhook secret zero-downtime rotation** — `checkSecret` accepts EITHER
+  `PANCAKE_WEBHOOK_SECRET` OR `PANCAKE_WEBHOOK_SECRET_NEXT` (mechanism deployed;
+  the actual cutover is deferred, see below).
+- ✅ **Quick wins** — `customers` normalized-name functional index (fast real-time
+  linking); `pancake_webhook_events` retention pg_cron (daily 30-day purge);
+  deleted stray `av-jewelry-logo.png..png`.
 
-## What was done this stretch
+## ❌ Pending / deferred (do NOT start without a green light)
 
-**UI restoration (Owner-approved, on top of the existing Phase 0–11 app):**
+- ❌ **Orders + Layaway server-side pagination** — deferred by Owner to *after the
+  live*. Same light-index pattern as Inventory (a `*_ids_page` RPC + reuse the
+  proven row-builder + rewire the workspace). Orders = `orders-view.tsx` /
+  `orders/service.ts`; Layaway = `payments-workspace.tsx`. Orders is card-based
+  and already batch-optimized (~469 rows), so it's not urgent. Details in memory
+  `av-jewelry-pagination-progress`.
+- ❌ **Webhook secret rotation cutover** — mechanism is live; the Owner does the
+  Pancake + Vercel cutover AFTER the live (never mid-live). Steps: set
+  `PANCAKE_WEBHOOK_SECRET_NEXT` in Vercel + redeploy → change Pancake `?secret=`
+  to it → confirm comments flow → promote NEXT → `PANCAKE_WEBHOOK_SECRET`, clear
+  NEXT, redeploy.
 
-- Renamed nav `Dashboard Report` → **Dashboard Profile** (change-control: SOT +
-  lock tests updated first).
-- **Brand switched to EMERALD GREEN** (`globals.css` tokens; the accent tokens
-  keep the NAME `--gold`/`--gold-strong` but hold green — documented in SOT §3).
-- **Dashboard Profile** restored to the prototype structure with REAL data: tabs
-  (Dashboard · Disassembly Report · Gross Profit · Follow-ups · Reports · Search ·
-  Reminders · Audit), date range, Refresh/Export, metric cards, Order Status +
-  Sales-for-Period charts (visible at zero with "No data for this period"),
-  Money-in-Transit section. Gross Profit + Disassembly Report are honest
-  placeholders (no COGS / no disassembly model yet).
-- **Orders**: 11 status cards (Total · For Invoice · For Reminder · For Prepare ·
-  For Confirm · Ship Confirm · Keep · For Cancel · Cancelled · Unverified Payment ·
-  For Layaway); search + Order Date / Ship Date / Hide Keep filters; the existing
-  table preserved. **New Order** modal (real Manual Post-Live Entry → Pending
-  Claim, real customers/items, photo, honest Reprint Last). Owner removed the
-  New Entry / Invoice / Confirm / Layaway buttons (redundant with the sidebar).
-- **Payments & Layaway**: New Layaway Entry (activates a real layaway; DB enforces
-  verified-deposit ≥ 20%).
-- Camera/photo attachments (private bucket + RLS) wired into Customers and the
-  New Order item photo. Printer status is a clickable Web-Bluetooth "search"
-  control, still honest (never fake "Ready").
+## House rules that must not regress
 
-**New feature modules (roadmap #1–#6), each with migration + RLS + pgTAP + tests:**
-
-1. **Follow-up Queue** (Dashboard tab) + deposit-deadline flag — `4517627`
-2. **Item custody** (on-hand vs financer, location, handler) — `aa883fa`
-   (migration `20260717100000`)
-3. **Money-in-Transit** (SQL sums) — `25bd087` (migration `20260717110000`)
-4. **HR: Attendance & Payroll** — `66b4fcf` (migration `20260717120000`,
-   `/admin/attendance`)
-5. **Scrap income** — `77da454` (migration `20260717130000`, `/admin/scrap`)
-6. **Public landing page** at `/` — `73c5908`
-7. **Pancake/Facebook scaffolding** (honest "Not Connected"; Owner-only Test
-   connection; needs `PANCAKE_API_URL`/`PANCAKE_API_KEY` server env) — `c574e9f`
-   (`/admin/integrations`)
-
-New admin pages are linked under **Settings → Administration** (nav stays locked
-at 10 items).
-
-## Honesty rules that MUST NOT regress
-
-- Money is `numeric` in SQL, a **string** in TS — never a JS float. Sums happen in
-  SQL functions (security invoker, RLS-scoped, revoke from `public`, grant
-  `authenticated`).
-- A failed read shows an explicit error, never a false ₱0 / empty.
-- Cards/statuses with no real backing (Keep, For Cancel) show an honest **0**.
-- Cancellation stays an Owner approval — deposit-overdue FLAGS, never auto-cancels.
-- Pancake/printer are never faked as connected.
-- `/preview` prototype stays 404 in production; it's the visual reference only.
-
-## Blocked on the Owner (not code)
-
-- **Pancake/Facebook** — needs a Pancake plan + API access (page token).
-- **XP-236B printer** — needs the physical device (see `docs/PRINTER-HARDWARE-AUDIT.md`).
-
-## Roadmap remaining (optional)
-
-- ~~**#3 deeper**~~ **DONE (2026-07-21)** — migration `20260721110000`:
-  rider-vs-LBC collection split, collected-vs-remitted, printable waybill at
-  `/orders/fulfillment/[id]/waybill`. See SOT change log.
-- ~~**#4 polish**~~ **DONE (2026-07-21)** — migration `20260721100000`:
-  Owner-only hourly-rate editor on `/admin/attendance`. See SOT change log.
-
-## Also added this stretch (2026-07-21)
-
-- **Demo login buttons** on `/sign-in` for client demos. OFF by default; enable
-  with `DEMO_LOGIN_ENABLED=true` + `DEMO_LOGIN_PASSWORD` (see `.env.example`).
-  Signs into the real seeded UAT accounts; never enable on the live prod tenant.
-- **New migrations:** `20260721100000_payroll_hourly_rate_editor`,
-  `20260721110000_fulfillment_collection_remittance`. Both apply cleanly via
-  `npx supabase migration up`.
-- **Verify note:** JS gates all green (typecheck, lint on changed files, 720
-  unit). pgTAP verified per-file against the seeded DB (25→11, 26→19, 28→9). A
-  full `supabase db reset && test db && re-seed` was NOT run this session — a
-  second `next dev` (another chat) held the DB/dev-server; run the clean-DB pgTAP
-  sweep before merge. One pre-existing lint error in `integrations/page.tsx`
-  (await-thenable) is unrelated and left for a separate task.
+- Money is `numeric` in SQL, a **string** in TS — never a JS float; sums happen in
+  RLS-scoped SQL. A failed read shows an explicit error, never a false ₱0.
+- Pancake / printer are never faked as "connected".
+- Report progress with **✅ done · ❌ not yet · 🔄 in-progress** markers
+  (Owner preference).
+- `<Money amount=…/>` is print-safe (masks screen, shows real on print);
+  `usePrivacyMoney()` is a screen-only string formatter (NOT print-safe).
 
 ## Source of truth
 
-`docs/FINAL-UI-SOURCE-OF-TRUTH.md` (has a Change log of every Owner decision).
-Change-control order: Owner requests → update the doc → update lock tests → code.
+`docs/FINAL-UI-SOURCE-OF-TRUTH.md` (Owner-decision change log) +
+`docs/HANDOFF-CURRENT-STATE-2026-08-11.md` (full audit). Memory index is in
+`MEMORY.md`; the most load-bearing files right now are
+`av-jewelry-capture-facebook-match`, `av-jewelry-pagination-progress`, and
+`av-jewelry-capture-speed`.

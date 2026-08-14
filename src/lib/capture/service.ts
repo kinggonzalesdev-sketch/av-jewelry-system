@@ -223,6 +223,9 @@ export async function createPendingCapture(
     captureId: string;
     screenshotPath?: string | null;
     ocr?: unknown;
+    /** 'printed' when the phone already printed the sticker locally (before the row
+     *  existed), so the row is born printed and the PC never double-prints it. */
+    printStatus?: string | null;
   },
 ): Promise<PendingCaptureResult> {
   if (!input.deviceInstallationId?.trim() || !input.captureId?.trim()) {
@@ -233,6 +236,7 @@ export async function createPendingCapture(
     p_capture_id: input.captureId.trim(),
     p_screenshot_path: input.screenshotPath ?? null,
     p_ocr: input.ocr ?? null,
+    p_print_status: input.printStatus ?? null,
   })) as { data: Record<string, unknown> | null; error: { message: string } | null };
   if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
   const d = data ?? {};

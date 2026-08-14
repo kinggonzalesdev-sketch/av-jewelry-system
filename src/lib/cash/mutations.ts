@@ -77,6 +77,81 @@ export async function addExpense(input: {
   return { ok: true };
 }
 
+/**
+ * Add a manual Trade record (Trades & Expenses box). DISPLAY-ONLY: it is stored in its
+ * own `daily_cash_trades` table and is NEVER summed by `daily_cash_summary`, so a trade
+ * never changes Expected Cash on Hand (Owner decision 2026-08-12). Owner / Selected Admin
+ * only; audited. Touches no order, payment, or existing record.
+ */
+export async function addTrade(input: {
+  date: string;
+  name: string;
+  amount: string;
+  relatedSale: string | null;
+  remarks: string | null;
+}): Promise<MutationResult> {
+  const g = await requireManager();
+  if (!g.ok) return g;
+  const amount = money(input.amount);
+  if (!amount) return { ok: false, error: 'Enter a valid amount.' };
+  if (!input.name.trim()) return { ok: false, error: 'A name is required.' };
+  if (!input.date) return { ok: false, error: 'A date is required.' };
+  const supabase = await createClient();
+  const { error } = await supabase.from('daily_cash_trades').insert({
+    trade_date: input.date,
+    name: input.name.trim(),
+    amount,
+    related_sale: input.relatedSale?.trim() || null,
+    remarks: input.remarks?.trim() || null,
+  });
+  if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  await recordAuditEvent({
+    action: 'daily_cash.trade.add',
+    entityType: 'daily_cash_trade',
+    entityId: input.date,
+    context: { amount },
+  });
+  return { ok: true };
+}
+
+export async function updateTrade(
+  id: string,
+  input: {
+    date: string;
+    name: string;
+    amount: string;
+    relatedSale: string | null;
+    remarks: string | null;
+  },
+): Promise<MutationResult> {
+  const g = await requireManager();
+  if (!g.ok) return g;
+  const amount = money(input.amount);
+  if (!id) return { ok: false, error: 'Missing record.' };
+  if (!amount) return { ok: false, error: 'Enter a valid amount.' };
+  if (!input.name.trim()) return { ok: false, error: 'A name is required.' };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('daily_cash_trades')
+    .update({
+      trade_date: input.date,
+      name: input.name.trim(),
+      amount,
+      related_sale: input.relatedSale?.trim() || null,
+      remarks: input.remarks?.trim() || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+  if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  await recordAuditEvent({
+    action: 'daily_cash.trade.update',
+    entityType: 'daily_cash_trade',
+    entityId: id,
+    context: { amount },
+  });
+  return { ok: true };
+}
+
 export async function addRemittance(input: {
   date: string;
   amount: string;
@@ -245,6 +320,7 @@ export async function updateCashMovement(
 
 const DELETABLE = new Set([
   'daily_cash_expenses',
+  'daily_cash_trades',
   'daily_cash_remittances',
   'daily_cash_movements',
 ]);

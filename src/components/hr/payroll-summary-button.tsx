@@ -4,7 +4,7 @@ import { useState } from 'react';
 
 import type { PayrollRow } from '@/lib/hr/payroll';
 import type { PayslipSnapshot } from '@/lib/hr/payslip-types';
-import { formatPeso } from '@/lib/payments/format';
+import { Money } from '@/components/shell/privacy';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 
@@ -135,20 +135,22 @@ export function PayrollSummaryButton({
                         {r.overtimeHours.toFixed(2)}
                       </td>
                       <td className="px-3 py-1.5 text-right tabular-nums">
-                        {r.dailyRate ? formatPeso(r.dailyRate) : '—'}
+                        {r.dailyRate ? <Money amount={r.dailyRate} /> : '—'}
                       </td>
                       <td className="px-3 py-1.5 text-right tabular-nums">
-                        {r.computedSalary ? formatPeso(r.computedSalary) : '—'}
+                        {r.computedSalary ? <Money amount={r.computedSalary} /> : '—'}
                       </td>
                       <td className="px-3 py-1.5 text-right tabular-nums">
-                        {snap ? formatPeso(snap.deductions) : '—'}
+                        {snap ? <Money amount={snap.deductions} /> : '—'}
                       </td>
                       <td className="px-3 py-1.5 text-right tabular-nums">
-                        {snap
-                          ? formatPeso(snap.netSalary)
-                          : r.computedSalary
-                            ? formatPeso(r.computedSalary)
-                            : '—'}
+                        {snap ? (
+                          <Money amount={snap.netSalary} />
+                        ) : r.computedSalary ? (
+                          <Money amount={r.computedSalary} />
+                        ) : (
+                          '—'
+                        )}
                       </td>
                       <td className="px-3 py-1.5 capitalize">
                         {snap ? snap.paymentStatus : 'not generated'}
@@ -163,7 +165,7 @@ export function PayrollSummaryButton({
                     Total payroll
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums" colSpan={2}>
-                    {formatPeso(fromCentavos(totalCentavos))}
+                    <Money amount={fromCentavos(totalCentavos)} />
                   </td>
                 </tr>
               </tfoot>

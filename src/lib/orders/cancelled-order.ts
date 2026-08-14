@@ -3,6 +3,7 @@ import 'server-only';
 import { recordAuditEvent } from '@/lib/audit/log';
 import { AuthorizationError, requireOwner } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
+import { requestOwnerApproval } from '@/lib/fulfillment/service';
 
 /**
  * SUPER ADMIN (Owner) deletion of a CANCELLED order — removes the order + its records
@@ -176,4 +177,59 @@ export async function deleteOrder(
     },
   });
   return { ok: true, returnedItems, paymentsRemoved };
+}
+
+export type RequestOrderAdminResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * A non-owner admin's "Request edit" of an order's Customer Name and/or Total → Owner
+ * approval (2026-08-13). The requested NEW values are written into the request text so the
+ * Owner sees exactly what they are approving; the payload carries them for the execute
+ * step (admin_edit_order). Requires initiate_high_risk_action (checked in
+ * requestOwnerApproval). Changes nothing until the Owner approves.
+ */
+export async function requestOrderDetailsEdit(
+  officialOrderId: string,
+  input: { customerName?: string | null; totalAmount?: string | null },
+  reason: string,
+): Promise<RequestOrderAdminResult> {
+  const name = (input.customerName ?? '').trim();
+  const total = (input.totalAmount ?? '').trim();
+  if (!name && !total) return { ok: false, error: 'Change the name or the total first.' };
+  const trimmed = (reason ?? '').trim();
+  if (!trimmed) return { ok: false, error: 'Add a reason for the Owner.' };
+  const detail =
+    'Edit order' +
+    (name ? ` · name → "${name}"` : '') +
+    (total ? ` · total → ₱${total}` : '') +
+    `. ${trimmed}`;
+  const res = await requestOwnerApproval(
+    'order_details_edit',
+    'official_order',
+    officialOrderId,
+    detail,
+    { customer_name: name || null, total_amount: total || null },
+  );
+  return res.ok ? { ok: true } : { ok: false, error: res.error };
+}
+
+/**
+ * A non-owner admin's "Request delete" of an order → Owner approval (2026-08-13). The
+ * order label + reason go into the request text so the Owner knows exactly which order is
+ * being removed; the execute step replays delete_order. Changes nothing until approved.
+ */
+export async function requestOrderDelete(
+  officialOrderId: string,
+  orderLabel: string,
+  reason: string,
+): Promise<RequestOrderAdminResult> {
+  const trimmed = (reason ?? '').trim();
+  if (!trimmed) return { ok: false, error: 'Add a reason for the Owner.' };
+  const res = await requestOwnerApproval(
+    'official_order_delete',
+    'official_order',
+    officialOrderId,
+    `Delete order ${orderLabel}. ${trimmed}`,
+  );
+  return res.ok ? { ok: true } : { ok: false, error: res.error };
 }

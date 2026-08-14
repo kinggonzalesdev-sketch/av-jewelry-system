@@ -6,11 +6,13 @@ import {
   addCashMovement,
   addExpense,
   addRemittance,
+  addTrade,
   deleteCashRecord,
   saveActualCashCount,
   updateCashMovement,
   updateExpense,
   updateRemittance,
+  updateTrade,
 } from '@/lib/cash/mutations';
 import {
   getCashMovements,
@@ -19,6 +21,7 @@ import {
   getExpenses,
   getRemittances,
   getTradeDeductions,
+  getTradesExpenses,
   getWalkIns,
 } from '@/lib/cash/service';
 import type {
@@ -26,12 +29,27 @@ import type {
   CashPaymentRow,
   CashTab,
   DailyCashSummary,
+  DetailPage,
   ExpenseRow,
   MutationResult,
   RemittanceRow,
   TradeDeductionRow,
+  TradeExpenseRow,
   WalkInRow,
 } from '@/lib/cash/types';
+import { listWalkInItems, type WalkInItem } from '@/lib/orders/service';
+import { requirePermission } from '@/lib/authz/guard';
+
+/**
+ * Lazy-load the walk-in item picker ONLY when the operator opens "+ Add New Sale". It wraps
+ * `listInventory()` (~1,900 rows + a staff join + ~4 DB round-trips), so eager-loading it on
+ * every Daily Cash open was the page's main delay even though the modal was closed. Gated on
+ * `claim_capture` — the same permission the "+ Add New Sale" button requires.
+ */
+export async function loadWalkInItemsAction(): Promise<WalkInItem[]> {
+  await requirePermission('claim_capture');
+  return listWalkInItems();
+}
 
 /**
  * Daily Cash Summary — server actions (transport only). Authority (Owner / Selected
@@ -71,6 +89,16 @@ export async function loadCashDetailAction(
   }
 }
 
+/** Load the combined "Trades & Expenses" list (manual expenses + manual trades),
+ *  paginated for the selected date — the right-hand box's data source. */
+export async function loadTradesExpensesAction(
+  date: string,
+  page: number,
+  size: number,
+): Promise<DetailPage<TradeExpenseRow>> {
+  return getTradesExpenses(date, page, size);
+}
+
 /**
  * Re-read ONLY the day's summary (cards / breakdown / expected). The Details section
  * calls this after a manual add/edit/delete so the totals recalculate in place —
@@ -86,6 +114,8 @@ export type CashExport = {
   cashPayments: CashPaymentRow[];
   tradeDeductions: TradeDeductionRow[];
   expenses: ExpenseRow[];
+  /** Manual Trades (display-only entries) — separate from order Trade Deductions. */
+  trades: TradeExpenseRow[];
   remittances: RemittanceRow[];
   cashIn: CashMovementRow[];
   cashOut: CashMovementRow[];
@@ -99,11 +129,12 @@ export type CashExport = {
 export async function loadCashExportAction(date: string): Promise<CashExport> {
   const P = 1;
   const N = 2000;
-  const [w, cp, td, ex, rm, ci, co] = await Promise.all([
+  const [w, cp, td, ex, te, rm, ci, co] = await Promise.all([
     getWalkIns(date, P, N),
     getCashPayments(date, P, N),
     getTradeDeductions(date, P, N),
     getExpenses(date, P, N),
+    getTradesExpenses(date, P, N),
     getRemittances(date, P, N),
     getCashMovements(date, 'in', P, N),
     getCashMovements(date, 'out', P, N),
@@ -113,6 +144,8 @@ export async function loadCashExportAction(date: string): Promise<CashExport> {
     cashPayments: cp.rows,
     tradeDeductions: td.rows,
     expenses: ex.rows,
+    // Only the manual TRADES (the expenses are exported separately, above).
+    trades: te.rows.filter((r) => r.type === 'trade'),
     remittances: rm.rows,
     cashIn: ci.rows,
     cashOut: co.rows,
@@ -127,6 +160,33 @@ export async function addExpenseAction(input: {
   remarks: string | null;
 }): Promise<MutationResult> {
   const result = await addExpense(input);
+  if (result.ok) revalidatePath(CASH_PATH);
+  return result;
+}
+
+export async function addTradeAction(input: {
+  date: string;
+  name: string;
+  amount: string;
+  relatedSale: string | null;
+  remarks: string | null;
+}): Promise<MutationResult> {
+  const result = await addTrade(input);
+  if (result.ok) revalidatePath(CASH_PATH);
+  return result;
+}
+
+export async function updateTradeAction(
+  id: string,
+  input: {
+    date: string;
+    name: string;
+    amount: string;
+    relatedSale: string | null;
+    remarks: string | null;
+  },
+): Promise<MutationResult> {
+  const result = await updateTrade(id, input);
   if (result.ok) revalidatePath(CASH_PATH);
   return result;
 }

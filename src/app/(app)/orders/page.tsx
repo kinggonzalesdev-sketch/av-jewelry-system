@@ -4,7 +4,6 @@ import { notFound } from 'next/navigation';
 import { NewOrderWorkflow } from '@/components/orders/new-order-workflow';
 import { OrdersView } from '@/components/orders/orders-view';
 import { CaptureReviewPanel } from '@/components/capture/capture-review-panel';
-import { IncomingCapturesStrip } from '@/components/capture/incoming-captures-strip';
 import {
   canOpenPage,
   getCurrentStaffProfile,
@@ -78,15 +77,19 @@ export default async function OrdersPage({
         {permissions.has('claim_capture') ? (
           <CaptureReviewPanel rows={pendingReviews} />
         ) : null}
-        {/* Incoming Captures — floating-screenshot uploads waiting to become orders on
-            this PC. Realtime; self-hides when empty. Same permission as capture. */}
-        {permissions.has('claim_capture') ? <IncomingCapturesStrip /> : null}
+        {/* Incoming Captures is now mounted app-wide in the AppShell so it runs on every
+            page (not only here); the "Capture Pending" pill in OrdersView still opens it. */}
         <OrdersView
           title="Orders"
           result={result}
           openForInvoice={openForInvoice}
           keepLayaways={keepLayaways}
-          canManageOrders={profile.roleKey === 'owner'}
+          // Owner AND admins see the Edit/Delete buttons; an admin's action routes
+          // through Owner approval (isOwner=false). The DB re-checks authority.
+          canManageOrders={
+            profile.roleKey === 'owner' || profile.roleKey === 'selected_admin'
+          }
+          isOwner={profile.roleKey === 'owner'}
           // Compact "Capture Pending" pill beside + New Order — only for capture
           // holders (the strip is theirs), 0 otherwise so it never shows.
           pendingCaptureCount={permissions.has('claim_capture') ? pendingCaptureCount : 0}

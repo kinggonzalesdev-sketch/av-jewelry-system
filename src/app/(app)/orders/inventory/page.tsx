@@ -7,8 +7,7 @@ import {
   getCurrentStaffProfile,
   getGrantedPermissions,
 } from '@/lib/authz/guard';
-import { listCompletedInventory } from '@/lib/inventory/completed';
-import { listInventory } from '@/lib/inventory/service';
+import { listInventoryActivePage } from '@/lib/inventory/service';
 
 export const metadata: Metadata = {};
 
@@ -31,9 +30,11 @@ export default async function InventoryPage() {
   // Page access (Portal & Access). A member without this permission cannot open
   // the page — by link OR by typing the URL. A Super Admin holds it implicitly.
   if (!(await canOpenPage('nav_inventory'))) notFound();
-  const [inventory, completed, permissions, profile] = await Promise.all([
-    listInventory(),
-    listCompletedInventory(),
+  // Completed Items (900+ rows with order/customer/fulfillment joins) is NO LONGER loaded
+  // here — that heavy read made opening Inventory slow even though the page lands on the
+  // Active tab. The workspace lazy-loads it the first time the Completed Items tab is opened.
+  const [initialPage, permissions, profile] = await Promise.all([
+    listInventoryActivePage({ page: 1, size: 25 }),
     getGrantedPermissions(),
     getCurrentStaffProfile(),
   ]);
@@ -49,8 +50,8 @@ export default async function InventoryPage() {
       </header>
 
       <InventoryWorkspace
-        inventory={inventory}
-        completed={completed}
+        initialPage={initialPage}
+        completed={[]}
         canMonitor={permissions.has('inventory_monitoring')}
         // Each per-row action follows its OWN permission (the Owner holds all
         // implicitly); the server re-checks the same key on every write.

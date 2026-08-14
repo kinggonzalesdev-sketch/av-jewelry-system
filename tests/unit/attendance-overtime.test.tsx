@@ -15,6 +15,15 @@ vi.mock('@/lib/hr/actions', () => ({
   clockInAction: vi.fn(),
   clockOutAction: vi.fn(),
   deleteAttendanceRecordAction: vi.fn(),
+  // Selfies are lazy-loaded when a day is opened — echo signed URLs for the requested ids.
+  loadAttendanceSelfiesAction: vi.fn((ids: string[]) =>
+    Promise.resolve({
+      [ids[0] ?? '']: {
+        inUrl: 'https://signed.example/in.jpg',
+        outUrl: 'https://signed.example/out.jpg',
+      },
+    }),
+  ),
 }));
 vi.mock('@/lib/attachments/actions', () => ({
   uploadAttachmentAction: vi.fn(),
@@ -54,22 +63,12 @@ describe('ReviewAttendanceView — Overtime column', () => {
     expect(screen.queryByText(/Total overtime shown/i)).not.toBeInTheDocument();
   });
 
-  it('shows clock-in/out selfie thumbnails that link to the image (view/download)', () => {
+  it('shows clock-in/out selfie thumbnails that link to the image (view/download)', async () => {
     const r = row({ isOvertime: false });
-    render(
-      <ReviewAttendanceView
-        records={[r]}
-        selfies={{
-          [r.id]: {
-            inUrl: 'https://signed.example/in.jpg',
-            outUrl: 'https://signed.example/out.jpg',
-          },
-        }}
-      />,
-    );
-    // Selfies live in the day's detail popup now (§14) — open it first.
+    render(<ReviewAttendanceView records={[r]} />);
+    // Selfies live in the day's detail popup now (§14), lazy-loaded on open — open it first.
     fireEvent.click(screen.getByRole('button', { name: 'View' }));
-    const inThumb = screen.getByAltText('In selfie');
+    const inThumb = await screen.findByAltText('In selfie');
     const outThumb = screen.getByAltText('Out selfie');
     expect(inThumb).toHaveAttribute('src', 'https://signed.example/in.jpg');
     expect(outThumb.closest('a')).toHaveAttribute(

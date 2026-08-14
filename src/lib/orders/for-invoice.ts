@@ -9,6 +9,7 @@ import {
 import {
   conversationBelongsToPage,
   getActivePancakePageId,
+  resolveConversationForName,
   sendPancakeConversationMessage,
 } from '@/lib/integrations/pancake';
 import { renderOrderMessage } from '@/lib/messaging/templates';
@@ -90,12 +91,14 @@ async function deliverOrderMessageViaPancake(
 
     const response = (await supabase
       .from('official_orders')
-      .select('fb_pancake_conversation_id, customers ( pancake_conversation_id )')
+      .select(
+        'fb_pancake_conversation_id, customers ( pancake_conversation_id, display_name )',
+      )
       .eq('id', officialOrderId)
       .maybeSingle()) as {
       data: { fb_pancake_conversation_id?: string | null; customers?: unknown } | null;
     };
-    type Cust = { pancake_conversation_id?: string | null };
+    type Cust = { pancake_conversation_id?: string | null; display_name?: string | null };
     const customer = response.data?.customers as Cust | Cust[] | null | undefined;
     const one = Array.isArray(customer) ? customer[0] : customer;
     // Prefer the ORDER's OWN confirmed conversation (spec §6/§7) — it is the exact chat
@@ -107,11 +110,31 @@ async function deliverOrderMessageViaPancake(
     const activePage = await getActivePancakePageId();
     const orderConv = (response.data?.fb_pancake_conversation_id ?? '').trim();
     const custConv = (one?.pancake_conversation_id ?? '').trim();
-    const conversationId = conversationBelongsToPage(orderConv, activePage)
+    let conversationId = conversationBelongsToPage(orderConv, activePage)
       ? orderConv
       : conversationBelongsToPage(custConv, activePage)
         ? custConv
         : '';
+    // No STORED on-page link? Resolve the chat LIVE the same way the capture flow does —
+    // the webhook fast-match (every recent commenter/messager the webhook captured) plus a
+    // bounded live lookup — so an invoice DELIVERS to anyone Pancake knows, with no manual
+    // "copy conversation ID". A shared/ambiguous name resolves to nothing (never a wrong
+    // send). This is what makes an invoice "just send" once the webhook is flowing.
+    if (!conversationId) {
+      const custName = (one?.display_name ?? '').trim();
+      if (custName) {
+        const resolved = await resolveConversationForName(supabase, custName, {
+          sinceDays: 14,
+          maxPages: 12,
+        });
+        if (
+          resolved.conversationId &&
+          conversationBelongsToPage(resolved.conversationId, activePage)
+        ) {
+          conversationId = resolved.conversationId;
+        }
+      }
+    }
     if (!conversationId) {
       return { attempted: false, delivered: false, error: null };
     }

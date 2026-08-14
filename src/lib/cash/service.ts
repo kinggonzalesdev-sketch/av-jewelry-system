@@ -12,6 +12,7 @@ import type {
   ExpenseRow,
   RemittanceRow,
   TradeDeductionRow,
+  TradeExpenseRow,
   WalkInRow,
 } from '@/lib/cash/types';
 
@@ -132,6 +133,34 @@ export async function getTradeDeductions(
       label: str(r.label) || '—',
       amount: money(r.amount),
       at: str(r.at),
+    })),
+  };
+}
+
+/**
+ * The combined "Trades & Expenses" box: manual Expenses (in the Cash Breakdown) + manual
+ * Trades (display-only), one paginated list newest-first, each tagged with its `type`.
+ * Owner / Selected Admin only (the DEFINER rpc enforces it); a blocked caller reads empty.
+ */
+export async function getTradesExpenses(
+  date: string,
+  page: number,
+  size: number,
+): Promise<DetailPage<TradeExpenseRow>> {
+  await requirePermission('view_reports');
+  const { rows, total } = await rpcPage('daily_cash_trades_expenses', date, page, size);
+  return {
+    total,
+    rows: rows.map((r) => ({
+      id: str(r.id),
+      type: r.type === 'trade' ? 'trade' : 'expense',
+      name: str(r.name) || '—',
+      amount: money(r.amount),
+      category: (r.category as string | null) ?? null,
+      relatedSale: (r.relatedSale as string | null) ?? null,
+      remarks: (r.remarks as string | null) ?? null,
+      createdByName: str(r.createdByName) || '—',
+      createdAt: str(r.at),
     })),
   };
 }

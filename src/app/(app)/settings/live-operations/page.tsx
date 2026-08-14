@@ -104,8 +104,8 @@ export default async function LiveOperationsPage() {
           Sticker Settings
         </h2>
         <p className="mb-3 text-xs text-muted-foreground">
-          Pick which lines appear on the sticker and see a live preview. Saved on this
-          device; every print uses these fields.
+          Pick which lines appear on the sticker and see a live preview, then press Save —
+          it applies to every account and device.
         </p>
         <StickerSettingsCard />
       </section>

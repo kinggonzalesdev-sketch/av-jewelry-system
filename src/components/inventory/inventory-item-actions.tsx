@@ -49,6 +49,7 @@ export function InventoryItemActions({
   canEdit,
   canDelete,
   canForceDelete = false,
+  onMutated,
 }: {
   row: InventoryRow;
   /** Holds `inventory_edit` — shows the Edit action. */
@@ -58,6 +59,10 @@ export function InventoryItemActions({
   /** SUPER ADMIN (owner) only — reveals the "Force delete" override inside the
    *  Delete modal when the normal delete is blocked by resolved records only. */
   canForceDelete?: boolean;
+  /** Bumps the parent's client-side reload token so the server-paginated Active list
+   *  re-fetches after an edit/delete — router.refresh() alone re-runs only the RSC,
+   *  not the client fetch, so a deleted row would otherwise linger until a full reload. */
+  onMutated?: () => void;
 }) {
   const router = useRouter();
   const parsed = parseInventoryCode(row.itemCode);
@@ -78,8 +83,9 @@ export function InventoryItemActions({
       lastEdit.current = editState.success;
       setEdit(false);
       router.refresh();
+      onMutated?.();
     }
-  }, [editState.success, router]);
+  }, [editState.success, router, onMutated]);
 
   // --- Delete (one-step permanent, type DELETE) -----------------------------
   const [delState, delAction, deleting] = useActionState<InventoryActionState, FormData>(
@@ -92,8 +98,9 @@ export function InventoryItemActions({
       lastDelete.current = delState.success;
       setDel(false);
       router.refresh();
+      onMutated?.();
     }
-  }, [delState.success, router]);
+  }, [delState.success, router, onMutated]);
 
   // --- Force delete (Super Admin override; same type-DELETE confirm) ----------
   const [forceState, forceAction, forcing] = useActionState<
@@ -106,8 +113,9 @@ export function InventoryItemActions({
       lastForce.current = forceState.success;
       setDel(false);
       router.refresh();
+      onMutated?.();
     }
-  }, [forceState.success, router]);
+  }, [forceState.success, router, onMutated]);
 
   // The override appears only when the normal delete was refused because the item
   // is linked to records — and only for a Super Admin. The DB still refuses a real

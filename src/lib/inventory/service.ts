@@ -177,6 +177,157 @@ export async function listInventory(): Promise<InventoryListResult> {
   return { ok: true, rows };
 }
 
+export type InventoryPageResult =
+  | {
+      ok: true;
+      rows: InventoryRow[];
+      total: number;
+      groupCounts: Record<string, number>;
+      statusOptions: string[];
+    }
+  | { ok: false; reason: string };
+
+/**
+ * Server-side paginated Active Inventory (Owner request — fast lists at 2,000+ items).
+ * ONE SQL RPC (`inventory_active_ids_page`) does the active-filter + search + status +
+ * group + count in the database and returns the CURRENT PAGE's item IDs (+ total, group
+ * counts, status options). We then fetch just those rows with the SAME monitor (derived
+ * availability) + custody readers `listInventory` uses, so the row shape and stock
+ * availability are byte-for-byte identical to the full list — no stock logic is
+ * re-implemented. Rows are returned ordered by item_code (matching the RPC). Export still
+ * uses the full `listInventory` on demand (a rare action; too many ids for a by-id fetch).
+ */
+export async function listInventoryActivePage(opts: {
+  search?: string;
+  status?: string;
+  group?: string;
+  page?: number;
+  size?: number;
+}): Promise<InventoryPageResult> {
+  const supabase = await createClient();
+  const size = Math.min(Math.max(opts.size ?? 25, 1), 200);
+  const page = Math.max(opts.page ?? 1, 1);
+
+  const { data, error } = (await supabase.rpc('inventory_active_ids_page', {
+    p_search: (opts.search ?? '').trim(),
+    p_status: opts.status ?? 'all',
+    p_group: opts.group ?? 'all',
+    p_limit: size,
+    p_offset: (page - 1) * size,
+  })) as {
+    data: {
+      ids?: string[] | null;
+      total?: number | null;
+      groupCounts?: Record<string, number> | null;
+      statusOptions?: string[] | null;
+    } | null;
+    error: { message: string } | null;
+  };
+  if (error) return { ok: false, reason: error.message };
+
+  const ids = (data?.ids ?? []).filter((v): v is string => typeof v === 'string');
+  const total = Number(data?.total ?? 0);
+  const groupCounts = data?.groupCounts ?? {};
+  const statusOptions = (data?.statusOptions ?? []).filter(
+    (v): v is string => typeof v === 'string',
+  );
+  if (ids.length === 0) return { ok: true, rows: [], total, groupCounts, statusOptions };
+
+  // Fetch ONLY the page's rows, with the same monitor + custody readers the full list uses.
+  const [monitorRes, custodyRes] = await Promise.all([
+    supabase.rpc('inventory_monitor').in('inventory_item_id', ids),
+    supabase
+      .from('inventory_items')
+      .select(
+        'id, custody_holder, storage_location, grams_per_piece, size, supplier_name, facebook_name, created_at, custody_handler:staff_profiles!custody_handler_id ( full_name )',
+      )
+      .in('id', ids),
+  ]);
+  if (monitorRes.error) return { ok: false, reason: monitorRes.error.message };
+
+  const custodyById = new Map<
+    string,
+    {
+      holder: CustodyHolder;
+      location: string | null;
+      handler: string | null;
+      grams: string | null;
+      size: string | null;
+      supplier: string | null;
+      facebookName: string | null;
+      createdAt: string | null;
+    }
+  >();
+  for (const row of (custodyRes.data ?? []) as unknown as Array<{
+    id: string;
+    custody_holder: CustodyHolder | null;
+    storage_location: string | null;
+    grams_per_piece: string | number | null;
+    size: string | null;
+    supplier_name: string | null;
+    facebook_name: string | null;
+    created_at: string | null;
+    custody_handler: unknown;
+  }>) {
+    const handler = one<{ full_name: string }>(row.custody_handler);
+    custodyById.set(row.id, {
+      holder: row.custody_holder ?? 'av_jewelry',
+      location: row.storage_location ?? null,
+      handler: handler?.full_name ?? null,
+      grams:
+        row.grams_per_piece === null || row.grams_per_piece === undefined
+          ? null
+          : String(row.grams_per_piece),
+      size: row.size ?? null,
+      supplier: row.supplier_name ?? null,
+      facebookName: row.facebook_name ?? null,
+      createdAt: row.created_at ?? null,
+    });
+  }
+
+  const order = new Map(ids.map((id, i) => [id, i] as const));
+  const rows: InventoryRow[] = (
+    monitorRes.data as unknown as Array<{
+      inventory_item_id: string;
+      item_code: string;
+      item_name: string | null;
+      availability_status: string;
+      quantity_total: number;
+      available_quantity: number;
+      reserved_quantity: number;
+      in_rts_review: boolean;
+      is_forfeited: boolean;
+    }>
+  )
+    .map((r) => {
+      const custody = custodyById.get(r.inventory_item_id);
+      return {
+        inventoryItemId: r.inventory_item_id,
+        itemCode: r.item_code,
+        itemName: r.item_name,
+        availabilityStatus: r.availability_status,
+        quantityTotal: r.quantity_total,
+        availableQuantity: r.available_quantity,
+        reservedQuantity: r.reserved_quantity,
+        inRtsReview: r.in_rts_review,
+        isForfeited: r.is_forfeited,
+        custodyHolder: custody?.holder ?? 'av_jewelry',
+        storageLocation: custody?.location ?? null,
+        handlerName: custody?.handler ?? null,
+        gramsPerPiece: custody?.grams ?? null,
+        size: custody?.size ?? null,
+        supplierName: custody?.supplier ?? null,
+        facebookName: custody?.facebookName ?? null,
+        createdAt: custody?.createdAt ?? null,
+      };
+    })
+    .sort(
+      (a, b) => (order.get(a.inventoryItemId) ?? 0) - (order.get(b.inventoryItemId) ?? 0),
+    );
+
+  return { ok: true, rows, total, groupCounts, statusOptions };
+}
+
 /** First element of a Supabase embed (array or single). */
 function one<T>(value: unknown): T | undefined {
   if (Array.isArray(value)) return value[0] as T | undefined;

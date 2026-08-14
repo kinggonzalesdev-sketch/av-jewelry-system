@@ -38,7 +38,7 @@ describe('read-error states (no fake empty states)', () => {
   it('Inventory shows an explicit read error, not "No inventory items"', () => {
     render(
       <InventoryWorkspace
-        inventory={{ ok: false, reason: 'db down' }}
+        initialPage={{ ok: false, reason: 'db down' }}
         canMonitor={true}
       />,
     );

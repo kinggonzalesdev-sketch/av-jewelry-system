@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { NewOrderWorkflow } from '@/components/orders/new-order-workflow';
+import { NewOrderModal, NewOrderWorkflow } from '@/components/orders/new-order-workflow';
 import type { CaptureItem, WalkInItem } from '@/lib/orders/service';
 import type { AdminNameContext } from '@/lib/authz/admin-name';
 
@@ -96,6 +96,20 @@ function openForm() {
   fireEvent.click(screen.getByTestId('orders-new-order'));
 }
 
+// The Walk-In sale flow now opens WALK-IN ONLY (from Daily Cash → + Add New Sale): the
+// shared modal with no New Entry / Walk In toggle. Orders itself is New-Entry only.
+function renderWalkIn() {
+  return render(
+    <NewOrderModal
+      walkInOnly
+      customers={customers}
+      walkInItems={walkInItems}
+      admins={admins}
+      onClose={vi.fn()}
+    />,
+  );
+}
+
 describe('NewOrderWorkflow — the New Order control', () => {
   it('renders only New Order (the removed shortcuts stay gone)', () => {
     renderWorkflow();
@@ -110,14 +124,17 @@ describe('NewOrderWorkflow — the New Order control', () => {
 });
 
 describe('NewOrderWorkflow — multi-item form', () => {
-  it('opens with New Entry / Walk In modes, a customer field, and one item row', () => {
+  it('opens New-Entry-only (no Walk In tab), a customer field, and one item row', () => {
     renderWorkflow();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     openForm();
 
     expect(screen.getByRole('dialog', { name: /new order/i })).toBeInTheDocument();
-    expect(screen.getByTestId('mode-order')).toBeInTheDocument();
-    expect(screen.getByTestId('mode-walkin')).toBeInTheDocument();
+    // Orders → New Order is NEW-ENTRY ONLY (Owner 2026-08-14): the Walk In tab was removed
+    // from this popup. Walk-In sales live in Daily Cash → + Add New Sale (the SAME modal,
+    // opened walk-in-only). So the mode toggle must NOT render here.
+    expect(screen.queryByTestId('mode-order')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('mode-walkin')).not.toBeInTheDocument();
     // Shop Name was REMOVED from the entry form (§3); Admin Name replaced
     // Salesperson (§2) and shows the signed-in account, read-only for a
     // non-Super-Admin.
@@ -251,9 +268,7 @@ describe('NewOrderWorkflow — multi-item form', () => {
   });
 
   it('switches to Walk In mode with a Save button, item rows, payment amount, and Date', () => {
-    renderWorkflow();
-    openForm();
-    fireEvent.click(screen.getByTestId('mode-walkin'));
+    renderWalkIn();
 
     // The Walk-In overhaul replaced the instant "Accept — Complete Sale" with a
     // "Save" button that opens a review before writing anything.
@@ -276,9 +291,7 @@ describe('NewOrderWorkflow — multi-item form', () => {
   });
 
   it('Walk In: auto-detects grams from the code when the stored weight is blank', () => {
-    renderWorkflow();
-    openForm();
-    fireEvent.click(screen.getByTestId('mode-walkin'));
+    renderWalkIn();
 
     const row0 = screen.getByTestId('order-item-row-0');
     fireEvent.change(within(row0).getByPlaceholderText(/search active inventory/i), {
@@ -289,9 +302,7 @@ describe('NewOrderWorkflow — multi-item form', () => {
   });
 
   it('Walk In: HK ITEM is fixed-price at the number after "HK ITEM"', () => {
-    renderWorkflow();
-    openForm();
-    fireEvent.click(screen.getByTestId('mode-walkin'));
+    renderWalkIn();
 
     const row0 = screen.getByTestId('order-item-row-0');
     fireEvent.change(within(row0).getByPlaceholderText(/search active inventory/i), {

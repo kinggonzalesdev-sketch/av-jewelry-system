@@ -190,10 +190,10 @@ describe('OrdersView — search and filters (existing, preserved)', () => {
     expect(screen.queryByText('Maria Santos')).not.toBeInTheDocument();
   });
 
-  it('renders the approved Order Date and Ship Date filters', () => {
+  it('renders the Order-date range (From–To) filters', () => {
     render(<OrdersView result={ok(sample)} />);
-    expect(screen.getByTestId('orders-filter-order-date')).toBeInTheDocument();
-    expect(screen.getByTestId('orders-filter-ship-date')).toBeInTheDocument();
+    expect(screen.getByTestId('orders-filter-date-from')).toBeInTheDocument();
+    expect(screen.getByTestId('orders-filter-date-to')).toBeInTheDocument();
   });
 
   it('no longer renders the Hide Keep checkbox (removed by Owner request)', () => {
@@ -202,16 +202,23 @@ describe('OrdersView — search and filters (existing, preserved)', () => {
     expect(screen.queryByLabelText('Hide Keep')).not.toBeInTheDocument();
   });
 
-  it('Order Date filters to orders created on the selected day', () => {
+  it('Order-date range filters inclusively (From–To), not exact-day', () => {
     const dated: OrderListRow[] = [
       row({ customerDisplayName: 'Early Bird', createdAt: '2026-07-01T09:00:00.000Z' }),
+      row({ customerDisplayName: 'Mid Month', createdAt: '2026-07-08T09:00:00.000Z' }),
       row({ customerDisplayName: 'Late Comer', createdAt: '2026-07-16T09:00:00.000Z' }),
     ];
     render(<OrdersView result={ok(dated)} />);
-    fireEvent.change(screen.getByTestId('orders-filter-order-date'), {
+    // A range Jul 1–Jul 10 keeps BOTH orders inside it (the old exact-day filter would
+    // have shown at most one) and drops the Jul 16 order.
+    fireEvent.change(screen.getByTestId('orders-filter-date-from'), {
       target: { value: '2026-07-01' },
     });
+    fireEvent.change(screen.getByTestId('orders-filter-date-to'), {
+      target: { value: '2026-07-10' },
+    });
     expect(screen.getByText('Early Bird')).toBeInTheDocument();
+    expect(screen.getByText('Mid Month')).toBeInTheDocument();
     expect(screen.queryByText('Late Comer')).not.toBeInTheDocument();
   });
 
