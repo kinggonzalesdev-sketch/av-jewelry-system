@@ -75,6 +75,8 @@ class OverlayCaptureService : Service() {
     private var captureH = 0
     @Volatile private var pendingCapture = false
     private var busy = false
+    // Monotonic tap time (elapsedRealtime) for capture→print→pending timing logs.
+    @Volatile private var lastTapElapsed = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -92,6 +94,8 @@ class OverlayCaptureService : Service() {
         // the Bluetooth printer even while the operator is in the Facebook app (idempotent;
         // only acts once a printer is selected + signed in).
         com.mineflow.capture.printer.PrintJobPoller.start(this)
+        // Warm the OCR model so the first real capture doesn't pay the one-time load.
+        com.mineflow.capture.data.ScreenshotOcr.warmUp()
     }
 
     /**
@@ -245,6 +249,7 @@ class OverlayCaptureService : Service() {
     private fun onCaptureTap() {
         if (busy) return
         busy = true
+        lastTapElapsed = android.os.SystemClock.elapsedRealtime()
         hideQuickMenu()
         // Hide the button so it is not part of the screenshot, then capture.
         button?.visibility = View.GONE
@@ -423,7 +428,9 @@ class OverlayCaptureService : Service() {
             //    sticker is NEVER gated on a slow live-venue upload (Owner priority 2026-08-14:
             //    the right-name / right-grams sticker must come out FIRST; the row, upload, and
             //    send all follow). A blank read (no pinned comment) leaves name/grams empty.
+            val tOcrStart = android.os.SystemClock.elapsedRealtime()
             val guess = ocrBlocking(bmp)
+            val tOcrEnd = android.os.SystemClock.elapsedRealtime()
             val name = guess?.fbName?.trim().orEmpty()
             // ALWAYS attach the OCR result — including the RAW recognised lines — whenever OCR
             // ran, even on a blank/low-confidence read. `fbName`/`itemQuery`/`grams` stay set only
@@ -445,12 +452,24 @@ class OverlayCaptureService : Service() {
             //    it straight over Bluetooth. NO create, NO claim, NO network wait (~0.5–1s).
             //    The row is created below already-'printed', so the PC never double-prints it.
             val printedLocally = maybePrintDirect(name, guess?.grams)
+            val tPrintReq = android.os.SystemClock.elapsedRealtime()
+            val t0 = if (lastTapElapsed > 0) lastTapElapsed else tOcrStart
+            Log.i(
+                TAG,
+                "timing: ocr=${tOcrEnd - tOcrStart}ms tap->printReq=${tPrintReq - t0}ms " +
+                    "(LOCAL PRINT before pending/network)",
+            )
 
             // 3) Create the PENDING row (network). Born 'printed' when we printed, so the PC's
             //    auto-print claim always fails — race-free, no double-print. Idempotent per
             //    device+capture; it appears in the PC's Incoming Captures with the name/grams.
             val created = api.createPendingCapture(
                 captureId, null, ocr, if (printedLocally) "printed" else null,
+            )
+            Log.i(
+                TAG,
+                "timing: pendingApiEnd=${android.os.SystemClock.elapsedRealtime() - t0}ms " +
+                    "(AFTER print — network never precedes the sticker)",
             )
             if (!created.ok) {
                 toastMain(
