@@ -98,10 +98,14 @@ object ScreenshotOcr {
     // A PINNED-COMMENT CLAIM line: optional "Mine"/"M", then a weight-like number (≤3 integer
     // digits, optional decimals, optional trailing "g") and NOTHING else — so "10:45", "85%",
     // "1.2K", "234 viewers", 4-digit years and names never register. Group 1 = the number.
-    // Separator between a "Mine"/"M" prefix and the number is ":" or "-" only — NOT "." (a
-    // dot there would swallow the decimal point of a bare ".5", parsing it as "5").
+    // A pinned-comment CLAIM: after an optional "Mine"/"M", the line STARTS with a numeric
+    // value (a weight OR a price). Trailing text is allowed and ignored — "Mine 2.43g LV",
+    // "Mine 5.67 foxtail". A line that starts with words (a question / normal comment like
+    // "anu po pendant…") is NOT a claim. Captures the leading value token: "2.43", "13.91",
+    // "12000", "12,000", "12k", "12.5k", ".5". Separator is ":"/"-" only (a "." would eat the
+    // decimal point of a bare ".5"). NOT end-anchored, so trailing words don't reject it.
     private val CLAIM = Regex(
-        "^\\s*(?:mine|m)?\\s*[:\\-]?\\s*(\\.?\\d{1,3}(?:[.,]\\d{1,3})?)\\s*g?\\s*$",
+        "^\\s*(?:mine\\b|m\\b)?\\s*[:\\-]?\\s*(\\.?\\d[\\d,]*(?:\\.\\d+)?k?)",
         RegexOption.IGNORE_CASE,
     )
 
@@ -123,7 +127,7 @@ object ScreenshotOcr {
         ocr(roi) { roiLines ->
             runCatching { roi.recycle() }
             val g = guessFrom(roiLines)
-            if (g.fbName != null && g.grams != null) {
+            if (g.fbName != null && g.itemQuery != null) {
                 onResult(g)
             } else {
                 ocr(bitmap) { full -> onResult(guessFrom(full)) }
@@ -166,13 +170,22 @@ object ScreenshotOcr {
     private fun stripClaim(s: String): String =
         s.replace(MINE, "").replace(NUMBER, "").trim().trim('·', '-', ':', '•').trim()
 
+    /** The raw leading value token of a CLAIM line ("2.43", "12000", "12,000", "12k"), or null
+     *  when the line does not START with a value (a question / normal comment). */
+    private fun valueFromClaim(raw: String): String? {
+        val v = CLAIM.find(raw.trim())?.groupValues?.get(1) ?: return null
+        return if (v.any { it.isDigit() }) v else null
+    }
+
     /**
-     * Grams from a CLAIM line, normalized: ".5"→"0.5", "5.50"→"5.5", "11"→"11". Null when the
-     * line is not a weight claim (so arbitrary numbers elsewhere never become grams).
+     * Grams from a claim value, normalized: ".5"→"0.5", "5.50"→"5.5", "11"→"11". Null for a
+     * FIXED-price form (a "k" suffix, a comma, or a value > 999) — those are treated as a
+     * fixed price on the PC, never printed as grams on the phone.
      */
-    private fun gramsFromClaim(raw: String): String? {
-        val m = CLAIM.find(raw.trim()) ?: return null
-        var num = m.groupValues[1].replace(',', '.')
+    private fun gramsFromValue(rawValue: String): String? {
+        val s = rawValue.trim().lowercase()
+        if (s.endsWith("k") || s.contains(",")) return null
+        var num = s
         if (num.startsWith(".")) num = "0$num"
         val n = num.toDoubleOrNull() ?: return null
         if (n <= 0.0 || n > 999.0) return null
@@ -195,7 +208,7 @@ object ScreenshotOcr {
                 ol !== claim &&
                     looksLikeName(ol.text) &&
                     !MINE.containsMatchIn(ol.text) &&
-                    gramsFromClaim(ol.text) == null &&
+                    valueFromClaim(ol.text) == null &&
                     ol.box.bottom <= claim.box.top &&
                     (claim.box.top - ol.box.bottom) <= maxGap &&
                     horizontalOverlap(ol.box, claim.box)
@@ -210,22 +223,22 @@ object ScreenshotOcr {
         val clean = olines.filterNot { isUiNoise(it.text) }
         if (clean.isEmpty()) return OcrGuess(null, null, null, rawLines)
 
-        val claims = clean.mapNotNull { ol -> gramsFromClaim(ol.text)?.let { ol to it } }
+        val claims = clean.mapNotNull { ol -> valueFromClaim(ol.text)?.let { ol to it } }
         if (claims.isEmpty()) return OcrGuess(null, null, null, rawLines)
 
         // Pinned claim = the bottom-most one on screen (nearest the comment box).
-        val (pinnedLine, grams) = claims.maxByOrNull { it.first.box.top }!!
+        val (pinnedLine, value) = claims.maxByOrNull { it.first.box.top }!!
 
         // Name from the SAME block only — else null (never a name from elsewhere).
         val name = nameForClaim(clean, pinnedLine)
             ?: stripClaim(pinnedLine.text).takeIf { it.isNotBlank() && looksLikeName(it) }
 
+        // itemQuery = the raw pinned value (the PC reinterprets grams vs fixed price); grams is
+        // set only for a real weight — a fixed-price form (k / comma / >999) leaves it null.
         return OcrGuess(
             fbName = name,
-            itemQuery = NUMBER.find(pinnedLine.text)?.value
-                ?: CODE.find(pinnedLine.text)?.value
-                ?: grams,
-            grams = grams,
+            itemQuery = value,
+            grams = gramsFromValue(value),
             rawLines = rawLines,
         )
     }

@@ -96,4 +96,62 @@ class ScreenshotOcrTest {
             assertEquals("Andrea Dela Cruz", it.fbName); assertEquals("1.23", it.grams)
         }
     }
+
+    // The VIEWER (customer) live layout from the attached screenshots: pinned comments with
+    // TRAILING TEXT and unrelated question-comments above (incl. the real "Ulymay" case).
+    @Test
+    fun viewerLayout_trailingText_and_unrelatedComments() {
+        // SS4: pinned "Elve Cano / 13.91"; "Ulymay Alazne Pedericos ..." is a normal question
+        // above (no leading number) and must NOT be selected.
+        val ss4 = ScreenshotOcr.guessFrom(
+            listOf(
+                line("Rodora Bellones Canete", 200),
+                line("Madam bracelet na suot mo mam hardware", 250),
+                line("Ulymay Alazne Pedericos", 350),
+                line("anu po pendant na panlalaki meron kayu maam?", 400),
+                line("Charvin BPagtakhan", 600),
+                line("Mine type ko yung tri color maam ko hehhehe", 650),
+                line("Elve Cano", 850),
+                line("13.91", 900),
+            ),
+        )
+        assertEquals("Elve Cano", ss4.fbName)
+        assertEquals("13.91", ss4.grams)
+
+        // SS2: "Mine 2.43g LV" — trailing "g LV" must not reject the claim.
+        val ss2 = ScreenshotOcr.guessFrom(
+            listOf(line("Lhean Elbanbuena", 850), line("Mine 2.43g LV", 900)),
+        )
+        assertEquals("Lhean Elbanbuena", ss2.fbName)
+        assertEquals("2.43", ss2.grams)
+        assertEquals("2.43", ss2.itemQuery)
+
+        // SS5: "Mine 5.67 foxtail".
+        val ss5 = ScreenshotOcr.guessFrom(
+            listOf(line("Abby Gicain", 850), line("Mine 5.67 foxtail", 900)),
+        )
+        assertEquals("Abby Gicain", ss5.fbName)
+        assertEquals("5.67", ss5.grams)
+
+        // SS3: bare number "6.53".
+        val ss3 = ScreenshotOcr.guessFrom(
+            listOf(line("Divina Bose Madayam", 850), line("6.53", 900)),
+        )
+        assertEquals("Divina Bose Madayam", ss3.fbName)
+        assertEquals("6.53", ss3.grams)
+    }
+
+    // Fixed-price pinned comments: the value is extracted (itemQuery) so the PC can price it,
+    // but grams stays null (never a grams sticker on the phone). Name still from the block.
+    @Test
+    fun fixedPrice_valuesExtracted_gramsNull() {
+        fun g(claim: String) =
+            ScreenshotOcr.guessFrom(listOf(line("Buyer Name", 850), line(claim, 900)))
+        g("Mine 12000").let { assertEquals("12000", it.itemQuery); assertNull(it.grams) }
+        g("12,000").let { assertEquals("12,000", it.itemQuery); assertNull(it.grams) }
+        g("12k").let { assertEquals("12k", it.itemQuery); assertNull(it.grams) }
+        g("12.5k").let { assertEquals("12.5k", it.itemQuery); assertNull(it.grams) }
+        g("12500").let { assertEquals("12500", it.itemQuery); assertNull(it.grams) }
+        assertEquals("Buyer Name", g("Mine 12000").fbName)
+    }
 }
