@@ -30,6 +30,9 @@ export type OrderReceiptData = {
   /** Price-per-gram rate as a peso string, or null. Only printed if the "Price per
    *  gram" sticker field is enabled. */
   pricePerGram?: string | null;
+  /** A FIXED total price (peso string). When set, the value line prints "FIXED • ₱X"
+   *  instead of grams × rate — the Fixed Price capture mode. */
+  fixedPrice?: string | null;
   /** Preformatted date, e.g. "August 6, 2026". */
   date: string;
 };
@@ -77,6 +80,32 @@ export function normalizeGrams(value: string | number | null | undefined): strin
   return String(n);
 }
 
+/**
+ * Parse a FIXED-PRICE capture value into a peso amount string. In Fixed Price mode a bare
+ * small number is shorthand for thousands (the seller types "12" for ₱12,000); an explicit
+ * "k" suffix multiplies by 1,000; a comma-grouped or already-large number is literal:
+ *
+ *   "12" -> "12000"    "12.5" -> "12500"    "12k" -> "12000"    "12.5k" -> "12500"
+ *   "12,000" -> "12000"    "12500" -> "12500"    "12,500" -> "12500"
+ *
+ * Returns the peso amount as a plain string, or null when there is no usable value.
+ */
+export function parseFixedPrice(
+  value: string | number | null | undefined,
+): string | null {
+  if (value === null || value === undefined) return null;
+  const s = String(value).trim().toLowerCase();
+  if (!s) return null;
+  const hasK = /k$/.test(s);
+  const hasComma = s.includes(',');
+  const cleaned = s.replace(/[,\s]/g, '').replace(/k$/, '');
+  const n = Number.parseFloat(cleaned);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  // "k", or a bare sub-1,000 number, means thousands; anything else is literal pesos.
+  const pesos = hasK || (!hasComma && n < 1000) ? n * 1000 : n;
+  return String(Math.round(pesos));
+}
+
 /** The four sticker lines. Pure — the one place the format is defined. Order:
  *  Customer Name · Item (+grams) · Price · Date (the centered stack the Owner asked
  *  for). Price is its own prominent line; the quantity only shows when more than one
@@ -97,7 +126,10 @@ export function stickerLineItems(
       kind: 'price',
     });
   }
-  if (fields.pricePerGram && d.pricePerGram) {
+  if (fields.pricePerGram && d.fixedPrice) {
+    // Fixed Price mode: a flat total instead of grams × rate, e.g. "FIXED • ₱12,500".
+    out.push({ text: `FIXED • ${formatStickerPeso(d.fixedPrice)}`, kind: 'pricePerGram' });
+  } else if (fields.pricePerGram && d.pricePerGram) {
     // Grams + rate on one line, e.g. "11.5g • ₱7,500/g" (the screenshot-to-print
     // format). Falls back to just the rate when the weight is unknown.
     const perGram = `${formatStickerPeso(d.pricePerGram)}/g`;

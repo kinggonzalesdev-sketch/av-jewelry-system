@@ -35,6 +35,8 @@ import { encodeReceipt } from '@/lib/print/receipt-encoders';
 import {
   stickerDate,
   normalizeGrams,
+  parseFixedPrice,
+  formatStickerPeso,
   type OrderReceiptData,
 } from '@/lib/print/order-receipt';
 import { readStickerFields, readStickerPricePerGram } from '@/lib/print/sticker-fields';
@@ -91,6 +93,9 @@ export function IncomingCapturesStrip({
   // Operator's grams correction per capture (for the review case + manual reprint),
   // and a short per-row status note ("Printed ✓").
   const [gramsEdits, setGramsEdits] = useState<Record<string, string>>({});
+  // Grams (default) vs Fixed Price per capture. The phone/printer already printed the Grams
+  // sticker; Fixed Price is a PC-side choice that reprints "FIXED • ₱X".
+  const [priceMode, setPriceMode] = useState<Record<string, 'grams' | 'fixed'>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
   // Client cache of the resolved Facebook link per capture (overrides the row until
   // the next server load reflects the persisted status).
@@ -347,18 +352,30 @@ export function IncomingCapturesStrip({
   // Build the sticker for a capture: Facebook Name / grams • ₱rate/g / Date. The rate
   // ALWAYS comes from Sticker Settings (the pinned comment never carries a price); the
   // grams comes from the OCR (or the operator's correction). Pure — no side effects.
+  const modeOf = (id: string): 'grams' | 'fixed' => priceMode[id] ?? 'grams';
+
   const stickerFor = (
     r: PendingCaptureRow,
-    gramsOverride?: string,
-  ): OrderReceiptData => ({
-    customerName: (r.fbName ?? '').trim() || '—',
-    itemName: '',
-    grams: normalizeGrams(gramsOverride ?? r.grams ?? ''),
-    quantity: 1,
-    unitPrice: null,
-    pricePerGram: readStickerPricePerGram() || null,
-    date: stickerDate(),
-  });
+    valueOverride?: string,
+    mode: 'grams' | 'fixed' = 'grams',
+  ): OrderReceiptData => {
+    const raw = valueOverride ?? r.grams ?? '';
+    const base = {
+      customerName: (r.fbName ?? '').trim() || '—',
+      itemName: '',
+      quantity: 1,
+      unitPrice: null,
+      date: stickerDate(),
+    };
+    // Fixed Price → "FIXED • ₱X" (no grams × rate); Grams → the usual grams + rate sticker.
+    return mode === 'fixed'
+      ? { ...base, grams: null, pricePerGram: null, fixedPrice: parseFixedPrice(raw) }
+      : {
+          ...base,
+          grams: normalizeGrams(raw),
+          pricePerGram: readStickerPricePerGram() || null,
+        };
+  };
 
   // AUTO-PRINT (opt-in): when a NEW capture arrives and the printer is linked, print
   // its "Name / grams • ₱rate/g / Date" sticker once — the hands-off half of the
@@ -444,16 +461,21 @@ export function IncomingCapturesStrip({
       setError('Connect the printer first (Sticker Settings → Test Print).');
       return;
     }
-    const g = normalizeGrams(gramsEdits[r.captureRecordId] ?? r.grams ?? '');
-    if (g === null) {
+    const mode = modeOf(r.captureRecordId);
+    const raw = gramsEdits[r.captureRecordId] ?? r.grams ?? '';
+    if (mode === 'grams' && normalizeGrams(raw) === null) {
       setError('Enter the weight in grams before printing.');
+      return;
+    }
+    if (mode === 'fixed' && parseFixedPrice(raw) === null) {
+      setError('Enter the fixed price before printing.');
       return;
     }
     setError(null);
     try {
       await writeToChannel(
         activeChannel,
-        encodeReceipt(stickerFor(r, g), printLang, readStickerFields()),
+        encodeReceipt(stickerFor(r, raw, mode), printLang, readStickerFields()),
       );
       rememberPrinted(r.captureRecordId);
       // Claim it in the shared queue so no other device (phone/auto) reprints it.
@@ -616,29 +638,78 @@ export function IncomingCapturesStrip({
                       ) : null}
                     </p>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+                      {/* Grams (default) | Fixed Price. The phone already printed the Grams
+                          sticker; switching to Fixed reprints "FIXED • ₱X". */}
+                      <div
+                        className="inline-flex overflow-hidden rounded-md border border-border"
+                        data-testid={`incoming-mode-${r.captureRecordId}`}
+                      >
+                        {(['grams', 'fixed'] as const).map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() =>
+                              setPriceMode((cur) => ({ ...cur, [r.captureRecordId]: m }))
+                            }
+                            className={`px-1.5 py-0.5 text-[10px] font-semibold ${
+                              modeOf(r.captureRecordId) === m
+                                ? 'bg-gold text-black'
+                                : 'text-muted-foreground hover:bg-accent'
+                            }`}
+                            data-testid={`incoming-mode-${m}-${r.captureRecordId}`}
+                          >
+                            {m === 'grams' ? 'Grams' : 'Fixed Price'}
+                          </button>
+                        ))}
+                      </div>
                       <label className="flex items-center gap-1 text-muted-foreground">
-                        Grams
+                        {modeOf(r.captureRecordId) === 'fixed' ? 'Price' : 'Grams'}
                         <input
                           type="text"
                           inputMode="decimal"
                           value={gramsEdits[r.captureRecordId] ?? r.grams ?? ''}
-                          placeholder="e.g. 11.5"
+                          placeholder={
+                            modeOf(r.captureRecordId) === 'fixed'
+                              ? 'e.g. 12.5 → ₱12,500'
+                              : 'e.g. 11.5'
+                          }
                           onChange={(e) =>
                             setGramsEdits((cur) => ({
                               ...cur,
                               [r.captureRecordId]: e.target.value,
                             }))
                           }
-                          className="h-7 w-20 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-gold"
+                          className="h-7 w-24 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-gold"
                           data-testid={`incoming-grams-${r.captureRecordId}`}
                         />
                       </label>
-                      {normalizeGrams(gramsEdits[r.captureRecordId] ?? r.grams ?? '') ===
-                      null ? (
-                        <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-amber-700">
-                          Needs review
-                        </span>
-                      ) : null}
+                      {modeOf(r.captureRecordId) === 'fixed'
+                        ? (() => {
+                            const fp = parseFixedPrice(
+                              gramsEdits[r.captureRecordId] ?? r.grams ?? '',
+                            );
+                            return fp ? (
+                              <span
+                                className="font-semibold text-foreground"
+                                data-testid={`incoming-fixed-${r.captureRecordId}`}
+                              >
+                                {formatStickerPeso(fp)}
+                              </span>
+                            ) : (
+                              <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-amber-700">
+                                Needs review
+                              </span>
+                            );
+                          })()
+                        : normalizeGrams(
+                              gramsEdits[r.captureRecordId] ?? r.grams ?? '',
+                            ) === null
+                          ? (
+                              <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-amber-700">
+                                Needs review
+                              </span>
+                            )
+                          : null}
                       {notes[r.captureRecordId] ? (
                         <span className="text-[10px] font-medium text-emerald-600">
                           {notes[r.captureRecordId]}

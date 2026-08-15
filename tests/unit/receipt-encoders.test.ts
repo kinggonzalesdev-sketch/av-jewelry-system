@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   normalizeGrams,
+  parseFixedPrice,
   stickerLineItems,
   stickerLines,
   type OrderReceiptData,
@@ -35,6 +36,47 @@ const ALL: StickerFields = {
   pricePerGram: false,
   date: true,
 };
+
+describe('parseFixedPrice (Fixed Price capture mode)', () => {
+  it('bare small number = thousands, "k" = thousands, large/comma = literal', () => {
+    expect(parseFixedPrice('12')).toBe('12000');
+    expect(parseFixedPrice('12.5')).toBe('12500');
+    expect(parseFixedPrice('12k')).toBe('12000');
+    expect(parseFixedPrice('12.5k')).toBe('12500');
+    expect(parseFixedPrice('12,000')).toBe('12000');
+    expect(parseFixedPrice('12500')).toBe('12500');
+    expect(parseFixedPrice('12,500')).toBe('12500');
+  });
+  it('returns null for empty / non-numeric', () => {
+    expect(parseFixedPrice('')).toBeNull();
+    expect(parseFixedPrice(null)).toBeNull();
+    expect(parseFixedPrice('abc')).toBeNull();
+  });
+});
+
+describe('Fixed Price sticker line', () => {
+  const FIELDS: StickerFields = {
+    name: true,
+    item: false,
+    price: false,
+    pricePerGram: true,
+    date: true,
+  };
+  it('prints "FIXED • ₱X" instead of grams × rate when fixedPrice is set', () => {
+    const line = stickerLineItems(
+      { ...data, grams: null, pricePerGram: '7500', fixedPrice: '12500' },
+      FIELDS,
+    ).find((l) => l.kind === 'pricePerGram');
+    expect(line?.text).toBe('FIXED • ₱12,500');
+  });
+  it('falls back to grams × rate when fixedPrice is not set', () => {
+    const line = stickerLineItems(
+      { ...data, grams: '5.5', pricePerGram: '7500' },
+      FIELDS,
+    ).find((l) => l.kind === 'pricePerGram');
+    expect(line?.text).toBe('5.5g • ₱7,500/g');
+  });
+});
 
 describe('stickerLines content', () => {
   it('with all fields is Name · Item+grams · Price · Date, price only (no "Qty")', () => {
