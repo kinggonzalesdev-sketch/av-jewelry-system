@@ -251,14 +251,16 @@ class OverlayCaptureService : Service() {
         busy = true
         lastTapElapsed = android.os.SystemClock.elapsedRealtime()
         hideQuickMenu()
-        // Hide the button so it is not part of the screenshot, then capture.
+        // Hide the button so it is not part of the screenshot, then capture. 100ms (was 200)
+        // is enough for the overlay-window removal to clear from the screen mirror (~6 frames)
+        // — trimmed to cut capture latency (P2) while keeping the button out of the shot.
         button?.visibility = View.GONE
         handler.postDelayed({
             // Reuse the live mirror when we already have consent — no popup. Only the
             // FIRST capture of a session asks for permission.
             if (reader != null && projection != null) requestFrame()
             else CapturePermissionActivity.request(this)
-        }, 200)
+        }, 100)
     }
 
     // ---- Long-press quick menu -----------------------------------------------
@@ -376,7 +378,9 @@ class OverlayCaptureService : Service() {
                     }
                 }
             }
-        }, 400)
+            // Fallback only — during a live the frame listener above fires in ~16–33ms, so
+            // this rarely runs. 250ms (was 400) still safely covers a static screen.
+        }, 250)
     }
 
     /** Convert the captured frame STRAIGHT to a Bitmap — no PNG encode + file write +
