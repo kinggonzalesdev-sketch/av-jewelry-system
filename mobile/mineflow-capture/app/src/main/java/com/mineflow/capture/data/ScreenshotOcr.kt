@@ -1,7 +1,6 @@
 package com.mineflow.capture.data
 
 import android.graphics.Bitmap
-import android.graphics.Rect
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
@@ -17,36 +16,46 @@ data class OcrGuess(
     val rawLines: List<String>,
 )
 
+/** A recognised line's screen rectangle — a plain value type (not android.graphics.Rect) so
+ *  the selection logic is pure-JVM unit-testable. */
+internal data class Box(val left: Int, val top: Int, val right: Int, val bottom: Int) {
+    val height: Int get() = bottom - top
+}
+
+internal data class OLine(val text: String, val box: Box)
+
 /**
  * On-device OCR (ML Kit, offline) for a Facebook Live capture.
  *
- * CORRECTNESS RULE (2026-08-15): the Facebook name + grams come ONLY from the PINNED
- * comment — never from another visible name elsewhere on the screen. The old code ran
- * full-screen OCR, discarded ML Kit's bounding boxes, and picked "the name above the last
- * `Mine` line in READING ORDER" — which grabbed unrelated names (e.g. a spectator or a
- * different commenter like `Ulymay Alazne Pedericoc`).
+ * PINNED-COMMENT ONLY (2026-08-15). On the operator's FB Live broadcaster screen the PINNED
+ * comment is always at the BOTTOM (just above the toolbar): `[avatar] Name` then `Mine X`
+ * directly below it; the scrolling "…is watching / Bring them on camera" bubbles are above
+ * it. We take the Facebook name + grams ONLY from that pinned block — never from another
+ * visible name (e.g. a spectator or `Ulymay Alazne Pedericoc`).
  *
- * Now we KEEP ML Kit's per-line bounding boxes and select SPATIALLY:
- *   1. find CLAIM lines — "Mine X" / "M X" / a bare weight like "10.5", ".5", "11",
- *   2. the PINNED claim = the bottom-most one on screen (closest to the comment box),
- *   3. its name = the name-like line DIRECTLY ABOVE that claim (same column, within ~2
- *      line-heights) — i.e. the SAME comment block,
- *   4. if no name is tightly associated, fbName = null → the PC shows "needs review" and
- *      the sticker never prints a guessed identity. We NEVER substitute a name from
- *      elsewhere on the screen.
+ * How:
+ *   1. FAST PATH — OCR just the bottom band (where the pinned comment sits) → materially
+ *      faster than full-screen OCR. If it yields a confident name+grams, use it.
+ *   2. FALLBACK — if the band was inconclusive, OCR the full screen (never miss a pinned
+ *      comment placed unusually high).
+ *   3. SELECT SPATIALLY (via ML Kit bounding boxes, not reading order): the pinned claim =
+ *      the bottom-most `Mine`/`M`/bare-weight line; its name = the name-like line DIRECTLY
+ *      above it (same column, within ~2 line-heights).
+ *   4. No confident pinned name → `fbName = null` → PC "needs review"; the sticker never
+ *      prints a guessed identity. Grams may still be kept.
  *
- * The full screenshot is still uploaded for review/sending — only the identity source
- * changed. (A future refinement can crop a normalized pinned-comment ROI once the exact
- * Live layout is confirmed, to cut OCR latency further; the spatial selection here already
- * fixes the wrong-name correctness bug without a hardcoded region.)
+ * The full screenshot is still uploaded for review/sending — only the identity source is
+ * the pinned block.
  */
 object ScreenshotOcr {
 
-    // ONE reused recognizer (was re-created on every capture). Held for the session; the
-    // model loads once — warmUp() primes it before the first real capture.
+    // ONE reused recognizer (was re-created every capture). warmUp() primes the model.
     private val recognizer by lazy {
         TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     }
+
+    // OCR the bottom 40% first — the pinned comment always sits there on the FB Live screen.
+    private const val PINNED_ROI_TOP_FRACTION = 0.60
 
     /** Prime the ML Kit model (and download if needed) so the first real capture is fast. */
     fun warmUp() {
@@ -88,28 +97,55 @@ object ScreenshotOcr {
 
     // A PINNED-COMMENT CLAIM line: optional "Mine"/"M", then a weight-like number (≤3 integer
     // digits, optional decimals, optional trailing "g") and NOTHING else — so "10:45", "85%",
-    // "1.2K", "234 viewers", 4-digit years and names never register as grams. Group 1 = number.
+    // "1.2K", "234 viewers", 4-digit years and names never register. Group 1 = the number.
+    // Separator between a "Mine"/"M" prefix and the number is ":" or "-" only — NOT "." (a
+    // dot there would swallow the decimal point of a bare ".5", parsing it as "5").
     private val CLAIM = Regex(
-        "^\\s*(?:mine|m)?\\s*[:.\\-]?\\s*(\\.?\\d{1,3}(?:[.,]\\d{1,3})?)\\s*g?\\s*$",
+        "^\\s*(?:mine|m)?\\s*[:\\-]?\\s*(\\.?\\d{1,3}(?:[.,]\\d{1,3})?)\\s*g?\\s*$",
         RegexOption.IGNORE_CASE,
     )
 
-    private data class OLine(val text: String, val box: Rect)
-
     fun analyze(bitmap: Bitmap, onResult: (OcrGuess) -> Unit) {
+        val h = bitmap.height
+        val w = bitmap.width
+        val roiTop = (h * PINNED_ROI_TOP_FRACTION).toInt().coerceIn(0, maxOf(0, h - 1))
+        val roi = if (h - roiTop >= 8 && w >= 8) {
+            runCatching { Bitmap.createBitmap(bitmap, 0, roiTop, w, h - roiTop) }.getOrNull()
+        } else {
+            null
+        }
+        if (roi == null) {
+            ocr(bitmap) { onResult(guessFrom(it)) }
+            return
+        }
+        // FAST PATH: the small bottom band. If it confidently yields the pinned name + grams,
+        // use it; otherwise fall back to the full screen so we never miss the pinned comment.
+        ocr(roi) { roiLines ->
+            runCatching { roi.recycle() }
+            val g = guessFrom(roiLines)
+            if (g.fbName != null && g.grams != null) {
+                onResult(g)
+            } else {
+                ocr(bitmap) { full -> onResult(guessFrom(full)) }
+            }
+        }
+    }
+
+    /** Run the recognizer on a bitmap and hand back its lines with bounding boxes. */
+    private fun ocr(bitmap: Bitmap, onLines: (List<OLine>) -> Unit) {
         recognizer.process(InputImage.fromBitmap(bitmap, 0))
             .addOnSuccessListener { text ->
                 val olines = ArrayList<OLine>()
                 for (block in text.textBlocks) {
                     for (line in block.lines) {
-                        val box = line.boundingBox ?: continue
+                        val r = line.boundingBox ?: continue
                         val t = line.text.trim()
-                        if (t.isNotBlank()) olines.add(OLine(t, box))
+                        if (t.isNotBlank()) olines.add(OLine(t, Box(r.left, r.top, r.right, r.bottom)))
                     }
                 }
-                onResult(guessFrom(olines))
+                onLines(olines)
             }
-            .addOnFailureListener { onResult(OcrGuess(null, null, null, emptyList())) }
+            .addOnFailureListener { onLines(emptyList()) }
     }
 
     private fun isUiNoise(s: String): Boolean =
@@ -144,17 +180,16 @@ object ScreenshotOcr {
         else n.toString().trimEnd('0').trimEnd('.')
     }
 
-    private fun horizontalOverlap(a: Rect, b: Rect): Boolean =
+    private fun horizontalOverlap(a: Box, b: Box): Boolean =
         minOf(a.right, b.right) - maxOf(a.left, b.left) > 0
 
     /**
      * The Facebook name for a claim: the name-like line DIRECTLY ABOVE the claim (within ~2
      * line-heights), horizontally overlapping it — i.e. the SAME comment block. A name from a
-     * different comment / column / far away is never used. Null when none qualifies (→ needs
-     * review, rather than a wrong name).
+     * different comment / column / far away is never used. Null when none qualifies.
      */
     private fun nameForClaim(clean: List<OLine>, claim: OLine): String? {
-        val maxGap = maxOf(claim.box.height() * 2, 24)
+        val maxGap = maxOf(claim.box.height * 2, 24)
         return clean
             .filter { ol ->
                 ol !== claim &&
@@ -169,25 +204,22 @@ object ScreenshotOcr {
             ?.text
     }
 
-    private fun guessFrom(olines: List<OLine>): OcrGuess {
+    /** PINNED-ONLY extraction (see class doc). `internal` so it is unit-testable. */
+    internal fun guessFrom(olines: List<OLine>): OcrGuess {
         val rawLines = olines.map { it.text }
         val clean = olines.filterNot { isUiNoise(it.text) }
         if (clean.isEmpty()) return OcrGuess(null, null, null, rawLines)
 
-        // 1) Every CLAIM line with a valid weight (Mine/M/bare-number).
         val claims = clean.mapNotNull { ol -> gramsFromClaim(ol.text)?.let { ol to it } }
-        // No confident weight claim → nothing to pin on → needs review (no name, no grams).
         if (claims.isEmpty()) return OcrGuess(null, null, null, rawLines)
 
-        // 2) PINNED claim = the bottom-most one on screen (max top = lowest, nearest the box).
+        // Pinned claim = the bottom-most one on screen (nearest the comment box).
         val (pinnedLine, grams) = claims.maxByOrNull { it.first.box.top }!!
 
-        // 3) Name from the SAME block only — else null (never a name from elsewhere).
+        // Name from the SAME block only — else null (never a name from elsewhere).
         val name = nameForClaim(clean, pinnedLine)
             ?: stripClaim(pinnedLine.text).takeIf { it.isNotBlank() && looksLikeName(it) }
 
-        // 4) Grams are kept even when the name is unknown (grams-only needs-review); the name
-        //    is NEVER guessed from another comment.
         return OcrGuess(
             fbName = name,
             itemQuery = NUMBER.find(pinnedLine.text)?.value

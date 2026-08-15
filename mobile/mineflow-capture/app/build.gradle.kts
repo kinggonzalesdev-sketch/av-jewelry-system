@@ -31,8 +31,8 @@ android {
         applicationId = "com.mineflow.capture"
         minSdk = 26
         targetSdk = 34
-        versionCode = 11
-        versionName = "1.0.10"
+        versionCode = 12
+        versionName = "1.0.11"
 
         // The MineFlow backend the app talks to — the SAME production system as web.
         buildConfigField(
@@ -88,4 +88,7 @@ dependencies {
     // — the customer's Facebook name + the mined item. Bundled + offline; no data leaves
     // the phone during recognition.
     implementation("com.google.mlkit:text-recognition:16.0.1")
+
+    // Pure-JVM unit tests for the pinned-comment selection logic (no device needed).
+    testImplementation("junit:junit:4.13.2")
 }
