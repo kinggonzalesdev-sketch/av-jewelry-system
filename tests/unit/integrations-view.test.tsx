@@ -7,6 +7,7 @@ vi.mock('@/lib/integrations/actions', () => ({
   runPrivateReplyTestAction: vi.fn(),
   saveSelectedPageAction: vi.fn(),
   saveSelectedSenderAction: vi.fn(),
+  sendControlledPhotoAction: vi.fn(),
   sendPancakeTestAction: vi.fn(),
   syncPancakeConversationsAction: vi.fn(),
 }));

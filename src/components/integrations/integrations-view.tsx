@@ -1,11 +1,19 @@
 'use client';
 
-import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useActionState,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from 'react';
 
 import {
   runPrivateReplyTestAction,
   saveSelectedPageAction,
   saveSelectedSenderAction,
+  sendControlledPhotoAction,
   sendPancakeTestAction,
   syncPancakeConversationsAction,
 } from '@/lib/integrations/actions';
@@ -895,12 +903,16 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
   const [message, setMessage] = useState(
     'Hi! Here is the item you mined during our Live. 💛',
   );
-  const [captureId, setCaptureId] = useState('');
 
-  const [runState, runTest, running] = useActionState<IntegrationActionState, FormData>(
-    runPrivateReplyTestAction,
-    EMPTY_INTEGRATION_STATE,
-  );
+  const [running, startRun] = useTransition();
+  const [report, setReport] = useState<string | null>(null);
+  const [reportGood, setReportGood] = useState(false);
+  const [resolvedConvId, setResolvedConvId] = useState<string | null>(null);
+
+  const [captureId, setCaptureId] = useState('');
+  const [photoBusy, startPhoto] = useTransition();
+  const [photoReport, setPhotoReport] = useState<string | null>(null);
+  const [photoOk, setPhotoOk] = useState(false);
 
   const loadCandidates = async () => {
     setLoading(true);
@@ -929,6 +941,36 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
     }
   };
 
+  const runTest = () => {
+    if (!selectedId) return;
+    setReport(null);
+    setResolvedConvId(null);
+    setPhotoReport(null);
+    startRun(async () => {
+      const res = await runPrivateReplyTestAction({
+        webhookEventId: selectedId,
+        message,
+      });
+      setReport(res.report);
+      setReportGood(res.ok && res.aloneVerdict === 'yes');
+      setResolvedConvId(res.realConversationId);
+    });
+  };
+
+  const runPhoto = () => {
+    const conv = resolvedConvId;
+    if (!conv || !captureId.trim()) return;
+    setPhotoReport(null);
+    startPhoto(async () => {
+      const res = await sendControlledPhotoAction({
+        conversationId: conv,
+        screenshotCaptureId: captureId.trim(),
+      });
+      setPhotoReport(res.report);
+      setPhotoOk(res.ok);
+    });
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -939,10 +981,11 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">
           Run the verified first-time-commenter chain for <strong>ONE approved test
-          comment</strong>: <code>private_replies</code> text → resolve the real private
-          conversation → optional screenshot via <code>reply_inbox</code>. This does not
-          enable the automatic flow, and every Pancake request/response is shown
-          (sanitized).
+          comment</strong>: <code>private_replies</code> text → <strong>bounded resolution
+          </strong> of the REAL private conversation (webhook wait → narrow Get
+          Conversations). The photo is a <strong>separate explicit step</strong>, enabled
+          only after a real conversation resolves. Does not enable the automatic flow;
+          every Pancake response is sanitized.
         </p>
 
         {!senderReady ? (
@@ -969,13 +1012,12 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
         ) : null}
 
         {candidates.length > 0 ? (
-          <form action={runTest} className="space-y-3">
+          <div className="space-y-3">
             <label className="block">
               <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Approved test comment (privately-replyable)
+                Approved test comment (fresh, privately-replyable only)
               </span>
               <select
-                name="webhookEventId"
                 className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold"
                 value={selectedId}
                 onChange={(e) => setSelectedId(e.target.value)}
@@ -997,7 +1039,6 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
                 Private reply text
               </span>
               <textarea
-                name="message"
                 rows={2}
                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold"
                 value={message}
@@ -1005,45 +1046,74 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
               />
             </label>
 
-            <label className="block">
-              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Screenshot capture id (optional — also tests the reply_inbox PHOTO step)
-              </span>
-              <input
-                name="screenshotCaptureId"
-                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold"
-                placeholder="Leave blank to verify the text private reply only"
-                value={captureId}
-                onChange={(e) => setCaptureId(e.target.value)}
-              />
-            </label>
-
             <Button
-              type="submit"
+              type="button"
+              onClick={runTest}
               disabled={running || !selectedId || !senderReady}
               data-testid="pr-test-run"
             >
-              {running ? 'Running…' : 'Run Controlled Test B'}
+              {running
+                ? 'Running (bounded resolve, up to ~45s)…'
+                : 'Run Controlled Test B (private reply + resolve)'}
             </Button>
-          </form>
+          </div>
         ) : null}
 
-        {runState.error ? (
+        {report ? (
           <pre
-            role="alert"
-            className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-foreground"
-            data-testid="pr-test-result-error"
+            className={cn(
+              'max-h-80 overflow-auto whitespace-pre-wrap rounded-lg border px-3 py-2 text-xs text-foreground',
+              reportGood ? 'border-gold/40 bg-gold/10' : 'border-border bg-muted/40',
+            )}
+            data-testid="pr-test-result"
           >
-            {runState.error}
+            {report}
           </pre>
         ) : null}
-        {runState.success ? (
-          <pre
-            className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-xs text-foreground"
-            data-testid="pr-test-result-ok"
+
+        {resolvedConvId ? (
+          <div
+            className="space-y-2 rounded-lg border border-gold/40 bg-gold/5 p-3"
+            data-testid="pr-photo-step"
           >
-            {runState.success}
-          </pre>
+            <p className="text-xs font-semibold text-foreground">
+              Real conversation resolved (…{resolvedConvId.slice(-6)}). Separate photo step
+              — sends to this REAL conversation only (never the comment id, never a
+              synthesized id).
+            </p>
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Screenshot capture id
+              </span>
+              <input
+                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+                placeholder="capture_records id whose screenshot to send"
+                value={captureId}
+                onChange={(e) => setCaptureId(e.target.value)}
+                data-testid="pr-photo-capture"
+              />
+            </label>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={runPhoto}
+              disabled={photoBusy || !captureId.trim()}
+              data-testid="pr-photo-send"
+            >
+              {photoBusy ? 'Sending…' : 'Send controlled photo to the REAL conversation'}
+            </Button>
+            {photoReport ? (
+              <pre
+                className={cn(
+                  'max-h-60 overflow-auto whitespace-pre-wrap rounded-lg border px-3 py-2 text-xs text-foreground',
+                  photoOk ? 'border-gold/40 bg-gold/10' : 'border-destructive/40 bg-destructive/5',
+                )}
+                data-testid="pr-photo-result"
+              >
+                {photoReport}
+              </pre>
+            ) : null}
+          </div>
         ) : null}
       </CardContent>
     </Card>

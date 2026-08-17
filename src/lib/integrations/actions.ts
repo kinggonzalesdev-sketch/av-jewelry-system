@@ -9,7 +9,10 @@ import {
   sendPancakeConversationMessage,
   syncPancakeConversationsToCustomers,
 } from '@/lib/integrations/pancake';
-import { runPrivateReplyControlledTest } from '@/lib/integrations/private-reply-test';
+import {
+  runPrivateReplyControlledTest,
+  sendControlledTestPhoto,
+} from '@/lib/integrations/private-reply-test';
 import { AuthorizationError, requirePrimarySuperAdmin } from '@/lib/authz/guard';
 import type { IntegrationActionState } from '@/lib/integrations/action-state';
 
@@ -74,47 +77,96 @@ export async function saveSelectedSenderAction(
  * approved test comment. Returns a step-by-step sanitized report (each Pancake
  * request/response). Manual + gated — it does NOT enable the automatic Capture flow.
  */
-export async function runPrivateReplyTestAction(
-  _prev: IntegrationActionState,
-  formData: FormData,
-): Promise<IntegrationActionState> {
-  const field = (key: string): string => {
-    const v = formData.get(key);
-    return typeof v === 'string' ? v.trim() : '';
-  };
-  const webhookEventId = field('webhookEventId');
-  const message = field('message') || DEFAULT_PRIVATE_REPLY_TEXT;
-  const screenshotCaptureId = field('screenshotCaptureId') || null;
+export type PrivateReplyTestReport = {
+  ok: boolean;
+  alreadyReplied: boolean;
+  report: string;
+  /** The resolved REAL conversation id — enables the separate, explicit photo step. */
+  realConversationId: string | null;
+  aloneVerdict: 'yes' | 'no' | 'cannot_verify';
+};
+
+export async function runPrivateReplyTestAction(input: {
+  webhookEventId: string;
+  message: string;
+}): Promise<PrivateReplyTestReport> {
+  const webhookEventId = (input.webhookEventId ?? '').trim();
+  const message = (input.message ?? '').trim() || DEFAULT_PRIVATE_REPLY_TEXT;
   if (!webhookEventId) {
-    return { error: 'Pick a test comment first.', success: null };
+    return {
+      ok: false,
+      alreadyReplied: false,
+      report: 'Pick a test comment first.',
+      realConversationId: null,
+      aloneVerdict: 'cannot_verify',
+    };
   }
   try {
-    const result = await runPrivateReplyControlledTest({
-      webhookEventId,
-      message,
-      screenshotCaptureId,
-    });
+    const result = await runPrivateReplyControlledTest({ webhookEventId, message });
     const lines = result.steps
       .map((s) => `${s.ok ? '✓' : '✗'} ${s.step}: ${s.detail}`)
       .join('\n');
-    // #10900 "already replied" is NOT a failure — the contract is proven; the comment
-    // was just reused. Surface it as info (not a red error) and prompt for a fresh one.
-    if (result.alreadyReplied) {
-      const header =
-        'Test B — ALREADY_REPLIED (not a failure): this comment was already privately ' +
-        'replied to (Pancake #10900). The endpoint / action / payload are correct — pick ' +
-        'a brand-new comment and run once.';
-      return { error: null, success: `${header}\n\n${lines}` };
-    }
-    const header = result.ok
-      ? 'Test B PASS — private reply + delivery verified end-to-end (delivered once).'
-      : 'Test B STOPPED — see the failing step below (exact sanitized Pancake response included). No alternate endpoint/action was tried.';
-    return result.ok
-      ? { error: null, success: `${header}\n\n${lines}` }
-      : { error: `${header}\n\n${lines}`, success: null };
+    const r = result.resolution;
+    const summary = [
+      '',
+      '── Test B (Part 2) summary ──',
+      `PRIVATE_REPLY_SEND: ${result.ok ? 'PASS' : result.alreadyReplied ? 'ALREADY_REPLIED' : 'FAIL/STOP'}`,
+      `CUSTOMER SENT ANY INBOX MESSAGE AFTER COMMENT: ${r.customerMessagedAfterComment ? 'YES' : 'NO'}`,
+      `FOLLOW-UP WEBHOOK WITHOUT CUSTOMER REPLY: ${r.followUpWebhookWithoutCustomerReply ? 'YES' : 'NO'}`,
+      `UPDATED COMMENT private_reply_conversation FOUND: ${r.updatedCommentPrivateReplyConversationFound ? 'YES' : 'NO'}`,
+      `GET CONVERSATIONS FOUND REAL PRIVATE CONVERSATION: ${r.getConversationsFound ? 'YES' : 'NO'}`,
+      `REAL PRIVATE CONVERSATION ID: ${r.realConversationId ? `…${r.realConversationId.slice(-6)}` : 'NONE'}`,
+      `SOURCE: ${r.source}`,
+      `TIME TO REAL CONVERSATION: ${r.secondsToRealConversation == null ? '—' : `${r.secondsToRealConversation}s`}`,
+      `PRIVATE REPLY ALONE CREATES/EXPOSES A MESSAGEABLE CONVERSATION: ${result.privateReplyAloneCreatesConversation.toUpperCase()}`,
+      `READY FOR CONTROLLED PHOTO TEST: ${r.realConversationId ? 'YES' : 'NO'}`,
+    ].join('\n');
+    const header = result.alreadyReplied
+      ? 'Test B — ALREADY_REPLIED (not a failure): pick a brand-new, silent-customer comment.'
+      : result.ok
+        ? 'Test B (Part 2) — private reply sent; bounded resolution attempted (NO photo sent).'
+        : 'Test B STOPPED — see the failing step below (exact sanitized Pancake response). No alternate endpoint/action was tried.';
+    return {
+      ok: result.ok,
+      alreadyReplied: result.alreadyReplied,
+      report: `${header}\n\n${lines}\n${summary}`,
+      realConversationId: result.realPrivateConversationId,
+      aloneVerdict: result.privateReplyAloneCreatesConversation,
+    };
   } catch (cause) {
-    if (cause instanceof AuthorizationError)
-      return { error: cause.message, success: null };
+    if (cause instanceof AuthorizationError) {
+      return {
+        ok: false,
+        alreadyReplied: false,
+        report: cause.message,
+        realConversationId: null,
+        aloneVerdict: 'cannot_verify',
+      };
+    }
+    throw cause;
+  }
+}
+
+/**
+ * SEPARATE explicit controlled photo step (Owner click). Sends the Capture screenshot to
+ * a RESOLVED REAL inbox conversation id via reply_inbox PHOTO. Never the comment
+ * conversation id, never a synthesized {page_id}_{psid}.
+ */
+export async function sendControlledPhotoAction(input: {
+  conversationId: string;
+  screenshotCaptureId: string;
+}): Promise<{ ok: boolean; report: string }> {
+  try {
+    const result = await sendControlledTestPhoto(input);
+    const lines = result.steps
+      .map((s) => `${s.ok ? '✓' : '✗'} ${s.step}: ${s.detail}`)
+      .join('\n');
+    const header = result.ok
+      ? 'Controlled photo sent to the REAL private conversation.'
+      : 'Photo step failed — see below.';
+    return { ok: result.ok, report: `${header}\n\n${lines}` };
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { ok: false, report: cause.message };
     throw cause;
   }
 }

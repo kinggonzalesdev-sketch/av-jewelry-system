@@ -2145,3 +2145,79 @@ export async function sendPancakePrivateReply(input: {
     debug,
   };
 }
+
+/**
+ * NARROW Get Conversations lookup for the REAL inbox conversation of a specific PSID —
+ * the API fallback used AFTER a successful private reply to check whether Pancake
+ * created a messageable inbox thread (without the customer replying). It fetches only a
+ * recent, bounded window (never full history), searches by the conversation id that
+ * ENDS WITH `_{psid}` (the inbox form Pancake itself returns), and returns THAT real id.
+ * It never searches by name and never synthesizes `{page_id}_{psid}` — the id returned
+ * is the one Pancake emitted. Returns null when Pancake has not created/exposed one yet.
+ */
+export async function findPancakeInboxConversationByPsid(
+  psid: string,
+  opts?: { sinceMinutes?: number; maxPages?: number },
+): Promise<{ conversationId: string | null; scanned: number; debug?: string }> {
+  const p = (psid ?? '').trim();
+  if (!p) return { conversationId: null, scanned: 0 };
+  const pageToken = process.env.PANCAKE_PAGE_ACCESS_TOKEN;
+  const token = (pageToken || process.env.PANCAKE_USER_ACCESS_TOKEN || '').trim();
+  const tokenParam =
+    process.env.PANCAKE_SEND_TOKEN_PARAM ||
+    (pageToken ? 'page_access_token' : 'access_token');
+  const pageId = await getActivePancakePageId();
+  if (!token || !pageId) return { conversationId: null, scanned: 0 };
+
+  const base = resolvePancakeApiBase();
+  const template =
+    process.env.PANCAKE_CONVERSATIONS_PATH || '/pages/{page_id}/conversations';
+  const path = template.replace('{page_id}', encodeURIComponent(pageId));
+  const now = Math.floor(Date.now() / 1000);
+  const since = now - Math.max(1, opts?.sinceMinutes ?? 60) * 60;
+  const maxPages = Math.max(1, Math.min(opts?.maxPages ?? 2, 5));
+  const suffix = `_${p}`;
+  let scanned = 0;
+  let lastDebug = '';
+
+  for (let page = 1; page <= maxPages; page += 1) {
+    let convs: PancakeConversation[] = [];
+    try {
+      const endpoint =
+        `${base}${path}${path.includes('?') ? '&' : '?'}` +
+        `${tokenParam}=${encodeURIComponent(token)}&since=${since}&until=${now}&page_number=${page}`;
+      const res = await fetch(endpoint, {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(8000),
+      });
+      const rawText = await res.text().catch(() => '');
+      lastDebug = `HTTP ${res.status} · GET conversations p${page} · ${rawText.slice(0, 120)}`;
+      if (!res.ok) break;
+      let body: unknown = null;
+      try {
+        body = rawText ? JSON.parse(rawText) : null;
+      } catch {
+        body = null;
+      }
+      if (
+        body &&
+        typeof body === 'object' &&
+        (body as { success?: boolean }).success === false
+      ) {
+        break;
+      }
+      convs = extractConversations(body).conversations;
+    } catch {
+      break;
+    }
+    if (convs.length === 0) break;
+    for (const c of convs) {
+      scanned += 1;
+      if (c.id.endsWith(suffix)) {
+        return { conversationId: c.id, scanned, debug: lastDebug };
+      }
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return { conversationId: null, scanned, debug: lastDebug };
+}

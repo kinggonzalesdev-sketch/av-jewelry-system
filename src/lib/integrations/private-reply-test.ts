@@ -1,8 +1,11 @@
 import 'server-only';
 
+import type { SupabaseClient } from '@supabase/supabase-js';
+
 import { AuthorizationError, requirePrimarySuperAdmin } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 import {
+  findPancakeInboxConversationByPsid,
   getSelectedPancakeSender,
   sendPancakeConversationMessage,
   sendPancakePrivateReply,
@@ -93,42 +96,145 @@ export async function listPrivateReplyTestCandidates(): Promise<
 }
 
 export type PrivateReplyTestStep = { step: string; ok: boolean; detail: string };
+
+export type PrivateReplyResolution = {
+  realConversationId: string | null;
+  source:
+    | 'private_reply_response'
+    | 'inbox_webhook'
+    | 'updated_comment'
+    | 'get_conversations'
+    | 'none';
+  /** A follow-up Messaging webhook arrived for this PSID that is NOT the customer messaging. */
+  followUpWebhookWithoutCustomerReply: boolean;
+  /** The customer sent an inbox message after commenting (contaminates the "alone" test). */
+  customerMessagedAfterComment: boolean;
+  /** A stored event exposed private_reply_conversation (idempotency usually blocks this). */
+  updatedCommentPrivateReplyConversationFound: boolean;
+  /** The narrow Get Conversations API fallback found the real inbox conversation. */
+  getConversationsFound: boolean;
+  secondsToRealConversation: number | null;
+  getConversationsDebug: string | null;
+};
+
 export type PrivateReplyTestResult = {
+  /** private_replies returned 200 / success:true. */
   ok: boolean;
   stopped: boolean;
   /** True for the benign Pancake #10900 "already replied" case — NOT a contract failure. */
   alreadyReplied: boolean;
   steps: PrivateReplyTestStep[];
+  privateReplyResponseDebug: string | null;
+  resolution: PrivateReplyResolution;
+  /** Did the private reply ALONE expose a messageable conversation (no customer reply)? */
+  privateReplyAloneCreatesConversation: 'yes' | 'no' | 'cannot_verify';
   realPrivateConversationId: string | null;
 };
 
+export type ControlledPhotoResult = { ok: boolean; steps: PrivateReplyTestStep[] };
+
 const ATTACHMENT_BUCKET = 'attachments';
+/** Bounded resolve window (never infinite). Env-tunable; capped for the 60s request budget. */
+const RESOLVE_WAIT_MS = Math.min(
+  45000,
+  Math.max(0, Number(process.env.PANCAKE_PR_RESOLVE_WAIT_MS || '35000')),
+);
+const RESOLVE_INTERVAL_MS = 5000;
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+function emptyResolution(): PrivateReplyResolution {
+  return {
+    realConversationId: null,
+    source: 'none',
+    followUpWebhookWithoutCustomerReply: false,
+    customerMessagedAfterComment: false,
+    updatedCommentPrivateReplyConversationFound: false,
+    getConversationsFound: false,
+    secondsToRealConversation: null,
+    getConversationsDebug: null,
+  };
+}
 
 /**
- * Run the exact Test B chain for ONE comment: private_replies TEXT (verified contract,
- * selected sender) → capture the sanitized Pancake response → resolve the REAL private
- * conversation id → (optional) upload + reply_inbox PHOTO to that REAL conversation.
- * STOPS and returns the exact sanitized response the moment the private-reply endpoint
- * behaves unexpectedly — it NEVER tries an alternate/undocumented action or endpoint.
+ * BOUNDED wait on the webhook store for a NEW Messaging event for `psid` after the
+ * private reply — a real inbox conversation_id, or a stored private_reply_conversation.
+ * No infinite polling (stops at the deadline); does NOT require the customer to reply.
+ */
+async function waitForFollowUpConversation(
+  supabase: SupabaseClient,
+  psid: string,
+  sinceIso: string,
+  maxMs: number,
+): Promise<{
+  conversationId: string | null;
+  source: 'inbox_webhook' | 'updated_comment' | null;
+  fromCustomer: boolean;
+  foundAtIso: string | null;
+}> {
+  const deadline = Date.now() + Math.max(0, maxMs);
+  for (;;) {
+    const { data } = await supabase
+      .from('pancake_webhook_events')
+      .select('received_at, post_type, conversation_id, raw')
+      .eq('facebook_psid', psid)
+      .gt('received_at', sinceIso)
+      .order('received_at', { ascending: true })
+      .limit(10);
+    for (const e of (data ?? []) as Array<Record<string, unknown>>) {
+      const prc = privateReplyConvId(e.raw);
+      if (prc) {
+        return {
+          conversationId: prc,
+          source: 'updated_comment',
+          fromCustomer: false,
+          foundAtIso: str(e.received_at),
+        };
+      }
+      const convId = str(e.conversation_id);
+      if (!str(e.post_type) && convId) {
+        // Inbox event. from.id === psid → the CUSTOMER messaged (contaminates the test).
+        const fromCustomer = str(obj(rawMessage(e.raw)?.from)?.id) === psid;
+        return {
+          conversationId: convId,
+          source: 'inbox_webhook',
+          fromCustomer,
+          foundAtIso: str(e.received_at),
+        };
+      }
+    }
+    if (Date.now() >= deadline) {
+      return { conversationId: null, source: null, fromCustomer: false, foundAtIso: null };
+    }
+    await sleep(RESOLVE_INTERVAL_MS);
+  }
+}
+
+/**
+ * Run the controlled Test B chain for ONE comment (NO photo — that is a separate step):
+ * private_replies TEXT → sanitized response → BOUNDED resolution of the REAL private
+ * conversation (webhook wait → narrow Get Conversations fallback) → classify whether the
+ * private reply ALONE exposed a messageable conversation. STOPS on an unexpected private-
+ * reply response; NEVER tries an alternate endpoint/action; NEVER synthesizes {page_id}_{psid}.
  */
 export async function runPrivateReplyControlledTest(input: {
   webhookEventId: string;
   message: string;
-  /** Optional: a capture_record whose screenshot is used for the PHOTO step. */
-  screenshotCaptureId?: string | null;
 }): Promise<PrivateReplyTestResult> {
   await requirePrimarySuperAdmin();
   const steps: PrivateReplyTestStep[] = [];
-  const stop = (): PrivateReplyTestResult => ({
+  const stop = (alreadyReplied = false): PrivateReplyTestResult => ({
     ok: false,
     stopped: true,
-    alreadyReplied: false,
+    alreadyReplied,
     steps,
+    privateReplyResponseDebug: null,
+    resolution: emptyResolution(),
+    privateReplyAloneCreatesConversation: 'cannot_verify',
     realPrivateConversationId: null,
   });
   const supabase = await createClient();
 
-  // 0) A sender must be selected (fail-closed).
   const sender = await getSelectedPancakeSender();
   if (!sender) {
     steps.push({ step: 'sender', ok: false, detail: 'No Pancake sender selected.' });
@@ -140,10 +246,11 @@ export async function runPrivateReplyControlledTest(input: {
     detail: `${sender.userName ?? 'sender'} (…${sender.userId.slice(-4)})`,
   });
 
-  // 1) Load the EXACT comment identity from the stored webhook event.
   const { data } = await supabase
     .from('pancake_webhook_events')
-    .select('livestream_post_id, comment_id, facebook_psid, conversation_id, raw')
+    .select(
+      'livestream_post_id, comment_id, facebook_psid, pancake_page_customer_id, conversation_id, raw',
+    )
     .eq('id', input.webhookEventId)
     .maybeSingle();
   if (!data) {
@@ -159,11 +266,10 @@ export async function runPrivateReplyControlledTest(input: {
   steps.push({
     step: 'identity',
     ok: complete,
-    detail: `post…${postId.slice(-4)} · comment…${messageId.slice(-4)} · psid…${psid.slice(-4)} · comment_conv…${commentConv.slice(-4)}`,
+    detail: `post…${postId.slice(-4)} · comment…${messageId.slice(-4)} · psid…${psid.slice(-4)} · comment_conv…${commentConv.slice(-4)} · page_customer…${str(ev.pancake_page_customer_id).slice(-4)}`,
   });
   if (!complete) return stop();
 
-  // 2) Gate: can_reply_privately === true, or STOP (no send).
   const crp = rawMessage(ev.raw)?.can_reply_privately === true;
   steps.push({
     step: 'can_reply_privately',
@@ -172,7 +278,9 @@ export async function runPrivateReplyControlledTest(input: {
   });
   if (!crp) return stop();
 
-  // 3) private_replies TEXT (verified contract: from_id=PSID, sender_id=selected user).
+  // private_replies TEXT (verified contract). Stamp the send time to bound the resolution.
+  const sendAtMs = Date.now();
+  const sendAtIso = new Date(sendAtMs).toISOString();
   const pr = await sendPancakePrivateReply({
     postId,
     messageId,
@@ -187,10 +295,6 @@ export async function runPrivateReplyControlledTest(input: {
   });
   if (!pr.ok) {
     if (pr.code === 'already_replied') {
-      // NOT a contract/endpoint failure — this comment was already privately replied to.
-      // Do NOT retry, do NOT send a screenshot. Surface any existing private conversation
-      // for DIAGNOSTICS only (an existing-conversation photo test is a separate, explicit
-      // step — never automatic here).
       const existing = pr.privateConversationId ?? privateReplyConvId(ev.raw);
       steps.push({
         step: 'already_replied',
@@ -201,91 +305,159 @@ export async function runPrivateReplyControlledTest(input: {
           (existing
             ? `Existing private conversation …${existing.slice(-6)} (diagnostic only — no screenshot sent). `
             : '') +
-          'Pick a brand-new comment for a fresh Test B.',
+          'Pick a brand-new, silent-customer comment for a fresh Test B.',
       });
-      return {
-        ok: false,
-        stopped: true,
-        alreadyReplied: true,
-        steps,
-        realPrivateConversationId: existing ?? null,
-      };
+      const r = stop(true);
+      r.realPrivateConversationId = existing ?? null;
+      r.resolution.realConversationId = existing ?? null;
+      return r;
     }
-    // Genuine unexpected response → STOP and report the exact sanitized response (already
-    // in the private_replies step). Never try an alternate/undocumented action or endpoint.
-    return stop();
+    // Unexpected response → STOP and report the exact sanitized response. Never try an
+    // alternate/undocumented action or endpoint.
+    const r = stop();
+    r.privateReplyResponseDebug = pr.debug ?? null;
+    return r;
   }
 
-  // 4) Resolve the REAL private/Inbox conversation id from the response.
-  const realConv = pr.privateConversationId;
-  steps.push({
-    step: 'resolve_private_conversation',
-    ok: Boolean(realConv),
-    detail: realConv
-      ? `real private conversation …${realConv.slice(-6)}`
-      : 'No private conversation id in the response — inspect the debug above (may arrive via a follow-up Messaging webhook).',
-  });
-  if (!realConv) {
-    return {
-      ok: false,
-      stopped: true,
-      alreadyReplied: false,
-      steps,
-      realPrivateConversationId: null,
-    };
-  }
-
-  // 5) OPTIONAL PHOTO — existing reply_inbox flow, to the REAL private conversation only.
-  if (input.screenshotCaptureId && input.screenshotCaptureId.trim()) {
-    const { data: cap } = await supabase
-      .from('capture_records')
-      .select('screenshot_path')
-      .eq('id', input.screenshotCaptureId.trim())
-      .maybeSingle();
-    const path = str((cap as { screenshot_path?: string } | null)?.screenshot_path);
-    if (!path) {
-      steps.push({ step: 'photo', ok: false, detail: 'No screenshot on that capture id.' });
-      return {
-        ok: false,
-        stopped: true,
-        alreadyReplied: false,
-        steps,
-        realPrivateConversationId: realConv,
-      };
-    }
-    const signed = (await supabase.storage
-      .from(ATTACHMENT_BUCKET)
-      .createSignedUrl(path, 600)) as { data: { signedUrl?: string } | null };
-    const url = signed.data?.signedUrl ?? null;
-    const photo = await sendPancakeConversationMessage({
-      conversationId: realConv,
-      message: '',
-      attachmentUrl: url,
-    });
+  // RESOLUTION (bounded, never synthesizes {page_id}_{psid}).
+  const resolution = emptyResolution();
+  if (pr.privateConversationId) {
+    resolution.realConversationId = pr.privateConversationId;
+    resolution.source = 'private_reply_response';
+    resolution.secondsToRealConversation = 0;
     steps.push({
-      step: 'photo',
-      ok: photo.ok,
-      detail: `[${photo.code}] ${photo.message}${photo.debug ? ` · ${photo.debug}` : ''}`,
+      step: 'resolve',
+      ok: true,
+      detail: `Resolved from the private_replies RESPONSE → …${pr.privateConversationId.slice(-6)}`,
     });
-    return {
-      ok: photo.ok,
-      stopped: !photo.ok,
-      alreadyReplied: false,
-      steps,
-      realPrivateConversationId: realConv,
-    };
+  } else {
+    // Step 1 — bounded webhook-store wait (does NOT require the customer to reply).
+    const waited = await waitForFollowUpConversation(supabase, psid, sendAtIso, RESOLVE_WAIT_MS);
+    resolution.customerMessagedAfterComment =
+      waited.source === 'inbox_webhook' && waited.fromCustomer;
+    resolution.updatedCommentPrivateReplyConversationFound = waited.source === 'updated_comment';
+    if (waited.conversationId) {
+      const secs = waited.foundAtIso
+        ? Math.max(0, Math.round((Date.parse(waited.foundAtIso) - sendAtMs) / 1000))
+        : null;
+      resolution.realConversationId = waited.conversationId;
+      resolution.source = waited.source ?? 'inbox_webhook';
+      resolution.secondsToRealConversation = secs;
+      resolution.followUpWebhookWithoutCustomerReply = !waited.fromCustomer;
+      steps.push({
+        step: 'webhook_wait',
+        ok: true,
+        detail: `Follow-up ${waited.source} for PSID …${psid.slice(-4)} after ~${secs ?? '?'}s ${waited.fromCustomer ? '(FROM THE CUSTOMER — they messaged back)' : '(NOT from the customer)'} → …${waited.conversationId.slice(-6)}`,
+      });
+    } else {
+      steps.push({
+        step: 'webhook_wait',
+        ok: false,
+        detail: `No follow-up Messaging event for PSID …${psid.slice(-4)} within ${Math.round(RESOLVE_WAIT_MS / 1000)}s.`,
+      });
+      // Step 2 — narrow Get Conversations fallback (official API, by PSID, no name, no full history).
+      const api = await findPancakeInboxConversationByPsid(psid, {
+        sinceMinutes: 90,
+        maxPages: 3,
+      });
+      resolution.getConversationsDebug = api.debug ?? null;
+      if (api.conversationId) {
+        resolution.realConversationId = api.conversationId;
+        resolution.source = 'get_conversations';
+        resolution.getConversationsFound = true;
+        resolution.secondsToRealConversation = Math.round((Date.now() - sendAtMs) / 1000);
+        steps.push({
+          step: 'get_conversations',
+          ok: true,
+          detail: `Get Conversations found the REAL inbox conversation for PSID …${psid.slice(-4)} → …${api.conversationId.slice(-6)} (scanned ${api.scanned}).`,
+        });
+      } else {
+        steps.push({
+          step: 'get_conversations',
+          ok: false,
+          detail: `Get Conversations (narrow, last 90m) did NOT find an inbox conversation for PSID …${psid.slice(-4)} (scanned ${api.scanned}).`,
+        });
+      }
+    }
   }
 
+  // Classify: did the private reply ALONE expose a messageable conversation?
+  let alone: 'yes' | 'no' | 'cannot_verify';
+  if (resolution.customerMessagedAfterComment) {
+    alone = 'cannot_verify'; // contaminated — the customer messaged; re-run with a silent customer.
+  } else if (resolution.realConversationId) {
+    alone = 'yes'; // resolved with NO customer message → private reply alone.
+  } else {
+    alone = 'no'; // sent, but neither a page-side webhook nor the narrow API exposed a conversation.
+  }
   steps.push({
-    step: 'photo',
-    ok: true,
-    detail: 'Skipped — no capture screenshot provided (text private reply verified).',
+    step: 'private_reply_alone',
+    ok: alone === 'yes',
+    detail: `PRIVATE REPLY ALONE CREATES/EXPOSES A CONVERSATION: ${alone.toUpperCase()}`,
   });
+
   return {
     ok: true,
     stopped: false,
     alreadyReplied: false,
     steps,
-    realPrivateConversationId: realConv,
+    privateReplyResponseDebug: pr.debug ?? null,
+    resolution,
+    privateReplyAloneCreatesConversation: alone,
+    realPrivateConversationId: resolution.realConversationId,
   };
+}
+
+/**
+ * SEPARATE, explicit controlled PHOTO step — sends the Capture screenshot via the existing
+ * reply_inbox PHOTO flow to a RESOLVED REAL inbox conversation id. NEVER uses the comment
+ * conversation id and NEVER a synthesized {page_id}_{psid}. Only ever run on an explicit
+ * Owner click, after a real conversation was resolved by the run above.
+ */
+export async function sendControlledTestPhoto(input: {
+  conversationId: string;
+  screenshotCaptureId: string;
+}): Promise<ControlledPhotoResult> {
+  await requirePrimarySuperAdmin();
+  const steps: PrivateReplyTestStep[] = [];
+  const conversationId = (input.conversationId ?? '').trim();
+  const captureId = (input.screenshotCaptureId ?? '').trim();
+  if (!conversationId) {
+    steps.push({
+      step: 'photo',
+      ok: false,
+      detail: 'No resolved conversation id — run the private reply + resolve step first.',
+    });
+    return { ok: false, steps };
+  }
+  if (!captureId) {
+    steps.push({ step: 'photo', ok: false, detail: 'Enter a screenshot capture id.' });
+    return { ok: false, steps };
+  }
+  const supabase = await createClient();
+  const { data: cap } = await supabase
+    .from('capture_records')
+    .select('screenshot_path')
+    .eq('id', captureId)
+    .maybeSingle();
+  const path = str((cap as { screenshot_path?: string } | null)?.screenshot_path);
+  if (!path) {
+    steps.push({ step: 'photo', ok: false, detail: 'No screenshot on that capture id.' });
+    return { ok: false, steps };
+  }
+  const signed = (await supabase.storage
+    .from(ATTACHMENT_BUCKET)
+    .createSignedUrl(path, 600)) as { data: { signedUrl?: string } | null };
+  const url = signed.data?.signedUrl ?? null;
+  const photo = await sendPancakeConversationMessage({
+    conversationId,
+    message: '',
+    attachmentUrl: url,
+  });
+  steps.push({
+    step: 'photo',
+    ok: photo.ok,
+    detail: `[${photo.code}] ${photo.message}${photo.debug ? ` · ${photo.debug}` : ''} → conversation …${conversationId.slice(-6)}`,
+  });
+  return { ok: photo.ok, steps };
 }
