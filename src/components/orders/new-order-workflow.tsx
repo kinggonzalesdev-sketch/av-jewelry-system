@@ -212,6 +212,8 @@ function ItemRows({
   const onItem = (r: Row, value: string) => {
     runSearch(value);
     const picked = byLabel.get(value.trim()) ?? null;
+    const prev = matchOf(r); // the item matched BEFORE this change
+    const itemChanged = (picked?.label ?? null) !== (prev?.label ?? null);
     const next: Partial<Row> = { itemInput: value };
     if (picked && isHKItem(picked)) {
       // HK ITEM is ALWAYS Fixed Price. The price is the number written after
@@ -225,10 +227,14 @@ function ItemRows({
       // Non-HK: prefill the FIXED price from the catalogue (New Entry), editable.
       next.price = picked.unitPrice ?? '';
     }
-    // Reflect the item's declared grams into the field (non-HK only). In New Entry
-    // the grams box is read-only; in Walk-In it stays editable but starts pre-filled.
-    if (picked && !isHKItem(picked) && !r.grams.trim() && picked.grams) {
-      next.grams = picked.grams;
+    // When a DIFFERENT item is picked, RESET grams to THAT item's grams (its record's
+    // grams, else parsed from the code) — overwriting any STALE grams left over from a
+    // previously-selected item. The old guard (`!r.grams.trim()`) only filled grams when
+    // the field was empty, so changing the item kept the PRIOR item's grams and multiplied
+    // it by the NEW item's rate — e.g. a stale 6.37g × ₱7,100 = ₱45,227 instead of the
+    // correct 3.38g × ₱7,100 = ₱23,998. Same item re-render → grams preserved (walk-in edit).
+    if (picked && !isHKItem(picked) && itemChanged) {
+      next.grams = picked.grams ?? '';
     }
     patch(r.key, next);
   };
