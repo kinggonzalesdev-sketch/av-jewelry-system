@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
+  runPrivateReplyTestAction,
   saveSelectedPageAction,
   saveSelectedSenderAction,
   sendPancakeTestAction,
@@ -70,6 +71,7 @@ export function IntegrationsView({
         <>
           <ManagedPagesCard selectedPage={selectedPage} />
           <PancakeSenderCard selectedSender={selectedSender} />
+          <PrivateReplyTestCard senderReady={selectedSender !== null} />
           <ConversationsCard linkStatus={linkStatus} linkedCustomers={linkedCustomers} />
           <TestSendCard />
         </>
@@ -867,6 +869,182 @@ function PancakeSenderCard({
           opens a real private conversation, and the Capture screenshot is sent afterward
           through that conversation. The token stays server-side and is never returned.
         </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+type TestCandidate = {
+  webhookEventId: string;
+  fbName: string;
+  commentPreview: string;
+  at: string;
+  canReplyPrivately: boolean;
+};
+
+/**
+ * Controlled Test B — privately reply to ONE approved test comment and (optionally)
+ * deliver a screenshot, showing the full sanitized Pancake request/response. Manual +
+ * Primary-Super-Admin gated; it does NOT enable the automatic Capture flow.
+ */
+function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [candidates, setCandidates] = useState<TestCandidate[]>([]);
+  const [selectedId, setSelectedId] = useState('');
+  const [message, setMessage] = useState(
+    'Hi! Here is the item you mined during our Live. 💛',
+  );
+  const [captureId, setCaptureId] = useState('');
+
+  const [runState, runTest, running] = useActionState<IntegrationActionState, FormData>(
+    runPrivateReplyTestAction,
+    EMPTY_INTEGRATION_STATE,
+  );
+
+  const loadCandidates = async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const res = await fetch('/api/integrations/pancake/private-reply-candidates', {
+        headers: { accept: 'application/json' },
+      });
+      const body = (await res.json().catch(() => null)) as
+        | { ok: boolean; candidates: TestCandidate[] }
+        | null;
+      if (!body || !body.ok) {
+        setLoadError('Could not load candidate comments.');
+        setCandidates([]);
+        return;
+      }
+      setCandidates(body.candidates);
+      if (body.candidates.length > 0) {
+        setSelectedId(body.candidates[0]?.webhookEventId ?? '');
+      }
+    } catch {
+      setLoadError('Could not load candidate comments.');
+      setCandidates([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">
+          Private Reply — Controlled Test (Test B)
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          Run the verified first-time-commenter chain for <strong>ONE approved test
+          comment</strong>: <code>private_replies</code> text → resolve the real private
+          conversation → optional screenshot via <code>reply_inbox</code>. This does not
+          enable the automatic flow, and every Pancake request/response is shown
+          (sanitized).
+        </p>
+
+        {!senderReady ? (
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-700 dark:text-amber-400">
+            Select a Private Reply sender above first.
+          </div>
+        ) : null}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void loadCandidates()}
+            disabled={loading}
+            data-testid="pr-test-load"
+          >
+            {loading ? 'Loading…' : 'Load recent Live comments'}
+          </Button>
+        </div>
+        {loadError ? (
+          <p role="alert" className="text-sm text-destructive">
+            {loadError}
+          </p>
+        ) : null}
+
+        {candidates.length > 0 ? (
+          <form action={runTest} className="space-y-3">
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Approved test comment (privately-replyable)
+              </span>
+              <select
+                name="webhookEventId"
+                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+                value={selectedId}
+                onChange={(e) => setSelectedId(e.target.value)}
+                data-testid="pr-test-candidate"
+              >
+                {candidates.map((c) => (
+                  <option key={c.webhookEventId} value={c.webhookEventId}>
+                    {c.fbName} — “{c.commentPreview}”
+                    {c.at
+                      ? ` · ${new Date(c.at).toLocaleString('en-US', { hour: 'numeric', minute: '2-digit', month: 'short', day: 'numeric' })}`
+                      : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Private reply text
+              </span>
+              <textarea
+                name="message"
+                rows={2}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Screenshot capture id (optional — also tests the reply_inbox PHOTO step)
+              </span>
+              <input
+                name="screenshotCaptureId"
+                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+                placeholder="Leave blank to verify the text private reply only"
+                value={captureId}
+                onChange={(e) => setCaptureId(e.target.value)}
+              />
+            </label>
+
+            <Button
+              type="submit"
+              disabled={running || !selectedId || !senderReady}
+              data-testid="pr-test-run"
+            >
+              {running ? 'Running…' : 'Run Controlled Test B'}
+            </Button>
+          </form>
+        ) : null}
+
+        {runState.error ? (
+          <pre
+            role="alert"
+            className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-foreground"
+            data-testid="pr-test-result-error"
+          >
+            {runState.error}
+          </pre>
+        ) : null}
+        {runState.success ? (
+          <pre
+            className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-xs text-foreground"
+            data-testid="pr-test-result-ok"
+          >
+            {runState.success}
+          </pre>
+        ) : null}
       </CardContent>
     </Card>
   );

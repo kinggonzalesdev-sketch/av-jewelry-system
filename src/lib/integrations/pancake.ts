@@ -1969,6 +1969,14 @@ function extractPrivateConversationId(body: unknown): string | null {
 }
 
 /**
+ * The centralized default Private Reply initiation text (Owner may override per send /
+ * via a template later). Kept in ONE place so the initiation message is never hardcoded
+ * across the code. `{customer_name}` is substituted with the commenter's name when known.
+ */
+export const DEFAULT_PRIVATE_REPLY_TEXT =
+  'Hi {customer_name}! Here is the item you mined during our Live. 💛';
+
+/**
  * The VERIFIED private_replies body — pure + exported so the exact field mapping is
  * unit-lockable. TEXT only: `action=private_replies` + post_id/message_id/from_id/
  * sender_id/message. NO conversation_id in the body, NO content_ids/attachment_type

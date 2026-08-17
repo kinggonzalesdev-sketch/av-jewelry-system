@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { IntegrationsView } from '@/components/integrations/integrations-view';
 
 vi.mock('@/lib/integrations/actions', () => ({
+  runPrivateReplyTestAction: vi.fn(),
   saveSelectedPageAction: vi.fn(),
   saveSelectedSenderAction: vi.fn(),
   sendPancakeTestAction: vi.fn(),

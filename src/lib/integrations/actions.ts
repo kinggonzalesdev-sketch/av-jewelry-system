@@ -3,11 +3,13 @@
 import { revalidatePath } from 'next/cache';
 
 import {
+  DEFAULT_PRIVATE_REPLY_TEXT,
   saveSelectedPancakePage,
   saveSelectedPancakeSender,
   sendPancakeConversationMessage,
   syncPancakeConversationsToCustomers,
 } from '@/lib/integrations/pancake';
+import { runPrivateReplyControlledTest } from '@/lib/integrations/private-reply-test';
 import { AuthorizationError, requirePrimarySuperAdmin } from '@/lib/authz/guard';
 import type { IntegrationActionState } from '@/lib/integrations/action-state';
 
@@ -65,6 +67,47 @@ export async function saveSelectedSenderAction(
     error: null,
     success: `Private Reply sender saved (Pancake user ${result.userId}).`,
   };
+}
+
+/**
+ * Primary Super Admin only: run the CONTROLLED Test B private-reply chain for ONE
+ * approved test comment. Returns a step-by-step sanitized report (each Pancake
+ * request/response). Manual + gated — it does NOT enable the automatic Capture flow.
+ */
+export async function runPrivateReplyTestAction(
+  _prev: IntegrationActionState,
+  formData: FormData,
+): Promise<IntegrationActionState> {
+  const field = (key: string): string => {
+    const v = formData.get(key);
+    return typeof v === 'string' ? v.trim() : '';
+  };
+  const webhookEventId = field('webhookEventId');
+  const message = field('message') || DEFAULT_PRIVATE_REPLY_TEXT;
+  const screenshotCaptureId = field('screenshotCaptureId') || null;
+  if (!webhookEventId) {
+    return { error: 'Pick a test comment first.', success: null };
+  }
+  try {
+    const result = await runPrivateReplyControlledTest({
+      webhookEventId,
+      message,
+      screenshotCaptureId,
+    });
+    const lines = result.steps
+      .map((s) => `${s.ok ? '✓' : '✗'} ${s.step}: ${s.detail}`)
+      .join('\n');
+    const header = result.ok
+      ? 'Test B PASS — private reply + delivery verified end-to-end (delivered once).'
+      : 'Test B STOPPED — see the failing step below (exact sanitized Pancake response included). No alternate endpoint/action was tried.';
+    return result.ok
+      ? { error: null, success: `${header}\n\n${lines}` }
+      : { error: `${header}\n\n${lines}`, success: null };
+  } catch (cause) {
+    if (cause instanceof AuthorizationError)
+      return { error: cause.message, success: null };
+    throw cause;
+  }
 }
 
 /**
