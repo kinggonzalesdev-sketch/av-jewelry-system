@@ -8,6 +8,7 @@ import { isPrimarySuperAdmin, requireActiveStaff } from '@/lib/authz/guard';
 import {
   getPancakeLinkStatus,
   getSelectedPancakePage,
+  getSelectedPancakeSender,
   listLinkedPancakeCustomers,
 } from '@/lib/integrations/pancake';
 
@@ -28,8 +29,9 @@ export default async function IntegrationsPage() {
   if (!(await isPrimarySuperAdmin())) notFound();
   // Reaching this page already proves Primary Super Admin — Lalyn De Dios and any
   // Admin/Staff are stopped by the guard above, in both the UI and the backend.
-  const [selectedPage, linkStatus, linkedCustomers] = await Promise.all([
+  const [selectedPage, selectedSender, linkStatus, linkedCustomers] = await Promise.all([
     getSelectedPancakePage(),
+    getSelectedPancakeSender(),
     getPancakeLinkStatus(),
     listLinkedPancakeCustomers(),
   ]);
@@ -43,6 +45,7 @@ export default async function IntegrationsPage() {
       <IntegrationsView
         canManagePages
         selectedPage={selectedPage}
+        selectedSender={selectedSender}
         linkStatus={linkStatus}
         linkedCustomers={linkedCustomers}
       />

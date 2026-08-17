@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 
 import {
   saveSelectedPancakePage,
+  saveSelectedPancakeSender,
   sendPancakeConversationMessage,
   syncPancakeConversationsToCustomers,
 } from '@/lib/integrations/pancake';
@@ -36,6 +37,34 @@ export async function saveSelectedPageAction(
 
   revalidatePath('/admin/integrations');
   return { error: null, success: result.message };
+}
+
+/**
+ * Primary Super Admin only: save the EXPLICITLY-CHOSEN Pancake Private Reply sender —
+ * an active Pancake user id (users[].id from Get Users List). The domain layer
+ * re-validates the id against the Page's ACTIVE users before storing it, so a
+ * disabled/absent user can never become the sender. Never a token; the choice of
+ * which user is all that is trusted from the client.
+ */
+export async function saveSelectedSenderAction(
+  _prev: IntegrationActionState,
+  formData: FormData,
+): Promise<IntegrationActionState> {
+  const field = (key: string): string => {
+    const v = formData.get(key);
+    return typeof v === 'string' ? v.trim() : '';
+  };
+  const userId = field('userId');
+  const userName = field('userName') || null;
+
+  const result = await saveSelectedPancakeSender({ userId, userName });
+  if (!result.ok) return { error: result.error, success: null };
+
+  revalidatePath('/admin/integrations');
+  return {
+    error: null,
+    success: `Private Reply sender saved (Pancake user ${result.userId}).`,
+  };
 }
 
 /**

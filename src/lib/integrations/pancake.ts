@@ -1751,3 +1751,372 @@ export async function syncPancakeConversationsToCustomers(): Promise<PancakeSync
     totalCustomers,
   };
 }
+
+/* ==========================================================================
+ * Pancake Private Reply — sender (users[].id) resolution + the send primitive.
+ * (Owner request 2026-08-17, verified official contract.) A Facebook Live COMMENT can
+ * be privately replied to ONCE; the reply is TEXT-only and opens a REAL private
+ * conversation the screenshot is then sent through (existing reply_inbox PHOTO flow).
+ * `sender_id` MUST be an ACTIVE Pancake user (Get Users List), EXPLICITLY selected by
+ * the Owner — never page_id, never a PSID/page_customer_id/fb_id, never guessed, never
+ * users[0] by default. No sender selected → no private reply (fail-closed).
+ * ======================================================================== */
+
+/** One active Pancake page user — only the safe fields MineFlow needs. */
+export type PancakePageUser = {
+  id: string;
+  name: string | null;
+  status: string | null;
+  statusInPage: string | null;
+  isOnline: boolean | null;
+  /** Raw page_permissions kept for DIAGNOSTICS only — MineFlow invents NO semantics. */
+  pagePermissions: unknown;
+};
+
+export type PancakePageUsersResult = {
+  ok: boolean;
+  code: PancakePagesCode;
+  message: string;
+  users: PancakePageUser[];
+  debug?: string;
+};
+
+/** Parse ONLY the official active `users[]` (never `disabled_users[]`), tolerant of shape. */
+export function extractPageUsers(body: unknown): PancakePageUser[] {
+  const root =
+    body && typeof body === 'object' ? (body as Record<string, unknown>) : null;
+  const usersVal = root?.users;
+  const list: unknown[] = Array.isArray(usersVal) ? usersVal : [];
+  const out: PancakePageUser[] = [];
+  for (const raw of list) {
+    if (!raw || typeof raw !== 'object') continue;
+    const u = raw as Record<string, unknown>;
+    const id = asText(u.id);
+    if (!id) continue;
+    out.push({
+      id,
+      name: asText(u.name) || null,
+      status: asText(u.status) || null,
+      statusInPage: asText(u.status_in_page) || null,
+      isOnline: typeof u.is_online === 'boolean' ? u.is_online : null,
+      pagePermissions: u.page_permissions ?? null,
+    });
+  }
+  return out;
+}
+
+/**
+ * Get the ACTIVE users of the connected Page (pages.fm Get Users List:
+ * `GET /pages/{page_id}/users`) so the Owner can choose the authorized Private Reply
+ * sender. Primary Super Admin only; the token stays server-side and the token-bearing
+ * URL is never logged. Only `users[]` is offered — `disabled_users[]` is ignored.
+ */
+export async function getPancakePageUsers(): Promise<PancakePageUsersResult> {
+  try {
+    await requirePrimarySuperAdmin();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError)
+      return { ok: false, code: 'forbidden', message: cause.message, users: [] };
+    throw cause;
+  }
+  const pageToken = process.env.PANCAKE_PAGE_ACCESS_TOKEN;
+  const token = pageToken || process.env.PANCAKE_USER_ACCESS_TOKEN;
+  const tokenParam =
+    process.env.PANCAKE_SEND_TOKEN_PARAM ||
+    (pageToken ? 'page_access_token' : 'access_token');
+  const pageId = await getActivePancakePageId();
+  if (!token || !token.trim())
+    return { ok: false, code: 'token_missing', message: 'Access token missing.', users: [] };
+  if (!pageId)
+    return { ok: false, code: 'token_missing', message: 'No Page selected.', users: [] };
+
+  const base = resolvePancakeApiBase();
+  const template = process.env.PANCAKE_USERS_PATH || '/pages/{page_id}/users';
+  const path = template.replace('{page_id}', encodeURIComponent(pageId.trim()));
+  let res: Response;
+  try {
+    const endpoint = `${base}${path}${path.includes('?') ? '&' : '?'}${tokenParam}=${encodeURIComponent(token.trim())}`;
+    res = await fetch(endpoint, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+  } catch {
+    return {
+      ok: false,
+      code: 'unavailable',
+      message: 'Pancake API unavailable. Please try again in a moment.',
+      users: [],
+    };
+  }
+  const rawText = await res.text().catch(() => '');
+  let bodyU: unknown = null;
+  try {
+    bodyU = rawText ? JSON.parse(rawText) : null;
+  } catch {
+    bodyU = null;
+  }
+  const debug = `HTTP ${res.status} · GET ${base}${path} · ${rawText.slice(0, 300)}`;
+  if (res.status === 401)
+    return { ok: false, code: 'token_invalid', message: 'Invalid or expired token.', users: [], debug };
+  if (res.status === 403)
+    return { ok: false, code: 'permission_denied', message: 'Permission denied for users.', users: [], debug };
+  if (!res.ok)
+    return { ok: false, code: 'unavailable', message: `Pancake responded ${res.status}.`, users: [], debug };
+  if (bodyU && typeof bodyU === 'object' && (bodyU as { success?: boolean }).success === false)
+    return { ok: false, code: 'token_invalid', message: 'Pancake rejected the token.', users: [], debug };
+  const users = extractPageUsers(bodyU);
+  if (users.length === 0)
+    return { ok: false, code: 'none_found', message: 'No active Pancake users found for this Page.', users: [], debug };
+  return {
+    ok: true,
+    code: 'loaded',
+    message: `Loaded ${users.length} active Pancake user(s).`,
+    users,
+    debug,
+  };
+}
+
+/** The saved Private Reply sender (an active Pancake users[].id), or null if none. */
+export type SelectedPancakeSender = { userId: string; userName: string | null };
+
+export async function getSelectedPancakeSender(): Promise<SelectedPancakeSender | null> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('pancake_integration_config')
+    .select('sender_user_id, sender_user_name')
+    .maybeSingle();
+  const id = ((data?.sender_user_id as string | null) ?? '').trim();
+  if (!id) return null;
+  return { userId: id, userName: (data?.sender_user_name as string | null) ?? null };
+}
+
+export type SaveSenderResult = { ok: true; userId: string } | { ok: false; error: string };
+
+/**
+ * Persist the explicitly-chosen Private Reply sender. Primary Super Admin only. The
+ * chosen id MUST be one of the Page's ACTIVE users (re-validated here against a fresh
+ * Get Users List) so a disabled/absent user can never be saved as the sender.
+ */
+export async function saveSelectedPancakeSender(input: {
+  userId: string;
+  userName?: string | null;
+}): Promise<SaveSenderResult> {
+  try {
+    await requirePrimarySuperAdmin();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
+    throw cause;
+  }
+  const userId = (input.userId ?? '').trim();
+  if (!userId) return { ok: false, error: 'Choose a Pancake user before saving.' };
+  const active = await getPancakePageUsers();
+  if (!active.ok) return { ok: false, error: active.message };
+  const match = active.users.find((u) => u.id === userId);
+  if (!match) {
+    return {
+      ok: false,
+      error:
+        'That user is not an active Pancake user on this Page. Reload the list and pick an active user.',
+    };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('save_pancake_sender_selection', {
+    p_user_id: userId,
+    p_user_name: input.userName ?? match.name ?? null,
+  });
+  if (error) return { ok: false, error: 'The sender could not be saved. Please try again.' };
+  return { ok: true, userId };
+}
+
+/**
+ * Resolve the configured Private Reply sender id (fail-closed). Returns null when no
+ * sender has been selected — the caller MUST NOT send a private reply then (Owner rule:
+ * no sender selected → no automatic private reply).
+ */
+export async function resolvePancakeSenderUserId(): Promise<string | null> {
+  const sender = await getSelectedPancakeSender();
+  return sender?.userId ?? null;
+}
+
+export type PancakePrivateReplyResult = {
+  ok: boolean;
+  code:
+    | 'sent'
+    | 'sender_unset'
+    | 'token_missing'
+    | 'page_missing'
+    | 'unavailable'
+    | 'failed';
+  message: string;
+  /** The real private conversation id, when Pancake returns one in the response. */
+  privateConversationId: string | null;
+  pancakeMessageId: string | null;
+  debug?: string;
+};
+
+/** Pull a private/inbox conversation id from a private_replies response, tolerating shapes. */
+function extractPrivateConversationId(body: unknown): string | null {
+  if (!body || typeof body !== 'object') return null;
+  const b = body as Record<string, unknown>;
+  const candidates: unknown[] = [
+    (b.private_reply_conversation as Record<string, unknown> | undefined)?.id,
+    (b.conversation as Record<string, unknown> | undefined)?.id,
+    b.conversation_id,
+    (b.data as Record<string, unknown> | undefined)?.conversation_id,
+  ];
+  for (const c of candidates) {
+    if (typeof c === 'string' && c.trim()) return c.trim();
+    if (typeof c === 'number') return String(c);
+  }
+  return null;
+}
+
+/**
+ * The VERIFIED private_replies body — pure + exported so the exact field mapping is
+ * unit-lockable. TEXT only: `action=private_replies` + post_id/message_id/from_id/
+ * sender_id/message. NO conversation_id in the body, NO content_ids/attachment_type
+ * (the official schema has no photo field — the screenshot is sent afterward).
+ */
+export function buildPrivateReplyBody(input: {
+  postId: string;
+  messageId: string;
+  fromId: string;
+  senderId: string;
+  message: string;
+}): Record<string, string> {
+  return {
+    action: 'private_replies',
+    post_id: input.postId,
+    message_id: input.messageId,
+    from_id: input.fromId,
+    sender_id: input.senderId,
+    message: input.message,
+  };
+}
+
+/**
+ * Send a TEXT Private Reply to a Facebook Live COMMENT (verified official Pancake
+ * contract). Body: `{ action: 'private_replies', post_id, message_id, from_id,
+ * sender_id, message }`. `sender_id` is the explicitly-selected active Pancake user
+ * (fail-closed if unset). TEXT ONLY — the schema exposes no content_ids; the screenshot
+ * is sent AFTERWARD through the resulting real private conversation via reply_inbox
+ * PHOTO. The path is env-overridable (PANCAKE_PRIVATE_REPLY_PATH) so the exact contract
+ * can be corrected without a code change. Never logs the token.
+ */
+export async function sendPancakePrivateReply(input: {
+  postId: string;
+  messageId: string;
+  fromId: string;
+  /** The COMMENT conversation id — used for the endpoint PATH only, not sent in the body. */
+  commentConversationId: string;
+  message: string;
+}): Promise<PancakePrivateReplyResult> {
+  const senderId = await resolvePancakeSenderUserId();
+  if (!senderId) {
+    return {
+      ok: false,
+      code: 'sender_unset',
+      message:
+        'No Pancake Private Reply sender is selected. An Owner must choose the authorized sender in Settings → Integrations before private replies can be sent.',
+      privateConversationId: null,
+      pancakeMessageId: null,
+    };
+  }
+  const pageToken = process.env.PANCAKE_PAGE_ACCESS_TOKEN;
+  const token = pageToken || process.env.PANCAKE_USER_ACCESS_TOKEN;
+  const tokenParam =
+    process.env.PANCAKE_SEND_TOKEN_PARAM ||
+    (pageToken ? 'page_access_token' : 'access_token');
+  if (!token || !token.trim())
+    return {
+      ok: false,
+      code: 'token_missing',
+      message: 'Access token missing.',
+      privateConversationId: null,
+      pancakeMessageId: null,
+    };
+  const pageId = await getActivePancakePageId();
+  if (!pageId)
+    return {
+      ok: false,
+      code: 'page_missing',
+      message: 'No Page selected.',
+      privateConversationId: null,
+      pancakeMessageId: null,
+    };
+  const postId = (input.postId ?? '').trim();
+  const messageId = (input.messageId ?? '').trim();
+  const fromId = (input.fromId ?? '').trim();
+  if (!postId || !messageId || !fromId)
+    return {
+      ok: false,
+      code: 'failed',
+      message: 'Missing comment identity (post/message/from).',
+      privateConversationId: null,
+      pancakeMessageId: null,
+    };
+
+  const base = resolvePancakeApiBase();
+  const template =
+    process.env.PANCAKE_PRIVATE_REPLY_PATH ||
+    '/pages/{page_id}/conversations/{conversation_id}/messages';
+  const path = template
+    .replace('{page_id}', encodeURIComponent(pageId.trim()))
+    .replace('{conversation_id}', encodeURIComponent((input.commentConversationId ?? '').trim()));
+
+  let res: Response;
+  try {
+    const endpoint = `${base}${path}${path.includes('?') ? '&' : '?'}${tokenParam}=${encodeURIComponent(token.trim())}`;
+    // pages.fm public API is form/query based. The verified private_replies body is
+    // exactly these fields — no conversation_id in the body, no content_ids (text only).
+    const form = new URLSearchParams();
+    for (const [k, v] of Object.entries(
+      buildPrivateReplyBody({ postId, messageId, fromId, senderId, message: input.message }),
+    )) {
+      form.set(k, v);
+    }
+    res = await fetch(endpoint, {
+      method: 'POST',
+      cache: 'no-store',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: form.toString(),
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch {
+    return {
+      ok: false,
+      code: 'unavailable',
+      message: 'Pancake API unavailable. Please try again in a moment.',
+      privateConversationId: null,
+      pancakeMessageId: null,
+    };
+  }
+  const rawText = await res.text().catch(() => '');
+  let body: unknown = null;
+  try {
+    body = rawText ? JSON.parse(rawText) : null;
+  } catch {
+    body = null;
+  }
+  const debug = `HTTP ${res.status} · private_replies · ${rawText.slice(0, 400)}`;
+  const rejected =
+    !res.ok ||
+    (body &&
+      typeof body === 'object' &&
+      (body as { success?: boolean }).success === false);
+  if (rejected) {
+    return {
+      ok: false,
+      code: 'failed',
+      message: 'Pancake rejected the private reply.',
+      privateConversationId: null,
+      pancakeMessageId: null,
+      debug,
+    };
+  }
+  return {
+    ok: true,
+    code: 'sent',
+    message: 'Private reply sent.',
+    privateConversationId: extractPrivateConversationId(body),
+    pancakeMessageId: extractMessageId(body),
+    debug,
+  };
+}

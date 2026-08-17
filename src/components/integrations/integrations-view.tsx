@@ -4,6 +4,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   saveSelectedPageAction,
+  saveSelectedSenderAction,
   sendPancakeTestAction,
   syncPancakeConversationsAction,
 } from '@/lib/integrations/actions';
@@ -14,7 +15,9 @@ import {
 import type {
   LinkedPancakeCustomer,
   PancakePageInfo,
+  PancakePageUser,
   SelectedPancakePage,
+  SelectedPancakeSender,
 } from '@/lib/integrations/pancake';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -36,9 +39,17 @@ type PagesResponse = {
   pages: PancakePageInfo[];
 };
 
+type UsersResponse = {
+  ok: boolean;
+  code: string;
+  message: string;
+  users: PancakePageUser[];
+};
+
 export function IntegrationsView({
   canManagePages = false,
   selectedPage = null,
+  selectedSender = null,
   linkStatus = null,
   linkedCustomers = [],
 }: {
@@ -46,6 +57,8 @@ export function IntegrationsView({
   canManagePages?: boolean;
   /** The currently-saved Page selection, if any. */
   selectedPage?: SelectedPancakePage | null;
+  /** The currently-saved Private Reply sender (active Pancake user), if any. */
+  selectedSender?: SelectedPancakeSender | null;
   /** Persistent count of customers already linked to Pancake conversations. */
   linkStatus?: { linked: number; total: number } | null;
   /** The actual customers already linked — so the operator can see WHO is linked. */
@@ -56,6 +69,7 @@ export function IntegrationsView({
       {canManagePages ? (
         <>
           <ManagedPagesCard selectedPage={selectedPage} />
+          <PancakeSenderCard selectedSender={selectedSender} />
           <ConversationsCard linkStatus={linkStatus} linkedCustomers={linkedCustomers} />
           <TestSendCard />
         </>
@@ -672,6 +686,186 @@ function ManagedPagesCard({
         <p className="text-[11px] text-muted-foreground">
           Security: the request runs server-side only, the User Access Token is never
           returned or logged, and only the Primary Super Admin can load or select Pages.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Private Reply Sender — the Owner picks ONE active Pancake user (Get Users List) as the
+ * verified `private_replies.sender_id`. Only active `users[]` are offered; a saved sender
+ * is re-validated server-side against the active list. Until a sender is chosen, MineFlow
+ * fails closed and sends no private replies.
+ */
+function PancakeSenderCard({
+  selectedSender,
+}: {
+  selectedSender: SelectedPancakeSender | null;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadNote, setLoadNote] = useState<string | null>(null);
+  const [users, setUsers] = useState<PancakePageUser[]>([]);
+  const [selectedId, setSelectedId] = useState<string>(selectedSender?.userId ?? '');
+
+  const [saveState, saveSender, saving] = useActionState<
+    IntegrationActionState,
+    FormData
+  >(saveSelectedSenderAction, EMPTY_INTEGRATION_STATE);
+
+  const chosen = users.find((u) => u.id === selectedId) ?? null;
+
+  const loadUsers = async () => {
+    setLoading(true);
+    setLoadError(null);
+    setLoadNote(null);
+    try {
+      const res = await fetch('/api/integrations/pancake/users', {
+        headers: { accept: 'application/json' },
+      });
+      const body = (await res.json().catch(() => null)) as UsersResponse | null;
+      if (!body) {
+        setLoadError('Pancake API unavailable. Please try again in a moment.');
+        setUsers([]);
+        return;
+      }
+      if (body.ok) {
+        setUsers(body.users);
+        setLoadNote(body.message);
+        // Keep a prior saved choice selected if it is still an active user.
+        if (!body.users.some((u) => u.id === selectedId)) {
+          setSelectedId(body.users[0]?.id ?? '');
+        }
+      } else {
+        setUsers([]);
+        setLoadError(body.message);
+      }
+    } catch {
+      setUsers([]);
+      setLoadError('Pancake API unavailable. Please try again in a moment.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const userLabel = (u: PancakePageUser) =>
+    `${u.name ?? 'User'} — ${u.id}` +
+    (u.statusInPage ? ` (${u.statusInPage})` : '') +
+    (u.isOnline === true ? ' · online' : '');
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Private Reply Sender</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          Choose the authorized <strong>Pancake user</strong> that MineFlow sends Facebook
+          Live <strong>Private Replies</strong> as (the verified <code>sender_id</code>).
+          Only <strong>active</strong> Page users are offered. Until a sender is selected,
+          MineFlow will not auto-send private replies.
+        </p>
+
+        {selectedSender ? (
+          <div
+            className="rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-xs"
+            data-testid="pancake-selected-sender"
+          >
+            <p className="font-medium text-foreground">
+              Current sender: {selectedSender.userName ?? 'Pancake user'} (
+              {selectedSender.userId})
+            </p>
+          </div>
+        ) : (
+          <div
+            className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-700 dark:text-amber-400"
+            data-testid="pancake-sender-required"
+          >
+            Pancake Sender User Required — select an active Pancake user below to enable
+            private replies.
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void loadUsers()}
+            disabled={loading}
+            data-testid="pancake-load-users"
+          >
+            {loading ? 'Loading…' : 'Load Pancake Users'}
+          </Button>
+        </div>
+
+        {loadError ? (
+          <p
+            role="alert"
+            className="text-sm text-destructive"
+            data-testid="pancake-users-error"
+          >
+            {loadError}
+          </p>
+        ) : null}
+        {loadNote ? (
+          <p className="text-sm text-muted-foreground" data-testid="pancake-users-note">
+            {loadNote}
+          </p>
+        ) : null}
+
+        {users.length > 0 ? (
+          <div className="space-y-3">
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Select Sender (active users only)
+              </span>
+              <select
+                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+                value={selectedId}
+                onChange={(e) => setSelectedId(e.target.value)}
+                data-testid="pancake-sender-select"
+              >
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {userLabel(u)}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <form action={saveSender}>
+              <input type="hidden" name="userId" value={selectedId} />
+              <input type="hidden" name="userName" value={chosen?.name ?? ''} />
+              <Button
+                type="submit"
+                disabled={saving || !selectedId}
+                data-testid="pancake-save-sender"
+              >
+                {saving ? 'Saving…' : 'Save Sender'}
+              </Button>
+            </form>
+          </div>
+        ) : null}
+
+        {saveState.error ? (
+          <p role="alert" className="text-sm text-destructive">
+            {saveState.error}
+          </p>
+        ) : null}
+        {saveState.success ? (
+          <p
+            className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-foreground"
+            data-testid="pancake-sender-save-note"
+          >
+            {saveState.success}
+          </p>
+        ) : null}
+
+        <p className="text-[11px] text-muted-foreground">
+          Private Reply is TEXT-only (the official schema has no photo field): the reply
+          opens a real private conversation, and the Capture screenshot is sent afterward
+          through that conversation. The token stays server-side and is never returned.
         </p>
       </CardContent>
     </Card>
