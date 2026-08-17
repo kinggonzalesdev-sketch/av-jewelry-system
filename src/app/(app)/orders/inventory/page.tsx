@@ -56,7 +56,6 @@ export default async function InventoryPage() {
 
       <InventoryWorkspace
         initialPage={initialPage}
-        completed={[]}
         canMonitor={permissions.has('inventory_monitoring')}
         // Each per-row action follows its OWN permission (the Owner holds all
         // implicitly); the server re-checks the same key on every write.

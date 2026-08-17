@@ -50,6 +50,8 @@ import {
 } from '@/lib/inventory/service';
 import {
   listCompletedInventory,
+  listCompletedInventoryPage,
+  type CompletedInventoryPageResult,
   type CompletedInventoryRow,
 } from '@/lib/inventory/completed';
 
@@ -89,6 +91,18 @@ export async function loadInventoryForExportAction(): Promise<InventoryListResul
  *  The workspace fetches it only when the operator actually opens the Completed Items tab. */
 export async function loadCompletedInventoryAction(): Promise<CompletedInventoryRow[]> {
   return listCompletedInventory();
+}
+
+/** Load ONE PAGE of Completed Items with an EXACT server-side total + per-type counts
+ *  (Owner request — no "999 of 999" cap). The count comes from SQL, never from the number
+ *  of rows the browser holds; safe + cheap to call on every search / filter / page change. */
+export async function loadCompletedInventoryPageAction(opts: {
+  search?: string;
+  type?: string;
+  page?: number;
+  size?: number;
+}): Promise<CompletedInventoryPageResult> {
+  return listCompletedInventoryPage(opts);
 }
 
 /** New Entry: create an inventory item from a required, unique item code, an

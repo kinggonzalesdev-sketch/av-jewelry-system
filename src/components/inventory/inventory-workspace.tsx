@@ -6,7 +6,7 @@ import { useActionState, useCallback, useEffect, useMemo, useRef, useState } fro
 import {
   createInventoryItemAction,
   deleteAllInventoryItemsAction,
-  loadCompletedInventoryAction,
+  loadCompletedInventoryPageAction,
   loadInventoryActivePageAction,
   loadInventoryForExportAction,
   returnCompletedItemAction,
@@ -99,7 +99,6 @@ function todayISO(): string {
 
 export function InventoryWorkspace({
   initialPage,
-  completed: completedProp = [],
   canMonitor,
   canCreate = false,
   canEdit = false,
@@ -111,7 +110,6 @@ export function InventoryWorkspace({
   canImportExport = false,
 }: {
   initialPage: InventoryPageResult;
-  completed?: CompletedInventoryRow[];
   canMonitor: boolean;
   /** Super Admin (owner) — per-row Edit/Delete execute directly; an Admin only requests. */
   isOwner?: boolean;
@@ -143,22 +141,28 @@ export function InventoryWorkspace({
   const [reloadToken, setReloadToken] = useState(0);
   const reloadActive = useCallback(() => setReloadToken((t) => t + 1), []);
   const [tab, setTab] = useState<Tab>('Active Inventory');
-  // Completed Items is LAZY-LOADED (900+ rows with order/customer/fulfillment joins) — it is
-  // off the initial page load so Inventory opens fast; we fetch it the first time the tab is
-  // opened. Seeded from the prop (empty now), so a non-empty prop still counts as loaded.
-  const [completed, setCompleted] = useState<CompletedInventoryRow[]>(completedProp);
-  const [completedLoaded, setCompletedLoaded] = useState(completedProp.length > 0);
+  // Completed Items is SERVER-PAGINATED (Owner request — the view must scale past 1,000 with
+  // an EXACT total, never a "999 of 999" cap). It stays off the initial load so Inventory
+  // opens fast; opening the tab arms the fetch effect below, which loads ONE page + the exact
+  // server counts and refetches on every search / completion-type / page change.
+  type CompletedPage = {
+    rows: CompletedInventoryRow[];
+    total: number;
+    searchTotal: number;
+    typeCounts: Record<string, number>;
+  };
+  const [completed, setCompleted] = useState<CompletedPage>({
+    rows: [],
+    total: 0,
+    searchTotal: 0,
+    typeCounts: {},
+  });
+  const [completedActive, setCompletedActive] = useState(false);
+  const [completedLoaded, setCompletedLoaded] = useState(false);
   const [completedLoading, setCompletedLoading] = useState(false);
   const openCompletedTab = () => {
     setTab('Completed Items');
-    if (completedLoaded || completedLoading) return;
-    setCompletedLoading(true);
-    void loadCompletedInventoryAction()
-      .then((rows) => {
-        setCompleted(rows);
-        setCompletedLoaded(true);
-      })
-      .finally(() => setCompletedLoading(false));
+    setCompletedActive(true);
   };
   const [showNewEntry, setShowNewEntry] = useState(false);
   // Completed Items: search + completion-type filter (§12) + read-only detail (§5).
@@ -277,22 +281,52 @@ export function InventoryWorkspace({
   const groupOptions = useMemo(() => Object.keys(groupCounts).sort(), [groupCounts]);
   const statusOptions = active.statusOptions;
 
-  // Completed Items — historical sold/released inventory with order/customer
-  // context (§5), searchable + filterable by completion type (§12).
+  // Completed Items — SERVER-PAGINATED (§5, §12). The rows, the EXACT total, and the
+  // per-completion-type counts all come from the server; the browser only ever holds the
+  // current page. Debounce the search so typing doesn't fire a request per keystroke.
+  const [debouncedCompSearch, setDebouncedCompSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedCompSearch(compSearch.trim()), 300);
+    return () => clearTimeout(t);
+  }, [compSearch]);
+  useEffect(() => {
+    if (!completedActive) return;
+    let alive = true;
+    // The loading flag + fetch live in an async callback (not the effect body) so a page
+    // load never sets state synchronously during render.
+    void (async () => {
+      setCompletedLoading(true);
+      try {
+        const res = await loadCompletedInventoryPageAction({
+          search: debouncedCompSearch,
+          type: compType,
+          page: compPage,
+          size: compPageSize,
+        });
+        if (alive && res.ok) {
+          setCompleted({
+            rows: res.rows,
+            total: res.total,
+            searchTotal: res.searchTotal,
+            typeCounts: res.typeCounts,
+          });
+          setCompletedLoaded(true);
+        }
+      } finally {
+        if (alive) setCompletedLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [completedActive, debouncedCompSearch, compType, compPage, compPageSize]);
+
+  // Completion-type dropdown options come from the EXACT server counts (every type for the
+  // current search) — so switching filters shows real totals, not loaded-row guesses.
   const completionTypeOptions = useMemo(
-    () => [...new Set(completed.map((c) => c.completionType))].sort(),
-    [completed],
+    () => Object.keys(completed.typeCounts).sort(),
+    [completed.typeCounts],
   );
-  const filteredCompleted = useMemo(() => {
-    const q = compSearch.trim().toLowerCase();
-    return completed.filter((c) => {
-      if (compType !== 'all' && c.completionType !== compType) return false;
-      if (!q) return true;
-      return `${c.itemCode} ${c.itemName ?? ''} ${c.customerName ?? ''} ${c.orderNumber ?? ''} ${c.invoiceNumber ?? ''}`
-        .toLowerCase()
-        .includes(q);
-    });
-  }, [completed, compSearch, compType]);
 
   // Window the filtered lists to the current page (clamped so a filter that shrinks the
   // list never strands the user past the last page).
@@ -300,42 +334,19 @@ export function InventoryWorkspace({
   const invPageSafe = Math.min(invPage, invPageCount);
   // The server already returned exactly this page's rows (ordered by item_code).
   const pagedInventory = active.rows;
-  const compPageCount = Math.max(1, Math.ceil(filteredCompleted.length / compPageSize));
+  // The server returns exactly this page's rows (ordered by item_code); `completed.total` is
+  // the EXACT count of matching records, so pagination scales to any size (never 999/1000).
+  const compPageCount = Math.max(1, Math.ceil(completed.total / compPageSize));
   const compPageSafe = Math.min(compPage, compPageCount);
-  const pagedCompleted = filteredCompleted.slice(
-    (compPageSafe - 1) * compPageSize,
-    compPageSafe * compPageSize,
-  );
+  const pagedCompleted = completed.rows;
+  // Export = ALL records matching the ACTIVE filter, built SERVER-SIDE in chunks and streamed
+  // as a file — the browser never loads 10k–50k rows to build the CSV. Respects search + type.
   const exportCompleted = () => {
-    downloadCsv(
-      `completed-items-${new Date().toISOString().slice(0, 10)}`,
-      [
-        { header: 'Inventory Code', value: (c) => c.itemCode },
-        { header: 'Item', value: (c) => c.itemName ?? '' },
-        {
-          header: 'Condition',
-          value: (c) => parseInventoryCode(c.itemCode).condition ?? '',
-        },
-        {
-          header: 'Item Type',
-          value: (c) => parseInventoryCode(c.itemCode).itemType ?? '',
-        },
-        { header: 'Grams', value: (c) => parseInventoryCode(c.itemCode).grams ?? '' },
-        { header: 'Size', value: (c) => parseInventoryCode(c.itemCode).size ?? '' },
-        { header: 'Customer', value: (c) => c.customerName ?? '' },
-        { header: 'Order Number', value: (c) => c.orderNumber ?? '' },
-        { header: 'Invoice Number', value: (c) => c.invoiceNumber ?? '' },
-        { header: 'Sale Amount', value: (c) => c.finalSale ?? '' },
-        { header: 'Payment', value: (c) => paymentMeta(c.paymentStatus).label },
-        { header: 'Current Stage', value: (c) => c.currentStage },
-        { header: 'Completion Type', value: (c) => c.completionType },
-        { header: 'Courier', value: (c) => c.courier ?? '' },
-        { header: 'Tracking Number', value: (c) => c.trackingNumber ?? '' },
-        { header: 'Completed Date', value: (c) => c.completedDate?.slice(0, 10) ?? '' },
-        { header: 'Final Holder', value: (c) => c.currentHolder ?? '' },
-      ],
-      filteredCompleted,
-    );
+    const params = new URLSearchParams();
+    if (debouncedCompSearch) params.set('search', debouncedCompSearch);
+    if (compType !== 'all') params.set('type', compType);
+    const qs = params.toString();
+    window.location.href = `/api/inventory/completed/export${qs ? `?${qs}` : ''}`;
   };
 
   // Export the CURRENTLY FILTERED inventory (respects search + filters) with the
@@ -699,17 +710,24 @@ export function InventoryWorkspace({
               data-testid="completed-filter-type"
               className="w-auto"
             >
-              <option value="all">All completion types</option>
+              <option value="all">
+                All completion types ({completed.searchTotal.toLocaleString()})
+              </option>
               {completionTypeOptions.map((t) => (
                 <option key={t} value={t}>
-                  {t}
+                  {t} ({(completed.typeCounts[t] ?? 0).toLocaleString()})
                 </option>
               ))}
             </Select>
             <span className="text-xs text-muted-foreground" data-testid="completed-count">
               {completedLoading
                 ? 'Loading…'
-                : `${filteredCompleted.length} of ${completed.length}`}
+                : completed.total === 0
+                  ? '0 of 0'
+                  : `${((compPageSafe - 1) * compPageSize + 1).toLocaleString()}–${Math.min(
+                      compPageSafe * compPageSize,
+                      completed.total,
+                    ).toLocaleString()} of ${completed.total.toLocaleString()}`}
             </span>
             <Button type="button" size="sm" variant="outline" onClick={exportCompleted}>
               ⭳ Export CSV
@@ -740,17 +758,17 @@ export function InventoryWorkspace({
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {filteredCompleted.length === 0 ? (
+                {pagedCompleted.length === 0 ? (
                   <tr>
                     <td
                       colSpan={11}
                       className="px-4 py-10 text-center text-muted-foreground"
                     >
-                      {completedLoading
+                      {completedLoading || !completedLoaded
                         ? 'Loading completed items…'
-                        : completed.length === 0
-                          ? 'No completed items yet.'
-                          : 'No items match these filters.'}
+                        : debouncedCompSearch || compType !== 'all'
+                          ? 'No items match these filters.'
+                          : 'No completed items yet.'}
                     </td>
                   </tr>
                 ) : (
@@ -826,11 +844,11 @@ export function InventoryWorkspace({
                 )}
               </tbody>
             </table>
-            {filteredCompleted.length > compPageSize ? (
+            {completed.total > compPageSize ? (
               <Pagination
                 page={compPageSafe}
                 pageCount={compPageCount}
-                total={filteredCompleted.length}
+                total={completed.total}
                 pageSize={compPageSize}
                 onPageChange={setCompPage}
                 onPageSizeChange={(n) => {

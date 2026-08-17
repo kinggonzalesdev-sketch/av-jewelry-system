@@ -255,6 +255,116 @@ async function runInChunks(
   return out;
 }
 
+type CompletedMoney = { finalSale: string | null; paymentStatus: string | null };
+
+/** Final sale + payment status for a set of completed items (one guarded batch RPC). */
+async function completedMoneyMap(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ids: readonly string[],
+): Promise<Map<string, CompletedMoney>> {
+  const map = new Map<string, CompletedMoney>();
+  if (ids.length === 0) return map;
+  const moneyRes = (await supabase.rpc('completed_items_money', {
+    p_item_ids: ids as string[],
+  })) as { data: Array<Record<string, unknown>> | null };
+  for (const m of moneyRes.data ?? []) {
+    const id = m.inventory_item_id as string;
+    map.set(id, {
+      finalSale:
+        typeof m.final_sale === 'number' || typeof m.final_sale === 'string'
+          ? String(m.final_sale)
+          : null,
+      paymentStatus: (m.payment_status as string | null) ?? null,
+    });
+  }
+  return map;
+}
+
+export type CompletedInventoryPageResult =
+  | {
+      ok: true;
+      rows: CompletedInventoryRow[];
+      /** EXACT count of records matching the active search + completion-type filter. */
+      total: number;
+      /** EXACT count matching the search alone (the "All completion types" total). */
+      searchTotal: number;
+      /** EXACT per-completion-type counts for the active search (drives the dropdown). */
+      typeCounts: Record<string, number>;
+    }
+  | { ok: false; reason: string };
+
+/**
+ * ONE PAGE of Completed Items with an EXACT, server-computed total (Owner request — the
+ * view must scale past 1,000 with no "999 of 999" cap). The count of matching records +
+ * the per-completion-type counts come from the database (`completed_inventory_page`) and
+ * NEVER from how many rows the browser holds. Only this page's rows are fetched, and the
+ * final-sale / payment money is read for THIS page's ids only (cheap at 25–100 rows).
+ */
+export async function listCompletedInventoryPage(opts: {
+  search?: string;
+  type?: string;
+  page?: number;
+  size?: number;
+}): Promise<CompletedInventoryPageResult> {
+  const supabase = await createClient();
+  const size = Math.min(Math.max(opts.size ?? 25, 1), 200);
+  const page = Math.max(opts.page ?? 1, 1);
+
+  const res = (await supabase.rpc('completed_inventory_page', {
+    p_search: (opts.search ?? '').trim(),
+    p_type: opts.type ?? 'all',
+    p_limit: size,
+    p_offset: (page - 1) * size,
+  })) as {
+    data: {
+      rows?: Array<Record<string, unknown>> | null;
+      total?: number | null;
+      searchTotal?: number | null;
+      typeCounts?: Record<string, number> | null;
+    } | null;
+    error: { message: string } | null;
+  };
+  if (res.error) return { ok: false, reason: res.error.message };
+
+  const raw = (res.data?.rows ?? []).filter(
+    (r): r is Record<string, unknown> => r !== null && typeof r === 'object',
+  );
+  const s = (v: unknown): string | null => (typeof v === 'string' ? v : null);
+  const ids = raw.map((r) => s(r.inventoryItemId) ?? '').filter((v) => v !== '');
+  const moneyByItem = await completedMoneyMap(supabase, ids);
+
+  const rows: CompletedInventoryRow[] = raw.map((r) => {
+    const id = s(r.inventoryItemId) ?? '';
+    const money = moneyByItem.get(id);
+    return {
+      inventoryItemId: id,
+      itemCode: s(r.itemCode) ?? '',
+      itemName: s(r.itemName),
+      availabilityStatus: s(r.availabilityStatus) ?? '',
+      customerName: s(r.customerName),
+      orderNumber: s(r.orderNumber),
+      invoiceNumber: s(r.invoiceNumber),
+      completionType: s(r.completionType) ?? 'Released',
+      courier: s(r.courier),
+      trackingNumber: s(r.trackingNumber),
+      completedDate: s(r.completedDate),
+      currentHolder: s(r.currentHolder),
+      currentLocation: s(r.currentLocation),
+      finalSale: money?.finalSale ?? null,
+      paymentStatus: money?.paymentStatus ?? null,
+      currentStage: s(r.currentStage) ?? '—',
+    };
+  });
+
+  return {
+    ok: true,
+    rows,
+    total: Number(res.data?.total ?? 0),
+    searchTotal: Number(res.data?.searchTotal ?? 0),
+    typeCounts: res.data?.typeCounts ?? {},
+  };
+}
+
 export async function listCompletedInventory(): Promise<CompletedInventoryRow[]> {
   const supabase = await createClient();
 
@@ -337,23 +447,7 @@ export async function listCompletedInventory(): Promise<CompletedInventoryRow[]>
 
   // Final sale amount + payment status per item, from the tested balance functions
   // (one guarded batch call — never a fabricated zero).
-  const moneyRes = (await supabase.rpc('completed_items_money', {
-    p_item_ids: itemIds,
-  })) as { data: Array<Record<string, unknown>> | null };
-  const moneyByItem = new Map<
-    string,
-    { finalSale: string | null; paymentStatus: string | null }
-  >();
-  for (const m of moneyRes.data ?? []) {
-    const id = m.inventory_item_id as string;
-    moneyByItem.set(id, {
-      finalSale:
-        typeof m.final_sale === 'number' || typeof m.final_sale === 'string'
-          ? String(m.final_sale)
-          : null,
-      paymentStatus: (m.payment_status as string | null) ?? null,
-    });
-  }
+  const moneyByItem = await completedMoneyMap(supabase, itemIds);
 
   return items.map((i) => {
     const order = byItem.get(i.id);
