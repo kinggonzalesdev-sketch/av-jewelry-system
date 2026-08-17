@@ -736,18 +736,23 @@ export function InventoryWorkspace({
 
           <div className="table-scroll rounded-xl border border-border bg-card">
             <table
-              className="data-table w-full min-w-[960px] text-left text-xs"
+              className="data-table table-fixed w-full min-w-[960px] text-left text-xs"
               data-testid="completed-items"
             >
-              {/* Content-based sizing: Customer absorbs the slack (col-grow); the many
-                    short columns (Type, Grams, Payment, Stage, dates) stay narrow. No
-                    fixed equal percentages. */}
+              {/* FIXED percentage column widths (Owner request) — sums to 100%. The order
+                  MUST match the 9 columns below; long cells (Inventory Code, Customer)
+                  truncate within their width. */}
+              <colgroup>
+                {['18%', '8%', '7%', '18%', '10%', '10%', '11%', '9%', '9%'].map((w, i) => (
+                  <col key={i} style={{ width: w }} />
+                ))}
+              </colgroup>
               <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2.5 text-center">Inventory Code</th>
                   <th className="col-center px-3 py-2.5">Type</th>
                   <th className="col-num px-3 py-2.5">Grams</th>
-                  <th className="col-grow px-3 py-2.5 text-left">Customer</th>
+                  <th className="px-3 py-2.5 text-left">Customer</th>
                   <th className="col-num px-3 py-2.5">Sale Amount</th>
                   <th className="col-center px-3 py-2.5">Payment</th>
                   <th className="col-center px-3 py-2.5">Current Stage</th>
