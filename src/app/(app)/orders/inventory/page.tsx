@@ -41,7 +41,12 @@ export default async function InventoryPage() {
   // Bulk "Delete All" is the one irreversible, everything-at-once action, so it is
   // SUPER ADMIN (owner) only — an Admin or Staff never sees it (Owner request). The
   // same Owner-only rule guards the layaway ledger's Delete All.
-  const canDeleteAll = profile.roleKey === 'owner';
+  const isOwner = profile.roleKey === 'owner';
+  // ALL valid Admins (and the Owner) may INITIATE an inventory Edit/Delete (Owner request
+  // 2026-08-17). Role-based, not a per-user grant. An Admin's action becomes an approval
+  // REQUEST; only a Super Admin (owner) executes it (directly or via /approvals).
+  const canInitiate = isOwner || profile.roleKey === 'selected_admin';
+  const canDeleteAll = isOwner;
 
   return (
     <div className="space-y-4">
@@ -56,8 +61,9 @@ export default async function InventoryPage() {
         // Each per-row action follows its OWN permission (the Owner holds all
         // implicitly); the server re-checks the same key on every write.
         canCreate={permissions.has('post_live_item_entry')}
-        canEdit={permissions.has('inventory_edit')}
-        canDelete={permissions.has('inventory_delete')}
+        canEdit={canInitiate}
+        canDelete={canInitiate}
+        isOwner={isOwner}
         canDeleteAll={canDeleteAll}
         // SUPER ADMIN (owner) only — the per-row "Force delete" override for an
         // item held only by resolved records; the DB still protects real links.

@@ -35,6 +35,7 @@ vi.mock('@/lib/inventory/actions', () => ({
   restoreInventoryItemAction: () => emptyState(),
   permanentlyDeleteInventoryItemAction: () => emptyState(),
   requestInventoryItemDeletionAction: () => Promise.resolve({ ok: true }),
+  requestInventoryEditAction: () => Promise.resolve({ ok: true }),
 }));
 
 function row(over: Partial<InventoryRow>): InventoryRow {
@@ -61,12 +62,13 @@ function row(over: Partial<InventoryRow>): InventoryRow {
 }
 
 describe('InventoryItemActions — per-permission Edit / Delete', () => {
-  it('shows View always, and Edit + direct Delete for the Owner (canForceDelete)', () => {
+  it('shows View always, and Edit + direct Delete for the Super Admin (isOwner)', () => {
     render(
       <InventoryItemActions
         row={row({})}
         canEdit={true}
         canDelete={true}
+        isOwner={true}
         canForceDelete={true}
       />,
     );
@@ -75,15 +77,19 @@ describe('InventoryItemActions — per-permission Edit / Delete', () => {
     expect(screen.getByTestId('inventory-delete-item-1')).toBeInTheDocument();
   });
 
-  it('a member granted inventory_delete (not the Owner) gets a DIRECT Delete', () => {
-    // Cynthia's case: canDelete via the grant, canForceDelete=false (not a Super Admin).
-    // She deletes directly — the old "Request deletion" approval detour is gone (Owner
-    // request 2026-08-17: delete is restricted to Super Admins + Cynthia).
+  it('an Admin (not the Owner) may INITIATE — Delete is REQUEST-only (Submit for Approval)', () => {
+    // No isOwner: an Admin sees Edit/Delete, but the Delete modal SUBMITS FOR APPROVAL —
+    // there is no direct "Delete permanently" path (Owner request 2026-08-17). This
+    // supersedes the old Cynthia direct-delete grant.
     render(<InventoryItemActions row={row({})} canEdit={true} canDelete={true} />);
     expect(screen.getByTestId('inventory-edit-item-1')).toBeInTheDocument();
     expect(screen.getByTestId('inventory-delete-item-1')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('inventory-delete-item-1'));
     expect(
-      screen.queryByTestId('inventory-request-delete-item-1'),
+      screen.getByRole('button', { name: /Submit for Approval/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Delete permanently/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -128,6 +134,7 @@ describe('InventoryItemActions — per-permission Edit / Delete', () => {
         row={row({})}
         canEdit={true}
         canDelete={true}
+        isOwner={true}
         canForceDelete={true}
       />,
     );
@@ -150,6 +157,7 @@ describe('InventoryItemActions — per-permission Edit / Delete', () => {
         row={row({})}
         canEdit={true}
         canDelete={true}
+        isOwner={true}
         canForceDelete={true}
       />,
     );
@@ -168,31 +176,20 @@ describe('InventoryItemActions — per-permission Edit / Delete', () => {
     ).toBeInTheDocument();
   });
 
-  it('a granted non-owner gets the direct Delete but NEVER the Super Admin force override', async () => {
-    h.deleteLinked = true;
-    render(
-      <InventoryItemActions
-        row={row({})}
-        canEdit={true}
-        canDelete={true}
-        canForceDelete={false}
-      />,
-    );
-    // Direct delete IS available (canDelete); there is no approval/request detour.
-    expect(screen.getByTestId('inventory-delete-item-1')).toBeInTheDocument();
-    expect(
-      screen.queryByTestId('inventory-request-delete-item-1'),
-    ).not.toBeInTheDocument();
-
+  it('an Admin submits Delete for approval — never a direct delete or force override', () => {
+    render(<InventoryItemActions row={row({})} canEdit={true} canDelete={true} />);
     fireEvent.click(screen.getByTestId('inventory-delete-item-1'));
     fireEvent.change(screen.getByPlaceholderText('DELETE'), {
       target: { value: 'DELETE' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /Delete permanently/i }));
-
-    // Even after the DB refuses (linked records), the force override stays hidden —
-    // force-delete is Owner-only (canForceDelete=false here).
-    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    // Admin path: the confirm button SUBMITS AN APPROVAL REQUEST — it never deletes
+    // directly, and the Super-Admin force override is never available to an Admin.
+    expect(
+      screen.getByRole('button', { name: /Submit for Approval/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Delete permanently/i }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByTestId('inventory-force-delete-item-1')).not.toBeInTheDocument();
   });
 });

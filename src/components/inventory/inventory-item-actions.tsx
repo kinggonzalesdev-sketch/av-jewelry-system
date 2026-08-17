@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState, useActionState } from 'react';
+import { useEffect, useRef, useState, useActionState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 
 import {
   deleteInventoryItemAction,
   forceDeleteInventoryItemAction,
   editInventoryItemAction,
+  requestInventoryItemDeletionAction,
+  requestInventoryEditAction,
 } from '@/lib/inventory/actions';
 import {
   EMPTY_INVENTORY_STATE,
@@ -20,17 +22,22 @@ import { Label } from '@/components/ui/label';
 import { Modal, ModalFieldFull, ModalFormGrid } from '@/components/ui/modal';
 
 /**
- * Per-row Inventory actions: View · Edit · Delete, each in a centered modal.
+ * Per-row Inventory actions: View · Edit · Delete (Owner request 2026-08-17).
  *
- * View is a compact read-only card (Code · Status · Grams · Date Encoded). Delete
- * is a one-step permanent delete that requires typing DELETE (Owner request
- * 2026-07-24, superseding the old archive/reason/dependency flow); the database
- * still refuses to delete an item linked to any business record, and the modal
- * surfaces that block. Every write re-checks permission server-side.
+ * A **Super Admin (owner)** edits/deletes DIRECTLY. An **Admin** may only INITIATE — the
+ * Edit/Delete buttons say "Submit for Approval": they create a Pending owner_approval_request
+ * and mutate NOTHING. Only a Super Admin approves + executes it. The backend (server actions
+ * + owner-only SECURITY DEFINER RPCs) is the real gate; hiding/relabelling here is convenience.
  */
 
 function humanizeStatus(s: string): string {
   return s.replace(/_/g, ' ');
+}
+
+/** Read a FormData field as a plain string (never a File → "[object Object]"). */
+function fdStr(fd: FormData, key: string): string {
+  const v = fd.get(key);
+  return typeof v === 'string' ? v : '';
 }
 
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -46,20 +53,20 @@ export function InventoryItemActions({
   row,
   canEdit,
   canDelete,
+  isOwner = false,
   canForceDelete = false,
   onMutated,
 }: {
   row: InventoryRow;
-  /** Holds `inventory_edit` — shows the Edit action. */
+  /** May INITIATE an edit (Owner → direct; Admin → approval request). */
   canEdit: boolean;
-  /** Holds `inventory_delete` — shows the Delete action. */
+  /** May INITIATE a delete (Owner → direct; Admin → approval request). */
   canDelete: boolean;
-  /** SUPER ADMIN (owner) only — reveals the "Force delete" override inside the
-   *  Delete modal when the normal delete is blocked by resolved records only. */
+  /** Super Admin (owner) — edits/deletes execute directly instead of requesting approval. */
+  isOwner?: boolean;
+  /** Super Admin only — reveals the "Force delete" override when a normal delete is blocked
+   *  only by resolved records. */
   canForceDelete?: boolean;
-  /** Bumps the parent's client-side reload token so the server-paginated Active list
-   *  re-fetches after an edit/delete — router.refresh() alone re-runs only the RSC,
-   *  not the client fetch, so a deleted row would otherwise linger until a full reload. */
   onMutated?: () => void;
 }) {
   const router = useRouter();
@@ -69,8 +76,11 @@ export function InventoryItemActions({
   const [edit, setEdit] = useState(false);
   const [del, setDel] = useState(false);
   const [confirm, setConfirm] = useState('');
+  // Admin request-flow state (edit/delete "Submit for Approval").
+  const [requesting, startRequest] = useTransition();
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
 
-  // --- Edit (correct descriptive details) -----------------------------------
+  // --- Owner DIRECT edit -----------------------------------------------------
   const [editState, editAction, editing] = useActionState<InventoryActionState, FormData>(
     editInventoryItemAction,
     EMPTY_INVENTORY_STATE,
@@ -85,7 +95,7 @@ export function InventoryItemActions({
     }
   }, [editState.success, router, onMutated]);
 
-  // --- Delete (one-step permanent, type DELETE) -----------------------------
+  // --- Owner DIRECT delete ---------------------------------------------------
   const [delState, delAction, deleting] = useActionState<InventoryActionState, FormData>(
     deleteInventoryItemAction,
     EMPTY_INVENTORY_STATE,
@@ -100,7 +110,7 @@ export function InventoryItemActions({
     }
   }, [delState.success, router, onMutated]);
 
-  // --- Force delete (Super Admin override; same type-DELETE confirm) ----------
+  // --- Force delete (Super Admin override) -----------------------------------
   const [forceState, forceAction, forcing] = useActionState<
     InventoryActionState,
     FormData
@@ -115,11 +125,54 @@ export function InventoryItemActions({
     }
   }, [forceState.success, router, onMutated]);
 
-  // The override appears only when the normal delete was refused because the item
-  // is linked to records — and only for a Super Admin. The DB still refuses a real
-  // order / payment / active hold / sale, so this can only clear resolved clutter.
   const showForce =
-    canForceDelete && !!delState.error && /linked to/i.test(delState.error);
+    isOwner && canForceDelete && !!delState.error && /linked to/i.test(delState.error);
+
+  // --- Admin request submitters (Edit/Delete → Approval) ---------------------
+  const submitEditRequest = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const proposed = {
+      itemName: fdStr(fd, 'itemName'),
+      grams: fdStr(fd, 'grams'),
+      size: fdStr(fd, 'size'),
+      supplierName: fdStr(fd, 'supplierName'),
+      facebookName: fdStr(fd, 'facebookName'),
+    };
+    const reason = fdStr(fd, 'reason');
+    startRequest(async () => {
+      const res = await requestInventoryEditAction(row.inventoryItemId, proposed, reason);
+      if (res.ok) {
+        setEdit(false);
+        setNote({ ok: true, text: 'Edit request submitted for approval.' });
+        router.refresh();
+        onMutated?.();
+      } else {
+        setNote({ ok: false, text: res.error });
+      }
+    });
+  };
+
+  const submitDeleteRequest = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (confirm !== 'DELETE') return;
+    const reason = fdStr(new FormData(e.currentTarget), 'reason');
+    startRequest(async () => {
+      const res = await requestInventoryItemDeletionAction(
+        row.inventoryItemId,
+        row.itemCode,
+        reason,
+      );
+      if (res.ok) {
+        setDel(false);
+        setNote({ ok: true, text: 'Deletion request submitted for approval.' });
+        router.refresh();
+        onMutated?.();
+      } else {
+        setNote({ ok: false, text: res.error });
+      }
+    });
+  };
 
   const dateEncoded = row.createdAt
     ? new Date(row.createdAt).toLocaleDateString('en-US', {
@@ -129,8 +182,11 @@ export function InventoryItemActions({
       })
     : '—';
 
+  const editLabel = isOwner ? 'Edit' : 'Request Edit';
+  const deleteLabel = isOwner ? 'Delete' : 'Request Delete';
+
   return (
-    <div className="flex justify-end gap-1">
+    <div className="flex flex-wrap items-center justify-end gap-1">
       <button
         type="button"
         onClick={() => setView(true)}
@@ -142,30 +198,39 @@ export function InventoryItemActions({
       {canEdit ? (
         <button
           type="button"
-          onClick={() => setEdit(true)}
+          onClick={() => {
+            setNote(null);
+            setEdit(true);
+          }}
           data-testid={`inventory-edit-${row.inventoryItemId}`}
           className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
         >
-          Edit
+          {editLabel}
         </button>
       ) : null}
-      {/* Delete — restricted to the Owner and members granted `inventory_delete`
-          (Super Admins + Cynthia, Owner request 2026-08-17). Everyone else never sees
-          this button; the server action AND the SECURITY DEFINER RPC independently
-          re-check the permission, so hiding it is convenience, not the control. The
-          Super-Admin force-delete override lives inside the modal (canForceDelete). */}
       {canDelete ? (
         <button
           type="button"
           onClick={() => {
             setConfirm('');
+            setNote(null);
             setDel(true);
           }}
           data-testid={`inventory-delete-${row.inventoryItemId}`}
           className="rounded-md border border-destructive/40 px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
         >
-          Delete
+          {deleteLabel}
         </button>
+      ) : null}
+
+      {note ? (
+        <p
+          role="status"
+          className={`w-full text-right text-[11px] ${note.ok ? 'text-gold-strong' : 'text-destructive'}`}
+          data-testid={`inventory-request-note-${row.inventoryItemId}`}
+        >
+          {note.text}
+        </p>
       ) : null}
 
       {/* View — compact read-only detail. */}
@@ -181,11 +246,12 @@ export function InventoryItemActions({
         </dl>
       </Modal>
 
-      {/* Edit — correct descriptive details (never the price). */}
+      {/* Edit — Owner saves directly; Admin submits for approval (with before→proposed
+          captured server-side). Never changes the price. */}
       <Modal
         open={edit}
         onClose={() => setEdit(false)}
-        ariaLabel="Correct item details"
+        ariaLabel={isOwner ? 'Correct item details' : 'Request an inventory edit'}
         size="sm"
         critical
         footer={
@@ -196,21 +262,29 @@ export function InventoryItemActions({
             <Button
               type="submit"
               form={`inventory-edit-form-${row.inventoryItemId}`}
-              disabled={editing}
+              disabled={editing || requesting}
             >
-              {editing ? 'Saving…' : 'Save corrections'}
+              {isOwner
+                ? editing
+                  ? 'Saving…'
+                  : 'Save corrections'
+                : requesting
+                  ? 'Submitting…'
+                  : 'Submit for Approval'}
             </Button>
           </>
         }
       >
         <form
           id={`inventory-edit-form-${row.inventoryItemId}`}
-          action={editAction}
+          action={isOwner ? editAction : undefined}
+          onSubmit={isOwner ? undefined : submitEditRequest}
           className="space-y-3"
         >
           <input type="hidden" name="inventoryItemId" value={row.inventoryItemId} />
           <p className="text-xs text-muted-foreground">
             Code <span className="font-mono">{row.itemCode}</span>
+            {isOwner ? null : ' · your change is submitted to a Super Admin for approval.'}
           </p>
           <ModalFormGrid>
             <ModalFieldFull>
@@ -225,8 +299,6 @@ export function InventoryItemActions({
                 className="mt-1 h-9"
               />
             </ModalFieldFull>
-            {/* Facebook Name removed from this form (Owner request). Its stored
-                value is preserved on save via a hidden field so it is never wiped. */}
             <input type="hidden" name="facebookName" value={row.facebookName ?? ''} />
             <div>
               <Label htmlFor={`ed-grams-${row.inventoryItemId}`} className="text-xs">
@@ -262,21 +334,41 @@ export function InventoryItemActions({
                 className="mt-1 h-9"
               />
             </ModalFieldFull>
+            {isOwner ? null : (
+              <ModalFieldFull>
+                <Label htmlFor={`ed-reason-${row.inventoryItemId}`} className="text-xs">
+                  Reason for the Super Admin (optional)
+                </Label>
+                <Input
+                  id={`ed-reason-${row.inventoryItemId}`}
+                  name="reason"
+                  placeholder="e.g. wrong grams encoded"
+                  className="mt-1 h-9"
+                />
+              </ModalFieldFull>
+            )}
           </ModalFormGrid>
           {editState.error ? (
             <p role="alert" className="text-sm text-destructive">
               {editState.error}
             </p>
           ) : null}
+          {note && !note.ok ? (
+            <p role="alert" className="text-sm text-destructive">
+              {note.text}
+            </p>
+          ) : null}
         </form>
       </Modal>
 
-      {/* Delete — one-step permanent delete, type DELETE to confirm. */}
+      {/* Delete — Owner deletes directly (with force override); Admin submits for approval. */}
       <Modal
         open={del}
         onClose={() => setDel(false)}
-        title="Permanently delete item"
-        description="This cannot be undone."
+        title={isOwner ? 'Permanently delete item' : 'Request item deletion'}
+        description={
+          isOwner ? 'This cannot be undone.' : 'A Super Admin must approve before it deletes.'
+        }
         size="sm"
         critical
         footer={
@@ -288,26 +380,34 @@ export function InventoryItemActions({
               type="submit"
               variant="destructive"
               form={`inventory-delete-form-${row.inventoryItemId}`}
-              disabled={deleting || confirm !== 'DELETE'}
+              disabled={(deleting || requesting) || confirm !== 'DELETE'}
             >
-              {deleting ? 'Deleting…' : 'Delete permanently'}
+              {isOwner
+                ? deleting
+                  ? 'Deleting…'
+                  : 'Delete permanently'
+                : requesting
+                  ? 'Submitting…'
+                  : 'Submit for Approval'}
             </Button>
           </>
         }
       >
         <form
           id={`inventory-delete-form-${row.inventoryItemId}`}
-          action={delAction}
+          action={isOwner ? delAction : undefined}
+          onSubmit={isOwner ? undefined : submitDeleteRequest}
           className="space-y-3"
         >
           <input type="hidden" name="inventoryItemId" value={row.inventoryItemId} />
           <p className="text-sm">
-            Permanently delete <span className="font-mono">{row.itemCode}</span>? This
-            cannot be undone.
+            {isOwner ? 'Permanently delete ' : 'Request deletion of '}
+            <span className="font-mono">{row.itemCode}</span>?
+            {isOwner ? ' This cannot be undone.' : ' The item stays until a Super Admin approves.'}
           </p>
           <p className="text-xs text-muted-foreground">
             An item linked to any order, claim, or reservation cannot be deleted — its
-            records are protected.
+            records are protected (re-checked at approval time).
           </p>
           <div>
             <Label htmlFor={`del-confirm-${row.inventoryItemId}`} className="text-xs">
@@ -323,17 +423,31 @@ export function InventoryItemActions({
               className="mt-1 h-9"
             />
           </div>
+          {isOwner ? null : (
+            <div>
+              <Label htmlFor={`del-reason-${row.inventoryItemId}`} className="text-xs">
+                Reason for the Super Admin (optional)
+              </Label>
+              <Input
+                id={`del-reason-${row.inventoryItemId}`}
+                name="reason"
+                placeholder="e.g. duplicate / mis-encoded"
+                className="mt-1 h-9"
+              />
+            </div>
+          )}
           {delState.error ? (
             <p role="alert" className="text-sm text-destructive">
               {delState.error}
             </p>
           ) : null}
+          {note && !note.ok ? (
+            <p role="alert" className="text-sm text-destructive">
+              {note.text}
+            </p>
+          ) : null}
         </form>
 
-        {/* Super Admin override — only after a normal delete is refused because the
-            item is linked to records. The database still protects a real order,
-            payment, active hold, layaway, or sale, so this only clears resolved
-            clutter (e.g. a completed return review, a released reservation). */}
         {showForce ? (
           <div className="mt-3 space-y-2 rounded-md border border-destructive/40 bg-destructive/5 p-2.5">
             <p className="text-xs text-muted-foreground">

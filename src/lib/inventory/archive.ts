@@ -300,20 +300,19 @@ export async function permanentlyDeleteInventoryItem(
 }
 
 /**
- * One-step permanent delete of an inventory item — restricted to the Owner and any
- * member granted the `inventory_delete` permission (Owner request 2026-08-17; only
- * Super Admins + Cynthia hold it). Role is NOT authority here: a Selected Admin
- * without the grant is denied. The SECURITY DEFINER function is the real gate — it
- * re-checks `has_permission('inventory_delete')` and BLOCKS the delete when the
- * item is linked to any business record (the same dependency definition the
- * archive flow used), so an in-use item can never be removed. Intended for
- * mis-encoded / duplicate / test rows. Irreversible; the audit row survives it.
+ * One-step permanent delete of an inventory item — **Super Admin (owner) ONLY**
+ * (Owner request 2026-08-17, supersedes the inventory_delete-grant model incl. Cynthia).
+ * An Admin never deletes directly; they submit an approval REQUEST, and this same path
+ * runs at approval time in the Owner's session. The SECURITY DEFINER function is the real
+ * gate — it re-checks `is_owner()` and BLOCKS the delete when the item is linked to any
+ * business record (dependencies are re-counted at EXECUTION time), so an in-use item can
+ * never be removed. Irreversible; the audit row survives it.
  */
 export async function deleteInventoryItemDirect(
   inventoryItemId: string,
 ): Promise<InventoryMutationResult> {
   try {
-    await requirePermission('inventory_delete');
+    await requireOwner();
   } catch (cause) {
     if (cause instanceof AuthorizationError) {
       await recordAuditEvent({
@@ -498,8 +497,11 @@ export async function editInventoryItemDetails(input: {
     return { ok: false, error: 'Facebook name must be 160 characters or fewer.' };
   }
 
+  // DIRECT edit is Super-Admin only (Owner request 2026-08-17). An Admin edits via an
+  // approval REQUEST (see requestInventoryEdit); the owner-gated apply_inventory_item_edit
+  // RPC then applies it after approval. This closes the direct-mutation path for Admins.
   try {
-    await requirePermission('inventory_monitoring');
+    await requireOwner();
   } catch (cause) {
     if (cause instanceof AuthorizationError) {
       await recordAuditEvent({

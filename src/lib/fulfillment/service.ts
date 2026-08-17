@@ -44,6 +44,7 @@ export const OWNER_APPROVAL_KINDS = [
   'layaway_ledger_delete',
   'order_details_edit',
   'official_order_delete',
+  'inventory_item_edit',
 ] as const;
 
 export type OwnerApprovalKind = (typeof OWNER_APPROVAL_KINDS)[number];
@@ -689,10 +690,25 @@ export async function executeOwnerApproval(
       }));
       break;
     case 'inventory_item_delete':
+      // Re-checks dependencies at EXECUTION time (protected-item safety) + owner gate.
       ({ error: delError } = await supabase.rpc('delete_inventory_item_direct', {
         p_item_id: eid,
       }));
       break;
+    case 'inventory_item_edit': {
+      // entity_id = the item; payload carries { original, proposed }. The owner-gated RPC
+      // re-reads the row, STALE-CHECKS it against `original`, then applies `proposed`.
+      const pl = (request.payload ?? {}) as {
+        proposed?: Record<string, unknown>;
+        original?: Record<string, unknown>;
+      };
+      ({ error: delError } = await supabase.rpc('apply_inventory_item_edit', {
+        p_item_id: eid,
+        p_proposed: pl.proposed ?? {},
+        p_original: pl.original ?? null,
+      }));
+      break;
+    }
     case 'scrap_sale_delete':
       ({ error: delError } = await supabase.rpc('delete_scrap_sale', { p_id: eid }));
       break;
@@ -816,6 +832,9 @@ export type ApprovalRow = {
   invoiceNumber: string | null;
   customerName: string | null;
   requestedBy: string | null;
+  /** The request payload — inventory Edit carries { original, proposed, itemCode };
+   *  inventory Delete carries the item snapshot { itemCode, itemName, grams }. */
+  payload: Record<string, unknown> | null;
 };
 
 /**
@@ -840,7 +859,7 @@ export async function listOwnerApprovals(): Promise<ApprovalRow[]> {
   const { data } = await supabase
     .from('owner_approval_requests')
     .select(
-      'id, action_kind, status, entity_type, entity_id, reason, evidence_note, requested_at, requested_by, decided_at, executed_at',
+      'id, action_kind, status, entity_type, entity_id, reason, evidence_note, requested_at, requested_by, decided_at, executed_at, payload',
     )
     .order('requested_at', { ascending: false })
     .limit(50);
@@ -862,6 +881,7 @@ export async function listOwnerApprovals(): Promise<ApprovalRow[]> {
     invoiceNumber: null,
     customerName: null,
     requestedBy: null,
+    payload: (r.payload as Record<string, unknown> | null) ?? null,
   }));
 
   // Enrich with the order (number / invoice / customer) — the entity is an official
@@ -916,6 +936,14 @@ export async function listOwnerApprovals(): Promise<ApprovalRow[]> {
     for (const r of rows) {
       const id = reqIdByApproval.get(r.id);
       if (id) r.requestedBy = nameById.get(id) ?? null;
+    }
+  }
+
+  // Inventory requests carry the item code in the payload — surface it in the Item column.
+  for (const r of rows) {
+    if (r.entityType === 'inventory_item' && r.payload) {
+      const code = (r.payload.itemCode as string | null) ?? null;
+      if (code) r.customerName = code;
     }
   }
 

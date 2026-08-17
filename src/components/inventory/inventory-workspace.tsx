@@ -104,6 +104,7 @@ export function InventoryWorkspace({
   canCreate = false,
   canEdit = false,
   canDelete = false,
+  isOwner = false,
   canDeleteAll = false,
   canForceDelete = false,
   canReturnCompleted = false,
@@ -112,6 +113,8 @@ export function InventoryWorkspace({
   initialPage: InventoryPageResult;
   completed?: CompletedInventoryRow[];
   canMonitor: boolean;
+  /** Super Admin (owner) — per-row Edit/Delete execute directly; an Admin only requests. */
+  isOwner?: boolean;
   /** Holds `post_live_item_entry` — shows the "New Entry" (Add Item) control. When
    *  false the button is hidden (the server also blocks the action). */
   canCreate?: boolean;
@@ -639,6 +642,7 @@ export function InventoryWorkspace({
                             row={i}
                             canEdit={canEdit}
                             canDelete={canDelete}
+                            isOwner={isOwner}
                             canForceDelete={canForceDelete}
                             onMutated={reloadActive}
                           />

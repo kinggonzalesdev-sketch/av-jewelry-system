@@ -26,6 +26,7 @@ function approval(over: Partial<ApprovalRow> = {}): ApprovalRow {
     invoiceNumber: 'INV-000137',
     customerName: 'King Gonzales',
     requestedBy: 'Ana Cruz',
+    payload: null,
     ...over,
   };
 }

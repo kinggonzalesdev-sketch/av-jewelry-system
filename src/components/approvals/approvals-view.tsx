@@ -233,6 +233,52 @@ function DetailRow({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
+/** Before → Proposed comparison for an inventory Edit approval (changed fields only). */
+function InventoryEditDiff({ payload }: { payload: Record<string, unknown> | null }) {
+  const original = (payload?.original ?? {}) as Record<string, unknown>;
+  const proposed = (payload?.proposed ?? {}) as Record<string, unknown>;
+  const norm = (v: unknown): string =>
+    typeof v === 'string' ? v.trim() : typeof v === 'number' ? String(v) : '';
+  const fields: { key: string; label: string }[] = [
+    { key: 'itemName', label: 'Item name' },
+    { key: 'grams', label: 'Grams' },
+    { key: 'size', label: 'Size' },
+    { key: 'supplierName', label: 'Supplier' },
+    { key: 'facebookName', label: 'Facebook name' },
+  ];
+  const changed = fields.filter((f) => norm(original[f.key]) !== norm(proposed[f.key]));
+  return (
+    <div
+      className="mt-3 rounded-md border border-border p-2.5"
+      data-testid="inventory-edit-diff"
+    >
+      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        Before → Proposed
+      </p>
+      {changed.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No field changes captured.</p>
+      ) : (
+        <div className="space-y-1 text-sm">
+          {changed.map((f) => (
+            <div key={f.key} className="grid grid-cols-[92px_1fr] gap-2">
+              <span className="text-muted-foreground">{f.label}</span>
+              <span>
+                <span className="text-destructive line-through">
+                  {norm(original[f.key]) || '—'}
+                </span>
+                {' → '}
+                <span className="font-medium text-gold-strong">
+                  {norm(proposed[f.key]) || '—'}
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ApprovalDetail({
   approval: a,
   isOwner,
@@ -282,6 +328,10 @@ function ApprovalDetail({
           <DetailRow label="Executed" value={fmtWhen(a.executedAt)} />
         ) : null}
       </dl>
+
+      {a.actionKind === 'inventory_item_edit' ? (
+        <InventoryEditDiff payload={a.payload} />
+      ) : null}
 
       {/* The SAME guarded server actions as the retired panel. Cancellation is a
           one-step Accept/Reject; every other kind is Approve → Execute. Only the

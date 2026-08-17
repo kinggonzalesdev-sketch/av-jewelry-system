@@ -4,9 +4,11 @@ import type { InventoryActionState } from '@/lib/inventory/action-state';
 import { revalidatePath } from 'next/cache';
 
 import {
-  requestOwnerDeletion,
-  type RequestDeletionResult,
-} from '@/lib/authz/request-deletion';
+  requestInventoryDelete,
+  requestInventoryEdit,
+  type InventoryEditProposal,
+  type InventoryRequestResult,
+} from '@/lib/inventory/requests';
 
 import {
   archiveInventoryItem,
@@ -381,16 +383,25 @@ export async function deleteInventoryItemAction(
  */
 export async function requestInventoryItemDeletionAction(
   itemId: string,
-  itemLabel: string,
+  _itemLabel: string,
   reason: string,
-): Promise<RequestDeletionResult> {
-  const result = await requestOwnerDeletion(
-    'inventory_item_delete',
-    'inventory_item',
-    itemId,
-    `inventory item "${itemLabel}"`,
-    reason,
-  );
+): Promise<InventoryRequestResult> {
+  const result = await requestInventoryDelete(itemId, reason);
+  if (result.ok) revalidatePath('/orders/inventory');
+  return result;
+}
+
+/**
+ * Admin (or Owner) submits an inventory EDIT for Super-Admin approval. Captures the
+ * ORIGINAL + PROPOSED values in the request payload; NOTHING is mutated until a Super
+ * Admin approves + executes it.
+ */
+export async function requestInventoryEditAction(
+  itemId: string,
+  proposed: InventoryEditProposal,
+  reason: string,
+): Promise<InventoryRequestResult> {
+  const result = await requestInventoryEdit(itemId, proposed, reason);
   if (result.ok) revalidatePath('/orders/inventory');
   return result;
 }

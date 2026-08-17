@@ -1,0 +1,12 @@
+-- Inventory approval workflow (2026-08-17). Admins INITIATE (request); only a Super Admin
+-- (owner) EXECUTES — directly or via the approvals executor (which runs in the Owner's
+-- session). Direct-mutation RPCs are OWNER-ONLY so an Admin cannot bypass via API/RPC.
+-- Applied live via Supabase MCP; committed here so the schema is not drift-only.
+-- See the migration body applied via MCP (inventory_approval_workflow):
+--   1) inventory_item_dependencies gate -> owner|selected_admin (fixes the false
+--      "inventory_monitoring permission is required" error on Admin delete initiation);
+--   2) delete_inventory_item_direct -> OWNER-ONLY (was the inventory_delete permission);
+--   3) apply_inventory_item_edit(p_item_id, p_proposed, p_original) -> OWNER-ONLY, re-reads
+--      + stale-checks against the values captured at request time, then applies proposed.
+-- The exact function bodies are captured in the MCP migration of the same name.
+select 1;

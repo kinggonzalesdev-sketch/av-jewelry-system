@@ -39,11 +39,14 @@ describe('the Owner approvals', () => {
       // an order routes through this SAME Owner-approval queue.
       'order_details_edit',
       'official_order_delete',
+      // Inventory approval workflow (2026-08-17): an Admin's Inventory Edit routes here as a
+      // Before→Proposed request; only a Super Admin approve executes it (delete already above).
+      'inventory_item_edit',
     ]);
   });
 
-  it('has exactly thirteen — nothing else may be smuggled in', () => {
-    expect(OWNER_APPROVAL_KINDS).toHaveLength(13);
+  it('has exactly fourteen — nothing else may be smuggled in', () => {
+    expect(OWNER_APPROVAL_KINDS).toHaveLength(14);
   });
 });
 
