@@ -43,9 +43,9 @@ describe('approved navigation model (navigation.ts is the source of truth)', () 
       'Layaway',
       'Scrap',
       'Approvals',
-      // Cash & Reports group (Owner-approved 2026-08-10).
+      // Daily Cash Summary — flat item; the Reports sidebar link + the "Cash &
+      // Reports" sub-sidebar were removed (Owner request 2026-08-17).
       'Daily Cash Summary',
-      'Reports',
       // Team Management collapsible group (Owner request 2026-07-22). Settings moved
       // to the fixed footer, so it is no longer a PRIMARY_NAV item.
       'Attendance',
@@ -68,7 +68,6 @@ describe('approved navigation model (navigation.ts is the source of truth)', () 
       'Scrap',
       'Approvals',
       'Daily Cash Summary',
-      'Reports',
       'Attendance',
       'Review Attendance',
       'Payroll',

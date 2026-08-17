@@ -11,6 +11,8 @@ export type DailyCashSummary = {
   expenses: string;
   remittance: string;
   otherCashOut: string;
+  /** Cash-paid scrap purchases (from go-live) — a Cash Out that reduces Expected Cash. */
+  scrapCashOut: string;
   expected: string;
   /** The saved physical count for this day, or null if not counted yet. */
   actualCount: string | null;

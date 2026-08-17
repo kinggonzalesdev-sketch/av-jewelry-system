@@ -32,9 +32,9 @@ describe('LOCKED: desktop sidebar (exact order, labels, routes, icons)', () => {
       { label: 'Scrap', href: '/admin/scrap', icon: '♻' },
       // Approvals — dedicated Owner approval queue (Owner request 2026-08-09).
       { label: 'Approvals', href: '/approvals', icon: '✓' },
-      // Cash & Reports group (Owner-approved 2026-08-10).
+      // Daily Cash Summary — flat item; the Reports sidebar link + the "Cash &
+      // Reports" sub-sidebar were removed (Owner request 2026-08-17).
       { label: 'Daily Cash Summary', href: '/cash/daily', icon: '▦' },
-      { label: 'Reports', href: '/reports', icon: '▩' },
       // Team Management collapsible group (Owner request 2026-07-22). Settings moved
       // to the fixed footer (SETTINGS_ITEM), so it is no longer in PRIMARY_NAV.
       { label: 'Attendance', href: '/admin/attendance', icon: '⏱' },
@@ -60,7 +60,6 @@ describe('LOCKED: mobile navigation', () => {
       'Scrap',
       'Approvals',
       'Daily Cash Summary',
-      'Reports',
       'Attendance',
       'Review Attendance',
       'Payroll',

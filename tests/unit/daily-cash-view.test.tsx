@@ -88,6 +88,7 @@ const summary: DailyCashSummary = {
   expenses: '0',
   remittance: '0',
   otherCashOut: '0',
+  scrapCashOut: '0',
   expected: '6000',
   actualCount: null,
   closeStatus: 'open',

@@ -142,21 +142,16 @@ export const PRIMARY_NAV: readonly NavItem[] = [
     mobilePrimary: false,
     available: true,
   },
-  // Cash & Reports — the daily cash reconciliation module + Reports (Owner-approved
+  // Daily Cash Summary — the daily cash reconciliation module (Owner-approved
   // 2026-08-10). Gated by view_reports (financial); the page re-checks server-side.
+  // A flat top-level item: the "Cash & Reports" sub-sidebar and the standalone
+  // Reports link were removed (Owner request 2026-08-17). The /reports route still
+  // exists (reached from the Dashboard's Export Reports) — it is just not a sidebar
+  // item anymore.
   {
     href: '/cash/daily',
     label: 'Daily Cash Summary',
     icon: '▦',
-    section: 'Cash & Reports',
-    mobilePrimary: false,
-    available: true,
-  },
-  {
-    href: '/reports',
-    label: 'Reports',
-    icon: '▩',
-    section: 'Cash & Reports',
     mobilePrimary: false,
     available: true,
   },

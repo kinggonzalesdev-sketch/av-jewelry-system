@@ -185,6 +185,7 @@ export function DailyCashView({
             { k: 'Expenses / Deductions', v: summary.expenses },
             { k: 'Remittance', v: summary.remittance },
             { k: 'Other Cash Out', v: summary.otherCashOut },
+            { k: 'Scrap Cash-Out', v: summary.scrapCashOut },
             { k: 'Expected Cash on Hand', v: summary.expected },
             { k: 'Actual Cash Count', v: actual || '' },
             { k: 'Difference', v: diffSigned },
@@ -421,6 +422,13 @@ export function DailyCashView({
                 color={C.red}
               />
             ) : null}
+            {toCents(summary.scrapCashOut) > 0n ? (
+              <BreakRow
+                label="Scrap Cash-Out"
+                value={`- ${money(summary.scrapCashOut)}`}
+                color={C.red}
+              />
+            ) : null}
             <div className="my-2 border-t border-border" />
             <div className="flex items-end justify-between">
               <div>
@@ -509,10 +517,6 @@ export function DailyCashView({
         />
         <TradesExpensesBox date={date} onFinancialChange={refreshSummary} />
       </div>
-
-      <p className="pt-1 text-center text-[11px] text-muted-foreground">
-        All amounts are in Philippine Peso (₱).
-      </p>
 
       {showMore ? (
         <MoreCashModal

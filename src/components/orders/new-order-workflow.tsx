@@ -117,25 +117,49 @@ function newRow(): Row {
 
 const GRAMS_RE = /^\d{0,6}(\.\d{0,3})?$/;
 
-/** One Walk-In payment (up to two). Money is a raw string; the DB verifies it. */
-type PayRow = { key: string; method: string; amount: string; reference: string };
+/** One Walk-In payment (up to three). Money is a raw string; the DB verifies it. */
+type PayRow = {
+  key: string;
+  method: string;
+  amount: string;
+  reference: string;
+  // "Scrap" method ONLY — the trade-in captured inline on the payment row. Ignored (and
+  // never sent) for every other method. Material is the DB's canonical 'gold' | 'silver'.
+  scrapMaterial: string;
+  scrapKarat: string;
+  scrapGrams: string;
+};
 
 let paySeq = 0;
 function newPay(method: string = DEFAULT_PAYMENT_METHOD): PayRow {
   paySeq += 1;
-  return { key: `pay-${paySeq}-${Date.now()}`, method, amount: '', reference: '' };
+  return {
+    key: `pay-${paySeq}-${Date.now()}`,
+    method,
+    amount: '',
+    reference: '',
+    scrapMaterial: 'gold',
+    scrapKarat: '',
+    scrapGrams: '',
+  };
 }
 
-const PAYMENT_METHODS = PAYMENT_METHOD_OPTIONS;
-
-// "Trade" (trade-in / barter) is now a CANONICAL Mode of Payment offered on every
-// dropdown (Owner request 2026-08-13), so it comes from PAYMENT_METHOD_OPTIONS like any
-// other method. The Walk-In list is now just an alias for the shared options (kept for
-// readability at the call site).
-const WALKIN_PAYMENT_METHODS = PAYMENT_METHOD_OPTIONS;
+// "Trade" (trade-in / barter) is a CANONICAL Mode of Payment offered on every dropdown
+// (Owner request 2026-08-13), so it comes from PAYMENT_METHOD_OPTIONS like any other.
+// Walk-In ADDS a "Scrap" (trade-in for scrap gold/silver) method ON TOP of the shared
+// options (Owner 2026-08-17). Scrap is deliberately NOT added to the global
+// PAYMENT_METHODS constant — it must never appear on Orders / Layaway / capture
+// dropdowns, only here. Picking it reveals a small scrap sub-form; on save the DB records
+// a paired scrap purchase (cash-OUT) that nets the Scrap cash-IN so the drawer only moves
+// by the real cash received.
+const SCRAP_PAYMENT_METHOD = 'Scrap';
+const WALKIN_PAYMENT_METHODS: ReadonlyArray<{ value: string; label: string }> = [
+  ...PAYMENT_METHOD_OPTIONS,
+  { value: SCRAP_PAYMENT_METHOD, label: 'Scrap (trade-in)' },
+];
 
 function methodLabel(value: string): string {
-  return PAYMENT_METHODS.find((m) => m.value === value)?.label ?? value;
+  return WALKIN_PAYMENT_METHODS.find((m) => m.value === value)?.label ?? value;
 }
 
 /** The shared item-rows editor + order summary. Used by both modes. */
@@ -787,6 +811,12 @@ export function NewOrderModal({
         if (!PRICE_RE.test(p.amount.trim()) || Number(p.amount) <= 0) {
           return 'Enter a valid payment amount, or clear the payment row.';
         }
+        if (p.method === SCRAP_PAYMENT_METHOD) {
+          const g = p.scrapGrams.trim();
+          if (!g || !(Number(g) > 0)) {
+            return 'A Scrap payment needs the scrap weight in grams (greater than zero).';
+          }
+        }
       }
       if (paidCentavos > totalCentavos) {
         return 'Total payments cannot exceed the order total.';
@@ -966,6 +996,15 @@ export function NewOrderModal({
             amount: p.amount.trim(),
             reference: p.reference.trim() || null,
             date: saleDate || null,
+            // Scrap detail rides along ONLY for a Scrap payment; the DB reads it solely
+            // when method === 'Scrap' and records the paired scrap purchase (cash-OUT).
+            ...(p.method === SCRAP_PAYMENT_METHOD
+              ? {
+                  scrapMaterial: p.scrapMaterial,
+                  scrapKarat: p.scrapKarat.trim() || null,
+                  scrapGrams: p.scrapGrams.trim() || null,
+                }
+              : {}),
           })),
         saleDate: saleDate || null,
         adminId,
@@ -1239,7 +1278,13 @@ export function NewOrderModal({
                   >
                     <span className="text-muted-foreground">
                       {methodLabel(p.method)}
-                      {p.reference.trim() ? ` · ${p.reference.trim()}` : ''}
+                      {p.method === SCRAP_PAYMENT_METHOD && p.scrapGrams.trim()
+                        ? ` · ${p.scrapGrams.trim()}g ${p.scrapMaterial}${
+                            p.scrapKarat.trim() ? ` ${p.scrapKarat.trim()}` : ''
+                          }`
+                        : p.reference.trim()
+                          ? ` · ${p.reference.trim()}`
+                          : ''}
                     </span>
                     <span className="tabular-nums">{formatPeso(p.amount.trim())}</span>
                   </div>
@@ -1489,6 +1534,60 @@ export function NewOrderModal({
                     />
                   </label>
                 </div>
+                {/* Scrap (trade-in) sub-form — only when this payment's method is Scrap.
+                    The amount above is the scrap's peso value that settles the order; the
+                    weight/material/karat below are logged as the shop's scrap purchase. */}
+                {p.method === SCRAP_PAYMENT_METHOD ? (
+                  <div
+                    className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5"
+                    data-testid={`walkin-scrap-${i}`}
+                  >
+                    <p className="mb-1.5 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                      Scrap trade-in details
+                    </p>
+                    <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-3">
+                      <label className="block">
+                        <L>Material</L>
+                        <select
+                          value={p.scrapMaterial}
+                          onChange={(e) =>
+                            patchPay(p.key, { scrapMaterial: e.target.value })
+                          }
+                          className={fieldClass}
+                          data-testid={`walkin-scrap-material-${i}`}
+                        >
+                          <option value="gold">Gold</option>
+                          <option value="silver">Silver</option>
+                        </select>
+                      </label>
+                      <label className="block">
+                        <L>Karat (optional)</L>
+                        <input
+                          className={fieldClass}
+                          placeholder="e.g. 18K"
+                          value={p.scrapKarat}
+                          onChange={(e) => patchPay(p.key, { scrapKarat: e.target.value })}
+                          data-testid={`walkin-scrap-karat-${i}`}
+                        />
+                      </label>
+                      <label className="block">
+                        <L>Grams</L>
+                        <input
+                          className={cn(fieldClass, 'text-right tabular-nums')}
+                          inputMode="decimal"
+                          placeholder="0.00"
+                          value={p.scrapGrams}
+                          onChange={(e) => patchPay(p.key, { scrapGrams: e.target.value })}
+                          data-testid={`walkin-scrap-grams-${i}`}
+                        />
+                      </label>
+                    </div>
+                    <p className="mt-1.5 text-[10px] leading-snug text-muted-foreground">
+                      The shop buys this scrap for cash — it settles the order and is logged
+                      in Scrap. The drawer only moves by the cash actually received.
+                    </p>
+                  </div>
+                ) : null}
                 {/* Reference + Date share one line (Date is the shared sale date,
                     shown once beside the last payment's reference). */}
                 <div className="mt-2 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">

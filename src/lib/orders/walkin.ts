@@ -131,12 +131,20 @@ export async function createWalkInOrder(input: {
   };
 }
 
-/** One payment in a Walk-In save (up to two). Money crosses as a string. */
+/** One payment in a Walk-In save (up to three). Money crosses as a string. */
 export type WalkInPaymentInput = {
   method: string;
   amount: string;
   reference?: string | null;
   date?: string | null;
+  /**
+   * Walk-In "Scrap" method only — the trade-in the customer paid with. When present
+   * (method === 'Scrap'), the DB records a paired scrap purchase (cash-OUT) in the SAME
+   * transaction so the drawer nets the Scrap cash-IN to zero and the scrap is traceable.
+   */
+  scrapMaterial?: string | null;
+  scrapKarat?: string | null;
+  scrapGrams?: string | null;
 };
 
 export type SaveWalkInInput = {
@@ -200,6 +208,11 @@ export async function saveWalkInOrder(input: SaveWalkInInput): Promise<SaveWalkI
     amount: p.amount.trim(),
     reference: p.reference?.trim() || null,
     date: p.date || null,
+    // Scrap-only detail; the DB reads these ONLY when method === 'Scrap' and ignores
+    // them for every other method (so a stray value never touches a normal payment).
+    scrap_material: p.scrapMaterial?.trim() || null,
+    scrap_karat: p.scrapKarat?.trim() || null,
+    scrap_grams: p.scrapGrams?.trim() || null,
   }));
 
   const res = (await supabase.rpc('save_walkin_order', {

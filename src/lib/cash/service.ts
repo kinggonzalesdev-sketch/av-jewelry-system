@@ -54,6 +54,7 @@ export async function getDailyCashSummary(date: string): Promise<DailyCashSummar
     expenses: money(d.expenses),
     remittance: money(d.remittance),
     otherCashOut: money(d.otherCashOut),
+    scrapCashOut: money(d.scrapCashOut),
     expected: money(d.expected),
     actualCount: d.actualCount == null ? null : money(d.actualCount),
     closeStatus: d.closeStatus === 'closed' ? 'closed' : 'open',
