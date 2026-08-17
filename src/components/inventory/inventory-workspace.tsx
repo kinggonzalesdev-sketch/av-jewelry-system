@@ -118,9 +118,12 @@ export function InventoryWorkspace({
   /** Holds `post_live_item_entry` — shows the "New Entry" (Add Item) control. When
    *  false the button is hidden (the server also blocks the action). */
   canCreate?: boolean;
-  /** Holds `inventory_edit` — shows the per-row Edit action. */
+  /** Owner OR Admin — shows the per-row Edit action (role-based: the Owner edits
+   *  directly; an Admin's Edit becomes an approval request). */
   canEdit?: boolean;
-  /** Holds `inventory_delete` — shows the per-row Delete action. */
+  /** Owner OR Admin — shows the per-row Delete action (role-based: the Owner deletes
+   *  directly; an Admin's Delete becomes an approval request). Supersedes the old
+   *  per-user `inventory_delete` grant model (incl. Cynthia). */
   canDelete?: boolean;
   /** SUPER ADMIN (owner) only — shows the bulk "Delete All" control. */
   canDeleteAll?: boolean;
