@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { getOrderDetail } from '@/lib/orders/detail';
+import { listOrdersPage, type OrdersPageResult } from '@/lib/orders/service';
 import {
   addOrderItem,
   removeOrderItem,
@@ -129,6 +130,20 @@ export type NewOrderDataResult =
  * lazy-loading widens no access. On any failure it returns a typed error the caller
  * surfaces as a retry — the form never opens on partial data.
  */
+/** Load ONE PAGE of Orders with an EXACT server-side total + full-store card counts (Owner
+ *  request — Orders must scale to 50k+ without a browser full-load). Safe + cheap to call on
+ *  every search / flow-card / date / page change. */
+export async function loadOrdersPageAction(opts: {
+  search?: string;
+  card?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  page?: number;
+  size?: number;
+}): Promise<OrdersPageResult> {
+  return listOrdersPage(opts);
+}
+
 export async function loadNewOrderDataAction(): Promise<NewOrderDataResult> {
   if (!(await getGrantedPermissions()).has('claim_capture')) {
     return { ok: false, error: 'You do not have permission to create an order.' };

@@ -65,6 +65,142 @@ function one<T>(value: unknown): T | undefined {
 export type OrdersResult =
   { ok: true; rows: OrderListRow[] } | { ok: false; reason: string };
 
+/** The ONE embed shape used by both the full list and the server-paginated page, so the
+ *  row shape + money are byte-for-byte identical. */
+const ORDER_LIST_SELECT = `id, order_number, invoice_number, status, created_at, updated_at, completed_at,
+   fulfillment_destination, order_source, converted_to_layaway, waybill_number,
+   customers ( display_name, facebook_conversation_url ),
+   fulfillment_records ( status, dispatched_at ),
+   layaway_arrangements ( status )`;
+
+/** Map ONE official_orders row (+ the batched authoritative balance) to an OrderListRow.
+ *  Shared by listOrders and listOrdersPage — the money never comes from anywhere else. */
+function toOrderListRow(
+  row: unknown,
+  balanceById: Awaited<ReturnType<typeof getOrderBalances>>,
+): OrderListRow {
+  const r = row as Record<string, unknown>;
+  const customer = one<{
+    display_name: string;
+    facebook_conversation_url: string | null;
+  }>(r.customers);
+  const fulfillment = one<{ status: string; dispatched_at: string | null }>(
+    r.fulfillment_records,
+  );
+  const layaway = one<{ status: string }>(r.layaway_arrangements);
+  const balance = balanceById.get(r.id as string);
+
+  let paymentStatus: PaymentStatus;
+  let totalAmountPayable = '';
+  let outstandingBalance = '';
+  if (!balance || !balance.ok) {
+    paymentStatus = 'unavailable';
+  } else {
+    totalAmountPayable = balance.balance.totalAmountPayable;
+    outstandingBalance = balance.balance.outstandingBalance;
+    if (balance.balance.paidInFull) {
+      paymentStatus = 'paid_in_full';
+    } else if (Number(balance.balance.verifiedNetPayments) > 0) {
+      paymentStatus = 'partial';
+    } else {
+      paymentStatus = 'awaiting';
+    }
+  }
+
+  return {
+    officialOrderId: r.id as string,
+    orderNumber: (r.order_number as string | null) ?? '—',
+    invoiceNumber: (r.invoice_number as string | null) ?? '—',
+    waybillNumber: (r.waybill_number as string | null) ?? null,
+    customerDisplayName: customer?.display_name ?? 'Unknown',
+    facebookUrl: customer?.facebook_conversation_url ?? null,
+    status: (r.status as string | null) ?? 'unknown',
+    createdAt: r.created_at as string,
+    totalAmountPayable,
+    outstandingBalance,
+    paymentStatus,
+    fulfillmentStatus: fulfillment?.status ?? null,
+    layawayStatus: layaway?.status ?? null,
+    shipDate: fulfillment?.dispatched_at ?? null,
+    fulfillmentDestination: (r.fulfillment_destination as string | null) ?? null,
+    orderSource: (r.order_source as string | null) ?? 'online',
+    convertedToLayaway: r.converted_to_layaway === true,
+    updatedAt: (r.updated_at as string | null) ?? null,
+    completedAt: (r.completed_at as string | null) ?? null,
+  };
+}
+
+export type OrdersPageResult =
+  | {
+      ok: true;
+      rows: OrderListRow[];
+      /** EXACT count of orders matching the active flow-card + search + date. */
+      total: number;
+      /** Full-store counts per status card (ignores search/date/card — matches the UI). */
+      cardCounts: Record<string, number>;
+    }
+  | { ok: false; reason: string };
+
+/**
+ * ONE PAGE of Official Orders with an EXACT server-side total + full-store card counts
+ * (Owner request — Orders must scale to 50,000+ without loading every row into the
+ * browser). The flow-card filter, search (order#/invoice#/waybill/customer), date range,
+ * counts, and total are all computed in SQL (`orders_page`); only this page's ids come
+ * back, then the SAME `ORDER_LIST_SELECT` + `getOrderBalances` reader builds the rows — so
+ * the row shape + money are identical to the full list. Rows keep the RPC's sort order.
+ */
+export async function listOrdersPage(opts: {
+  search?: string;
+  card?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  page?: number;
+  size?: number;
+}): Promise<OrdersPageResult> {
+  const supabase = await createClient();
+  const size = Math.min(Math.max(opts.size ?? 25, 1), 200);
+  const page = Math.max(opts.page ?? 1, 1);
+
+  const res = (await supabase.rpc('orders_page', {
+    p_search: (opts.search ?? '').trim(),
+    p_card: opts.card ?? 'all',
+    p_date_from: opts.dateFrom ?? '',
+    p_date_to: opts.dateTo ?? '',
+    p_limit: size,
+    p_offset: (page - 1) * size,
+  })) as {
+    data: {
+      ids?: string[] | null;
+      total?: number | null;
+      cardCounts?: Record<string, number> | null;
+    } | null;
+    error: { message: string } | null;
+  };
+  if (res.error) return { ok: false, reason: res.error.message };
+
+  const ids = (res.data?.ids ?? []).filter((v): v is string => typeof v === 'string');
+  const total = Number(res.data?.total ?? 0);
+  const cardCounts = res.data?.cardCounts ?? {};
+  if (ids.length === 0) return { ok: true, rows: [], total, cardCounts };
+
+  const { data, error } = await supabase
+    .from('official_orders')
+    .select(ORDER_LIST_SELECT)
+    .in('id', ids);
+  if (error) return { ok: false, reason: error.message };
+
+  const balanceById = await getOrderBalances(ids);
+  const orderIndex = new Map(ids.map((id, i) => [id, i] as const));
+  const rows = ((data ?? []) as unknown[])
+    .map((row) => toOrderListRow(row, balanceById))
+    .sort(
+      (a, b) =>
+        (orderIndex.get(a.officialOrderId) ?? 0) - (orderIndex.get(b.officialOrderId) ?? 0),
+    );
+
+  return { ok: true, rows, total, cardCounts };
+}
+
 /**
  * Lists Official Orders, newest first.
  *
@@ -87,16 +223,8 @@ export async function listOrders(): Promise<OrdersResult> {
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase
       .from('official_orders')
-      .select(
-        // fulfillment_records has a single FK back to official_orders, so this
-        // embed is unambiguous. official_orders → customers is likewise single.
-        // layaway_arrangements is UNIQUE(official_order_id) — one per order.
-        `id, order_number, invoice_number, status, created_at, updated_at, completed_at,
-         fulfillment_destination, order_source, converted_to_layaway, waybill_number,
-         customers ( display_name, facebook_conversation_url ),
-         fulfillment_records ( status, dispatched_at ),
-         layaway_arrangements ( status )`,
-      )
+      // Same embed as the paginated page (ORDER_LIST_SELECT) so the shape stays identical.
+      .select(ORDER_LIST_SELECT)
       // Latest activity first (Owner request): updated_at is bumped by every real
       // action, so the most recently touched order sits on top. created_at + id are
       // the stable fallbacks when updated_at ties or is null. Opening/viewing writes
@@ -123,59 +251,7 @@ export async function listOrders(): Promise<OrdersResult> {
     raw.map((row) => (row as Record<string, unknown>).id as string),
   );
 
-  const rows: OrderListRow[] = raw.map((row) => {
-    const r = row as Record<string, unknown>;
-    const customer = one<{
-      display_name: string;
-      facebook_conversation_url: string | null;
-    }>(r.customers);
-    const fulfillment = one<{ status: string; dispatched_at: string | null }>(
-      r.fulfillment_records,
-    );
-    const layaway = one<{ status: string }>(r.layaway_arrangements);
-    // A row absent from the map is treated exactly like a failed single read.
-    const balance = balanceById.get(r.id as string);
-
-    let paymentStatus: PaymentStatus;
-    let totalAmountPayable = '';
-    let outstandingBalance = '';
-
-    if (!balance || !balance.ok) {
-      paymentStatus = 'unavailable';
-    } else {
-      totalAmountPayable = balance.balance.totalAmountPayable;
-      outstandingBalance = balance.balance.outstandingBalance;
-      if (balance.balance.paidInFull) {
-        paymentStatus = 'paid_in_full';
-      } else if (Number(balance.balance.verifiedNetPayments) > 0) {
-        paymentStatus = 'partial';
-      } else {
-        paymentStatus = 'awaiting';
-      }
-    }
-
-    return {
-      officialOrderId: r.id as string,
-      orderNumber: (r.order_number as string | null) ?? '—',
-      invoiceNumber: (r.invoice_number as string | null) ?? '—',
-      waybillNumber: (r.waybill_number as string | null) ?? null,
-      customerDisplayName: customer?.display_name ?? 'Unknown',
-      facebookUrl: customer?.facebook_conversation_url ?? null,
-      status: (r.status as string | null) ?? 'unknown',
-      createdAt: r.created_at as string,
-      totalAmountPayable,
-      outstandingBalance,
-      paymentStatus,
-      fulfillmentStatus: fulfillment?.status ?? null,
-      layawayStatus: layaway?.status ?? null,
-      shipDate: fulfillment?.dispatched_at ?? null,
-      fulfillmentDestination: (r.fulfillment_destination as string | null) ?? null,
-      orderSource: (r.order_source as string | null) ?? 'online',
-      convertedToLayaway: r.converted_to_layaway === true,
-      updatedAt: (r.updated_at as string | null) ?? null,
-      completedAt: (r.completed_at as string | null) ?? null,
-    };
-  });
+  const rows = raw.map((row) => toOrderListRow(row, balanceById));
 
   return { ok: true, rows };
 }

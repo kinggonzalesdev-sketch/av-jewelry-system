@@ -11,7 +11,7 @@ import {
 } from '@/lib/authz/guard';
 import { listPendingCaptureReviews } from '@/lib/capture/review';
 import { countPendingCaptures } from '@/lib/capture/pending';
-import { listOrders } from '@/lib/orders/service';
+import { listOrdersPage } from '@/lib/orders/service';
 import { listKeepLayawayAccounts } from '@/lib/payments/layaway-ledger';
 
 export const metadata: Metadata = {};
@@ -43,6 +43,7 @@ export default async function OrdersPage({
   if (!(await canOpenPage('nav_orders'))) notFound();
   const params = await searchParams;
   const openForInvoice = params.view === 'invoice';
+  const initialCard = openForInvoice ? 'for_invoice' : 'all';
 
   // NOTE: the New Order form's data (~4,500 inventory rows: capture items, walk-in
   // items, customers, admin-name context) is NO LONGER loaded here. It is fetched ON
@@ -56,13 +57,21 @@ export default async function OrdersPage({
     pendingReviews,
     pendingCaptureCount,
   ] = await Promise.all([
-    listOrders(),
+    listOrdersPage({ card: initialCard, page: 1, size: 25 }),
     getGrantedPermissions(),
     getCurrentStaffProfile(),
     listKeepLayawayAccounts(),
     listPendingCaptureReviews(),
     countPendingCaptures(),
   ]);
+
+  // A data-derived realtime signal (pure): it changes whenever orders change — the store
+  // total, or the newest order's activity. A router.refresh() re-runs this server component;
+  // when the signal changes, the client refetches ONLY the current page, never the whole
+  // Orders table.
+  const syncNonce = result.ok
+    ? `${result.total}:${result.rows[0]?.updatedAt ?? ''}:${result.rows[0]?.officialOrderId ?? ''}`
+    : 'error';
 
   return (
     <div>
@@ -81,7 +90,9 @@ export default async function OrdersPage({
             page (not only here); the "Capture Pending" pill in OrdersView still opens it. */}
         <OrdersView
           title="Orders"
-          result={result}
+          initialPage={result}
+          initialCard={initialCard}
+          syncNonce={syncNonce}
           openForInvoice={openForInvoice}
           keepLayaways={keepLayaways}
           // Owner AND admins see the Edit/Delete buttons; an admin's action routes

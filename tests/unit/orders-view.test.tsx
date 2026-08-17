@@ -1,21 +1,34 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { OrdersView } from '@/components/orders/orders-view';
-import type { OrderListRow, OrdersResult } from '@/lib/orders/service';
+import { OrdersView, matchesCard } from '@/components/orders/orders-view';
+import { loadOrdersPageAction } from '@/lib/orders/actions';
+import type { OrderListRow, OrdersPageResult } from '@/lib/orders/service';
 
-// OrdersView mounts the shared Order Details modal, which calls useRouter for its
-// post-action refresh. The modal itself renders nothing while closed (no order
-// selected), so a minimal router stub is all these list/card/filter tests need.
+/**
+ * Orders screen — now SERVER-PAGINATED (Owner request 2026-08-17). The card logic is the
+ * canonical `matchesCard` (mirrored 1:1 by the SQL `order_matches_card`); the component
+ * renders the server's page rows + exact total + full-store card counts, and drives
+ * search / flow-card / date filters back to the server. These tests cover BOTH.
+ */
+
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
 
-/**
- * Orders screen — the approved status cards (11), search, and filters over REAL
- * data, plus the honest empty/error distinction. The existing search + table are
- * preserved; the cards sit above them.
- */
+// Only the Orders page fetch is stubbed — every other order action stays real (child
+// modals wire them via useActionState but never invoke them in these tests).
+const H = vi.hoisted<{ result: OrdersPageResult }>(() => ({
+  result: { ok: true, rows: [], total: 0, cardCounts: {} },
+}));
+vi.mock('@/lib/orders/actions', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    loadOrdersPageAction: vi.fn(() => Promise.resolve(H.result)),
+  };
+});
+const loadMock = vi.mocked(loadOrdersPageAction);
 
 function row(over: Partial<OrderListRow>): OrderListRow {
   return {
@@ -44,82 +57,103 @@ function row(over: Partial<OrderListRow>): OrderListRow {
 
 const sample: OrderListRow[] = [
   row({ orderNumber: 'ORD-1', customerDisplayName: 'Maria Santos', status: 'invoiced' }),
-  row({
-    orderNumber: 'ORD-2',
-    customerDisplayName: 'Jose Cruz',
-    status: 'awaiting_required_payment',
-  }),
-  row({
-    orderNumber: 'ORD-3',
-    customerDisplayName: 'Ana Reyes',
-    status: 'for_preparation',
-    paymentStatus: 'partial',
-    outstandingBalance: '250.00',
-    fulfillmentStatus: 'for_shipping',
-  }),
-  row({
-    orderNumber: 'ORD-4',
-    customerDisplayName: 'Ben Tan',
-    status: 'cancelled',
-    paymentStatus: 'unavailable',
-  }),
-  row({
-    orderNumber: 'ORD-5',
-    customerDisplayName: 'Lito Uy',
-    status: 'invoiced',
-    layawayStatus: 'active',
-  }),
+  row({ orderNumber: 'ORD-2', customerDisplayName: 'Jose Cruz', status: 'cancelled' }),
 ];
 
-const ok = (rows: OrderListRow[]): OrdersResult => ({ ok: true, rows });
+function page(
+  rows: OrderListRow[],
+  total?: number,
+  cardCounts: Record<string, number> = {},
+): OrdersPageResult {
+  const t = total ?? rows.length;
+  return { ok: true, rows, total: t, cardCounts: { all: t, ...cardCounts } };
+}
 
-describe('OrdersView — honest states', () => {
-  it('renders an explicit error (not an empty table) when the read fails', () => {
-    render(<OrdersView result={{ ok: false, reason: 'boom' }} />);
+afterEach(() => {
+  vi.clearAllMocks();
+  H.result = { ok: true, rows: [], total: 0, cardCounts: {} };
+});
+
+describe('matchesCard — canonical card logic (mirrored by the SQL order_matches_card)', () => {
+  it('walk_in matches only walk-in source', () => {
+    expect(matchesCard(row({ orderSource: 'walk_in' }), 'walk_in')).toBe(true);
+    expect(matchesCard(row({ orderSource: 'online' }), 'walk_in')).toBe(false);
+  });
+
+  it('for_invoice covers invoiced + awaiting_required_payment (no destination)', () => {
+    expect(matchesCard(row({ status: 'invoiced' }), 'for_invoice')).toBe(true);
+    expect(matchesCard(row({ status: 'awaiting_required_payment' }), 'for_invoice')).toBe(
+      true,
+    );
+    expect(
+      matchesCard(row({ status: 'invoiced', fulfillmentDestination: 'shipping' }), 'for_invoice'),
+    ).toBe(false);
+    expect(matchesCard(row({ status: 'for_preparation' }), 'for_invoice')).toBe(false);
+  });
+
+  it('ship_confirm and for_shipping stay DISJOINT (no double-count)', () => {
+    const released = row({ status: 'approved_for_release' });
+    const awaiting = row({ status: 'for_shipping_or_pickup' });
+    expect(matchesCard(released, 'ship_confirm')).toBe(true);
+    expect(matchesCard(released, 'for_shipping')).toBe(false);
+    expect(matchesCard(awaiting, 'for_shipping')).toBe(true);
+    expect(matchesCard(awaiting, 'ship_confirm')).toBe(false);
+  });
+
+  it('a released order routed to a destination shows under the destination, not ship_confirm', () => {
+    const releasedDelivery = row({
+      status: 'approved_for_release',
+      fulfillmentDestination: 'delivery',
+    });
+    expect(matchesCard(releasedDelivery, 'delivery')).toBe(true);
+    expect(matchesCard(releasedDelivery, 'ship_confirm')).toBe(false);
+  });
+
+  it('a cancelled order leaves its destination card', () => {
+    const cancelledDelivery = row({
+      status: 'cancelled',
+      fulfillmentDestination: 'delivery',
+    });
+    expect(matchesCard(cancelledDelivery, 'delivery')).toBe(false);
+    expect(matchesCard(cancelledDelivery, 'cancelled')).toBe(true);
+  });
+
+  it('cancelled / completed / unverified_pay / all', () => {
+    expect(matchesCard(row({ status: 'cancelled' }), 'cancelled')).toBe(true);
+    expect(matchesCard(row({ status: 'completed' }), 'completed')).toBe(true);
+    expect(matchesCard(row({ status: 'delivered' }), 'completed')).toBe(true);
+    expect(matchesCard(row({ paymentStatus: 'awaiting' }), 'unverified_pay')).toBe(true);
+    expect(matchesCard(row({ paymentStatus: 'paid_in_full' }), 'unverified_pay')).toBe(false);
+    expect(matchesCard(row({}), 'all')).toBe(true);
+  });
+});
+
+describe('OrdersView — honest states + server-driven rendering', () => {
+  it('renders an explicit error when the initial read failed', () => {
+    render(<OrdersView initialPage={{ ok: false, reason: 'boom' }} />);
     expect(screen.getByTestId('read-error')).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
-  it('renders an empty state (not an error) when there are genuinely no orders', () => {
-    render(<OrdersView result={ok([])} />);
+  it('renders an empty state when there are genuinely no orders', () => {
+    render(<OrdersView initialPage={page([], 0)} />);
     expect(screen.getByTestId('empty-state')).toBeInTheDocument();
     expect(screen.queryByTestId('read-error')).not.toBeInTheDocument();
   });
 
-  it('still shows the status cards and search when there are no orders (features never vanish)', () => {
-    render(<OrdersView result={ok([])} />);
+  it('keeps the cards + search + flow filter visible even with no orders', () => {
+    render(<OrdersView initialPage={page([], 0)} />);
     expect(screen.getByTestId('orders-card-all')).toBeInTheDocument();
     expect(screen.getByTestId('orders-search')).toBeInTheDocument();
     expect(screen.getByTestId('orders-filter-flow')).toBeInTheDocument();
-    expect(screen.getByTestId('empty-state')).toBeInTheDocument();
   });
 
-  it('tags a walk-in order with a Walk-in badge (online orders show none)', () => {
+  it('renders the 11 cards (not the removed 4) and shows the SERVER card counts', () => {
     render(
       <OrdersView
-        result={ok([
-          row({
-            orderNumber: 'ORD-W',
-            customerDisplayName: 'Walk Customer',
-            orderSource: 'walk_in',
-          }),
-          row({
-            orderNumber: 'ORD-O',
-            customerDisplayName: 'Online Customer',
-            orderSource: 'online',
-          }),
-        ])}
+        initialPage={page(sample, 5, { for_invoice: 3, cancelled: 1, completed: 0 })}
       />,
     );
-    expect(screen.getByText('Walk-in')).toBeInTheDocument();
-    // Exactly one badge — the online order is not tagged.
-    expect(screen.getAllByText('Walk-in')).toHaveLength(1);
-  });
-});
-
-describe('OrdersView — the approved status cards over real data', () => {
-  it('renders the remaining status cards', () => {
-    render(<OrdersView result={ok(sample)} />);
     for (const key of [
       'all',
       'for_invoice',
@@ -130,106 +164,37 @@ describe('OrdersView — the approved status cards over real data', () => {
       'keep',
       'cancelled',
       'unverified_pay',
+      'walk_in',
       'completed',
     ]) {
       expect(screen.getByTestId(`orders-card-${key}`)).toBeInTheDocument();
     }
-  });
-
-  it('no longer renders the removed cards (Owner request)', () => {
-    render(<OrdersView result={ok(sample)} />);
     for (const key of ['for_reminder', 'for_prepare', 'for_shipping', 'for_cancel']) {
       expect(screen.queryByTestId(`orders-card-${key}`)).not.toBeInTheDocument();
     }
-  });
-
-  it('counts each card from the real order status / layaway signals', () => {
-    render(<OrdersView result={ok(sample)} />);
-    expect(
-      within(screen.getByTestId('orders-card-all')).getByText('5'),
-    ).toBeInTheDocument();
-    // ORD-1 + ORD-5 are 'invoiced'; ORD-2 ('awaiting_required_payment') is now
-    // folded INTO For Invoice (the old "For Reminder" stage was removed) → 3.
+    expect(within(screen.getByTestId('orders-card-all')).getByText('5')).toBeInTheDocument();
     expect(
       within(screen.getByTestId('orders-card-for_invoice')).getByText('3'),
     ).toBeInTheDocument();
     expect(
       within(screen.getByTestId('orders-card-cancelled')).getByText('1'),
     ).toBeInTheDocument();
-    // None of the sample orders are in a completed state → Completed shows 0.
-    expect(
-      within(screen.getByTestId('orders-card-completed')).getByText('0'),
-    ).toBeInTheDocument();
   });
 
-  it('shows an honest 0 for a card with no backing yet (Keep)', () => {
-    render(<OrdersView result={ok(sample)} />);
-    expect(
-      within(screen.getByTestId('orders-card-keep')).getByText('0'),
-    ).toBeInTheDocument();
+  it('shows the EXACT server total, never the loaded-row count', () => {
+    render(<OrdersView initialPage={page(sample, 12837)} />);
+    expect(screen.getByTestId('orders-count')).toHaveTextContent('1–2');
+    expect(screen.getByText('12,837')).toBeInTheDocument();
   });
 
-  it('filters the table when a status card is clicked', () => {
-    render(<OrdersView result={ok(sample)} />);
-    fireEvent.click(screen.getByTestId('orders-card-for_invoice'));
-    // For Invoice now covers 'invoiced' (ORD-1 Maria Santos, ORD-5 Lito Uy) AND the
-    // folded-in 'awaiting_required_payment' (ORD-2 Jose Cruz). ORD-3 (for_preparation)
-    // and ORD-4 (cancelled) stay out.
-    expect(screen.getByText('Maria Santos')).toBeInTheDocument();
-    expect(screen.getByText('Lito Uy')).toBeInTheDocument();
-    expect(screen.getByText('Jose Cruz')).toBeInTheDocument();
-    expect(screen.queryByText('Ana Reyes')).not.toBeInTheDocument();
-  });
-});
-
-describe('OrdersView — search and filters (existing, preserved)', () => {
-  it('search narrows by customer / order / invoice text', () => {
-    render(<OrdersView result={ok(sample)} />);
-    fireEvent.change(screen.getByTestId('orders-search'), { target: { value: 'ana' } });
-    expect(screen.getByText('Ana Reyes')).toBeInTheDocument();
-    expect(screen.queryByText('Maria Santos')).not.toBeInTheDocument();
+  it('shows an honest "no matches" note when the current filter has no rows', () => {
+    // store is non-empty (cardCounts.all=5) but this page returned no rows.
+    render(<OrdersView initialPage={{ ok: true, rows: [], total: 0, cardCounts: { all: 5 } }} />);
+    expect(screen.getByText(/No orders match these filters/i)).toBeInTheDocument();
   });
 
-  it('renders the Order-date range (From–To) filters', () => {
-    render(<OrdersView result={ok(sample)} />);
-    expect(screen.getByTestId('orders-filter-date-from')).toBeInTheDocument();
-    expect(screen.getByTestId('orders-filter-date-to')).toBeInTheDocument();
-  });
-
-  it('no longer renders the Hide Keep checkbox (removed by Owner request)', () => {
-    render(<OrdersView result={ok(sample)} />);
-    expect(screen.queryByTestId('orders-filter-hide-keep')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Hide Keep')).not.toBeInTheDocument();
-  });
-
-  it('Order-date range filters inclusively (From–To), not exact-day', () => {
-    const dated: OrderListRow[] = [
-      row({ customerDisplayName: 'Early Bird', createdAt: '2026-07-01T09:00:00.000Z' }),
-      row({ customerDisplayName: 'Mid Month', createdAt: '2026-07-08T09:00:00.000Z' }),
-      row({ customerDisplayName: 'Late Comer', createdAt: '2026-07-16T09:00:00.000Z' }),
-    ];
-    render(<OrdersView result={ok(dated)} />);
-    // A range Jul 1–Jul 10 keeps BOTH orders inside it (the old exact-day filter would
-    // have shown at most one) and drops the Jul 16 order.
-    fireEvent.change(screen.getByTestId('orders-filter-date-from'), {
-      target: { value: '2026-07-01' },
-    });
-    fireEvent.change(screen.getByTestId('orders-filter-date-to'), {
-      target: { value: '2026-07-10' },
-    });
-    expect(screen.getByText('Early Bird')).toBeInTheDocument();
-    expect(screen.getByText('Mid Month')).toBeInTheDocument();
-    expect(screen.queryByText('Late Comer')).not.toBeInTheDocument();
-  });
-
-  /**
-   * The order-flow dropdown and the status cards are ONE state. These tests pin
-   * that: the options are exactly the card labels, Total is the default, and
-   * driving either control moves the other. A second source of truth here would
-   * let the highlighted card and the dropdown disagree about what is on screen.
-   */
-  it('offers exactly the status-card flows, in card order, defaulting to Total', () => {
-    render(<OrdersView result={ok(sample)} />);
+  it('offers exactly the status-card flows, defaulting to Total', () => {
+    render(<OrdersView initialPage={page(sample, 5)} />);
     const select = screen.getByTestId<HTMLSelectElement>('orders-filter-flow');
     expect([...select.options].map((o) => o.textContent)).toEqual([
       'Total',
@@ -247,71 +212,62 @@ describe('OrdersView — search and filters (existing, preserved)', () => {
     expect(select.value).toBe('all');
   });
 
-  it('selecting a flow filters the list, and clicking a card updates the dropdown', () => {
-    render(<OrdersView result={ok(sample)} />);
-    const select = screen.getByTestId<HTMLSelectElement>('orders-filter-flow');
-
-    // Dropdown drives the list.
-    fireEvent.change(select, { target: { value: 'cancelled' } });
-    expect(select.value).toBe('cancelled');
-
-    // Card drives the dropdown — one state, so they can never disagree.
-    fireEvent.click(screen.getByTestId('orders-card-for_invoice'));
-    expect(select.value).toBe('for_invoice');
-
-    fireEvent.click(screen.getByTestId('orders-card-all'));
-    expect(select.value).toBe('all');
-  });
-
-  it('shows an honest "no matches" note when filters exclude everything', () => {
-    render(<OrdersView result={ok(sample)} />);
-    fireEvent.change(screen.getByTestId('orders-search'), {
-      target: { value: 'zzz-nothing' },
-    });
-    expect(screen.getByText(/No orders match these filters/i)).toBeInTheDocument();
+  it('tags a walk-in order with a badge (online orders show none)', () => {
+    render(
+      <OrdersView
+        initialPage={page(
+          [
+            row({ orderSource: 'walk_in', customerDisplayName: 'Walk Customer' }),
+            row({ orderSource: 'online', customerDisplayName: 'Online Customer' }),
+          ],
+          2,
+        )}
+      />,
+    );
+    expect(screen.getAllByText('Walk-in')).toHaveLength(1);
   });
 });
 
-/**
- * For Shipping vs Ship Confirm (Owner request).
- *
- * They must be DISJOINT: For Shipping is awaiting release, Ship Confirm is
- * release approved or already dispatched. If one bucket swallowed the other an
- * order would be counted twice and the cards would stop summing to the total.
- */
-describe('OrdersView — For Shipping is its own flow', () => {
-  const shipping: OrderListRow[] = [
-    row({
-      orderNumber: 'ORD-SHIP',
-      customerDisplayName: 'Awaiting Release',
-      status: 'for_shipping_or_pickup',
-    }),
-    row({
-      orderNumber: 'ORD-DEST',
-      customerDisplayName: 'Routed To Shipping',
-      status: 'for_preparation',
-      fulfillmentDestination: 'shipping',
-    }),
-    row({
-      orderNumber: 'ORD-CONF',
-      customerDisplayName: 'Released Already',
-      status: 'approved_for_release',
-    }),
-  ];
-
-  it('no longer offers a For Shipping card or dropdown option (Owner request)', () => {
-    render(<OrdersView result={ok(shipping)} />);
-    expect(screen.queryByTestId('orders-card-for_shipping')).not.toBeInTheDocument();
-    const select = screen.getByTestId<HTMLSelectElement>('orders-filter-flow');
-    expect(
-      within(select).queryByRole('option', { name: 'For Shipping' }),
-    ).not.toBeInTheDocument();
+describe('OrdersView — server-side search / flow / date dispatch', () => {
+  it('typing in search refetches with the search term (server-side, debounced)', async () => {
+    render(<OrdersView initialPage={page(sample, 5)} />);
+    fireEvent.change(screen.getByTestId('orders-search'), { target: { value: 'ana' } });
+    await waitFor(() =>
+      expect(loadMock).toHaveBeenCalledWith(expect.objectContaining({ search: 'ana' })),
+    );
   });
 
-  it('shows released orders under Ship Confirm', () => {
-    render(<OrdersView result={ok(shipping)} />);
-    fireEvent.click(screen.getByTestId('orders-card-ship_confirm'));
-    expect(screen.getByText('Released Already')).toBeInTheDocument();
-    expect(screen.queryByText('Awaiting Release')).not.toBeInTheDocument();
+  it('clicking a status card refetches with that card AND updates the dropdown', async () => {
+    render(<OrdersView initialPage={page(sample, 5)} />);
+    fireEvent.click(screen.getByTestId('orders-card-cancelled'));
+    expect(screen.getByTestId<HTMLSelectElement>('orders-filter-flow').value).toBe('cancelled');
+    await waitFor(() =>
+      expect(loadMock).toHaveBeenCalledWith(expect.objectContaining({ card: 'cancelled' })),
+    );
+  });
+
+  it('the flow dropdown refetches with the chosen card', async () => {
+    render(<OrdersView initialPage={page(sample, 5)} />);
+    fireEvent.change(screen.getByTestId('orders-filter-flow'), {
+      target: { value: 'completed' },
+    });
+    await waitFor(() =>
+      expect(loadMock).toHaveBeenCalledWith(expect.objectContaining({ card: 'completed' })),
+    );
+  });
+
+  it('the date range refetches with dateFrom/dateTo (server-side)', async () => {
+    render(<OrdersView initialPage={page(sample, 5)} />);
+    fireEvent.change(screen.getByTestId('orders-filter-date-from'), {
+      target: { value: '2026-07-01' },
+    });
+    fireEvent.change(screen.getByTestId('orders-filter-date-to'), {
+      target: { value: '2026-07-10' },
+    });
+    await waitFor(() =>
+      expect(loadMock).toHaveBeenCalledWith(
+        expect.objectContaining({ dateFrom: '2026-07-01', dateTo: '2026-07-10' }),
+      ),
+    );
   });
 });

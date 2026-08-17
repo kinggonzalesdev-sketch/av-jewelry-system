@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { OrderDetailsModal } from '@/components/orders/order-details-modal';
 import { SendAllInvoices } from '@/components/orders/send-all-invoices';
@@ -9,7 +9,12 @@ import { OrderDelete } from '@/components/orders/cancelled-order-delete';
 import { OrderEdit } from '@/components/orders/order-edit';
 import { LayawayLedgerViewModal } from '@/components/payments/layaway-ledger-view-modal';
 
-import type { OrderListRow, OrdersResult, PaymentStatus } from '@/lib/orders/service';
+import { loadOrdersPageAction } from '@/lib/orders/actions';
+import type {
+  OrderListRow,
+  OrdersPageResult,
+  PaymentStatus,
+} from '@/lib/orders/service';
 import {
   CAPTURE_COUNT_EVENT,
   TOGGLE_INCOMING_CAPTURES_EVENT,
@@ -320,7 +325,7 @@ export function sortOrdersForCard(rows: OrderListRow[], card: CardKey): OrderLis
   return [...rows].sort(card === 'completed' ? completedFirst : latestFirst);
 }
 
-function matchesCard(order: OrderListRow, key: CardKey): boolean {
+export function matchesCard(order: OrderListRow, key: CardKey): boolean {
   switch (key) {
     case 'all':
       return true;
@@ -421,8 +426,9 @@ function matchesCard(order: OrderListRow, key: CardKey): boolean {
 }
 
 export function OrdersView({
-  result,
-  openForInvoice = false,
+  initialPage,
+  initialCard = 'all',
+  syncNonce = '',
   keepLayaways = [],
   newOrderAction,
   canManageOrders = false,
@@ -430,7 +436,13 @@ export function OrdersView({
   pendingCaptureCount = 0,
   title,
 }: {
-  result: OrdersResult;
+  /** The server-rendered FIRST page (rows + exact total + full-store card counts). */
+  initialPage: OrdersPageResult;
+  /** The flow card the initial page was loaded for (all | for_invoice). */
+  initialCard?: string;
+  /** Data-derived realtime signal — changes when orders change (via router.refresh) so the
+   *  client refetches ONLY the current page, never the whole Orders table. */
+  syncNonce?: string;
   /** Page title rendered INSIDE the sticky top section (so it pins with the
    *  + New Order button and status cards). When set, the page omits its own header. */
   title?: string;
@@ -450,12 +462,8 @@ export function OrdersView({
   /** Owner = the Edit/Delete buttons act directly; admin = they submit for approval. */
   isOwner?: boolean;
 }) {
-  // Hooks must run unconditionally; the error/empty branches come after. Memoized
-  // so the derived useMemo hooks below keep a stable dependency identity.
-  const rows = useMemo(() => (result.ok ? result.rows : []), [result]);
-
   const router = useRouter();
-  const [card, setCard] = useState<CardKey>(openForInvoice ? 'for_invoice' : 'all');
+  const [card, setCard] = useState<CardKey>((initialCard as CardKey) || 'all');
   // The "Capture Pending" badge starts at the server-rendered count, then tracks the
   // Incoming Captures strip's LIVE count (same query) so the pill always matches the
   // popup's "(N)" — the strip broadcasts its count after every load.
@@ -479,67 +487,102 @@ export function OrdersView({
   const [ordPage, setOrdPage] = useState(1);
   const [ordPageSize, setOrdPageSize] = useState(25);
 
-  /**
-   * Fulfillment status — a SECOND, independent filter alongside the order-flow
-   * dropdown (restored by Owner request).
-   *
-   * The two are orthogonal, not duplicates: order flow says which section an
-   * order sits in, fulfillment status says how far the physical handover has got.
-   * They narrow the list together, and only the flow dropdown is tied to the
-   * status cards, so the cards and the dropdown still cannot disagree.
-   */
-  const counts = useMemo(() => {
-    const c = Object.fromEntries(CARD_DEFS.map((d) => [d.key, 0])) as Record<
-      CardKey,
-      number
-    >;
-    for (const o of rows)
-      for (const d of CARD_DEFS) if (matchesCard(o, d.key)) c[d.key] += 1;
-    // KEEP layaway accounts also count under the Keep card (Owner request).
-    c.keep += keepLayaways.length;
-    return c;
-  }, [rows, keepLayaways.length]);
+  // Server-paginated Orders (Owner request — scale to 50k+). ONE SQL RPC (`orders_page`)
+  // returns the current page's rows, the EXACT filtered total, and the full-store card
+  // counts; the browser never holds every order. Seeds from the server-rendered page 1.
+  type OrdersPage = {
+    rows: OrderListRow[];
+    total: number;
+    cardCounts: Record<string, number>;
+  };
+  const [orders, setOrders] = useState<OrdersPage>(
+    initialPage.ok
+      ? {
+          rows: initialPage.rows,
+          total: initialPage.total,
+          cardCounts: initialPage.cardCounts,
+        }
+      : { rows: [], total: 0, cardCounts: {} },
+  );
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const ordersError = initialPage.ok ? null : initialPage.reason;
+  const [reloadToken, setReloadToken] = useState(0);
+  const reloadOrders = useCallback(() => setReloadToken((t) => t + 1), []);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const matched = rows.filter((o) => {
-      if (!matchesCard(o, card)) return false;
-      // Inclusive order-date range (ISO YYYY-MM-DD compares correctly as strings).
-      const day = o.createdAt.slice(0, 10);
-      if (dateFrom && day < dateFrom) return false;
-      if (dateTo && day > dateTo) return false;
-      if (!q) return true;
-      return [
-        o.orderNumber,
-        o.invoiceNumber,
-        o.waybillNumber ?? '',
-        o.customerDisplayName,
-      ]
-        .join(' ')
-        .toLowerCase()
-        .includes(q);
-    });
-    // Latest activity first (Completed by completed_at); filters/search above are
-    // untouched — only the display order is applied here.
-    return sortOrdersForCard(matched, card);
-  }, [rows, card, query, dateFrom, dateTo]);
+  // Debounce the search box so typing doesn't fire a request per keystroke.
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query.trim()), 300);
+    return () => clearTimeout(t);
+  }, [query]);
 
-  // Reset to page 1 whenever the filters change, so results start at the top.
+  // Any filter/search change starts back at page 1 so results begin at the top.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setOrdPage(1);
-  }, [card, query, dateFrom, dateTo]);
+  }, [card, debouncedQuery, dateFrom, dateTo]);
 
-  const ordPageCount = Math.max(1, Math.ceil(filtered.length / ordPageSize));
+  // Refetch the current page whenever the query changes. Skips the FIRST run while the
+  // state still matches the server-rendered initial page (no wasted round-trip on load).
+  const firstFetch = useRef(true);
+  useEffect(() => {
+    if (firstFetch.current) {
+      firstFetch.current = false;
+      if (
+        card === initialCard &&
+        debouncedQuery === '' &&
+        dateFrom === '' &&
+        dateTo === '' &&
+        ordPage === 1 &&
+        ordPageSize === 25
+      ) {
+        return;
+      }
+    }
+    let alive = true;
+    void (async () => {
+      setOrdersLoading(true);
+      try {
+        const res = await loadOrdersPageAction({
+          search: debouncedQuery,
+          card,
+          dateFrom,
+          dateTo,
+          page: ordPage,
+          size: ordPageSize,
+        });
+        if (alive && res.ok) {
+          setOrders({ rows: res.rows, total: res.total, cardCounts: res.cardCounts });
+        }
+      } finally {
+        if (alive) setOrdersLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [card, debouncedQuery, dateFrom, dateTo, ordPage, ordPageSize, reloadToken, initialCard]);
+
+  // Realtime: a router.refresh() (the shell's DashboardSync, or an in-modal mutation) bumps
+  // syncNonce — refetch ONLY the current page, never the whole table. Skips the first mount.
+  const firstSync = useRef(true);
+  useEffect(() => {
+    if (firstSync.current) {
+      firstSync.current = false;
+      return;
+    }
+    reloadOrders();
+  }, [syncNonce, reloadOrders]);
+
+  const cardCounts = orders.cardCounts;
+  const storeTotal = cardCounts.all ?? 0;
+  const ordPageCount = Math.max(1, Math.ceil(orders.total / ordPageSize));
   const ordPageSafe = Math.min(ordPage, ordPageCount);
-  const pagedOrders = filtered.slice(
-    (ordPageSafe - 1) * ordPageSize,
-    ordPageSafe * ordPageSize,
-  );
+  const pagedOrders = orders.rows;
 
   // A FAILED read is not "no orders" — say so loudly (the session's hard rule).
-  if (!result.ok) {
-    return <ReadError title="Orders could not be loaded" detail={result.reason} />;
+  if (ordersError) {
+    return <ReadError title="Orders could not be loaded" detail={ordersError} />;
   }
 
   // NOTE: an empty dataset does NOT hide the screen's features. The status cards,
@@ -629,7 +672,9 @@ export function OrdersView({
                   {def.label}
                 </span>
                 <span className="text-2xl font-bold leading-none tabular-nums text-foreground">
-                  {counts[def.key]}
+                  {def.key === 'keep'
+                    ? (cardCounts.keep ?? 0) + keepLayaways.length
+                    : (cardCounts[def.key] ?? 0)}
                 </span>
               </button>
             );
@@ -704,21 +749,31 @@ export function OrdersView({
             </label>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
-            Showing <span className="tabular-nums">{filtered.length}</span> of{' '}
-            <span className="tabular-nums">{rows.length}</span> Official Orders. The
-            status cards count every order in the store.
+            Showing{' '}
+            <span className="tabular-nums" data-testid="orders-count">
+              {ordersLoading
+                ? '…'
+                : orders.total === 0
+                  ? '0'
+                  : `${((ordPageSafe - 1) * ordPageSize + 1).toLocaleString()}–${Math.min(
+                      ordPageSafe * ordPageSize,
+                      orders.total,
+                    ).toLocaleString()}`}
+            </span>{' '}
+            of <span className="tabular-nums">{orders.total.toLocaleString()}</span>{' '}
+            Official Orders. The status cards count every order in the store.
           </p>
         </div>
       </div>
 
       {/* Table region: honest empty state at zero, "no matches" when filters
           exclude everything, otherwise the table. */}
-      {rows.length === 0 ? (
+      {storeTotal === 0 ? (
         <EmptyState
           title="No Official Orders yet"
           description="Approve & Send an Invoice to create the first Official Order. New Entry (above) starts the capture flow on Live."
         />
-      ) : filtered.length === 0 ? (
+      ) : pagedOrders.length === 0 ? (
         card === 'keep' && keepLayaways.length > 0 ? null : (
           <div className="rounded-xl border border-border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
             No orders match these filters.
@@ -753,11 +808,11 @@ export function OrdersView({
               ))}
             </tbody>
           </DataTable>
-          {filtered.length > ordPageSize ? (
+          {orders.total > ordPageSize ? (
             <Pagination
               page={ordPageSafe}
               pageCount={ordPageCount}
-              total={filtered.length}
+              total={orders.total}
               pageSize={ordPageSize}
               onPageChange={setOrdPage}
               onPageSizeChange={(n) => {
