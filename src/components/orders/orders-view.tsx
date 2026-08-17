@@ -729,7 +729,7 @@ export function OrdersView({
           <DataTable
             minWidth="760px"
             spacious
-            columns={['20%', '15%', '15%', '18%', '17%', '15%']}
+            columns={['18%', '16%', '16%', '16%', '16%', '18%']}
           >
             <Thead>
               <Tr plain>
