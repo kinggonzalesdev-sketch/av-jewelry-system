@@ -882,13 +882,64 @@ function PancakeSenderCard({
   );
 }
 
+type CandidateChecks = {
+  pageIdOk: boolean;
+  postTypeOk: boolean;
+  messageTypeOk: boolean;
+  postIdOk: boolean;
+  commentIdOk: boolean;
+  psidOk: boolean;
+  conversationOk: boolean;
+  canReplyPrivately: boolean;
+  notAlreadyReplied: boolean;
+  pageCustomerPresent: boolean;
+};
+
 type TestCandidate = {
   webhookEventId: string;
   fbName: string;
   commentPreview: string;
   at: string;
   canReplyPrivately: boolean;
+  identity: {
+    pageId: string;
+    postType: string;
+    messageType: string;
+    postId: string;
+    commentId: string;
+    psid: string;
+    pageCustomerId: string;
+    commentConversationId: string;
+  };
+  checks: CandidateChecks;
+  allValid: boolean;
 };
+
+/** One green/red verification row in the Test B candidate checklist. */
+function CheckRow({
+  ok,
+  label,
+  optional = false,
+}: {
+  ok: boolean;
+  label: string;
+  optional?: boolean;
+}) {
+  return (
+    <li
+      className={cn(
+        'flex items-center gap-1',
+        ok ? 'text-green-700' : optional ? 'text-muted-foreground' : 'text-destructive',
+      )}
+    >
+      <span aria-hidden>{ok ? '✓' : optional ? '•' : '✗'}</span>
+      <span className="font-mono">
+        {label}
+        {optional && !ok ? ' (n/a)' : ''}
+      </span>
+    </li>
+  );
+}
 
 /**
  * Controlled Test B — privately reply to ONE approved test comment and (optionally)
@@ -900,6 +951,8 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<TestCandidate[]>([]);
   const [selectedId, setSelectedId] = useState('');
+  const [search, setSearch] = useState('');
+  const [searched, setSearched] = useState(false);
   const [message, setMessage] = useState(
     'Hi! Here is the item you mined during our Live. 💛',
   );
@@ -914,28 +967,36 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
   const [photoReport, setPhotoReport] = useState<string | null>(null);
   const [photoOk, setPhotoOk] = useState(false);
 
-  const loadCandidates = async () => {
+  const selected = candidates.find((c) => c.webhookEventId === selectedId) ?? null;
+
+  const fetchCandidates = async (query: string) => {
     setLoading(true);
     setLoadError(null);
+    setSearched(query.length > 0);
     try {
-      const res = await fetch('/api/integrations/pancake/private-reply-candidates', {
-        headers: { accept: 'application/json' },
-      });
+      const url = query
+        ? `/api/integrations/pancake/private-reply-candidates?q=${encodeURIComponent(query)}`
+        : '/api/integrations/pancake/private-reply-candidates';
+      const res = await fetch(url, { headers: { accept: 'application/json' } });
       const body = (await res.json().catch(() => null)) as
         | { ok: boolean; candidates: TestCandidate[] }
         | null;
       if (!body || !body.ok) {
         setLoadError('Could not load candidate comments.');
         setCandidates([]);
+        setSelectedId('');
         return;
       }
       setCandidates(body.candidates);
-      if (body.candidates.length > 0) {
-        setSelectedId(body.candidates[0]?.webhookEventId ?? '');
-      }
+      // NEVER auto-select from a multi-row list — the Owner must EXPLICITLY pick the exact
+      // comment (never by name/recency). A unique search match (exactly one eligible row)
+      // is pre-selected for convenience, and that is by exact comment TEXT.
+      const first = body.candidates[0];
+      setSelectedId(body.candidates.length === 1 && first ? first.webhookEventId : '');
     } catch {
       setLoadError('Could not load candidate comments.');
       setCandidates([]);
+      setSelectedId('');
     } finally {
       setLoading(false);
     }
@@ -994,15 +1055,36 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
           </div>
         ) : null}
 
+        {/* High-volume-Live safety: locate the ONE consented comment by its unique text
+            (e.g. TESTB-AV-817). Search only NARROWS already-eligible candidates — it never
+            makes inbox/null or can_reply_privately=false events selectable. */}
         <div className="flex flex-wrap items-center gap-2">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void fetchCandidates(search.trim());
+            }}
+            placeholder="Find the exact comment text (e.g. TESTB-AV-817)…"
+            className="h-9 min-w-[220px] flex-1 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+            data-testid="pr-test-search"
+          />
+          <Button
+            type="button"
+            onClick={() => void fetchCandidates(search.trim())}
+            disabled={loading || !search.trim()}
+            data-testid="pr-test-search-btn"
+          >
+            {loading ? 'Searching…' : 'Find comment'}
+          </Button>
           <Button
             type="button"
             variant="outline"
-            onClick={() => void loadCandidates()}
+            onClick={() => void fetchCandidates('')}
             disabled={loading}
             data-testid="pr-test-load"
           >
-            {loading ? 'Loading…' : 'Load recent Live comments'}
+            {loading ? 'Loading…' : 'Load recent'}
           </Button>
         </div>
         {loadError ? (
@@ -1010,12 +1092,20 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
             {loadError}
           </p>
         ) : null}
+        {!loadError && searched && candidates.length === 0 && !loading ? (
+          <p className="text-sm text-muted-foreground" data-testid="pr-test-no-match">
+            No eligible (privately-replyable, not-yet-replied) Live comment matches that
+            text. Confirm the test account posted a TOP-LEVEL comment on the connected Page
+            Live, then search again.
+          </p>
+        ) : null}
 
         {candidates.length > 0 ? (
           <div className="space-y-3">
             <label className="block">
               <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Approved test comment (fresh, privately-replyable only)
+                Approved test comment ({candidates.length} eligible — you must pick the exact
+                one)
               </span>
               <select
                 className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold"
@@ -1023,6 +1113,9 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
                 onChange={(e) => setSelectedId(e.target.value)}
                 data-testid="pr-test-candidate"
               >
+                <option value="" disabled>
+                  Select the exact test comment…
+                </option>
                 {candidates.map((c) => (
                   <option key={c.webhookEventId} value={c.webhookEventId}>
                     {c.fbName} — “{c.commentPreview}”
@@ -1033,6 +1126,81 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
                 ))}
               </select>
             </label>
+
+            {/* Pre-Run identity verification — Run stays DISABLED until every hard check
+                passes for the EXPLICITLY selected comment. */}
+            {selected ? (
+              <div
+                className={cn(
+                  'space-y-1 rounded-lg border px-3 py-2 text-xs',
+                  selected.allValid
+                    ? 'border-green-700/40 bg-green-700/10'
+                    : 'border-destructive/40 bg-destructive/5',
+                )}
+                data-testid="pr-test-verify"
+              >
+                <p className="font-semibold text-foreground">
+                  Candidate verification (all must pass before Run)
+                </p>
+                <ul className="grid grid-cols-1 gap-x-4 gap-y-0.5 sm:grid-cols-2">
+                  <CheckRow
+                    ok={selected.checks.pageIdOk}
+                    label={`page_id ${selected.identity.pageId}`}
+                  />
+                  <CheckRow
+                    ok={selected.checks.postTypeOk}
+                    label={`post_type ${selected.identity.postType}`}
+                  />
+                  <CheckRow
+                    ok={selected.checks.messageTypeOk}
+                    label={`message.type ${selected.identity.messageType}`}
+                  />
+                  <CheckRow
+                    ok={selected.checks.postIdOk}
+                    label={`post_id ${selected.identity.postId}`}
+                  />
+                  <CheckRow
+                    ok={selected.checks.commentIdOk}
+                    label={`comment_id ${selected.identity.commentId}`}
+                  />
+                  <CheckRow
+                    ok={selected.checks.psidOk}
+                    label={`PSID ${selected.identity.psid}`}
+                  />
+                  <CheckRow
+                    ok={selected.checks.conversationOk}
+                    label={`comment conv ${selected.identity.commentConversationId}`}
+                  />
+                  <CheckRow
+                    ok={selected.checks.canReplyPrivately}
+                    label="can_reply_privately"
+                  />
+                  <CheckRow
+                    ok={selected.checks.notAlreadyReplied}
+                    label="not already replied"
+                  />
+                  <CheckRow
+                    ok={selected.checks.pageCustomerPresent}
+                    label={`page_customer ${selected.identity.pageCustomerId}`}
+                    optional
+                  />
+                </ul>
+                <p
+                  className={cn(
+                    'pt-1 font-semibold',
+                    selected.allValid ? 'text-green-700' : 'text-destructive',
+                  )}
+                >
+                  {selected.allValid
+                    ? '✅ READY — stable identity confirmed. The Owner may Run.'
+                    : '⛔ NOT READY — a required identity check failed; Run is disabled.'}
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Select the exact test comment above to verify its identity.
+              </p>
+            )}
 
             <label className="block">
               <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -1049,7 +1217,7 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
             <Button
               type="button"
               onClick={runTest}
-              disabled={running || !selectedId || !senderReady}
+              disabled={running || !selectedId || !senderReady || !selected?.allValid}
               data-testid="pr-test-run"
             >
               {running

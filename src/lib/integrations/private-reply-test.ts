@@ -6,6 +6,7 @@ import { AuthorizationError, requirePrimarySuperAdmin } from '@/lib/authz/guard'
 import { createClient } from '@/lib/supabase/server';
 import {
   findPancakeInboxConversationByPsid,
+  getSelectedPancakePage,
   getSelectedPancakeSender,
   sendPancakeConversationMessage,
   sendPancakePrivateReply,
@@ -42,6 +43,21 @@ function privateReplyConvId(raw: unknown): string | null {
   return id || null;
 }
 
+/** Per-field verification of ONE candidate — the Owner confirms these before Run. */
+export type PrivateReplyCandidateChecks = {
+  pageIdOk: boolean;
+  postTypeOk: boolean;
+  messageTypeOk: boolean;
+  postIdOk: boolean;
+  commentIdOk: boolean;
+  psidOk: boolean;
+  conversationOk: boolean;
+  canReplyPrivately: boolean;
+  notAlreadyReplied: boolean;
+  /** page_customer_id is "when available" — informational, NOT a hard gate. */
+  pageCustomerPresent: boolean;
+};
+
 /** One candidate comment for the Test B picker (safe/masked for display). */
 export type PrivateReplyTestCandidate = {
   webhookEventId: string;
@@ -49,7 +65,102 @@ export type PrivateReplyTestCandidate = {
   commentPreview: string;
   at: string;
   canReplyPrivately: boolean;
+  /** Masked identity fields shown so the Owner can verify the exact selected comment. */
+  identity: {
+    pageId: string;
+    postType: string;
+    messageType: string;
+    postId: string;
+    commentId: string;
+    psid: string;
+    pageCustomerId: string;
+    commentConversationId: string;
+  };
+  checks: PrivateReplyCandidateChecks;
+  /** Every HARD check passes (page/post_type/message.type/post/comment/psid/conv/crp/not-replied). */
+  allValid: boolean;
 };
+
+const CANDIDATE_COLUMNS =
+  'id, page_id, facebook_name, comment_text, received_at, post_type, livestream_post_id, comment_id, facebook_psid, pancake_page_customer_id, conversation_id, raw';
+
+/** Reveal only the last `keep` chars of an id for display; never the whole value. */
+function maskTail(v: string, keep: number): string {
+  const s = str(v);
+  if (!s) return '—';
+  return s.length <= keep ? `…${s}` : `…${s.slice(-keep)}`;
+}
+
+/** Build the masked candidate + its selectability from one stored webhook row. */
+function toCandidate(
+  r: Record<string, unknown>,
+  selectedPageId: string,
+): { candidate: PrivateReplyTestCandidate; eligible: boolean } {
+  const msg = rawMessage(r.raw);
+  const pageId = str(r.page_id);
+  const postType = str(r.post_type);
+  const messageType = str(msg?.type);
+  const postId = str(r.livestream_post_id);
+  const commentId = str(r.comment_id);
+  const psid = str(r.facebook_psid);
+  const conv = str(r.conversation_id);
+  const pageCustomer = str(r.pancake_page_customer_id);
+  const crp = msg?.can_reply_privately === true;
+  const alreadyReplied = privateReplyConvId(r.raw) !== null;
+  const complete = Boolean(postId && commentId && psid && conv);
+
+  const checks: PrivateReplyCandidateChecks = {
+    pageIdOk: selectedPageId ? pageId === selectedPageId : Boolean(pageId),
+    postTypeOk: postType === 'livestream' || postType === 'video',
+    messageTypeOk: messageType === 'COMMENT',
+    postIdOk: Boolean(postId),
+    commentIdOk: Boolean(commentId),
+    psidOk: Boolean(psid),
+    conversationOk: Boolean(conv),
+    canReplyPrivately: crp,
+    notAlreadyReplied: !alreadyReplied,
+    pageCustomerPresent: Boolean(pageCustomer),
+  };
+  const allValid =
+    checks.pageIdOk &&
+    checks.postTypeOk &&
+    checks.messageTypeOk &&
+    checks.postIdOk &&
+    checks.commentIdOk &&
+    checks.psidOk &&
+    checks.conversationOk &&
+    checks.canReplyPrivately &&
+    checks.notAlreadyReplied;
+
+  // SELECTABLE only when privately-replyable + complete + not-already-replied (post_type is
+  // already constrained to livestream/video in SQL). This is the SAME hard gate as the
+  // recent list — a search NEVER widens it, so inbox/null or can_reply_privately=false
+  // events are never offered. page_id / message.type are surfaced only for verification.
+  const eligible = crp && complete && !alreadyReplied;
+
+  return {
+    candidate: {
+      webhookEventId: str(r.id),
+      fbName: str(r.facebook_name) || '—',
+      commentPreview: str(r.comment_text).slice(0, 64),
+      at: str(r.received_at),
+      canReplyPrivately: crp,
+      identity: {
+        pageId: maskTail(pageId, 6),
+        postType: postType || '—',
+        messageType: messageType || '—',
+        postId: maskTail(postId, 4),
+        commentId: maskTail(commentId, 4),
+        psid: maskTail(psid, 4),
+        pageCustomerId: pageCustomer ? maskTail(pageCustomer, 4) : '—',
+        commentConversationId: maskTail(conv, 6),
+      },
+      checks,
+      allValid,
+    },
+    eligible,
+  };
+}
 
 /**
  * Recent Live/video COMMENT events that CAN be privately replied to (can_reply_privately
@@ -59,6 +170,26 @@ export type PrivateReplyTestCandidate = {
 export async function listPrivateReplyTestCandidates(): Promise<
   PrivateReplyTestCandidate[]
 > {
+  return queryCandidates(null);
+}
+
+/**
+ * The SAME eligible candidates, NARROWED by an exact/partial comment-text search (e.g. the
+ * unique consented token `TESTB-AV-817`) so the Owner can locate their test comment in a
+ * high-volume Live without scrolling. It NEVER widens the gate: only privately-replyable,
+ * complete, not-already-replied Live/video comments are returned. Primary Super Admin only.
+ */
+export async function searchPrivateReplyTestCandidates(
+  query: string,
+): Promise<PrivateReplyTestCandidate[]> {
+  const q = (query ?? '').trim();
+  if (!q) return [];
+  return queryCandidates(q.slice(0, 120));
+}
+
+async function queryCandidates(
+  search: string | null,
+): Promise<PrivateReplyTestCandidate[]> {
   try {
     await requirePrimarySuperAdmin();
   } catch (cause) {
@@ -66,33 +197,20 @@ export async function listPrivateReplyTestCandidates(): Promise<
     throw cause;
   }
   const supabase = await createClient();
-  const { data } = await supabase
+  const selectedPageId = (await getSelectedPancakePage())?.pageId ?? '';
+  let qb = supabase
     .from('pancake_webhook_events')
-    .select(
-      'id, facebook_name, comment_text, received_at, livestream_post_id, comment_id, facebook_psid, conversation_id, raw',
-    )
-    .in('post_type', ['livestream', 'video'])
+    .select(CANDIDATE_COLUMNS)
+    .in('post_type', ['livestream', 'video']);
+  if (search) qb = qb.ilike('comment_text', `%${search}%`);
+  const { data } = await qb
     .order('received_at', { ascending: false })
-    .limit(40);
+    .limit(search ? 60 : 40);
   const rows = (data ?? []) as Array<Record<string, unknown>>;
   return rows
-    .map((r) => ({
-      webhookEventId: str(r.id),
-      fbName: str(r.facebook_name) || '—',
-      commentPreview: str(r.comment_text).slice(0, 48),
-      at: str(r.received_at),
-      canReplyPrivately: rawMessage(r.raw)?.can_reply_privately === true,
-      // Already privately replied to (a private_reply_conversation exists) → NOT a fresh
-      // candidate. Exclude it so Test B is only ever offered clean first-time comments.
-      _alreadyReplied: privateReplyConvId(r.raw) !== null,
-      _complete:
-        Boolean(str(r.livestream_post_id)) &&
-        Boolean(str(r.comment_id)) &&
-        Boolean(str(r.facebook_psid)) &&
-        Boolean(str(r.conversation_id)),
-    }))
-    .filter((c) => c.canReplyPrivately && c._complete && !c._alreadyReplied)
-    .map(({ _alreadyReplied, _complete, ...c }) => c);
+    .map((r) => toCandidate(r, selectedPageId))
+    .filter((x) => x.eligible)
+    .map((x) => x.candidate);
 }
 
 export type PrivateReplyTestStep = { step: string; ok: boolean; detail: string };

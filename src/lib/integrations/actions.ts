@@ -115,6 +115,7 @@ export async function runPrivateReplyTestAction(input: {
       `FOLLOW-UP WEBHOOK WITHOUT CUSTOMER REPLY: ${r.followUpWebhookWithoutCustomerReply ? 'YES' : 'NO'}`,
       `UPDATED COMMENT private_reply_conversation FOUND: ${r.updatedCommentPrivateReplyConversationFound ? 'YES' : 'NO'}`,
       `GET CONVERSATIONS FOUND REAL PRIVATE CONVERSATION: ${r.getConversationsFound ? 'YES' : 'NO'}`,
+      `REAL PRIVATE CONVERSATION FOUND: ${r.realConversationId ? 'YES' : 'NO'}`,
       `REAL PRIVATE CONVERSATION ID: ${r.realConversationId ? `…${r.realConversationId.slice(-6)}` : 'NONE'}`,
       `SOURCE: ${r.source}`,
       `TIME TO REAL CONVERSATION: ${r.secondsToRealConversation == null ? '—' : `${r.secondsToRealConversation}s`}`,
