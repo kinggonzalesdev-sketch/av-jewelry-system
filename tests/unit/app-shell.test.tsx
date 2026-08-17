@@ -244,3 +244,85 @@ describe('manual theme toggle persists the choice', () => {
     expect(localStorage.getItem('av-theme')).toBe('dark');
   });
 });
+
+/**
+ * Role-parity GEOMETRY lock (Owner request 2026-08-18): a member's ROLE must change
+ * permissions + visible content ONLY — never the application dimensions. Owner is the
+ * canonical baseline; Admin and Staff must render the SAME shell geometry. This renders the
+ * geometry-owning shell (AppSidebar) under all three roles and asserts the sidebar width,
+ * the main-content container, the mobile-nav grid, the responsive breakpoints, and the
+ * padding are BYTE-IDENTICAL across roles — while the nav ITEM count legitimately differs by
+ * permission. It fails loudly if anyone ever introduces role-conditional dimensions.
+ */
+describe('shell geometry is role-independent (role changes content, never dimensions)', () => {
+  function geometryOf(roleKey: string, allowedPages?: string[]) {
+    const { container, unmount } = render(
+      <AppSidebar
+        fullName="X Y"
+        roleKey={roleKey}
+        userEmail="x@example.com"
+        allowedPages={allowedPages}
+      >
+        <p>content</p>
+      </AppSidebar>,
+    );
+    const aside = container.querySelector('[data-testid="app-sidebar"]') as HTMLElement;
+    const main = container.querySelector('#main-content') as HTMLElement;
+    const bottomNav = container.querySelector(
+      '[data-testid="bottom-nav"] ul',
+    ) as HTMLElement;
+    const g = {
+      sidebarClass: aside.className,
+      mainClass: main.className,
+      bottomNavClass: bottomNav.className,
+      sidebarLinkCount: within(aside).getAllByRole('link').length,
+    };
+    unmount();
+    return g;
+  }
+
+  // Owner sees everything (no permission filter); Staff holds only the dashboard key.
+  const owner = () => geometryOf('owner', undefined);
+  const admin = () => geometryOf('selected_admin', undefined);
+  const staff = () => geometryOf('staff', ['nav_dashboard']);
+
+  it('Tests A/B/C — Owner = Admin = Staff sidebar + main + mobile-nav geometry', () => {
+    const o = owner();
+    const a = admin();
+    const s = staff();
+    // Sidebar: the SAME fixed width/height/border class string for every role.
+    expect(a.sidebarClass).toBe(o.sidebarClass);
+    expect(s.sidebarClass).toBe(o.sidebarClass);
+    expect(o.sidebarClass).toMatch(/(^|\s)w-64(\s|$)/);
+    expect(o.sidebarClass).toMatch(/(^|\s)shrink-0(\s|$)/);
+    // Main content container: identical across roles.
+    expect(a.mainClass).toBe(o.mainClass);
+    expect(s.mainClass).toBe(o.mainClass);
+    expect(o.mainClass).toMatch(/(^|\s)flex-1(\s|$)/);
+    // Mobile bottom nav: the same fixed 5-column grid for every role.
+    expect(a.bottomNavClass).toBe(o.bottomNavClass);
+    expect(s.bottomNavClass).toBe(o.bottomNavClass);
+    expect(o.bottomNavClass).toMatch(/grid-cols-5/);
+  });
+
+  it('Test E — fewer permitted modules do NOT shrink the sidebar', () => {
+    const o = owner();
+    const s = staff();
+    // Staff genuinely sees FEWER nav links (content differs by permission)…
+    expect(s.sidebarLinkCount).toBeLessThan(o.sidebarLinkCount);
+    // …but the sidebar WIDTH class is byte-identical — never resized by item count.
+    expect(s.sidebarClass).toBe(o.sidebarClass);
+  });
+
+  it('Test F — responsive breakpoints are global, not role-specific', () => {
+    const o = owner();
+    const s = staff();
+    // The same responsive utilities drive the sidebar reveal + content padding for all roles.
+    for (const cls of ['lg:flex', 'lg:h-dvh', 'lg:sticky']) {
+      expect(o.sidebarClass).toContain(cls);
+    }
+    expect(o.mainClass).toContain('sm:p-5');
+    expect(s.sidebarClass).toBe(o.sidebarClass);
+    expect(s.mainClass).toBe(o.mainClass);
+  });
+});
