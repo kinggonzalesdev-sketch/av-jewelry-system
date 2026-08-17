@@ -4,7 +4,6 @@ import { recordAuditEvent } from '@/lib/audit/log';
 import {
   AuthorizationError,
   requireOwner,
-  requireOwnerOrAdmin,
   requirePermission,
 } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
@@ -301,9 +300,11 @@ export async function permanentlyDeleteInventoryItem(
 }
 
 /**
- * One-step permanent delete of an inventory item — Owner or Selected Admin only
- * (Owner request 2026-07-24, supersedes the archive-then-delete UX). The database
- * function is the real gate: it re-checks the role and BLOCKS the delete when the
+ * One-step permanent delete of an inventory item — restricted to the Owner and any
+ * member granted the `inventory_delete` permission (Owner request 2026-08-17; only
+ * Super Admins + Cynthia hold it). Role is NOT authority here: a Selected Admin
+ * without the grant is denied. The SECURITY DEFINER function is the real gate — it
+ * re-checks `has_permission('inventory_delete')` and BLOCKS the delete when the
  * item is linked to any business record (the same dependency definition the
  * archive flow used), so an in-use item can never be removed. Intended for
  * mis-encoded / duplicate / test rows. Irreversible; the audit row survives it.
@@ -312,7 +313,7 @@ export async function deleteInventoryItemDirect(
   inventoryItemId: string,
 ): Promise<InventoryMutationResult> {
   try {
-    await requireOwnerOrAdmin();
+    await requirePermission('inventory_delete');
   } catch (cause) {
     if (cause instanceof AuthorizationError) {
       await recordAuditEvent({

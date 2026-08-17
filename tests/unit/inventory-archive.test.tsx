@@ -75,11 +75,16 @@ describe('InventoryItemActions — per-permission Edit / Delete', () => {
     expect(screen.getByTestId('inventory-delete-item-1')).toBeInTheDocument();
   });
 
-  it('a non-owner Admin gets Request delete (Owner approval), not a direct Delete', () => {
+  it('a member granted inventory_delete (not the Owner) gets a DIRECT Delete', () => {
+    // Cynthia's case: canDelete via the grant, canForceDelete=false (not a Super Admin).
+    // She deletes directly — the old "Request deletion" approval detour is gone (Owner
+    // request 2026-08-17: delete is restricted to Super Admins + Cynthia).
     render(<InventoryItemActions row={row({})} canEdit={true} canDelete={true} />);
     expect(screen.getByTestId('inventory-edit-item-1')).toBeInTheDocument();
-    expect(screen.queryByTestId('inventory-delete-item-1')).not.toBeInTheDocument();
-    expect(screen.getByTestId('inventory-request-delete-item-1')).toBeInTheDocument();
+    expect(screen.getByTestId('inventory-delete-item-1')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('inventory-request-delete-item-1'),
+    ).not.toBeInTheDocument();
   });
 
   it('hides Edit and Delete when neither permission is granted', () => {
@@ -163,7 +168,8 @@ describe('InventoryItemActions — per-permission Edit / Delete', () => {
     ).toBeInTheDocument();
   });
 
-  it('a non-owner never reaches the direct delete or the force-delete override', async () => {
+  it('a granted non-owner gets the direct Delete but NEVER the Super Admin force override', async () => {
+    h.deleteLinked = true;
     render(
       <InventoryItemActions
         row={row({})}
@@ -172,18 +178,21 @@ describe('InventoryItemActions — per-permission Edit / Delete', () => {
         canForceDelete={false}
       />,
     );
-    // No direct-delete modal at all — a non-owner only gets Request delete.
-    expect(screen.queryByTestId('inventory-delete-item-1')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('inventory-request-delete-item-1'));
-
-    // The reason dialog opens; it deletes nothing and never offers a force override.
-    const reason = screen.getByLabelText(/Reason/i);
-    expect(reason).toBeInTheDocument();
-    fireEvent.change(reason, { target: { value: 'wrong encode' } });
-    fireEvent.click(screen.getByTestId('inventory-request-delete-item-1-send'));
+    // Direct delete IS available (canDelete); there is no approval/request detour.
+    expect(screen.getByTestId('inventory-delete-item-1')).toBeInTheDocument();
     expect(
-      await screen.findByTestId('inventory-request-delete-item-1-sent'),
-    ).toBeInTheDocument();
+      screen.queryByTestId('inventory-request-delete-item-1'),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('inventory-delete-item-1'));
+    fireEvent.change(screen.getByPlaceholderText('DELETE'), {
+      target: { value: 'DELETE' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Delete permanently/i }));
+
+    // Even after the DB refuses (linked records), the force override stays hidden —
+    // force-delete is Owner-only (canForceDelete=false here).
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
     expect(screen.queryByTestId('inventory-force-delete-item-1')).not.toBeInTheDocument();
   });
 });
