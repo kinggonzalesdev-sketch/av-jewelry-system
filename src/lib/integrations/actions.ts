@@ -97,6 +97,15 @@ export async function runPrivateReplyTestAction(
     const lines = result.steps
       .map((s) => `${s.ok ? '✓' : '✗'} ${s.step}: ${s.detail}`)
       .join('\n');
+    // #10900 "already replied" is NOT a failure — the contract is proven; the comment
+    // was just reused. Surface it as info (not a red error) and prompt for a fresh one.
+    if (result.alreadyReplied) {
+      const header =
+        'Test B — ALREADY_REPLIED (not a failure): this comment was already privately ' +
+        'replied to (Pancake #10900). The endpoint / action / payload are correct — pick ' +
+        'a brand-new comment and run once.';
+      return { error: null, success: `${header}\n\n${lines}` };
+    }
     const header = result.ok
       ? 'Test B PASS — private reply + delivery verified end-to-end (delivered once).'
       : 'Test B STOPPED — see the failing step below (exact sanitized Pancake response included). No alternate endpoint/action was tried.';

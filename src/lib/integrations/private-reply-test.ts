@@ -32,6 +32,12 @@ function rawMessage(raw: unknown): Record<string, unknown> | null {
   const data = obj(obj(raw)?.data);
   return obj(data?.message);
 }
+/** The already-created private-reply conversation id on a stored comment, or null. A
+ *  present value means the comment was ALREADY privately replied to (not a fresh case). */
+function privateReplyConvId(raw: unknown): string | null {
+  const id = str(obj(rawMessage(raw)?.private_reply_conversation)?.id);
+  return id || null;
+}
 
 /** One candidate comment for the Test B picker (safe/masked for display). */
 export type PrivateReplyTestCandidate = {
@@ -67,30 +73,31 @@ export async function listPrivateReplyTestCandidates(): Promise<
     .limit(40);
   const rows = (data ?? []) as Array<Record<string, unknown>>;
   return rows
-    .map((r) => {
-      const crp = rawMessage(r.raw)?.can_reply_privately === true;
-      const complete =
+    .map((r) => ({
+      webhookEventId: str(r.id),
+      fbName: str(r.facebook_name) || '—',
+      commentPreview: str(r.comment_text).slice(0, 48),
+      at: str(r.received_at),
+      canReplyPrivately: rawMessage(r.raw)?.can_reply_privately === true,
+      // Already privately replied to (a private_reply_conversation exists) → NOT a fresh
+      // candidate. Exclude it so Test B is only ever offered clean first-time comments.
+      _alreadyReplied: privateReplyConvId(r.raw) !== null,
+      _complete:
         Boolean(str(r.livestream_post_id)) &&
         Boolean(str(r.comment_id)) &&
         Boolean(str(r.facebook_psid)) &&
-        Boolean(str(r.conversation_id));
-      return {
-        webhookEventId: str(r.id),
-        fbName: str(r.facebook_name) || '—',
-        commentPreview: str(r.comment_text).slice(0, 48),
-        at: str(r.received_at),
-        canReplyPrivately: crp,
-        _complete: complete,
-      };
-    })
-    .filter((c) => c.canReplyPrivately && c._complete)
-    .map(({ _complete, ...c }) => c);
+        Boolean(str(r.conversation_id)),
+    }))
+    .filter((c) => c.canReplyPrivately && c._complete && !c._alreadyReplied)
+    .map(({ _alreadyReplied, _complete, ...c }) => c);
 }
 
 export type PrivateReplyTestStep = { step: string; ok: boolean; detail: string };
 export type PrivateReplyTestResult = {
   ok: boolean;
   stopped: boolean;
+  /** True for the benign Pancake #10900 "already replied" case — NOT a contract failure. */
+  alreadyReplied: boolean;
   steps: PrivateReplyTestStep[];
   realPrivateConversationId: string | null;
 };
@@ -115,6 +122,7 @@ export async function runPrivateReplyControlledTest(input: {
   const stop = (): PrivateReplyTestResult => ({
     ok: false,
     stopped: true,
+    alreadyReplied: false,
     steps,
     realPrivateConversationId: null,
   });
@@ -177,9 +185,36 @@ export async function runPrivateReplyControlledTest(input: {
     ok: pr.ok,
     detail: `[${pr.code}] ${pr.message}${pr.debug ? ` · ${pr.debug}` : ''}`,
   });
-  // Unexpected endpoint/response → STOP and report the exact sanitized response. Never
-  // try an alternate/undocumented action or endpoint.
-  if (!pr.ok) return stop();
+  if (!pr.ok) {
+    if (pr.code === 'already_replied') {
+      // NOT a contract/endpoint failure — this comment was already privately replied to.
+      // Do NOT retry, do NOT send a screenshot. Surface any existing private conversation
+      // for DIAGNOSTICS only (an existing-conversation photo test is a separate, explicit
+      // step — never automatic here).
+      const existing = pr.privateConversationId ?? privateReplyConvId(ev.raw);
+      steps.push({
+        step: 'already_replied',
+        ok: false,
+        detail:
+          'ALREADY_REPLIED (Pancake #10900) — the endpoint/action/payload are correct; ' +
+          'this comment was already privately replied to. ' +
+          (existing
+            ? `Existing private conversation …${existing.slice(-6)} (diagnostic only — no screenshot sent). `
+            : '') +
+          'Pick a brand-new comment for a fresh Test B.',
+      });
+      return {
+        ok: false,
+        stopped: true,
+        alreadyReplied: true,
+        steps,
+        realPrivateConversationId: existing ?? null,
+      };
+    }
+    // Genuine unexpected response → STOP and report the exact sanitized response (already
+    // in the private_replies step). Never try an alternate/undocumented action or endpoint.
+    return stop();
+  }
 
   // 4) Resolve the REAL private/Inbox conversation id from the response.
   const realConv = pr.privateConversationId;
@@ -191,7 +226,13 @@ export async function runPrivateReplyControlledTest(input: {
       : 'No private conversation id in the response — inspect the debug above (may arrive via a follow-up Messaging webhook).',
   });
   if (!realConv) {
-    return { ok: false, stopped: true, steps, realPrivateConversationId: null };
+    return {
+      ok: false,
+      stopped: true,
+      alreadyReplied: false,
+      steps,
+      realPrivateConversationId: null,
+    };
   }
 
   // 5) OPTIONAL PHOTO — existing reply_inbox flow, to the REAL private conversation only.
@@ -204,7 +245,13 @@ export async function runPrivateReplyControlledTest(input: {
     const path = str((cap as { screenshot_path?: string } | null)?.screenshot_path);
     if (!path) {
       steps.push({ step: 'photo', ok: false, detail: 'No screenshot on that capture id.' });
-      return { ok: false, stopped: true, steps, realPrivateConversationId: realConv };
+      return {
+        ok: false,
+        stopped: true,
+        alreadyReplied: false,
+        steps,
+        realPrivateConversationId: realConv,
+      };
     }
     const signed = (await supabase.storage
       .from(ATTACHMENT_BUCKET)
@@ -223,6 +270,7 @@ export async function runPrivateReplyControlledTest(input: {
     return {
       ok: photo.ok,
       stopped: !photo.ok,
+      alreadyReplied: false,
       steps,
       realPrivateConversationId: realConv,
     };
@@ -233,5 +281,11 @@ export async function runPrivateReplyControlledTest(input: {
     ok: true,
     detail: 'Skipped — no capture screenshot provided (text private reply verified).',
   });
-  return { ok: true, stopped: false, steps, realPrivateConversationId: realConv };
+  return {
+    ok: true,
+    stopped: false,
+    alreadyReplied: false,
+    steps,
+    realPrivateConversationId: realConv,
+  };
 }

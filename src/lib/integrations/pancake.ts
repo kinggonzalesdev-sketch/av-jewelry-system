@@ -1943,6 +1943,7 @@ export type PancakePrivateReplyResult = {
     | 'token_missing'
     | 'page_missing'
     | 'unavailable'
+    | 'already_replied'
     | 'failed';
   message: string;
   /** The real private conversation id, when Pancake returns one in the response. */
@@ -2110,6 +2111,22 @@ export async function sendPancakePrivateReply(input: {
       typeof body === 'object' &&
       (body as { success?: boolean }).success === false);
   if (rejected) {
+    // Pancake #10900 "Activity already replied to" is an EXPECTED response, not a
+    // contract/endpoint failure — the comment was already privately replied to (a
+    // comment can be privately replied to only once). Classify it distinctly so a
+    // caller never retries or treats it as an endpoint error, and surface any existing
+    // private conversation for DIAGNOSTICS only.
+    if (/\b10900\b/.test(rawText) || /already\s+replied/i.test(rawText)) {
+      return {
+        ok: false,
+        code: 'already_replied',
+        message:
+          'This comment was already privately replied to (Pancake #10900) — not a contract error. Use a brand-new comment.',
+        privateConversationId: extractPrivateConversationId(body),
+        pancakeMessageId: null,
+        debug,
+      };
+    }
     return {
       ok: false,
       code: 'failed',
