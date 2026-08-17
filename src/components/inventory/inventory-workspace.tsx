@@ -748,8 +748,6 @@ export function InventoryWorkspace({
                   <th className="col-center px-3 py-2.5">Type</th>
                   <th className="col-num px-3 py-2.5">Grams</th>
                   <th className="col-grow px-3 py-2.5 text-left">Customer</th>
-                  <th className="px-3 py-2.5 text-left">Order</th>
-                  <th className="px-3 py-2.5 text-left">Invoice</th>
                   <th className="col-num px-3 py-2.5">Sale Amount</th>
                   <th className="col-center px-3 py-2.5">Payment</th>
                   <th className="col-center px-3 py-2.5">Current Stage</th>
@@ -761,7 +759,7 @@ export function InventoryWorkspace({
                 {pagedCompleted.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={11}
+                      colSpan={9}
                       className="px-4 py-10 text-center text-muted-foreground"
                     >
                       {completedLoading || !completedLoaded
@@ -791,12 +789,6 @@ export function InventoryWorkspace({
                           title={c.customerName ?? undefined}
                         >
                           {c.customerName ?? '—'}
-                        </td>
-                        <td className="truncate px-3 py-2.5 font-mono">
-                          {c.orderNumber ?? '—'}
-                        </td>
-                        <td className="truncate px-3 py-2.5 font-mono">
-                          {c.invoiceNumber ?? '—'}
                         </td>
                         <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">
                           {c.finalSale ? <Money amount={c.finalSale} /> : '—'}

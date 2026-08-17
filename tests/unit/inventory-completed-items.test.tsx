@@ -166,6 +166,38 @@ describe('Inventory — Active vs Completed', () => {
     expect(within(table).getByText('For Invoice')).toBeInTheDocument();
   });
 
+  it('removes the Order and Invoice columns but keeps the key business columns', async () => {
+    renderWorkspace();
+    openCompleted();
+    const table = await screen.findByTestId('completed-items');
+    await within(table).findByText('SBA-R-2222');
+    const headers = within(table)
+      .getAllByRole('columnheader')
+      .map((h) => h.textContent);
+    expect(headers).not.toContain('Order');
+    expect(headers).not.toContain('Invoice');
+    expect(headers).toEqual(
+      expect.arrayContaining([
+        'Inventory Code',
+        'Customer',
+        'Sale Amount',
+        'Payment',
+        'Current Stage',
+        'Completion Date',
+        'Actions',
+      ]),
+    );
+  });
+
+  it('shows real Customer / Payment / Stage values (not — placeholders)', async () => {
+    renderWorkspace();
+    openCompleted();
+    const table = await screen.findByTestId('completed-items');
+    expect((await within(table).findAllByText('Maria Santos')).length).toBeGreaterThan(0);
+    expect(within(table).getAllByText('Paid in Full').length).toBeGreaterThan(0);
+    expect(within(table).getByText('For Invoice')).toBeInTheDocument();
+  });
+
   it('hides the per-row Delete on Completed Items for non-Super-Admins', async () => {
     renderWorkspace();
     openCompleted();
