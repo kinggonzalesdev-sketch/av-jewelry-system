@@ -743,7 +743,7 @@ export function InventoryWorkspace({
                   MUST match the 9 columns below; long cells (Inventory Code, Customer)
                   truncate within their width. */}
               <colgroup>
-                {['18%', '8%', '7%', '18%', '10%', '10%', '11%', '9%', '9%'].map((w, i) => (
+                {['15%', '10%', '10%', '15%', '10%', '10%', '10%', '10%', '10%'].map((w, i) => (
                   <col key={i} style={{ width: w }} />
                 ))}
               </colgroup>
