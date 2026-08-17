@@ -143,8 +143,9 @@ export function InventoryItemActions({
     startRequest(async () => {
       const res = await requestInventoryEditAction(row.inventoryItemId, proposed, reason);
       if (res.ok) {
-        setEdit(false);
-        setNote({ ok: true, text: 'Edit request submitted for approval.' });
+        // Keep the modal OPEN and show the confirmation inside it (never as an inline cell
+        // note — that would change the row height). The item is untouched until approval.
+        setNote({ ok: true, text: 'Edit request submitted for Super Admin approval.' });
         router.refresh();
         onMutated?.();
       } else {
@@ -164,8 +165,9 @@ export function InventoryItemActions({
         reason,
       );
       if (res.ok) {
-        setDel(false);
-        setNote({ ok: true, text: 'Deletion request submitted for approval.' });
+        // Keep the modal OPEN and confirm inside it — the item stays until a Super Admin
+        // approves, so nothing in the table changes (and the row height never shifts).
+        setNote({ ok: true, text: 'Deletion request submitted for Super Admin approval.' });
         router.refresh();
         onMutated?.();
       } else {
@@ -182,11 +184,18 @@ export function InventoryItemActions({
       })
     : '—';
 
-  const editLabel = isOwner ? 'Edit' : 'Request Edit';
-  const deleteLabel = isOwner ? 'Delete' : 'Request Delete';
+  // IDENTICAL labels for every role — Owner and Admin both see "Edit" / "Delete", so the
+  // Actions column has the same width, the buttons stay on ONE line, and the row keeps its
+  // 36px height regardless of permission (Owner request 2026-08-18: Admin rows were taller
+  // because the longer "Request Edit / Request Delete" labels wrapped). An Admin's action is
+  // still a REQUEST, not a mutation — that is made explicit INSIDE the modal (title, body,
+  // the "Submit for Approval" button, and the post-submit confirmation), never by widening
+  // the compact table button.
+  const editLabel = 'Edit';
+  const deleteLabel = 'Delete';
 
   return (
-    <div className="flex flex-wrap items-center justify-end gap-1">
+    <div className="flex items-center justify-center gap-1 whitespace-nowrap">
       <button
         type="button"
         onClick={() => setView(true)}
@@ -223,16 +232,6 @@ export function InventoryItemActions({
         </button>
       ) : null}
 
-      {note ? (
-        <p
-          role="status"
-          className={`w-full text-right text-[11px] ${note.ok ? 'text-gold-strong' : 'text-destructive'}`}
-          data-testid={`inventory-request-note-${row.inventoryItemId}`}
-        >
-          {note.text}
-        </p>
-      ) : null}
-
       {/* View — compact read-only detail. */}
       <Modal open={view} onClose={() => setView(false)} title="Inventory item" size="sm">
         <dl className="text-sm">
@@ -255,26 +254,48 @@ export function InventoryItemActions({
         size="sm"
         critical
         footer={
-          <>
-            <Button type="button" variant="outline" onClick={() => setEdit(false)}>
-              Cancel
-            </Button>
+          note?.ok ? (
             <Button
-              type="submit"
-              form={`inventory-edit-form-${row.inventoryItemId}`}
-              disabled={editing || requesting}
+              type="button"
+              onClick={() => {
+                setEdit(false);
+                setNote(null);
+              }}
             >
-              {isOwner
-                ? editing
-                  ? 'Saving…'
-                  : 'Save corrections'
-                : requesting
-                  ? 'Submitting…'
-                  : 'Submit for Approval'}
+              Done
             </Button>
-          </>
+          ) : (
+            <>
+              <Button type="button" variant="outline" onClick={() => setEdit(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                form={`inventory-edit-form-${row.inventoryItemId}`}
+                disabled={editing || requesting}
+              >
+                {isOwner
+                  ? editing
+                    ? 'Saving…'
+                    : 'Save corrections'
+                  : requesting
+                    ? 'Submitting…'
+                    : 'Submit for Approval'}
+              </Button>
+            </>
+          )
         }
       >
+        {note?.ok ? (
+          <div
+            role="status"
+            data-testid={`inventory-request-note-${row.inventoryItemId}`}
+            className="rounded-md border border-gold/40 bg-gold/5 p-3 text-sm text-gold-strong"
+          >
+            ✓ {note.text} You’ll find it under Approvals — the item is unchanged until a
+            Super Admin approves.
+          </div>
+        ) : (
         <form
           id={`inventory-edit-form-${row.inventoryItemId}`}
           action={isOwner ? editAction : undefined}
@@ -359,6 +380,7 @@ export function InventoryItemActions({
             </p>
           ) : null}
         </form>
+        )}
       </Modal>
 
       {/* Delete — Owner deletes directly (with force override); Admin submits for approval. */}
@@ -372,27 +394,49 @@ export function InventoryItemActions({
         size="sm"
         critical
         footer={
-          <>
-            <Button type="button" variant="outline" onClick={() => setDel(false)}>
-              Cancel
-            </Button>
+          note?.ok ? (
             <Button
-              type="submit"
-              variant="destructive"
-              form={`inventory-delete-form-${row.inventoryItemId}`}
-              disabled={(deleting || requesting) || confirm !== 'DELETE'}
+              type="button"
+              onClick={() => {
+                setDel(false);
+                setNote(null);
+              }}
             >
-              {isOwner
-                ? deleting
-                  ? 'Deleting…'
-                  : 'Delete permanently'
-                : requesting
-                  ? 'Submitting…'
-                  : 'Submit for Approval'}
+              Done
             </Button>
-          </>
+          ) : (
+            <>
+              <Button type="button" variant="outline" onClick={() => setDel(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="destructive"
+                form={`inventory-delete-form-${row.inventoryItemId}`}
+                disabled={deleting || requesting || confirm !== 'DELETE'}
+              >
+                {isOwner
+                  ? deleting
+                    ? 'Deleting…'
+                    : 'Delete permanently'
+                  : requesting
+                    ? 'Submitting…'
+                    : 'Submit for Approval'}
+              </Button>
+            </>
+          )
         }
       >
+        {note?.ok ? (
+          <div
+            role="status"
+            data-testid={`inventory-request-note-${row.inventoryItemId}`}
+            className="rounded-md border border-gold/40 bg-gold/5 p-3 text-sm text-gold-strong"
+          >
+            ✓ {note.text} You’ll find it under Approvals — the item stays until a Super
+            Admin approves.
+          </div>
+        ) : (
         <form
           id={`inventory-delete-form-${row.inventoryItemId}`}
           action={isOwner ? delAction : undefined}
@@ -447,6 +491,7 @@ export function InventoryItemActions({
             </p>
           ) : null}
         </form>
+        )}
 
         {showForce ? (
           <div className="mt-3 space-y-2 rounded-md border border-destructive/40 bg-destructive/5 p-2.5">

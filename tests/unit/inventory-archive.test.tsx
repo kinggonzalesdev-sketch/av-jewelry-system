@@ -194,6 +194,62 @@ describe('InventoryItemActions — per-permission Edit / Delete', () => {
   });
 });
 
+/**
+ * Actions-column GEOMETRY PARITY (Owner request 2026-08-18). Admin rows used to be taller
+ * because the longer "Request Edit / Request Delete" labels wrapped inside a flex-wrap row.
+ * Owner and Admin must now render IDENTICAL table buttons ("View | Edit | Delete") on ONE
+ * line; the approval nature of an Admin's action lives entirely inside the modal.
+ */
+describe('InventoryItemActions — Owner/Admin geometry parity', () => {
+  it('Owner and Admin show the SAME table labels (View / Edit / Delete) — no "Request …"', () => {
+    const owner = render(
+      <InventoryItemActions row={row({})} canEdit canDelete isOwner />,
+    );
+    expect(screen.getByTestId('inventory-edit-item-1').textContent).toBe('Edit');
+    expect(screen.getByTestId('inventory-delete-item-1').textContent).toBe('Delete');
+    owner.unmount();
+
+    render(<InventoryItemActions row={row({})} canEdit canDelete />); // Admin
+    expect(screen.getByTestId('inventory-edit-item-1').textContent).toBe('Edit');
+    expect(screen.getByTestId('inventory-delete-item-1').textContent).toBe('Delete');
+    // The old wrapping labels are gone for every role.
+    expect(screen.queryByText('Request Edit')).not.toBeInTheDocument();
+    expect(screen.queryByText('Request Delete')).not.toBeInTheDocument();
+  });
+
+  it('renders the action buttons on ONE line — nowrap, never flex-wrap', () => {
+    render(<InventoryItemActions row={row({})} canEdit canDelete />);
+    const actionRow = screen.getByTestId('inventory-view-item-1').parentElement!;
+    expect(actionRow.className).toContain('whitespace-nowrap');
+    expect(actionRow.className).not.toContain('flex-wrap');
+  });
+
+  it('an Admin edit request confirms INSIDE the modal (not an inline cell note) and offers Done', async () => {
+    render(<InventoryItemActions row={row({})} canEdit canDelete />);
+    fireEvent.click(screen.getByTestId('inventory-edit-item-1'));
+    fireEvent.submit(document.getElementById('inventory-edit-form-item-1') as HTMLFormElement);
+    expect(
+      await screen.findByText(/submitted for Super Admin approval/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Done$/ })).toBeInTheDocument();
+    // Once submitted, the request button is gone (replaced by Done) — no re-submit.
+    expect(
+      screen.queryByRole('button', { name: /Submit for Approval/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('an Admin delete request confirms INSIDE the modal and offers Done', async () => {
+    render(<InventoryItemActions row={row({})} canEdit canDelete />);
+    fireEvent.click(screen.getByTestId('inventory-delete-item-1'));
+    fireEvent.change(screen.getByPlaceholderText('DELETE'), { target: { value: 'DELETE' } });
+    fireEvent.submit(document.getElementById('inventory-delete-form-item-1') as HTMLFormElement);
+    expect(
+      await screen.findByText(/Deletion request submitted for Super Admin approval/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Done$/ })).toBeInTheDocument();
+  });
+});
+
 function archivedRow(over: Partial<ArchivedInventoryRow>): ArchivedInventoryRow {
   return {
     inventoryItemId: 'arch-1',
