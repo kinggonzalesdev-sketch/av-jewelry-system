@@ -24,6 +24,9 @@ export type EffectiveCaptureLink = {
   linkStatus: CaptureLinkStatus;
   linkedCustomerName: string | null;
   conversationAvailable: boolean;
+  /** True only when a normal Inbox PHOTO can actually be delivered now (a genuine customer Inbox
+   *  DM inside the media window). A `linked` comment-only customer is false — "Photo waiting". */
+  photoEligible: boolean;
   fbUrl: string | null;
   matchCount: number;
 };
@@ -103,7 +106,25 @@ export function CaptureLinkPanel({
       <span className="font-medium text-foreground">
         {link.linkedCustomerName ?? 'Facebook customer'}
       </span>{' '}
-      <span className="text-emerald-600">· chat ready</span>
+      {/* "Chat linked" (a real customer/conversation is resolved) is NOT the same as photo-send
+          eligibility. A comment-only customer is linked but the normal Inbox PHOTO route will be
+          rejected by Facebook until they send a genuine Inbox DM — so show the photo state too. */}
+      <span className="text-emerald-600">· Chat linked</span>{' '}
+      {link.photoEligible ? (
+        <span
+          className="text-emerald-600"
+          title="The customer has a recent Inbox message — a photo can be auto-sent now."
+        >
+          · Photo ready
+        </span>
+      ) : (
+        <span
+          className="text-amber-700"
+          title="Waiting for the customer to send an Inbox message — a normal photo can't be auto-sent yet (a Live comment isn't enough)."
+        >
+          · Photo waiting
+        </span>
+      )}
     </span>
   ) : status === 'customer_no_chat' ? (
     <span>

@@ -2,6 +2,7 @@ import 'server-only';
 
 import { requirePermission } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
+import { isConversationMediaEligible } from '@/lib/capture/media-window';
 import { normalizeGrams } from '@/lib/print/order-receipt';
 import type { PendingCaptureRow } from '@/lib/capture/pending-types';
 
@@ -90,6 +91,19 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
     ),
   );
 
+  // Photo eligibility per row: only a `linked` capture whose conversation has a GENUINE
+  // customer-initiated Inbox DM in the media window is "Photo ready". A comment-only `linked`
+  // customer is NOT (the Bavelyn P0). Computed only for linked+conversation rows (fail-safe false
+  // otherwise) so the strip can show "Photo waiting" without firing a doomed send.
+  const eligible = await Promise.all(
+    rows.map((r) => {
+      const conv = (r.pancake_conversation_id ?? '').trim();
+      return r.link_status === 'linked' && conv
+        ? isConversationMediaEligible(supabase, conv).catch(() => false)
+        : Promise.resolve(false);
+    }),
+  );
+
   return rows.map((r, i) => {
     const cust = Array.isArray(r.customers) ? r.customers[0] : r.customers;
     const linkStatus = (r.link_status ?? null) as PendingCaptureRow['linkStatus'];
@@ -110,6 +124,7 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
       linkedCustomerId: r.customer_id ?? null,
       linkedCustomerName: (cust?.display_name ?? '').trim() || null,
       conversationAvailable: Boolean((r.pancake_conversation_id ?? '').trim()),
+      photoEligible: eligible[i] === true,
       fbUrl: (cust?.facebook_conversation_url ?? '').trim() || null,
       messageStatus: r.message_status ?? null,
     };

@@ -2,8 +2,11 @@
 
 import { revalidatePath } from 'next/cache';
 
+import type { SupabaseClient } from '@supabase/supabase-js';
+
 import { requirePermission } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
+import { isConversationMediaEligible } from '@/lib/capture/media-window';
 import { listPendingCaptures } from '@/lib/capture/pending';
 import {
   sendPendingCaptureToMessenger,
@@ -86,9 +89,14 @@ const FAIL_LINK: CaptureLinkResult = {
   fbUrl: null,
   matchCount: 0,
   sent: false,
+  photoEligible: false,
 };
 
-function toLinkResult(link: CaptureLink, sent: boolean): CaptureLinkResult {
+function toLinkResult(
+  link: CaptureLink,
+  sent: boolean,
+  photoEligible: boolean,
+): CaptureLinkResult {
   return {
     ok: true,
     linkStatus: link.linkStatus,
@@ -98,7 +106,19 @@ function toLinkResult(link: CaptureLink, sent: boolean): CaptureLinkResult {
     fbUrl: link.fbUrl,
     matchCount: link.matchCount,
     sent,
+    photoEligible,
   };
+}
+
+/** Genuine-Inbox-DM photo eligibility for a resolved link (false unless it's a `linked`
+ *  conversation with a real customer Inbox DM in the window). Never throws. */
+async function linkPhotoEligible(
+  supabase: SupabaseClient,
+  link: CaptureLink,
+): Promise<boolean> {
+  const conv = (link.conversationId ?? '').trim();
+  if (link.linkStatus !== 'linked' || !conv) return false;
+  return isConversationMediaEligible(supabase, conv).catch(() => false);
 }
 
 type PendingCaptureLite = {
@@ -171,8 +191,9 @@ export async function resolveCaptureLinkAction(
     cap.pancake_conversation_id ?? null,
   );
   const sent = await maybeAutoSend(captureRecordId, link, cap);
+  const photoEligible = await linkPhotoEligible(supabase, link);
   revalidatePath('/orders');
-  return toLinkResult(link, sent);
+  return toLinkResult(link, sent, photoEligible);
 }
 
 /** The operator explicitly links this capture to a chosen customer (confirm / Change). */
@@ -195,8 +216,9 @@ export async function setCaptureCustomerAction(
   const link = await resolveChosenCustomer(supabase, customerId);
   await persistCaptureLink(supabase, captureRecordId, link);
   const sent = await maybeAutoSend(captureRecordId, link, cap);
+  const photoEligible = await linkPhotoEligible(supabase, link);
   revalidatePath('/orders');
-  return toLinkResult(link, sent);
+  return toLinkResult(link, sent, photoEligible);
 }
 
 /** Remove the customer link from a capture (operator says "not this person"). */
@@ -221,6 +243,7 @@ export async function clearCaptureLinkAction(
     fbUrl: null,
     matchCount: 0,
     sent: false,
+    photoEligible: false,
   };
 }
 

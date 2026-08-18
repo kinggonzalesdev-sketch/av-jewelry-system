@@ -39,6 +39,11 @@ export type CaptureLinkResult = {
   matchCount: number;
   /** True when this resolve also auto-sent the screenshot. */
   sent: boolean;
+  /** True only when the linked conversation has a GENUINE customer-initiated Inbox DM inside the
+   *  media window — i.e. a normal Inbox PHOTO can actually be delivered now. A linked conversation
+   *  (chat resolved) does NOT imply this: a comment-only customer is `linked` but NOT photo-ready.
+   *  Distinct from `conversationAvailable` (a chat exists) — this is "photo can be sent". */
+  photoEligible: boolean;
   error?: string;
 };
 
@@ -79,6 +84,10 @@ export type PendingCaptureRow = {
   linkedCustomerId: string | null;
   /** True when a messageable Pancake conversation is attached (auto-send is possible). */
   conversationAvailable: boolean;
+  /** True only when the linked conversation has a GENUINE customer-initiated Inbox DM inside the
+   *  media window (a normal Inbox PHOTO can be delivered now). A `linked` comment-only customer is
+   *  false here. Distinct from `conversationAvailable` (merely "a chat exists"). */
+  photoEligible: boolean;
   /** The linked customer's saved Messenger URL, for "Open Conversation". */
   fbUrl: string | null;
   /** Whether this capture's screenshot has already been sent ('sent'/'failed'/other). */

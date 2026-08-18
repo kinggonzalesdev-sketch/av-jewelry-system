@@ -203,6 +203,9 @@ export function IncomingCapturesStrip({
               raw.pancake_conversation_id.trim() !== '') ||
             prev?.conversationAvailable ||
             false,
+          // A realtime webhook row can't compute media eligibility (that needs a DB lookup) —
+          // keep any known value; the reconcile load() fills the accurate one. Fail-safe false.
+          photoEligible: prev?.photoEligible ?? false,
           fbUrl: prev?.fbUrl ?? null,
           messageStatus:
             (typeof raw.message_status === 'string'
@@ -572,6 +575,7 @@ export function IncomingCapturesStrip({
           linkStatus: o.linkStatus,
           linkedCustomerName: o.linkedCustomerName,
           conversationAvailable: o.conversationAvailable,
+          photoEligible: o.photoEligible,
           fbUrl: o.fbUrl,
           matchCount: o.matchCount,
         }
@@ -579,6 +583,7 @@ export function IncomingCapturesStrip({
           linkStatus: r.linkStatus,
           linkedCustomerName: r.linkedCustomerName,
           conversationAvailable: r.conversationAvailable,
+          photoEligible: r.photoEligible,
           fbUrl: r.fbUrl,
           matchCount: 0,
         };
