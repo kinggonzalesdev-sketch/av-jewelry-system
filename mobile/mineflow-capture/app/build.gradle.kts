@@ -23,6 +23,20 @@ val localProps = Properties().apply {
 fun cfg(key: String, default: String): String =
     (localProps.getProperty(key) ?: System.getenv(key) ?: default).trim()
 
+/** Short git commit at build time — baked into BuildConfig.BUILD_COMMIT so the server heartbeat
+ *  can prove which APK build is on the phone. Best-effort: "local" when git is unavailable. */
+fun gitCommit(): String = try {
+    val p = ProcessBuilder("git", "rev-parse", "--short=7", "HEAD")
+        .directory(rootProject.projectDir)
+        .redirectErrorStream(true)
+        .start()
+    val out = p.inputStream.bufferedReader().use { it.readText() }.trim()
+    p.waitFor()
+    if (p.exitValue() == 0 && out.isNotEmpty()) out else "local"
+} catch (e: Exception) {
+    "local"
+}
+
 android {
     namespace = "com.mineflow.capture"
     compileSdk = 34
@@ -53,6 +67,9 @@ android {
                 "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxZmRkd3hzbXp6b2p1YXNmZmp4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQxMzAyMTAsImV4cCI6MjA5OTcwNjIxMH0.RKWjPS9GpWditcllrMeid5KF3kXVZroEfUBWQm73QAI",
             )}\"",
         )
+        // Short git commit at build time — the heartbeat reports it so the server can identify
+        // exactly which APK build is on the phone. Overridable via BUILD_COMMIT in local.properties.
+        buildConfigField("String", "BUILD_COMMIT", "\"${cfg("BUILD_COMMIT", gitCommit())}\"")
     }
 
     buildTypes {

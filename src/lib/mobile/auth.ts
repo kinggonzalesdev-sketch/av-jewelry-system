@@ -46,6 +46,40 @@ function bearerToken(request: Request): string | null {
 }
 
 /**
+ * Best-effort capture-device metadata for the heartbeat, read from headers the Capture app sends.
+ * OLD clients omit these → nulls → the RPC coalesce-preserves existing values (nothing breaks / is
+ * wiped). NO secrets: device id, app version/build commit, and printer configured/enabled/
+ * connection state only — never a token, Bluetooth key, screenshot, or customer data.
+ */
+function captureHeartbeatArgs(request: Request) {
+  const h = request.headers;
+  const str = (k: string): string | null => {
+    const t = (h.get(k) ?? '').trim();
+    return t ? t.slice(0, 120) : null;
+  };
+  const int = (k: string): number | null => {
+    const v = h.get(k);
+    const n = v ? Number.parseInt(v, 10) : Number.NaN;
+    return Number.isFinite(n) ? n : null;
+  };
+  const bool = (k: string): boolean | null => {
+    const v = h.get(k);
+    return v === '1' ? true : v === '0' ? false : null;
+  };
+  return {
+    p_device: str('x-mineflow-device'),
+    p_platform: 'android',
+    p_app_version_name: str('x-mineflow-app-version'),
+    p_app_version_code: int('x-mineflow-version-code'),
+    p_build_commit: str('x-mineflow-commit'),
+    p_printer_configured: bool('x-mineflow-printer-configured'),
+    p_printer_enabled: bool('x-mineflow-printer-enabled'),
+    p_printer_connection_state: str('x-mineflow-printer-conn'),
+    p_printer_name: str('x-mineflow-printer-name'),
+  };
+}
+
+/**
  * Why a mobile caller was rejected. Lets the session route return a precise,
  * non-sensitive reason the Capture app can turn into a clear message.
  *   - session_invalid  : no token, or the JWT is invalid/expired.
@@ -99,10 +133,7 @@ export async function resolveMobileStaff(request: Request): Promise<MobileAuthRe
   if (now - (lastHeartbeatByUser.get(user.id) ?? 0) > HEARTBEAT_WINDOW_MS) {
     lastHeartbeatByUser.set(user.id, now);
     try {
-      await supabase.rpc('record_capture_heartbeat', {
-        p_device: null,
-        p_platform: 'android',
-      });
+      await supabase.rpc('record_capture_heartbeat', captureHeartbeatArgs(request));
     } catch {
       /* heartbeat is best-effort */
     }

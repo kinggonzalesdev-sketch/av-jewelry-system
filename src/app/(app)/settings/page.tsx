@@ -5,6 +5,8 @@ import Link from 'next/link';
 
 import { StickerPrintPanel } from '@/components/print/sticker-print-panel';
 import { SystemDiagnostics } from '@/components/settings/system-diagnostics';
+import { appCommit } from '@/lib/app-version';
+import { getLatestCaptureDevice } from '@/lib/live/capture-heartbeat';
 import { TeamMembersPanel } from '@/components/settings/team-members-panel';
 import { PageHeader } from '@/components/ui/page-primitives';
 import { canOpenPage, isPrimarySuperAdmin, requireActiveStaff } from '@/lib/authz/guard';
@@ -122,10 +124,11 @@ export default async function SettingsPage() {
   const diagnostics = isPrimary
     ? {
         env: process.env.VERCEL_ENV ?? 'development',
-        commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? '').slice(0, 7) || 'local',
+        commit: appCommit(),
         projectMasked: maskProject(process.env.NEXT_PUBLIC_SUPABASE_URL),
         accountId: staff.staffProfileId,
         business: 'A.V. Jewelry (single-tenant)',
+        device: await getLatestCaptureDevice(),
       }
     : null;
 

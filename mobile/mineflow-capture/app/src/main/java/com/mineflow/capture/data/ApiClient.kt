@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Base64
 import android.util.Log
 import com.mineflow.capture.BuildConfig
+import com.mineflow.capture.printer.BluetoothPrinterManager
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -330,11 +331,39 @@ class ApiClient(context: Context) {
             .build()
     )
 
+    /** Best-effort device/APK/printer metadata headers for the server heartbeat
+     *  (resolveMobileStaff reads them). NEVER secrets — no token, Bluetooth key, or customer data.
+     *  Observability only: a failure here returns no headers and never blocks the request. */
+    private fun deviceHeaders(): Map<String, String> = try {
+        val addr = store.printerAddress
+        val configured = !addr.isNullOrBlank()
+        val conn = when {
+            !configured -> "no_printer"
+            !store.printerEnabled -> "off"
+            !addr.isNullOrBlank() && BluetoothPrinterManager.isConnected(addr) -> "connected"
+            else -> "connecting"
+        }
+        fun clean(s: String): String = s.filter { it.code in 32..126 }.take(80)
+        val m = LinkedHashMap<String, String>()
+        m["X-MineFlow-Device"] = clean(store.deviceInstallationId)
+        m["X-MineFlow-App-Version"] = clean(BuildConfig.VERSION_NAME)
+        m["X-MineFlow-Version-Code"] = BuildConfig.VERSION_CODE.toString()
+        m["X-MineFlow-Commit"] = clean(BuildConfig.BUILD_COMMIT)
+        m["X-MineFlow-Printer-Configured"] = if (configured) "1" else "0"
+        m["X-MineFlow-Printer-Enabled"] = if (store.printerEnabled) "1" else "0"
+        m["X-MineFlow-Printer-Conn"] = conn
+        store.printerName?.let { val c = clean(it); if (c.isNotEmpty()) m["X-MineFlow-Printer-Name"] = c }
+        m
+    } catch (e: Exception) {
+        emptyMap()
+    }
+
     private fun execute(base: Request, allowRefresh: Boolean = true): Result {
         val used = store.accessToken
         val req = base.newBuilder()
             .addHeader("Authorization", "Bearer ${used.orEmpty()}")
             .addHeader("Accept", "application/json")
+            .apply { deviceHeaders().forEach { (k, v) -> addHeader(k, v) } }
             .build()
         val path = req.url.encodedPath // path only — never the token or query secrets
         return try {

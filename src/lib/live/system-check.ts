@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { appCommit } from '@/lib/app-version';
 import { isPrimarySuperAdmin, requireActiveStaff } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 import {
@@ -184,7 +185,7 @@ export async function runSystemCheck(): Promise<SystemCheckResult> {
   }
 
   // 8. Build version — proves every device is on the same deployment.
-  const version = (process.env.VERCEL_GIT_COMMIT_SHA ?? '').slice(0, 7) || 'local';
+  const version = appCommit();
   items.push({
     key: 'version',
     label: 'Application Version',
