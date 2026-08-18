@@ -41,7 +41,9 @@ object PrintJobPoller {
             while (running) {
                 var drainedOne = false
                 try {
-                    if (store.isLoggedIn && !store.printerAddress.isNullOrBlank()) {
+                    // printerEnabled gate: when the toggle is OFF the phone claims/prints NOTHING
+                    // (the PC fallback handles stickers); no warm socket is held while OFF.
+                    if (store.isLoggedIn && !store.printerAddress.isNullOrBlank() && store.printerEnabled) {
                         // 1) Live capture stickers (shared PC+phone queue — exactly once).
                         val cap = api.claimCaptureSticker()
                         if (cap.optBoolean("claimed", false)) {

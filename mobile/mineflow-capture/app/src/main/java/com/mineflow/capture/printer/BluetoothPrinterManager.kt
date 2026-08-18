@@ -288,6 +288,12 @@ object BluetoothPrinterManager {
         val store = SecureStore.get(context)
         val address = store.printerAddress
         if (address.isNullOrBlank()) return
+        // Toggle OFF → keep the link DOWN (intentional disconnect): never reconnect while OFF, and
+        // drop any socket still open so OFF actually stays off even though this heartbeat runs.
+        if (!store.printerEnabled) {
+            if (isConnected(address)) disconnect()
+            return
+        }
         if (!isBluetoothOn(context)) return
         if (!ioLock.tryLock()) return // a print is in progress — never wait behind it
         try {

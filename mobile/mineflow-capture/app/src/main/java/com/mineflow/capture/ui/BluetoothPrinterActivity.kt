@@ -11,7 +11,6 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.text.InputType
-import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
@@ -19,20 +18,30 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.mineflow.capture.data.SecureStore
 import com.mineflow.capture.printer.BluetoothPrinterManager
 import com.mineflow.capture.printer.PrintJobPoller
+import com.mineflow.capture.printer.PrinterToggle
+import com.mineflow.capture.printer.PrinterToggleState
 import com.mineflow.capture.printer.StickerEncoder
 import kotlin.concurrent.thread
 
 /**
- * Settings → Bluetooth Printer. Scans/lists nearby + paired thermal printers (name,
- * address, Paired/Not Paired, Connected/Disconnected), lets the operator pair one and
- * "Set as Active Printer" (remembered on this device), reconnects automatically, and
- * offers a Test Print. Native Android Bluetooth — no PC, no Web Bluetooth.
+ * Settings → Bluetooth / Printer.
+ *
+ * PRIMARY control is a simple ON/OFF toggle for the SAVED printer — the normal daily action,
+ * NOT a scan. OFF is an intentional, confirmed disconnect that PRESERVES the saved printer; ON
+ * auto-reconnects to that exact printer over the existing RFCOMM/SPP link (no scan). Scanning /
+ * selecting a printer is demoted to a "Select / Change Printer" setup action.
+ *
+ * State is two INDEPENDENT facts: the printer is CONFIGURED (SecureStore.printerAddress) vs the
+ * toggle is ENABLED (SecureStore.printerEnabled). OFF only flips `enabled` — it never forgets the
+ * printer. Capture auto-print + Test Print refuse to print while OFF (so the PC fallback prints),
+ * and a failed reconnect returns to OFF and never shows a false "Connected".
  */
 class BluetoothPrinterActivity : AppCompatActivity() {
 
@@ -43,7 +52,8 @@ class BluetoothPrinterActivity : AppCompatActivity() {
     private val green = Color.parseColor("#7CCB7C")
 
     private lateinit var store: SecureStore
-    private lateinit var activeStatus: TextView
+    private lateinit var statusText: TextView
+    private lateinit var toggleBtn: Button
     private lateinit var scanBtn: Button
     private lateinit var langBtn: Button
     private lateinit var list: LinearLayout
@@ -52,6 +62,7 @@ class BluetoothPrinterActivity : AppCompatActivity() {
     private val found = LinkedHashMap<String, BluetoothPrinterManager.Printer>()
     private var scanning = false
     private var pendingScan = false
+    @Volatile private var connecting = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,19 +74,28 @@ class BluetoothPrinterActivity : AppCompatActivity() {
             setPadding(pad, pad, pad, pad)
         }
 
-        root.addView(title("Bluetooth Printer"))
-        activeStatus = TextView(this).apply { setTextColor(beige); textSize = 13f; setPadding(0, dp(6), 0, dp(10)) }
-        root.addView(activeStatus, wide())
+        root.addView(title("Bluetooth / Printer"))
 
-        scanBtn = goldButton("Scan for printers") { onScanClicked() }
+        // ---- PRIMARY: ON/OFF toggle for the saved printer (no daily scan needed) ----
+        statusText = TextView(this).apply { setTextColor(beige); textSize = 15f; setPadding(0, dp(4), 0, dp(2)) }
+        root.addView(statusText, wide())
+        toggleBtn = goldButton("") { onToggleClicked() }
+        root.addView(toggleBtn, wide().apply { topMargin = dp(8) })
+
         val testBtn = outlineButton("Test Print") { onTestPrint() }
-        root.addView(scanBtn, wide().apply { topMargin = dp(6) })
         root.addView(testBtn, wide().apply { topMargin = dp(6) })
 
-        // Printer language (label vs receipt) + the sticker price-per-gram rate.
+        // ---- SETUP: Select / Change Printer (Bluetooth scan lives here, NOT the daily action) ----
+        root.addView(sectionHeader("Select / Change Printer"))
+        scanBtn = goldButton(scanIdleLabel()) { onScanClicked() }
+        root.addView(scanBtn, wide().apply { topMargin = dp(4) })
+        list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        root.addView(list, wide())
+
+        // ---- SETUP: printer language + sticker rate ----
         langBtn = outlineButton("") { store.printerTspl = !store.printerTspl; updateLangLabel() }
         updateLangLabel()
-        root.addView(langBtn, wide().apply { topMargin = dp(6) })
+        root.addView(langBtn, wide().apply { topMargin = dp(12) })
 
         root.addView(TextView(this).apply {
             text = "Sticker price per gram (₱) — optional"; setTextColor(beige); textSize = 12f
@@ -93,13 +113,6 @@ class BluetoothPrinterActivity : AppCompatActivity() {
             toast("Sticker rate saved.")
         }, wide().apply { topMargin = dp(4) })
 
-        root.addView(TextView(this).apply {
-            text = "Printers"; setTextColor(ivory); textSize = 15f; setTypeface(null, Typeface.BOLD)
-            setPadding(0, dp(16), 0, dp(4))
-        }, wide())
-        list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        root.addView(list, wide())
-
         val scroll = ScrollView(this).apply { addView(root) }
         setContentView(scroll)
     }
@@ -108,7 +121,9 @@ class BluetoothPrinterActivity : AppCompatActivity() {
         super.onResume()
         // Show already-paired printers immediately (needs CONNECT on Android 12+).
         if (hasBtPermissions()) loadBonded() else ActivityCompat.requestPermissions(this, requiredPerms(), REQ_PERMS)
-        refreshActiveStatus()
+        // Keep the warm connection + print pump running when the printer is ON.
+        if (!store.printerAddress.isNullOrBlank() && store.printerEnabled) PrintJobPoller.start(this)
+        refreshPrinterUi()
         renderList()
     }
 
@@ -117,7 +132,60 @@ class BluetoothPrinterActivity : AppCompatActivity() {
         if (scanning) { BluetoothPrinterManager.stopDiscovery(this); scanning = false }
     }
 
-    // ---- Actions -------------------------------------------------------------
+    // ---- ON/OFF toggle -------------------------------------------------------
+
+    private fun onToggleClicked() {
+        val addr = store.printerAddress
+        if (addr.isNullOrBlank()) { onScanClicked(); return } // "Select Printer" state → scan
+        if (store.printerEnabled) confirmTurnOff() else turnOn(addr)
+    }
+
+    /** OFF → ON: reconnect to the SAVED printer (no scan). Shows Connecting…, then Connected only
+     *  once the socket is actually ready; a failed reconnect reverts to OFF and says so. */
+    private fun turnOn(addr: String) {
+        if (!hasBtPermissions()) { ActivityCompat.requestPermissions(this, requiredPerms(), REQ_PERMS); return }
+        store.printerEnabled = true
+        connecting = true
+        refreshPrinterUi()
+        PrintJobPoller.start(this) // resume keep-alive + print pump
+        thread {
+            val res = BluetoothPrinterManager.connect(this, addr)
+            runOnUiThread {
+                connecting = false
+                if (!res.ok) {
+                    store.printerEnabled = false // do NOT pretend it's connected
+                    toast("Unable to connect to ${store.printerName ?: "printer"}.")
+                }
+                refreshPrinterUi()
+            }
+        }
+    }
+
+    /** ON → OFF: confirm first (guards against an accidental tap). */
+    private fun confirmTurnOff() {
+        AlertDialog.Builder(this)
+            .setTitle("Disconnect printer?")
+            .setMessage("Auto-printing will pause until you turn the printer back on.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Disconnect") { _, _ -> turnOff() }
+            .show()
+    }
+
+    private fun turnOff() {
+        store.printerEnabled = false // intent OFF — keeps the saved printer (never unpaired/forgotten)
+        connecting = false
+        thread {
+            // Close the socket cleanly; the keep-alive won't reconnect and the poller won't print
+            // while OFF (both gate on printerEnabled), so OFF stays off.
+            BluetoothPrinterManager.disconnect()
+            runOnUiThread { refreshPrinterUi(); toast("Printer disconnected. Auto-print paused.") }
+        }
+    }
+
+    // ---- Select / Change Printer (scan) --------------------------------------
+
+    private fun scanIdleLabel(): String =
+        if (store.printerAddress.isNullOrBlank()) "Select Printer" else "Change Printer"
 
     private fun onScanClicked() {
         if (!hasBtPermissions()) {
@@ -134,16 +202,16 @@ class BluetoothPrinterActivity : AppCompatActivity() {
             loadBonded(); renderList()
             return
         }
-        if (scanning) { BluetoothPrinterManager.stopDiscovery(this); scanning = false; scanBtn.text = "Scan for printers"; return }
+        if (scanning) { BluetoothPrinterManager.stopDiscovery(this); scanning = false; scanBtn.text = scanIdleLabel(); return }
         loadBonded()
         scanning = true
         scanBtn.text = "Scanning… (tap to stop)"
         val started = BluetoothPrinterManager.startDiscovery(
             this,
             onFound = { p -> runOnUiThread { found[p.address] = p; renderList() } },
-            onFinished = { runOnUiThread { scanning = false; scanBtn.text = "Scan for printers" } },
+            onFinished = { runOnUiThread { scanning = false; scanBtn.text = scanIdleLabel() } },
         )
-        if (!started) { scanning = false; scanBtn.text = "Scan for printers"; toast("Could not start scan.") }
+        if (!started) { scanning = false; scanBtn.text = scanIdleLabel(); toast("Could not start scan.") }
     }
 
     private fun setActive(p: BluetoothPrinterManager.Printer) {
@@ -154,16 +222,23 @@ class BluetoothPrinterActivity : AppCompatActivity() {
         }
         store.printerAddress = p.address
         store.printerName = p.name
-        refreshActiveStatus(); renderList()
+        store.printerEnabled = true // selecting a printer turns it ON
+        connecting = true
+        refreshPrinterUi(); renderList()
         toast("${p.name} set as active printer.")
         // Warm the connection + make sure the print pump is running.
-        thread { BluetoothPrinterManager.connect(this, p.address); runOnUiThread { refreshActiveStatus() } }
         PrintJobPoller.start(this)
+        thread {
+            BluetoothPrinterManager.connect(this, p.address)
+            runOnUiThread { connecting = false; refreshPrinterUi(); renderList() }
+        }
     }
 
     private fun onTestPrint() {
         val addr = store.printerAddress
         if (addr.isNullOrBlank()) { toast("Set an active printer first."); return }
+        // Respect an intentional OFF — do NOT silently reconnect just because Test Print was pressed.
+        if (!store.printerEnabled) { toast("Printer is off. Turn it on to print."); return }
         if (!hasBtPermissions()) { ActivityCompat.requestPermissions(this, requiredPerms(), REQ_PERMS); return }
         toast("Printing test…")
         thread {
@@ -174,7 +249,7 @@ class BluetoothPrinterActivity : AppCompatActivity() {
                 store.printerTspl,
             )
             val res = BluetoothPrinterManager.print(this, addr, bytes)
-            runOnUiThread { toast(if (res.ok) "Test sent to printer." else (res.error ?: "Test print failed.")); refreshActiveStatus() }
+            runOnUiThread { toast(if (res.ok) "Test sent to printer." else (res.error ?: "Test print failed.")); refreshPrinterUi() }
         }
     }
 
@@ -189,7 +264,7 @@ class BluetoothPrinterActivity : AppCompatActivity() {
         val selected = store.printerAddress
         if (found.isEmpty()) {
             list.addView(TextView(this).apply {
-                text = "No printers yet. Turn ON Location + Bluetooth, then tap Scan — or pair the printer in Android Bluetooth settings (PIN 0000) and reopen this screen."
+                text = "No printers yet. Turn ON Location + Bluetooth, then tap Select / Change Printer — or pair the printer in Android Bluetooth settings (PIN 0000) and reopen this screen."
                 setTextColor(beige); textSize = 12f; setPadding(0, dp(6), 0, dp(6))
             }, wide())
             return
@@ -218,17 +293,35 @@ class BluetoothPrinterActivity : AppCompatActivity() {
         }
     }
 
-    private fun refreshActiveStatus() {
-        val name = store.printerName
+    /** Reflect the two-fact state (configured vs enabled vs live socket) via the pure resolver. */
+    private fun refreshPrinterUi() {
         val addr = store.printerAddress
-        if (addr.isNullOrBlank()) {
-            activeStatus.text = "Active printer: none selected"
-            activeStatus.setTextColor(beige)
-            return
+        val name = store.printerName ?: "XP-236B"
+        val state = PrinterToggle.resolve(
+            hasPrinter = !addr.isNullOrBlank(),
+            enabled = store.printerEnabled,
+            connected = !addr.isNullOrBlank() && BluetoothPrinterManager.isConnected(addr),
+            connecting = connecting,
+        )
+        when (state) {
+            PrinterToggleState.NO_PRINTER -> {
+                statusText.text = "No printer linked"; statusText.setTextColor(beige)
+                toggleBtn.text = "Select Printer"
+            }
+            PrinterToggleState.OFF -> {
+                statusText.text = "$name  ·  Disconnected"; statusText.setTextColor(beige)
+                toggleBtn.text = "Turn ON"
+            }
+            PrinterToggleState.CONNECTING -> {
+                statusText.text = "$name  ·  Connecting…"; statusText.setTextColor(gold)
+                toggleBtn.text = "Turn OFF"
+            }
+            PrinterToggleState.CONNECTED -> {
+                statusText.text = "$name  ·  Connected"; statusText.setTextColor(green)
+                toggleBtn.text = "Turn OFF"
+            }
         }
-        val connected = BluetoothPrinterManager.isConnected(addr)
-        activeStatus.text = "Active printer: ${name ?: addr}\nStatus: " + if (connected) "Connected ✓" else "Disconnected"
-        activeStatus.setTextColor(if (connected) green else beige)
+        if (!scanning) scanBtn.text = scanIdleLabel()
     }
 
     private fun updateLangLabel() {
@@ -239,7 +332,7 @@ class BluetoothPrinterActivity : AppCompatActivity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQ_PERMS) {
             if (hasBtPermissions()) {
-                loadBonded(); renderList()
+                loadBonded(); renderList(); refreshPrinterUi()
                 if (pendingScan) { pendingScan = false; onScanClicked() }
             } else {
                 toast("Bluetooth permission is needed to find and print to the printer.")
@@ -277,6 +370,10 @@ class BluetoothPrinterActivity : AppCompatActivity() {
     private fun toast(m: String) = Toast.makeText(this, m, Toast.LENGTH_SHORT).show()
     private fun title(text: String) = TextView(this).apply {
         this.text = text; textSize = 22f; setTextColor(ivory); setPadding(0, 0, 0, dp(6))
+    }
+    private fun sectionHeader(text: String) = TextView(this).apply {
+        this.text = text; setTextColor(ivory); textSize = 15f; setTypeface(null, Typeface.BOLD)
+        setPadding(0, dp(16), 0, dp(4))
     }
     private fun goldButton(label: String, onClick: () -> Unit) = Button(this).apply {
         text = label; isAllCaps = false

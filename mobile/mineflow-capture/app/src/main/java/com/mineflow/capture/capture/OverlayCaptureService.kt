@@ -524,6 +524,10 @@ class OverlayCaptureService : Service() {
      */
     private fun maybePrintDirect(fbName: String, grams: String?): Boolean {
         val store = SecureStore.get(this)
+        // Printer toggle OFF → NEVER attempt a local Bluetooth write. Leave the capture
+        // un-printed (row not born 'printed') so the PC fallback prints it; capture/OCR/upload/
+        // send all continue normally. OFF keeps the saved printer.
+        if (!store.printerEnabled) return false
         val address = store.printerAddress
         if (address.isNullOrBlank()) return false
         if (fbName.length < 2 || grams.isNullOrBlank()) return false

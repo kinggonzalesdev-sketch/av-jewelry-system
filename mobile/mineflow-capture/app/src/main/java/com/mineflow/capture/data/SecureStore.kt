@@ -48,6 +48,13 @@ class SecureStore private constructor(private val prefs: SharedPreferences) {
         get() = prefs.getString(KEY_PRINTER_NAME, null)
         set(value) = prefs.edit().putString(KEY_PRINTER_NAME, value).apply()
 
+    /** Printer toggle intent: ON = auto-connect + auto-print; OFF = intentional temporary
+     *  disconnect. SEPARATE from printerAddress (the configured printer) — OFF never erases it.
+     *  Defaults true so an already-configured printer keeps working after an app update. */
+    var printerEnabled: Boolean
+        get() = prefs.getBoolean(KEY_PRINTER_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_PRINTER_ENABLED, value).apply()
+
     /** Printer language: TSPL (label printers like the XP-236B) vs ESC/POS. Default TSPL. */
     var printerTspl: Boolean
         get() = prefs.getBoolean(KEY_PRINTER_TSPL, true)
@@ -75,6 +82,7 @@ class SecureStore private constructor(private val prefs: SharedPreferences) {
         private const val KEY_DEVICE = "device_installation_id"
         private const val KEY_PRINTER_ADDR = "printer_address"
         private const val KEY_PRINTER_NAME = "printer_name"
+        private const val KEY_PRINTER_ENABLED = "printer_enabled"
         private const val KEY_PRINTER_TSPL = "printer_tspl"
         private const val KEY_PRICE_PER_GRAM = "price_per_gram"
 
