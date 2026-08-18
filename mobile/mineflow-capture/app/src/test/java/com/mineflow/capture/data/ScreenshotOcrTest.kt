@@ -296,4 +296,22 @@ class ScreenshotOcrTest {
             assertEquals("0.7", pinnedGrams("$w .7"))
         }
     }
+
+    // Merged name + claim on ONE line (no separate name line above) → stripClaim isolates the name
+    // using the SAME whole-token rule (drops the marker + the number token, incl. leading decimals).
+    @Test
+    fun mergedNameAndClaim_oneLine_stripClaimExtractsName() {
+        ScreenshotOcr.guessFrom(listOf(line("King Gonzales Mine 1.5", 900))).let {
+            assertEquals("King Gonzales", it.fbName)
+            assertEquals("1.5", it.grams)
+        }
+        ScreenshotOcr.guessFrom(listOf(line("Juan Dela Cruz Mine .7", 900))).let {
+            assertEquals("Juan Dela Cruz", it.fbName)
+            assertEquals("0.7", it.grams)
+        }
+        ScreenshotOcr.guessFrom(listOf(line("Abby Gicain 2.43g", 900))).let {
+            assertEquals("Abby Gicain", it.fbName)
+            assertEquals("2.43", it.grams)
+        }
+    }
 }

@@ -100,10 +100,10 @@ object ScreenshotOcr {
             "notifications?|marketplace|watch|reels?|feed|share|save|report|more)$",
         RegexOption.IGNORE_CASE,
     )
-    // An inventory-code-ish token, e.g. BN-A-1001, SBA-P 2265, K18.
-    private val CODE = Regex("[A-Za-z]{1,4}[\\-\\s]?[A-Za-z]?[\\-\\s]?\\d{2,}")
     private val MINE = Regex("\\bmine\\b|\\bakin\\b|\\bsakin\\b", RegexOption.IGNORE_CASE)
-    private val NUMBER = Regex("\\d{1,3}(?:[.,]\\d{1,3})?")
+    // A STANDALONE mining marker / weight-unit token — dropped (together with number tokens) when
+    // isolating a name that OCR merged onto the claim line ("King Gonzales Mine 1.5" → "King Gonzales").
+    private val MARKER_TOKEN = Regex("^(mine|m|g|akin|sakin)$", RegexOption.IGNORE_CASE)
 
     // A GRAMS/PRICE NUMBER TOKEN: a WHOLE whitespace-separated token that is just a number —
     // optionally fused with a mining marker ("M1.5") and/or a trailing unit/marker ("1.5g",
@@ -179,9 +179,17 @@ object ScreenshotOcr {
         return letters >= s.length * 0.6 && titleish
     }
 
-    /** Strip the "mine <number>" claim from a line to isolate a name OCR merged onto it. */
+    /** Strip the mining marker(s) + number token(s) from a line to isolate a name OCR merged onto
+     *  the claim ("King Gonzales Mine 1.5" → "King Gonzales"). Token-based, matching the SAME
+     *  whole-token rule as the parser (leading decimals, "1.5g", "12k", ".7" are all dropped);
+     *  arbitrary product words are left for looksLikeName to accept/reject. */
     private fun stripClaim(s: String): String =
-        s.replace(MINE, "").replace(NUMBER, "").trim().trim('·', '-', ':', '•').trim()
+        s.split(Regex("\\s+"))
+            .filterNot { t -> NUMBER_TOKEN.matches(t) || MARKER_TOKEN.matches(t) }
+            .joinToString(" ")
+            .trim()
+            .trim('·', '-', ':', '•')
+            .trim()
 
     /** A parsed mining claim: `value` = the representative number for the PC (grams or price),
      *  `grams` = the normalized weight (only when unambiguous). */
