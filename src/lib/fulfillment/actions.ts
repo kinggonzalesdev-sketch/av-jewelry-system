@@ -57,7 +57,7 @@ export async function prepareFulfillmentAction(
 
   if (!result.ok) return { error: result.error, success: null };
 
-  revalidatePath('/orders/fulfillment');
+  revalidatePath('/orders');
   return { error: null, success: 'Prepared. Preparing is not releasing.' };
 }
 
@@ -71,7 +71,7 @@ export async function releaseFulfillmentAction(
   const result = await releaseFulfillment(orderId, text(formData, 'note') ?? undefined);
   if (!result.ok) return { error: result.error, success: null };
 
-  revalidatePath('/orders/fulfillment');
+  revalidatePath('/orders');
   return { error: null, success: 'Released. Nothing was dispatched automatically.' };
 }
 
@@ -90,7 +90,7 @@ export async function dispatchAction(
   const result = await markDispatchedOrPickedUp(orderId, kind);
   if (!result.ok) return { error: result.error, success: null };
 
-  revalidatePath('/orders/fulfillment');
+  revalidatePath('/orders');
   return {
     error: null,
     success: kind === 'dispatched' ? 'Marked dispatched.' : 'Marked picked up.',
@@ -109,7 +109,7 @@ export async function setCollectionChannelAction(
   const result = await setCollectionChannel(orderId, channel);
   if (!result.ok) return { error: result.error, success: null };
 
-  revalidatePath('/orders/fulfillment');
+  revalidatePath('/orders');
   revalidatePath('/dashboard');
   return { error: null, success: 'Collection channel set.' };
 }
@@ -128,7 +128,7 @@ export async function recordCollectionAction(
   const result = await recordCollection(orderId, { channel, amount });
   if (!result.ok) return { error: result.error, success: null };
 
-  revalidatePath('/orders/fulfillment');
+  revalidatePath('/orders');
   revalidatePath('/dashboard');
   return { error: null, success: 'Collection recorded.' };
 }
@@ -143,7 +143,7 @@ export async function recordRemittanceAction(
   const result = await recordRemittance(orderId);
   if (!result.ok) return { error: result.error, success: null };
 
-  revalidatePath('/orders/fulfillment');
+  revalidatePath('/orders');
   revalidatePath('/dashboard');
   return { error: null, success: 'Remittance recorded.' };
 }
@@ -158,7 +158,7 @@ export async function completeFulfillmentAction(
   const result = await completeFulfillment(orderId);
   if (!result.ok) return { error: result.error, success: null };
 
-  revalidatePath('/orders/fulfillment');
+  revalidatePath('/orders');
   revalidatePath('/orders');
   return { error: null, success: 'Fulfillment completed.' };
 }
@@ -173,7 +173,7 @@ export async function markDeliveredAction(
   const result = await markDelivered(orderId);
   if (!result.ok) return { error: result.error, success: null };
 
-  revalidatePath('/orders/fulfillment');
+  revalidatePath('/orders');
   revalidatePath('/orders');
   return { error: null, success: 'Order marked Delivered.' };
 }
@@ -201,7 +201,7 @@ export async function requestApprovalAction(
 
   if (!result.ok) return { error: result.error, success: null };
 
-  revalidatePath('/orders/fulfillment');
+  revalidatePath('/orders');
   return {
     error: null,
     success: 'Request sent for Owner approval. Requesting executes nothing.',
@@ -228,7 +228,7 @@ export async function decideApprovalAction(
 
   if (!result.ok) return { error: result.error, success: null };
 
-  revalidatePath('/orders/fulfillment');
+  revalidatePath('/orders');
   return {
     error: null,
     success:
@@ -248,7 +248,7 @@ export async function executeApprovalAction(
   const result = await executeOwnerApproval(requestId);
   if (!result.ok) return { error: result.error, success: null };
 
-  revalidatePath('/orders/fulfillment');
+  revalidatePath('/orders');
   return {
     error: null,
     success: 'Executed. State was re-validated, and an approval executes exactly once.',

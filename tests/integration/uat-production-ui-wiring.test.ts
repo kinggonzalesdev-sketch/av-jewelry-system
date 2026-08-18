@@ -104,29 +104,33 @@ const UAT12_PATH = [
     domain: 'verifyPayment',
     module: 'lib/payments/actions.ts',
   },
+  // Fulfillment (Phase A): official_orders is the single source of truth. The dormant
+  // fulfillment_records lifecycle (prepare/release/dispatch/complete) and its orphaned UI were
+  // retired; the reachable path routes the destination, records operational details, stamps
+  // dispatch (shipping), and completes through the canonical order completion.
   {
-    step: 'Prepare Fulfillment',
-    action: 'prepareFulfillmentAction',
-    domain: 'prepareFulfillment',
-    module: 'lib/fulfillment/actions.ts',
+    step: 'Route to fulfillment destination',
+    action: 'transferOrderDestinationAction',
+    domain: 'transferOrderDestination',
+    module: 'lib/orders/actions.ts',
   },
   {
-    step: 'Release',
-    action: 'releaseFulfillmentAction',
-    domain: 'releaseFulfillment',
-    module: 'lib/fulfillment/actions.ts',
+    step: 'Fulfillment details (courier / pickup contact)',
+    action: 'setFulfillmentDetailsAction',
+    domain: 'setFulfillmentDetails',
+    module: 'lib/orders/actions.ts',
   },
   {
-    step: 'Dispatch / pick up',
-    action: 'dispatchAction',
-    domain: 'markDispatchedOrPickedUp',
-    module: 'lib/fulfillment/actions.ts',
+    step: 'Mark Dispatched (shipping)',
+    action: 'markOrderDispatchedAction',
+    domain: 'markOrderDispatched',
+    module: 'lib/orders/actions.ts',
   },
   {
-    step: 'Complete',
-    action: 'completeFulfillmentAction',
-    domain: 'completeFulfillment',
-    module: 'lib/fulfillment/actions.ts',
+    step: 'Complete order (pickup / delivery / shipping)',
+    action: 'transferOrderToCompletedAction',
+    domain: 'transferOrderToCompleted',
+    module: 'lib/orders/actions.ts',
   },
 ] as const;
 

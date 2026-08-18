@@ -48,6 +48,9 @@ type OrderRow = {
   destination_by: unknown;
   completed_at: string | null;
   waybill_number: string | null;
+  courier: string | null;
+  dispatched_at: string | null;
+  pickup_contact: string | null;
   converted_to_layaway: boolean | null;
   is_test: boolean | null;
   completed_by_staff: unknown;
@@ -68,6 +71,7 @@ export async function getOrderDetail(
     .select(
       `id, order_number, invoice_number, status, created_at,
        fulfillment_destination, fulfillment_destination_set_at, completed_at, waybill_number,
+       courier, dispatched_at, pickup_contact,
        converted_to_layaway, is_test,
        fb_pancake_conversation_id, fb_conversation_url, fb_link_status,
        destination_by:staff_profiles!fulfillment_destination_set_by ( full_name ),
@@ -280,6 +284,9 @@ export async function getOrderDetail(
       one<{ full_name: string }>(order.destination_by)?.full_name ?? null,
     completionBlock,
     waybillNumber: order.waybill_number ?? null,
+    courier: order.courier ?? null,
+    dispatchedAt: order.dispatched_at ?? null,
+    pickupContact: order.pickup_contact ?? null,
     convertedToLayaway: order.converted_to_layaway === true,
     isTest: order.is_test === true,
     adminName: one<{ full_name: string }>(order.admin_staff)?.full_name ?? null,

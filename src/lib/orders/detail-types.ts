@@ -111,6 +111,14 @@ export type OrderDetail = {
   /** Shipping waybill / tracking number (Ship Confirm). Null until set. */
   waybillNumber: string | null;
 
+  /** Operational fulfillment details on the ORDER itself (Phase A — official_orders is the
+   *  single source of truth). Courier / rider name (shipping or delivery), the shipping
+   *  dispatched timestamp, and the store-pickup contact. Delivery + pickup handoff uses
+   *  completedAt; only shipping carries a separate dispatchedAt (goods left before completion). */
+  courier: string | null;
+  dispatchedAt: string | null;
+  pickupContact: string | null;
+
   /** True once "Set Up Layaway" created a layaway account from this order — the
    *  order then leaves the For Layaway card and is tracked in the Layaway ledger. */
   convertedToLayaway: boolean;

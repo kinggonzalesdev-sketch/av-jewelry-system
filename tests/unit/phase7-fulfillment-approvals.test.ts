@@ -139,39 +139,9 @@ describe('server actions delegate authority', () => {
   });
 });
 
-describe('the screen never contradicts the rules', () => {
-  const view = read(
-    'src',
-    'components',
-    'fulfillment',
-    'fulfillment-workspace.tsx',
-  ).replace(/\s+/g, ' ');
-
-  it('says preparing is not releasing and releasing is not dispatching', () => {
-    expect(view).toMatch(/Preparing is not releasing, and releasing is not dispatching/i);
-  });
-
-  it('says normal release is not Owner-only', () => {
-    expect(view).toMatch(/permission-based, not Owner-only/i);
-  });
-
-  it('marks the release preconditions as advisory', () => {
-    expect(view).toMatch(/Advisory only — the database decides at release time/i);
-  });
-
-  it('says the six approvals are non-delegable', () => {
-    expect(view).toMatch(/non-delegable/i);
-    expect(view).toMatch(/no permission grants this/i);
-  });
-
-  it('says an approval executes exactly once', () => {
-    expect(view).toMatch(/executes exactly once/i);
-  });
-
-  it('never promises automatic dispatch or completion', () => {
-    expect(view).not.toMatch(/automatically dispatch|auto-complete/i);
-  });
-});
+// NOTE: the "screen never contradicts the rules" block that read the fulfillment-workspace.tsx
+// source was removed when that orphaned System-A UI was retired (Fulfillment Phase A). The
+// Owner-Approval rules it documented are enforced by the migration + actions, still covered below.
 
 describe('Phase 7 migration', () => {
   const migration = read(

@@ -27,6 +27,7 @@ import { OrderPaymentActions } from '@/components/orders/order-payment-actions';
 import { OrderVerifyPayment } from '@/components/orders/order-verify-payment';
 import { OrderCompletionActions } from '@/components/orders/order-completion-actions';
 import { OrderWaybillField } from '@/components/orders/order-waybill-field';
+import { OrderFulfillmentDetails } from '@/components/orders/order-fulfillment-details';
 import { LayawaySetupForOrder } from '@/components/orders/layaway-setup-order';
 import {
   canOfferCancel,
@@ -1712,6 +1713,23 @@ function OrderActionsBar({
               onSaved={onRefresh}
             />
           ) : null}
+
+          {/* Fulfillment Phase A — destination-aware operational controls (Store Pickup /
+              Delivery / Shipping). Renders nothing for Layaway / Keep / terminal orders. The
+              handover buttons complete through the same canonical completion RPC. */}
+          <OrderFulfillmentDetails
+            orderId={detail.officialOrderId}
+            destination={detail.fulfillmentDestination}
+            status={detail.status}
+            courier={detail.courier}
+            pickupContact={detail.pickupContact}
+            dispatchedAt={detail.dispatchedAt}
+            completionBlock={detail.completionBlock}
+            balanceUnavailable={balanceUnavailable}
+            canPrepare={detail.permissions.canPrepareFulfillment}
+            canRelease={detail.permissions.canReleaseFulfillment}
+            onChanged={onRefresh}
+          />
 
           {/* Owner: the reminder / Confirm-for-Preparation / For-Prepare workflow steps
               are removed — an order is routed with "Transfer to Destination" (below)

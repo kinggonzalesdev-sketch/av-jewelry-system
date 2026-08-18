@@ -53,8 +53,8 @@ vi.mock('@/lib/orders/actions', () => ({
   ),
 }));
 
-// The modal now hosts OrderFulfillmentActions, which calls useRouter for its
-// post-action refresh. A minimal stub is enough for these read/close tests.
+// The modal's workflow controls call useRouter for their post-action refresh.
+// A minimal stub is enough for these read/close tests.
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
@@ -72,6 +72,9 @@ function detail(over: Partial<OrderDetail> = {}): OrderDetail {
     // Not completable by default — the fixture order is not fully paid.
     completionBlock: 'This order is not fully paid yet.',
     waybillNumber: null,
+    courier: null,
+    dispatchedAt: null,
+    pickupContact: null,
     convertedToLayaway: false,
     isTest: false,
     adminName: 'UAT Owner',

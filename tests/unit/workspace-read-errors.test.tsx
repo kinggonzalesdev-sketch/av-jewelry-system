@@ -1,14 +1,12 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-// FulfillmentWorkspace mounts the shared Order Details modal, which calls
-// useRouter. The modal renders nothing while closed, so a router stub suffices.
+// InventoryWorkspace can mount modals that call useRouter. A router stub suffices.
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
 
-// Server actions are mocked — these render tests only exercise the read-error
-// branch of each workspace, never a submission.
+// Server actions are mocked — this render test only exercises the read-error branch.
 vi.mock('@/lib/inventory/actions', () => ({
   createInventoryItemAction: vi.fn(),
   returnCompletedItemAction: vi.fn(),
@@ -17,22 +15,12 @@ vi.mock('@/lib/inventory/actions', () => ({
   returnToAvailableAction: vi.fn(),
   reviewDuplicateAction: vi.fn(),
 }));
-vi.mock('@/lib/fulfillment/actions', () => ({
-  releaseFulfillmentAction: vi.fn(),
-  dispatchAction: vi.fn(),
-  completeFulfillmentAction: vi.fn(),
-  requestApprovalAction: vi.fn(),
-  decideApprovalAction: vi.fn(),
-  executeApprovalAction: vi.fn(),
-  prepareFulfillmentAction: vi.fn(),
-}));
 
-import { FulfillmentWorkspace } from '@/components/fulfillment/fulfillment-workspace';
 import { InventoryWorkspace } from '@/components/inventory/inventory-workspace';
 
 /**
  * A failed read must surface an explicit error, never a false empty state
- * ("No inventory items" / "Nothing to fulfill" on a read error is a lie).
+ * ("No inventory items" on a read error is a lie).
  */
 describe('read-error states (no fake empty states)', () => {
   it('Inventory shows an explicit read error, not "No inventory items"', () => {
@@ -44,22 +32,5 @@ describe('read-error states (no fake empty states)', () => {
     );
     expect(screen.getByText(/Inventory could not be loaded/i)).toBeInTheDocument();
     expect(screen.queryByText(/No inventory items/i)).not.toBeInTheDocument();
-  });
-
-  it('Fulfillment shows an explicit read error, not "Nothing to fulfill"', () => {
-    render(
-      <FulfillmentWorkspace
-        fulfillments={{ ok: false, reason: 'db down' }}
-        approvals={[]}
-        canPrepare={false}
-        canRelease={false}
-        canRequest={false}
-        isOwner={false}
-      />,
-    );
-    expect(
-      screen.getByText(/Fulfillment queue could not be loaded/i),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/Nothing to fulfill/i)).not.toBeInTheDocument();
   });
 });

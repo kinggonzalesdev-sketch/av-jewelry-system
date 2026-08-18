@@ -20,6 +20,11 @@ import {
   transferOrderToCompleted,
   type CompletionResult,
 } from '@/lib/orders/completion';
+import {
+  markOrderDispatched,
+  setFulfillmentDetails,
+  type FulfillmentDetailResult,
+} from '@/lib/orders/fulfillment-details';
 import type { OrderDetailResult } from '@/lib/orders/detail-types';
 import {
   transferOrderDestination,
@@ -298,6 +303,27 @@ export async function transferOrderToCompletedAction(
     revalidatePath('/orders/inventory');
     revalidatePath('/orders/payments');
   }
+  return result;
+}
+
+/** Fulfillment Phase A — save courier / pickup contact on the order (operational only, no
+ *  money, no inventory). Guarded by fulfillment_preparation in the domain module + DB. */
+export async function setFulfillmentDetailsAction(
+  officialOrderId: string,
+  fields: { courier?: string | null; pickupContact?: string | null },
+): Promise<FulfillmentDetailResult> {
+  const result = await setFulfillmentDetails(officialOrderId, fields);
+  if (result.ok) revalidatePath('/orders');
+  return result;
+}
+
+/** Fulfillment Phase A — shipping "Mark Dispatched": stamps dispatched_at only (never completes;
+ *  final completion keeps its payment + waybill gates). Guarded by fulfillment_preparation. */
+export async function markOrderDispatchedAction(
+  officialOrderId: string,
+): Promise<FulfillmentDetailResult> {
+  const result = await markOrderDispatched(officialOrderId);
+  if (result.ok) revalidatePath('/orders');
   return result;
 }
 
