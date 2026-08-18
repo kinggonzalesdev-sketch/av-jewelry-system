@@ -111,10 +111,12 @@ type PendingCaptureLite = {
 };
 
 /**
- * Auto-send the screenshot for a freshly-'linked' capture — ONLY when a unique
- * customer + conversation is confirmed (never an ambiguous name), never for a Test
- * capture, and never twice (idempotent on message_status). Best-effort: the manual
- * 📨 Send button always remains.
+ * Auto-send the screenshot for a freshly-'linked' capture — ONLY when a unique customer +
+ * conversation is confirmed (never an ambiguous name), never for a Test capture, and never twice.
+ * Gated on the MEDIA WINDOW (`requireMediaWindow`): an automatic screenshot PHOTO is attempted
+ * only when the customer already has a customer-initiated inbox interaction (Controlled Test B);
+ * a comment-only customer is parked 'awaiting_inbox' and NOT auto-sent. One-capture-one-photo is
+ * enforced atomically in the DB, not by this guard. Best-effort: the manual 📨 Send remains.
  */
 async function maybeAutoSend(
   captureRecordId: string,
@@ -129,7 +131,9 @@ async function maybeAutoSend(
     return false;
   }
   try {
-    const res = await sendPendingCaptureToMessenger(captureRecordId);
+    const res = await sendPendingCaptureToMessenger(captureRecordId, {
+      requireMediaWindow: true,
+    });
     return res.ok && res.code === 'sent';
   } catch {
     return false;

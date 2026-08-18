@@ -3,6 +3,7 @@ import 'server-only';
 import { recordAuditEvent } from '@/lib/audit/log';
 import { requirePermission } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
+import { isConversationMediaEligible } from '@/lib/capture/media-window';
 import {
   conversationBelongsToPage,
   getActivePancakePageId,
@@ -11,17 +12,23 @@ import {
 } from '@/lib/integrations/pancake';
 
 /**
- * PC "Send to Messenger" for a pending Incoming Capture.
+ * PC "Send to Messenger" for a pending Incoming Capture — a SCREENSHOT delivery. It resolves the
+ * customer's REAL Pancake conversation (a stored id ON THE ACTIVE PAGE, else the OCR'd Facebook
+ * name via the SAME unique-match resolver the mobile route uses — never a name-only guess, never
+ * a synthesized {page_id}_{psid}), signs the screenshot, and sends it THROUGH the MineFlow
+ * backend so the Pancake token never reaches the browser.
  *
- * The phone's one-tap flow auto-sends the screenshot; this is the PC operator's
- * MANUAL button for when it didn't (no token yet at capture time, an unlinked
- * customer, or a deliberate resend). It resolves the customer's Pancake
- * conversation from the OCR'd Facebook name (the SAME resolver the mobile route
- * uses — never a guess when a name is shared), signs the screenshot, and sends it
- * THROUGH the MineFlow backend so the Pancake token never reaches the browser.
- *
- * Safety: idempotent (a capture already 'sent' is never resent), never sends by an
- * ambiguous name, and records the outcome so a failed send is safely retryable.
+ * Hardening (Owner request 2026-08-18):
+ *   - NO text fallback. A screenshot delivery is PHOTO or NO-SEND/REVIEW — it is NEVER silently
+ *     downgraded to "Reserved"/"Reserved ✔️"/arbitrary text. A missing screenshot, an unavailable
+ *     signed URL, or an upload failure marks the capture 'failed' (reviewable/retryable) and
+ *     sends NOTHING.
+ *   - Media window: an AUTOMATIC send (`requireMediaWindow`) is only attempted when the customer
+ *     already has a customer-initiated inbox interaction (Controlled Test B); otherwise the
+ *     capture is parked 'awaiting_inbox'. A MANUAL send may still attempt (and fail cleanly,
+ *     never text) — the operator's click is the authorization.
+ *   - One capture = one photo: an atomic DB claim/finalize (message_status 'sending' → 'sent' /
+ *     'failed') rejects a concurrent auto/manual/double-click/repeat-resolver duplicate.
  */
 
 const CAPTURE_BUCKET = 'attachments';
@@ -43,7 +50,7 @@ export type SendCaptureToMessengerResult =
 
 export async function sendPendingCaptureToMessenger(
   captureRecordId: string,
-  messageOverride?: string | null,
+  opts?: { requireMediaWindow?: boolean },
 ): Promise<SendCaptureToMessengerResult> {
   // Same gate as viewing captures — a claim_capture holder operating the PC station.
   await requirePermission('claim_capture');
@@ -54,9 +61,7 @@ export async function sendPendingCaptureToMessenger(
 
   const { data, error } = await supabase
     .from('capture_records')
-    .select(
-      'id, device_installation_id, capture_id, screenshot_path, ocr, message_status, pancake_message_id, pancake_conversation_id',
-    )
+    .select('id, screenshot_path, ocr, message_status, pancake_conversation_id')
     .eq('id', id)
     .maybeSingle();
   if (error || !data) {
@@ -64,8 +69,6 @@ export async function sendPendingCaptureToMessenger(
   }
 
   const row = data as {
-    device_installation_id: string | null;
-    capture_id: string | null;
     screenshot_path: string | null;
     ocr: unknown;
     message_status: string | null;
@@ -83,9 +86,9 @@ export async function sendPendingCaptureToMessenger(
 
   const fbName = ocrStr(row.ocr, 'fbName', 'fb_name', 'name');
 
-  // Resolve the conversation: prefer one already stored on the capture — but ONLY if it
-  // lives on the active send page (a link on another page is undeliverable). Otherwise
-  // resolve from the OCR'd Facebook name (page-aware, never guessing an ambiguous name).
+  // Resolve the conversation: prefer a stored one — but ONLY if it lives on the active send page
+  // (a link on another page is undeliverable). Otherwise resolve from the OCR'd Facebook name
+  // (page-aware, UNIQUE match only — never guessing an ambiguous name, never a synthetic id).
   const activePage = await getActivePancakePageId();
   let conversationId = (row.pancake_conversation_id ?? '').trim() || null;
   if (conversationId && !conversationBelongsToPage(conversationId, activePage)) {
@@ -120,44 +123,89 @@ export async function sendPendingCaptureToMessenger(
     }
   }
 
-  // Sign the screenshot (short-lived) so Pancake can fetch it.
-  let attachmentUrl: string | null = null;
+  // SCREENSHOT REQUIRED — no text fallback. A missing screenshot or an unavailable signed URL is
+  // marked reviewable; NOTHING is sent (never "Reserved").
   const path = (row.screenshot_path ?? '').trim() || null;
-  if (path) {
-    const signed = (await supabase.storage
-      .from(CAPTURE_BUCKET)
-      .createSignedUrl(path, 600)) as { data: { signedUrl?: string } | null };
-    attachmentUrl = signed.data?.signedUrl ?? null;
+  if (!path) {
+    await supabase.rpc('mark_capture_photo_state', { p_capture_id: id, p_status: 'failed' });
+    return {
+      ok: false,
+      code: 'no_screenshot',
+      error: 'No screenshot on this capture — marked for review (no text was sent).',
+    };
+  }
+  const signed = (await supabase.storage
+    .from(CAPTURE_BUCKET)
+    .createSignedUrl(path, 600)) as { data: { signedUrl?: string } | null };
+  const attachmentUrl = signed.data?.signedUrl ?? null;
+  if (!attachmentUrl) {
+    await supabase.rpc('mark_capture_photo_state', { p_capture_id: id, p_status: 'failed' });
+    return {
+      ok: false,
+      code: 'screenshot_unavailable',
+      error: 'Screenshot URL unavailable — marked for review (no text was sent).',
+    };
   }
 
-  const message = (messageOverride ?? '').trim() || 'Reserved ✔️';
+  // MEDIA WINDOW — an AUTOMATIC send only when the customer already has a customer-initiated inbox
+  // interaction (Controlled Test B). Otherwise park it 'awaiting_inbox'; a manual send may still
+  // be attempted by the operator (and will fail cleanly, never text, if the window is closed).
+  if (opts?.requireMediaWindow) {
+    const eligible = await isConversationMediaEligible(supabase, conversationId);
+    if (!eligible) {
+      await supabase.rpc('mark_capture_photo_state', {
+        p_capture_id: id,
+        p_status: 'awaiting_inbox',
+      });
+      return {
+        ok: false,
+        code: 'awaiting_inbox',
+        error: 'Waiting for the customer to message first — screenshot not auto-sent.',
+      };
+    }
+  }
+
+  // ONE CAPTURE = ONE PHOTO — atomic claim; a concurrent auto/manual/double-click duplicate is
+  // rejected here (DB compare-and-set), not merely by a disabled UI button.
+  const claimRes = (await supabase.rpc('claim_capture_photo_send', {
+    p_capture_id: id,
+    p_conversation_id: conversationId,
+  })) as { data?: unknown };
+  const claim = claimRes.data;
+  if (claim === 'already_sent') {
+    return {
+      ok: true,
+      code: 'already_sent',
+      message: 'Already sent to Messenger — not resent.',
+    };
+  }
+  if (claim !== 'claimed') {
+    // 'in_progress' (another send holds the claim) or 'not_found' → do NOT send a duplicate.
+    return {
+      ok: false,
+      code: typeof claim === 'string' ? claim : 'claim_failed',
+      error: 'Another send for this capture is already in progress.',
+    };
+  }
+
+  // Send the SCREENSHOT as a PHOTO (message intentionally EMPTY — reply_inbox carries the photo
+  // via content_ids; a failed upload early-returns and NEVER falls back to text).
   const result = await sendPancakeConversationMessage({
     conversationId,
-    message,
+    message: '',
     attachmentUrl,
   });
 
-  // Record the outcome + persist the resolved conversation on the capture (even on a
-  // failed send: the target was explicit, so a Retry reuses the same chat). Only when
-  // this capture carries the device/capture keys the dispatch function locates by.
-  const device = (row.device_installation_id ?? '').trim();
-  const capture = (row.capture_id ?? '').trim();
-  if (device && capture) {
-    await supabase.rpc('update_capture_dispatch', {
-      p_device: device,
-      p_capture_id: capture,
-      p_message_status: result.ok ? 'sent' : 'failed',
-      p_print_status: null,
-      p_pancake_message_id: result.pancakeMessageId,
-      p_screenshot_path: path,
-      p_pancake_conversation_id: conversationId,
-    });
-  }
+  // Finalize the claim: 'sent' on confirmed Pancake success, else 'failed' (reviewable/retryable).
+  await supabase.rpc('finalize_capture_photo_send', {
+    p_capture_id: id,
+    p_ok: result.ok,
+    p_pancake_message_id: result.pancakeMessageId,
+    p_conversation_id: conversationId,
+  });
 
   if (!result.ok) {
-    // Persist the EXACT Pancake response (token-free `debug`) so a rejected send is
-    // diagnosable after the fact — the generic operator message hides the real cause
-    // (e.g. an attachment Facebook could not fetch vs. a policy block).
+    // Persist the EXACT Pancake response (token-free `debug`) so a rejected send is diagnosable.
     const debug = (result as { debug?: string }).debug ?? null;
     await recordAuditEvent({
       action: 'capture.send_failed',
@@ -165,12 +213,7 @@ export async function sendPendingCaptureToMessenger(
       entityId: id,
       outcome: 'failed',
       reason: result.code,
-      context: {
-        code: result.code,
-        conversationId,
-        hadAttachment: Boolean(attachmentUrl),
-        debug,
-      },
+      context: { code: result.code, conversationId, hadAttachment: true, debug },
     }).catch(() => undefined);
     return { ok: false, code: result.code, error: result.message };
   }
