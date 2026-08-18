@@ -456,6 +456,10 @@ export type PancakeSendResult = {
   uploadDiagnostics?: PancakeUploadDiagnostics;
   /** SANITIZED reconstruction of the exact send form keys (token stripped, content id masked). */
   sentForm?: string;
+  /** SANITIZED send-endpoint outcome (for durable Controlled-Photo diagnostics). */
+  sendHttpStatus?: number | null;
+  sendSuccess?: boolean;
+  sendMessageCode?: string | null;
 };
 
 /** Pull a message id out of Pancake's response without assuming one exact shape. */
@@ -810,6 +814,16 @@ export async function sendPancakeConversationMessage(input: {
   }
   // Diagnostic string (no token) — reveals whether pages.fm accepted or ignored it.
   const debug = `HTTP ${res.status} · path ${template} · ${rawText.slice(0, 400)}`;
+  // SANITIZED send message_code (Facebook/pages.fm error slug), for durable diagnostics.
+  const sendMessageCode = ((): string | null => {
+    const b = body && typeof body === 'object' ? (body as Record<string, unknown>) : null;
+    const c = b?.message_code ?? b?.error_code ?? b?.error;
+    return typeof c === 'string' && c.trim()
+      ? c.trim().slice(0, 200)
+      : typeof c === 'number'
+        ? String(c)
+        : null;
+  })();
 
   const rejected =
     !res.ok ||
@@ -834,6 +848,9 @@ export async function sendPancakeConversationMessage(input: {
         debug,
         ...(uploadDiagnostics ? { uploadDiagnostics } : {}),
         ...(sentForm ? { sentForm } : {}),
+        sendHttpStatus: res.status,
+        sendSuccess: false,
+        sendMessageCode,
       };
     }
     return {
@@ -845,6 +862,9 @@ export async function sendPancakeConversationMessage(input: {
       debug,
       ...(uploadDiagnostics ? { uploadDiagnostics } : {}),
       ...(sentForm ? { sentForm } : {}),
+      sendHttpStatus: res.status,
+      sendSuccess: false,
+      sendMessageCode,
     };
   }
 
@@ -856,6 +876,9 @@ export async function sendPancakeConversationMessage(input: {
     debug,
     ...(uploadDiagnostics ? { uploadDiagnostics } : {}),
     ...(sentForm ? { sentForm } : {}),
+    sendHttpStatus: res.status,
+    sendSuccess: true,
+    sendMessageCode,
   };
 }
 

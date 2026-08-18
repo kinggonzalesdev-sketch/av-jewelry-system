@@ -10,6 +10,8 @@ import {
   getSelectedPancakeSender,
   sendPancakeConversationMessage,
   sendPancakePrivateReply,
+  type PancakeSendResult,
+  type PancakeUploadDiagnostics,
 } from '@/lib/integrations/pancake';
 
 /**
@@ -526,6 +528,74 @@ export async function runPrivateReplyControlledTest(input: {
   };
 }
 
+/** One SANITIZED Controlled-Photo diagnostic row. NEVER carries a token, image bytes, a
+ *  signed URL, a full name, a PSID in clear, or a full conversation/content id — only
+ *  last-6 suffixes + the parsed upload/send outcome. Persisted one-per-attempt. */
+export type ControlledPhotoDiagnostic = {
+  captureRef: string | null;
+  conversationRef: string | null;
+  uploadApiVersion: string | null;
+  uploadHttpStatus: number | null;
+  uploadSuccess: boolean | null;
+  uploadContentIdSuffix: string | null;
+  uploadType: string | null;
+  uploadMessageCode: string | null;
+  sendHttpStatus: number | null;
+  sendSuccess: boolean | null;
+  sendMessageCode: string | null;
+  classification: 'A' | 'B' | 'C' | 'D';
+};
+
+/** Last-6 suffix ONLY — never the full id / PSID. */
+function ref6(v: string | null | undefined): string | null {
+  const s = (v ?? '').trim();
+  if (!s) return null;
+  return s.length <= 6 ? s : s.slice(-6);
+}
+
+/**
+ * Classify ONE Controlled-Photo attempt from its sanitized upload diagnostics + send outcome:
+ *   A — upload/content staging failed (not success, or no valid PHOTO content id)
+ *   B — upload fully valid (success + id + type=PHOTO) but the attachment SEND was rejected
+ *   C — upload valid AND the photo send succeeded
+ *   D — cannot determine (no upload diagnostics captured)
+ */
+export function classifyControlledPhoto(
+  up: PancakeUploadDiagnostics | undefined,
+  send: { ok: boolean },
+): ControlledPhotoDiagnostic['classification'] {
+  if (!up) return 'D';
+  const uploadValid = up.success === true && up.contentIdPresent && up.type === 'PHOTO';
+  if (!uploadValid) return 'A';
+  return send.ok ? 'C' : 'B';
+}
+
+/** Build the ONE sanitized diagnostic row for a Controlled-Photo attempt (pure/testable). */
+export function buildControlledPhotoDiagnostic(input: {
+  captureId: string;
+  conversationId: string;
+  photo: Pick<
+    PancakeSendResult,
+    'ok' | 'uploadDiagnostics' | 'sendHttpStatus' | 'sendSuccess' | 'sendMessageCode'
+  >;
+}): ControlledPhotoDiagnostic {
+  const up = input.photo.uploadDiagnostics;
+  return {
+    captureRef: ref6(input.captureId),
+    conversationRef: ref6(input.conversationId),
+    uploadApiVersion: up?.apiVersion ?? null,
+    uploadHttpStatus: up?.httpStatus ?? null,
+    uploadSuccess: up ? up.success : null,
+    uploadContentIdSuffix: up?.contentIdSuffix ?? null,
+    uploadType: up?.type ?? null,
+    uploadMessageCode: up?.messageCode ?? null,
+    sendHttpStatus: input.photo.sendHttpStatus ?? null,
+    sendSuccess: input.photo.sendSuccess ?? null,
+    sendMessageCode: input.photo.sendMessageCode ?? null,
+    classification: classifyControlledPhoto(up, { ok: input.photo.ok }),
+  };
+}
+
 /**
  * SEPARATE, explicit controlled PHOTO step — sends the Capture screenshot via the existing
  * reply_inbox PHOTO flow to a RESOLVED REAL inbox conversation id. NEVER uses the comment
@@ -616,6 +686,35 @@ export async function sendControlledTestPhoto(input: {
     sentForm: photo.sentForm ?? null,
     sendCode: photo.code,
     sendOk: photo.ok,
+  });
+
+  // DURABLE persistence — exactly ONE sanitized row per attempt (Owner request 2026-08-18),
+  // since React state overwrites the last attempt and console.info is not reliably retrievable.
+  // Best-effort: a failed insert never breaks the controlled test. Gated by a Primary-Super-
+  // Admin SECURITY DEFINER RPC; stores only suffixes + parsed outcome (no token/image/URL/PII).
+  const diagnostic = buildControlledPhotoDiagnostic({ captureId, conversationId, photo });
+  try {
+    await supabase.rpc('record_controlled_photo_diagnostic', {
+      p_capture_ref: diagnostic.captureRef,
+      p_conversation_ref: diagnostic.conversationRef,
+      p_upload_api_version: diagnostic.uploadApiVersion,
+      p_upload_http_status: diagnostic.uploadHttpStatus,
+      p_upload_success: diagnostic.uploadSuccess,
+      p_upload_content_id_suffix: diagnostic.uploadContentIdSuffix,
+      p_upload_type: diagnostic.uploadType,
+      p_upload_message_code: diagnostic.uploadMessageCode,
+      p_send_http_status: diagnostic.sendHttpStatus,
+      p_send_success: diagnostic.sendSuccess,
+      p_send_message_code: diagnostic.sendMessageCode,
+      p_classification: diagnostic.classification,
+    });
+  } catch {
+    // best-effort — diagnostics must never break the controlled test
+  }
+  steps.push({
+    step: 'diagnostic_saved',
+    ok: true,
+    detail: `Durable diagnostic recorded (classification ${diagnostic.classification}).`,
   });
 
   return { ok: photo.ok, steps };
