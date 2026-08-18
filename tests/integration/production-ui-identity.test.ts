@@ -134,10 +134,9 @@ describe('the shell shows REAL authenticated identity, never hardcoded', () => {
     // The team roster is gated on the Owner (the service-role admin path).
     expect(settings).toMatch(/isOwner/);
     // Owner request 2026-08-09: the Super Admin sees the full settings — Integration
-    // + System Diagnostics restored — while Live Operations now shows Test Print +
-    // Sticker Settings inline (and is visible to any granted settings-viewer).
-    expect(settings).toMatch(/PrinterTestCard/);
-    expect(settings).toMatch(/StickerSettingsCard/);
+    // + System Diagnostics restored — while Live Operations now shows the unified
+    // Sticker Settings & Test Print panel inline (visible to any granted settings-viewer).
+    expect(settings).toMatch(/StickerPrintPanel/);
     expect(settings).toMatch(/href="\/settings\/messages"/);
     expect(settings).toMatch(/href="\/admin\/integrations"/);
     expect(settings).not.toMatch(/href="\/admin\/staff"/);

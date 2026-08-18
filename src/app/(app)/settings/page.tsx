@@ -3,8 +3,7 @@ import type { ReactNode } from 'react';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 
-import { PrinterTestCard } from '@/components/print/printer-test-card';
-import { StickerSettingsCard } from '@/components/print/sticker-settings-card';
+import { StickerPrintPanel } from '@/components/print/sticker-print-panel';
 import { SystemDiagnostics } from '@/components/settings/system-diagnostics';
 import { TeamMembersPanel } from '@/components/settings/team-members-panel';
 import { PageHeader } from '@/components/ui/page-primitives';
@@ -194,11 +193,13 @@ export default async function SettingsPage() {
         title="Live Operations"
         subtitle="Test Print and Sticker Settings"
       >
-        {/* Expanding shows Test Print + Sticker Settings directly — no separate
-            page. They render inside the app-wide PrinterProvider. */}
-        <div className="space-y-4" data-testid="settings-live-operations">
-          <PrinterTestCard />
-          <StickerSettingsCard />
+        {/* The unified Sticker Settings & Test Print panel — the SAME redesigned panel as the
+            dedicated /settings/live-operations page (Owner redesign): header + connection pill,
+            Format · Channel · Auto Print row, Sticker Content | Preview, ONE Print Test Sticker
+            (shared formatter — never the old "A.V. Jewelry / TEST PRINT"), Browser fallback, Save.
+            Renders inside the app-wide PrinterProvider. */}
+        <div data-testid="settings-live-operations">
+          <StickerPrintPanel />
         </div>
       </SettingsSection>
 
