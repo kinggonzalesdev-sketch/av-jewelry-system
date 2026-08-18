@@ -3,8 +3,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 
 import { SystemCheckPanel } from '@/components/live/system-check-panel';
-import { PrinterTestCard } from '@/components/print/printer-test-card';
-import { StickerSettingsCard } from '@/components/print/sticker-settings-card';
+import { StickerPrintPanel } from '@/components/print/sticker-print-panel';
 import { TestModeControls } from '@/components/live/test-mode-controls';
 import { ErrorRecoveryPanel } from '@/components/live/error-recovery-panel';
 import { RecentActivityPanel } from '@/components/live/recent-activity-panel';
@@ -76,39 +75,10 @@ export default async function LiveOperationsPage() {
         <SystemCheckPanel />
       </section>
 
-      {/* Test Print — print a REAL sample sticker to confirm the XP-236B prints the
-          live's exact layout before going live (the biggest hardware unknown). */}
-      <section
-        className="rounded-xl border border-border bg-card p-4"
-        aria-labelledby="testprint-h"
-      >
-        <h2 id="testprint-h" className="mb-1 text-sm font-semibold text-foreground">
-          Test Print
-        </h2>
-        <p className="mb-3 text-xs text-muted-foreground">
-          Print one sample sticker in the exact live format to confirm the printer works
-          before the live. Connect the printer here (same connection every print uses),
-          then Print sample sticker — or use the browser dialog if Bluetooth isn’t
-          reachable.
-        </p>
-        <PrinterTestCard />
-      </section>
-
-      {/* Sticker Settings — choose which lines print on the 40x30 label, with a live
-          preview. Applies to New Order, Test Print, and the auto-print. */}
-      <section
-        className="rounded-xl border border-border bg-card p-4"
-        aria-labelledby="stickerfields-h"
-      >
-        <h2 id="stickerfields-h" className="mb-1 text-sm font-semibold text-foreground">
-          Sticker Settings
-        </h2>
-        <p className="mb-3 text-xs text-muted-foreground">
-          Pick which lines appear on the sticker and see a live preview, then press Save —
-          it applies to every account and device.
-        </p>
-        <StickerSettingsCard />
-      </section>
+      {/* Sticker Settings & Test Print — one unified panel (Owner redesign 2026-08-18):
+          Format · Channel · Auto Print, a Sticker Content | Preview split, ONE Test Print
+          action, and Save. All printer/Bluetooth/save/print logic is reused unchanged. */}
+      <StickerPrintPanel />
 
       {/* Error Recovery Center — the failures a live can hit (a message that failed
           to auto-send, a label that failed to print), surfaced in one place with a

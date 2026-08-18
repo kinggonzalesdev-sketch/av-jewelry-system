@@ -154,4 +154,63 @@ class ScreenshotOcrTest {
         g("12500").let { assertEquals("12500", it.itemQuery); assertNull(it.grams) }
         assertEquals("Buyer Name", g("Mine 12000").fbName)
     }
+
+    // Owner acceptance grams matrix (2026-08-18): leading decimals normalized, keyword BEFORE
+    // and AFTER the number, case-insensitive, numeric-only, "g" suffix — all from the pinned block.
+    @Test
+    fun acceptanceGramsMatrix_allFormats() {
+        assertEquals("0.6", pinnedGrams(".6"))
+        assertEquals("0.7", pinnedGrams(".7"))
+        assertEquals("0.8", pinnedGrams(".8"))
+        assertEquals("0.9", pinnedGrams(".9"))
+        assertEquals("1.5", pinnedGrams("M 1.5"))
+        assertEquals("1.5", pinnedGrams("Mine 1.5"))
+        assertEquals("1.5", pinnedGrams("MINE 1.5"))
+        assertEquals("1.5", pinnedGrams("mine 1.5"))
+        assertEquals("1.5", pinnedGrams("1.5 M"))
+        assertEquals("1.5", pinnedGrams("1.5 Mine"))
+        assertEquals("1.5", pinnedGrams("1.5 mine"))
+        assertEquals("1.5", pinnedGrams("1.5g"))
+        assertEquals("1.5", pinnedGrams("1.5 g"))
+        assertEquals("11", pinnedGrams("11"))
+        assertEquals("10.5", pinnedGrams("10.5"))
+        // keyword AFTER a leading-decimal, both orders:
+        assertEquals("0.7", pinnedGrams("M .7"))
+        assertEquals("0.7", pinnedGrams("Mine .7"))
+        assertEquals("0.7", pinnedGrams(".7 M"))
+        assertEquals("0.7", pinnedGrams(".7 Mine"))
+    }
+
+    // Name + grams come from the SAME pinned block.
+    @Test
+    fun acceptanceNameAndGrams_sameBlock() {
+        val g = ScreenshotOcr.guessFrom(listOf(line("Juan Dela Cruz", 850), line("Mine .7", 900)))
+        assertEquals("Juan Dela Cruz", g.fbName)
+        assertEquals("0.7", g.grams)
+    }
+
+    // Facebook UI tab "Overview" sitting DIRECTLY above the claim must NOT become the printed
+    // name — it is rejected → needs review (null), never a guessed identity. Grams still kept.
+    @Test
+    fun overviewDirectlyAboveClaim_isRejected_notPrinted() {
+        val g = ScreenshotOcr.guessFrom(listOf(line("Overview", 860), line("Mine .7", 900)))
+        assertNull(g.fbName)
+        assertEquals("0.7", g.grams)
+    }
+
+    // With FB tab chrome AND a real pinned name on screen, the real name wins; tabs never do.
+    @Test
+    fun realNameWinsOverUiTabs() {
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                line("Overview", 815),
+                line("Live chat", 835),
+                line("Your replies", 850),
+                line("Juan Dela Cruz", 862),
+                line("11.5", 905),
+            ),
+        )
+        assertEquals("Juan Dela Cruz", g.fbName)
+        assertEquals("11.5", g.grams)
+    }
 }

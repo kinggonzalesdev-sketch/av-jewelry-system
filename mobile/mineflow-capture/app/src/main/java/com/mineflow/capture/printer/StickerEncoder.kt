@@ -91,11 +91,16 @@ object StickerEncoder {
         return if (neg) "-$out" else out
     }
 
-    /** "11.50" -> "11.5", "20" -> "20", "0.70" -> "0.7", else null. */
+    /** "11.50" -> "11.5", "20" -> "20", "0.70" -> "0.7", ".7" -> "0.7", else null. Leading
+     *  decimals are normalized (".7"→"0.7") so the sticker prints "0.7g", never ".7g". */
     fun normalizeGrams(value: String?): String? {
         if (value.isNullOrBlank()) return null
-        val m = Regex("\\d+(?:\\.\\d+)?").find(value.replace(",", "")) ?: return null
-        val n = m.value.toDoubleOrNull() ?: return null
+        // `\d*\.?\d+` also matches a bare leading decimal (".7"); a plain `\d+(?:\.\d+)?` would
+        // grab only the "7" of ".7" and print the wrong weight.
+        val m = Regex("\\d*\\.?\\d+").find(value.replace(",", "")) ?: return null
+        var raw = m.value
+        if (raw.startsWith(".")) raw = "0$raw"
+        val n = raw.toDoubleOrNull() ?: return null
         if (n <= 0) return null
         // Drop trailing zeros: 11.50 -> 11.5, 20.0 -> 20.
         return if (n % 1.0 == 0.0) n.toLong().toString() else n.toString().trimEnd('0').trimEnd('.')

@@ -90,6 +90,16 @@ object ScreenshotOcr {
             "\\bopen app\\b|^g?\\s*live(\\s*\\d+)?$",
         RegexOption.IGNORE_CASE,
     )
+    // Facebook Live PANEL / NAVIGATION tab labels — the "Overview / Live chat / Your replies"
+    // tab bar (and similar chrome) that leaks into full-screen OCR. These must NEVER become
+    // operational print data (customer name / grams) — Owner 2026-08-18. Anchored EXACT-line
+    // match so a real name that merely contains such a word ("Home Reyes") is never blocked.
+    // They still survive in rawLines as non-operational diagnostics.
+    private val UI_TAB = Regex(
+        "^(overview|live chat|your replies|replies|comments?|discussion|details|home|menu|" +
+            "notifications?|marketplace|watch|reels?|feed|share|save|report|more)$",
+        RegexOption.IGNORE_CASE,
+    )
     // An inventory-code-ish token, e.g. BN-A-1001, SBA-P 2265, K18.
     private val CODE = Regex("[A-Za-z]{1,4}[\\-\\s]?[A-Za-z]?[\\-\\s]?\\d{2,}")
     private val MINE = Regex("\\bmine\\b|\\bakin\\b|\\bsakin\\b", RegexOption.IGNORE_CASE)
@@ -154,7 +164,7 @@ object ScreenshotOcr {
 
     private fun isUiNoise(s: String): Boolean =
         UI_NOISE.containsMatchIn(s) || WATCHING.containsMatchIn(s) ||
-            BLOCK.containsMatchIn(s) || s.length < 2
+            BLOCK.containsMatchIn(s) || UI_TAB.matches(s.trim()) || s.length < 2
 
     /** A name-like line: 1–5 words, mostly letters, no long digit runs, Title Case. */
     private fun looksLikeName(s: String): Boolean {
