@@ -534,19 +534,20 @@ export type LayawayRow = {
  * guard uses, so the screen can never disagree with the database about whether
  * an account is settled.
  */
+// The SAME embed for the list AND the by-ids page reader, so an arrangement has one shape.
+const ARRANGEMENT_SELECT = `id, official_order_id, status, months, total_grams, layaway_fee, created_at,
+       final_due_date, grace_period_days, completed_at, layaway_code,
+       financer_id, current_holder, current_location, remarks,
+       financers ( name ),
+       official_orders ( order_number, invoice_number, customers ( display_name, facebook_conversation_url ) ),
+       layaway_installments ( installment_number, due_date, amount_due, payment_id )`;
+
 export async function listLayaways(statuses?: string[]): Promise<LayawayRow[]> {
   const supabase = await createClient();
 
   let query = supabase
     .from('layaway_arrangements')
-    .select(
-      `id, official_order_id, status, months, total_grams, layaway_fee, created_at,
-       final_due_date, grace_period_days, completed_at, layaway_code,
-       financer_id, current_holder, current_location, remarks,
-       financers ( name ),
-       official_orders ( order_number, invoice_number, customers ( display_name, facebook_conversation_url ) ),
-       layaway_installments ( installment_number, due_date, amount_due, payment_id )`,
-    )
+    .select(ARRANGEMENT_SELECT)
     .order('created_at', { ascending: false })
     .limit(50);
 
@@ -554,7 +555,29 @@ export async function listLayaways(statuses?: string[]): Promise<LayawayRow[]> {
 
   const { data } = await query;
   if (!data) return [];
+  return mapArrangementRows(supabase, data);
+}
 
+/**
+ * Arrangement rows for a specific set of ids — SAME shape as listLayaways, but fetched by id
+ * with no status filter and no 50-row cap. Used by the server-side Layaway page
+ * (listLayawayPage) to build one page's order-derived rows; the caller restores page order.
+ */
+export async function arrangementRowsByIds(ids: string[]): Promise<LayawayRow[]> {
+  if (ids.length === 0) return [];
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('layaway_arrangements')
+    .select(ARRANGEMENT_SELECT)
+    .in('id', ids);
+  if (!data) return [];
+  return mapArrangementRows(supabase, data);
+}
+
+async function mapArrangementRows(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  data: unknown[],
+): Promise<LayawayRow[]> {
   // Resolve each order's linked inventory Unique Code(s) in ONE guarded query
   // (order → claims → inventory items). Isolated on purpose: if the embed can't be
   // resolved it simply yields no codes ("Not linked") and never breaks the list.
@@ -588,7 +611,7 @@ export async function listLayaways(statuses?: string[]): Promise<LayawayRow[]> {
   }
 
   return Promise.all(
-    (data as unknown[]).map(async (row) => {
+    data.map(async (row) => {
       const r = row as Record<string, unknown>;
       const orderId = r.official_order_id as string;
       const order = one<{

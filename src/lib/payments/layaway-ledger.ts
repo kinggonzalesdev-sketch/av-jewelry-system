@@ -9,6 +9,7 @@ import {
   requirePermission,
 } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
+import { layawayDedupKey } from '@/lib/import/layaway-csv';
 
 /**
  * Imported layaway ledger (Owner request). A FLAT list of existing layaway
@@ -265,22 +266,14 @@ async function resolveLedgerOrderCodes(
   return byLedger;
 }
 
-/** All imported ledger rows the caller may read (RLS: any active staff). */
-export async function listLayawayLedger(): Promise<LayawayLedgerRow[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from('layaway_ledger')
-    .select(
-      'id, layaway_code, account_no, customer_name, status, remarks, date_purchased, item_amount, interest, grand_total, payment, balance, balance_mismatch, next_due_date, last_payment_date, created_at, source_kind, inventory:inventory_items!layaway_ledger_inventory_item_id_fkey ( item_code ), customer:customers ( facebook_conversation_url )',
-    )
-    // A 'transferred' account has moved into the Orders workflow — it leaves ACTIVE
-    // layaway (and all its filters/counts) but stays in the DB + audit for history.
-    .neq('status', 'transferred')
-    .order('created_at', { ascending: false });
+// The SAME select + row mapping for BOTH the full list and the by-ids page reader, so a
+// ledger row has one shape everywhere. Kept as a single source of truth (a column added in
+// one place appears in both).
+const LEDGER_SELECT =
+  'id, layaway_code, account_no, customer_name, status, remarks, date_purchased, item_amount, interest, grand_total, payment, balance, balance_mismatch, next_due_date, last_payment_date, created_at, source_kind, inventory:inventory_items!layaway_ledger_inventory_item_id_fkey ( item_code ), customer:customers ( facebook_conversation_url )';
 
-  if (error || !data) return [];
-
-  const rows = (data as Array<Record<string, unknown>>).map((r) => ({
+function mapLedgerRow(r: Record<string, unknown>): LayawayLedgerRow {
+  return {
     id: r.id as string,
     code: (r.layaway_code as string | null) ?? null,
     uniqueCode: (r.inventory as { item_code?: string } | null)?.item_code ?? null,
@@ -302,25 +295,129 @@ export async function listLayawayLedger(): Promise<LayawayLedgerRow[]> {
     balance: toStr(r.balance),
     balanceMismatch: r.balance_mismatch === true,
     createdAt: r.created_at as string,
-  }));
+  };
+}
 
-  // Order-derived layaways (created from an order) carry their item on the linked ORDER,
-  // not the ledger — so the ledger→item join is null and they'd read "Not linked". Surface
-  // the real Unique Code from the linked order so it shows in the list.
+// Order-derived layaways (created from an order) carry their item on the linked ORDER, not the
+// ledger — so the ledger→item join is null and they'd read "Not linked". Surface the real
+// Unique Code from the linked order so it shows in the list.
+async function fillLedgerOrderCodes(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  rows: LayawayLedgerRow[],
+): Promise<void> {
   const orderCodes = await resolveLedgerOrderCodes(
     supabase,
     rows.filter((r) => !r.uniqueCode).map((r) => r.id),
   );
-  if (orderCodes.size > 0) {
-    for (const r of rows) {
-      if (!r.uniqueCode) {
-        const code = orderCodes.get(r.id);
-        if (code) r.uniqueCode = code;
-      }
+  if (orderCodes.size === 0) return;
+  for (const r of rows) {
+    if (!r.uniqueCode) {
+      const code = orderCodes.get(r.id);
+      if (code) r.uniqueCode = code;
     }
   }
+}
 
+/** All imported ledger rows the caller may read (RLS: any active staff). */
+export async function listLayawayLedger(): Promise<LayawayLedgerRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('layaway_ledger')
+    .select(LEDGER_SELECT)
+    // A 'transferred' account has moved into the Orders workflow — it leaves ACTIVE
+    // layaway (and all its filters/counts) but stays in the DB + audit for history.
+    .neq('status', 'transferred')
+    .order('created_at', { ascending: false });
+
+  if (error || !data) return [];
+  const rows = (data as Array<Record<string, unknown>>).map(mapLedgerRow);
+  await fillLedgerOrderCodes(supabase, rows);
   return rows;
+}
+
+/**
+ * The ledger rows for a specific set of ids, in the SAME shape as listLayawayLedger. Used by
+ * the server-side Layaway page (listLayawayPage) to build ONE page's rows without loading the
+ * whole ledger. Order is not guaranteed here — the caller restores the page order from the ids.
+ */
+export async function ledgerRowsByIds(ids: string[]): Promise<LayawayLedgerRow[]> {
+  if (ids.length === 0) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('layaway_ledger')
+    .select(LEDGER_SELECT)
+    .in('id', ids);
+  if (error || !data) return [];
+  const rows = (data as Array<Record<string, unknown>>).map(mapLedgerRow);
+  await fillLedgerOrderCodes(supabase, rows);
+  return rows;
+}
+
+/**
+ * Ledger status counts for the overview cards + the Delete-All button — counted in the DB, never
+ * derived from a full client-side load. `active` / `completed` are RAW status counts (matching
+ * the old `ledger.filter(l => l.status === …)`); `total` is every non-transferred account
+ * (matching the old `ledger.length`, which included needs-review rows). RLS: any active staff.
+ */
+export async function layawayLedgerStatusCounts(): Promise<{
+  active: number;
+  completed: number;
+  total: number;
+}> {
+  const supabase = await createClient();
+  const [activeRes, completedRes, totalRes] = await Promise.all([
+    supabase
+      .from('layaway_ledger')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'active'),
+    supabase
+      .from('layaway_ledger')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'completed'),
+    supabase
+      .from('layaway_ledger')
+      .select('*', { count: 'exact', head: true })
+      .neq('status', 'transferred'),
+  ]);
+  return {
+    active: activeRes.count ?? 0,
+    completed: completedRes.count ?? 0,
+    total: totalRes.count ?? 0,
+  };
+}
+
+/**
+ * Every ledger account's duplicate key, for the Import preview's dup detection. Lazily fetched
+ * only when the Import modal opens (never on page load), and range-paged in chunks so it is
+ * never capped by PostgREST's 1000-row default. Built with the SAME layawayDedupKey the CSV
+ * analyzer uses, so the preview's "already imported" flag is exact — and the DB unique index is
+ * the real guard regardless. RLS: any active staff.
+ */
+export async function listLayawayDedupKeys(): Promise<string[]> {
+  const supabase = await createClient();
+  const keys: string[] = [];
+  const CHUNK = 1000;
+  for (let from = 0; ; from += CHUNK) {
+    const { data, error } = await supabase
+      .from('layaway_ledger')
+      .select('layaway_code, customer_name, date_purchased, grand_total')
+      .neq('status', 'transferred')
+      .order('id', { ascending: true })
+      .range(from, from + CHUNK - 1);
+    if (error || !data || data.length === 0) break;
+    for (const r of data as Array<Record<string, unknown>>) {
+      keys.push(
+        layawayDedupKey({
+          code: (r.layaway_code as string | null) ?? null,
+          name: (r.customer_name as string) ?? 'Unknown',
+          datePurchased: (r.date_purchased as string | null) ?? null,
+          grandTotal: toStr(r.grand_total),
+        }),
+      );
+    }
+    if (data.length < CHUNK) break;
+  }
+  return keys;
 }
 
 /** A layaway ledger account marked KEEP (in remarks) — surfaced in Orders → Keep

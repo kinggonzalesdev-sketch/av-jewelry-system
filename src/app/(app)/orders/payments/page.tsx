@@ -11,7 +11,8 @@ import { getAdminNameContext } from '@/lib/authz/admin-name';
 import { listCaptureItems } from '@/lib/orders/service';
 import { listCaptureCustomers } from '@/lib/live/batches';
 import { listDetectedFinancers, listFinancers } from '@/lib/payments/financer';
-import { listLayawayLedger } from '@/lib/payments/layaway-ledger';
+import { layawayLedgerStatusCounts } from '@/lib/payments/layaway-ledger';
+import { listLayawayPage } from '@/lib/payments/layaway-page';
 import {
   listLayaways,
   listPayableOrders,
@@ -61,16 +62,25 @@ export default async function PaymentsPage({
   const to = typeof params.to === 'string' ? params.to : undefined;
   const bounds = resolveRange(range, from, to);
 
+  // Deep-link from a dashboard layaway card (?layaway=active|completed|all|…) preselects the
+  // section — which also decides which section's FIRST page we server-render below.
+  const validSections = ['active', 'completed', 'all', 'overdue', 'forfeited'] as const;
+  const initialSection =
+    typeof params.layaway === 'string' &&
+    (validSections as readonly string[]).includes(params.layaway)
+      ? (params.layaway as (typeof validSections)[number])
+      : undefined;
+
   const [
     cards,
     queue,
     layaways,
-    completed,
+    initialPage,
     history,
     payableOrders,
     permissions,
     financers,
-    ledger,
+    ledgerCounts,
     staff,
     activeItems,
     captureCustomers,
@@ -80,12 +90,12 @@ export default async function PaymentsPage({
     overviewCards(bounds),
     paymentVerificationQueue(),
     listLayaways(['active', 'overdue', 'grace_period', 'forfeiture_eligible']),
-    listLayaways(['completed']),
+    listLayawayPage({ section: initialSection ?? 'active', page: 1, size: 25 }),
     paymentHistory(bounds),
     listPayableOrders(),
     getGrantedPermissions(),
     listFinancers(),
-    listLayawayLedger(),
+    layawayLedgerStatusCounts(),
     requireActiveStaff(),
     listCaptureItems(),
     listCaptureCustomers(),
@@ -93,14 +103,12 @@ export default async function PaymentsPage({
     listDetectedFinancers(),
   ]);
 
-  // Imported ledger accounts count toward the Active / Completed cards so an
-  // import updates the visible summary counts immediately (§ refresh cards).
-  const ledgerActive = ledger.filter((l) => l.status === 'active').length;
-  const ledgerCompleted = ledger.filter((l) => l.status === 'completed').length;
+  // Imported ledger accounts count toward the Active / Completed cards so an import updates the
+  // visible summary counts immediately (§ refresh cards). Counted in the DB — never a full load.
   const mergedCards = {
     ...cards,
-    activeLayaways: cards.activeLayaways + ledgerActive,
-    completedLayaways: cards.completedLayaways + ledgerCompleted,
+    activeLayaways: cards.activeLayaways + ledgerCounts.active,
+    completedLayaways: cards.completedLayaways + ledgerCounts.completed,
   };
   // Owner and Selected Admin both manage the imported ledger (upload, add payment,
   // edit, per-row delete). Clearing the WHOLE ledger is Owner-only — it is the one
@@ -119,15 +127,6 @@ export default async function PaymentsPage({
   // the same key. The Owner holds it implicitly.
   const canCreateLayaway = permissions.has('layaway_create');
 
-  // Deep-link from a dashboard layaway card (?layaway=active|completed|all|…) to
-  // preselect the matching section.
-  const validSections = ['active', 'completed', 'all', 'overdue', 'forfeited'] as const;
-  const initialSection =
-    typeof params.layaway === 'string' &&
-    (validSections as readonly string[]).includes(params.layaway)
-      ? (params.layaway as (typeof validSections)[number])
-      : undefined;
-
   return (
     <div>
       {/* The "Layaway" title renders INSIDE the workspace's sticky top section so it
@@ -139,12 +138,12 @@ export default async function PaymentsPage({
         queue={queue.ok ? queue.rows : []}
         queueUnavailable={queue.ok ? null : queue.reason}
         layaways={layaways}
-        completed={completed}
+        initialPage={initialPage}
+        ledgerCount={ledgerCounts.total}
         history={history}
         range={range}
         payableOrders={payableOrders}
         financers={financers}
-        ledger={ledger}
         canVerify={permissions.has('payment_verification')}
         canMonitorLayaway={permissions.has('layaway_monitoring')}
         canRequestForfeiture={permissions.has('initiate_high_risk_action')}

@@ -1,9 +1,12 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
-import { importLayawayLedgerAction } from '@/lib/payments/actions';
+import {
+  importLayawayLedgerAction,
+  loadLayawayDedupKeysAction,
+} from '@/lib/payments/actions';
 import type { LayawayLedgerInput } from '@/lib/payments/layaway-ledger';
 import {
   analyzeLayawayCsv,
@@ -29,9 +32,26 @@ function codeSortKey(code: string | null): [number, number] {
   return [(m[1] ?? 'Z').toUpperCase().charCodeAt(0) - 65, Number(m[2])];
 }
 
-export function LayawayImportButton({ existingKeys }: { existingKeys: string[] }) {
+export function LayawayImportButton() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  // Duplicate keys are fetched lazily the first time the modal opens — never on page load — so
+  // the Layaway page never pulls the whole ledger up front (it scales to 50k). The DB unique
+  // index is the real guard; this only powers the preview's "already imported" flag.
+  const [existingKeys, setExistingKeys] = useState<string[]>([]);
+  const [keysLoaded, setKeysLoaded] = useState(false);
+  useEffect(() => {
+    if (!open || keysLoaded) return;
+    let cancelled = false;
+    void loadLayawayDedupKeysAction().then((keys) => {
+      if (cancelled) return;
+      setExistingKeys(keys);
+      setKeysLoaded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, keysLoaded]);
   const [analysis, setAnalysis] = useState<LayawayCsvAnalysis | null>(null);
   const [fileName, setFileName] = useState('');
   const [pending, setPending] = useState(false);

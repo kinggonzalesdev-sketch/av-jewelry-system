@@ -48,6 +48,7 @@ import {
   deleteLayawayLedgerRow,
   getLayawayLedgerDetail,
   importLayawayLedger,
+  listLayawayDedupKeys,
   removeLayawayItem,
   splitLayawayItemToOrder,
   transferLayawayToDestination,
@@ -63,6 +64,11 @@ import {
   type LedgerUpdateResult,
   type UpdateLedgerAccountInput,
 } from '@/lib/payments/layaway-ledger';
+import {
+  listLayawayPage,
+  type LayawayPageOpts,
+  type LayawayPageResult,
+} from '@/lib/payments/layaway-page';
 
 /**
  * Phase 6 server actions (Bible §16, §17).
@@ -75,6 +81,25 @@ import {
 function text(formData: FormData, name: string): string | null {
   const value = formData.get(name);
   return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/**
+ * Load ONE page of Layaway Accounts (server-side pagination, P1-B). The Layaway table drives
+ * this on every section / search / financer / page change so the browser never holds the whole
+ * ledger. Transport only — the RPC re-checks active-staff and does all the filtering/counting.
+ */
+export async function loadLayawayPageAction(
+  opts: LayawayPageOpts,
+): Promise<LayawayPageResult> {
+  return listLayawayPage(opts);
+}
+
+/**
+ * The ledger's duplicate keys, fetched lazily when the Import modal opens so the preview can
+ * flag already-imported rows without the page ever loading the whole ledger up front.
+ */
+export async function loadLayawayDedupKeysAction(): Promise<string[]> {
+  return listLayawayDedupKeys();
 }
 
 /**
