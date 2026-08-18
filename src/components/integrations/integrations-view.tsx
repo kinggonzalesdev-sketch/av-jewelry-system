@@ -14,6 +14,7 @@ import {
   saveSelectedPageAction,
   saveSelectedSenderAction,
   sendControlledPhotoAction,
+  sendControlledPrivateReplyMediaAction,
   sendPancakeTestAction,
   syncPancakeConversationsAction,
 } from '@/lib/integrations/actions';
@@ -967,6 +968,11 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
   const [photoReport, setPhotoReport] = useState<string | null>(null);
   const [photoOk, setPhotoOk] = useState(false);
 
+  // Controlled Test C — media via the COMMENT (Cases 1/2). Independent of the reply_inbox resolve.
+  const [mediaBusy, startMedia] = useTransition();
+  const [mediaReport, setMediaReport] = useState<string | null>(null);
+  const [mediaOk, setMediaOk] = useState(false);
+
   const selected = candidates.find((c) => c.webhookEventId === selectedId) ?? null;
 
   const fetchCandidates = async (query: string) => {
@@ -1029,6 +1035,20 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
       });
       setPhotoReport(res.report);
       setPhotoOk(res.ok);
+    });
+  };
+
+  // Test C — attach the screenshot to the private reply to the SELECTED comment (window-exempt).
+  const runMedia = () => {
+    if (!selectedId || !captureId.trim()) return;
+    setMediaReport(null);
+    startMedia(async () => {
+      const res = await sendControlledPrivateReplyMediaAction({
+        webhookEventId: selectedId,
+        screenshotCaptureId: captureId.trim(),
+      });
+      setMediaReport(res.report);
+      setMediaOk(res.ok);
     });
   };
 
@@ -1237,6 +1257,56 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
           >
             {report}
           </pre>
+        ) : null}
+
+        {/* CONTROLLED TEST C — media via the COMMENT (Cases 1/2: first-time / silent miner, no
+            customer message needed). Independent of the reply_inbox resolve; uses the SELECTED
+            comment directly (window-exempt private reply to the comment). */}
+        {selected?.allValid ? (
+          <div
+            className="space-y-2 rounded-lg border border-gold/40 bg-gold/5 p-3"
+            data-testid="pr-media-step"
+          >
+            <p className="text-xs font-semibold text-foreground">
+              Test C — deliver the screenshot via the COMMENT (first-time / silent miner, no “Hi”
+              needed). Window-exempt private reply to the selected comment. Use a BRAND-NEW comment
+              from a consented account (never one already privately replied to).
+            </p>
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Screenshot capture id
+              </span>
+              <input
+                type="text"
+                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+                value={captureId}
+                onChange={(e) => setCaptureId(e.target.value)}
+                placeholder="e.g. 5543c409-21d6-4a04-9610-da3b3b2e3e71"
+                data-testid="pr-media-capture"
+              />
+            </label>
+            <Button
+              type="button"
+              onClick={runMedia}
+              disabled={mediaBusy || !captureId.trim()}
+              data-testid="pr-media-send"
+            >
+              {mediaBusy ? 'Sending…' : 'Send controlled MEDIA private reply to the comment'}
+            </Button>
+            {mediaReport ? (
+              <pre
+                className={cn(
+                  'max-h-80 overflow-auto whitespace-pre-wrap rounded-lg border px-3 py-2 text-xs text-foreground',
+                  mediaOk
+                    ? 'border-gold/40 bg-gold/10'
+                    : 'border-destructive/40 bg-destructive/5',
+                )}
+                data-testid="pr-media-result"
+              >
+                {mediaReport}
+              </pre>
+            ) : null}
+          </div>
         ) : null}
 
         {resolvedConvId ? (

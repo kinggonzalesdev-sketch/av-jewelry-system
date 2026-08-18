@@ -10,6 +10,7 @@ import {
   getSelectedPancakeSender,
   sendPancakeConversationMessage,
   sendPancakePrivateReply,
+  uploadPancakeImageContent,
   type PancakeSendResult,
   type PancakeUploadDiagnostics,
 } from '@/lib/integrations/pancake';
@@ -718,4 +719,180 @@ export async function sendControlledTestPhoto(input: {
   });
 
   return { ok: photo.ok, steps };
+}
+
+/** Parse the HTTP status out of a sanitized `debug` string (`HTTP 200 · … · …`), or null. */
+function httpStatusOf(debug: string | null | undefined): number | null {
+  const m = /HTTP\s+(\d+)/.exec(debug ?? '');
+  const s = m?.[1];
+  return s ? Number(s) : null;
+}
+
+/** Record ONE sanitized Test-C diagnostic (reuses the controlled_photo_diagnostics store). */
+async function recordMediaDiagnostic(
+  supabase: SupabaseClient,
+  captureId: string,
+  commentConversationId: string,
+  up: PancakeUploadDiagnostics | undefined,
+  send: { httpStatus: number | null; success: boolean; messageCode: string | null } | null,
+  classification: ControlledPhotoDiagnostic['classification'],
+): Promise<void> {
+  try {
+    await supabase.rpc('record_controlled_photo_diagnostic', {
+      p_capture_ref: ref6(captureId),
+      p_conversation_ref: ref6(commentConversationId),
+      p_upload_api_version: up?.apiVersion ?? null,
+      p_upload_http_status: up?.httpStatus ?? null,
+      p_upload_success: up ? up.success : null,
+      p_upload_content_id_suffix: up?.contentIdSuffix ?? null,
+      p_upload_type: up?.type ?? null,
+      p_upload_message_code: up?.messageCode ?? null,
+      p_send_http_status: send?.httpStatus ?? null,
+      p_send_success: send?.success ?? null,
+      p_send_message_code: send?.messageCode ?? null,
+      p_classification: classification,
+    });
+  } catch {
+    // best-effort — diagnostics must never break the controlled test
+  }
+}
+
+export type PrivateReplyMediaResult = { ok: boolean; steps: PrivateReplyTestStep[] };
+
+/**
+ * CONTROLLED TEST C (Owner 2026-08-18) — deliver the screenshot to a first-time / silent miner via
+ * the LIVE COMMENT itself: upload the screenshot → attach it to a `private_replies` MEDIA reply to
+ * the approved comment (Facebook private replies to a comment are window-EXEMPT for ~7 days), so NO
+ * customer action is required (Cases 1/2). MANUAL + Primary-Super-Admin gated; does NOT touch the
+ * automatic Capture flow. NEVER falls back to text, NEVER synthesizes a conversation id — it uses
+ * the comment's own post_id/comment_id/from_id. Records one sanitized durable diagnostic. UNPROVEN
+ * until this test confirms the photo actually arrives with no customer message.
+ */
+export async function runControlledPrivateReplyMediaTest(input: {
+  webhookEventId: string;
+  screenshotCaptureId: string;
+}): Promise<PrivateReplyMediaResult> {
+  await requirePrimarySuperAdmin();
+  const steps: PrivateReplyTestStep[] = [];
+  const supabase = await createClient();
+
+  const webhookEventId = (input.webhookEventId ?? '').trim();
+  const captureId = (input.screenshotCaptureId ?? '').trim();
+  if (!webhookEventId) {
+    steps.push({ step: 'candidate', ok: false, detail: 'Pick a candidate comment first.' });
+    return { ok: false, steps };
+  }
+  if (!captureId) {
+    steps.push({ step: 'capture', ok: false, detail: 'Enter a screenshot capture id.' });
+    return { ok: false, steps };
+  }
+
+  // 1) Comment identity from the stored webhook event (the entry point).
+  const { data } = await supabase
+    .from('pancake_webhook_events')
+    .select('livestream_post_id, comment_id, facebook_psid, conversation_id, raw')
+    .eq('id', webhookEventId)
+    .maybeSingle();
+  if (!data) {
+    steps.push({ step: 'candidate', ok: false, detail: 'Webhook event not found.' });
+    return { ok: false, steps };
+  }
+  const ev = data as Record<string, unknown>;
+  const postId = str(ev.livestream_post_id);
+  const commentId = str(ev.comment_id);
+  const psid = str(ev.facebook_psid);
+  const commentConv = str(ev.conversation_id);
+  const crp = rawMessage(ev.raw)?.can_reply_privately === true;
+  const alreadyReplied = privateReplyConvId(ev.raw) !== null;
+  const complete = Boolean(postId && commentId && psid && commentConv);
+  steps.push({
+    step: 'comment_identity',
+    ok: complete,
+    detail: `post…${postId.slice(-4)} · comment…${commentId.slice(-4)} · psid…${psid.slice(-4)} · comment_conv…${commentConv.slice(-6)}`,
+  });
+  if (!complete) return { ok: false, steps };
+  steps.push({
+    step: 'can_reply_privately',
+    ok: crp,
+    detail: crp ? 'true' : 'not true — media private reply NOT attempted (safe stop).',
+  });
+  if (!crp) return { ok: false, steps };
+  if (alreadyReplied) {
+    steps.push({
+      step: 'already_replied',
+      ok: false,
+      detail:
+        'This comment was already privately replied to (Pancake #10900) — pick a BRAND-NEW comment.',
+    });
+    return { ok: false, steps };
+  }
+
+  // 2) Load + sign the screenshot.
+  const { data: cap } = await supabase
+    .from('capture_records')
+    .select('screenshot_path')
+    .eq('id', captureId)
+    .maybeSingle();
+  const path = str((cap as { screenshot_path?: string } | null)?.screenshot_path);
+  if (!path) {
+    steps.push({ step: 'screenshot', ok: false, detail: 'No screenshot on that capture id.' });
+    return { ok: false, steps };
+  }
+  const signed = (await supabase.storage
+    .from(ATTACHMENT_BUCKET)
+    .createSignedUrl(path, 600)) as { data: { signedUrl?: string } | null };
+  const url = signed.data?.signedUrl ?? null;
+  if (!url) {
+    steps.push({ step: 'screenshot', ok: false, detail: 'Could not sign the screenshot.' });
+    return { ok: false, steps };
+  }
+
+  // 3) Upload the screenshot BYTES → content_id (the confirmed upload_contents flow).
+  const up = await uploadPancakeImageContent(url);
+  const upDiag = up.diag;
+  steps.push({
+    step: 'upload_contents',
+    ok: up.ok,
+    detail: upDiag
+      ? `UPLOAD_HTTP_OK=${upDiag.httpOk} · UPLOAD_SUCCESS=${upDiag.success} · content_id ${upDiag.contentIdSuffix ?? '—'} · UPLOAD_TYPE=${upDiag.type ?? '—'} · code ${upDiag.messageCode ?? '—'} · ${upDiag.endpoint} (${upDiag.apiVersion ?? 'v?'})`
+      : ((up as { debug?: string }).debug ?? 'upload failed'),
+  });
+  if (!up.ok) {
+    await recordMediaDiagnostic(supabase, captureId, commentConv, upDiag, null, 'A');
+    return { ok: false, steps };
+  }
+
+  // 4) MEDIA private reply — attach the screenshot to the COMMENT reply itself (window-exempt).
+  const pr = await sendPancakePrivateReply({
+    postId,
+    messageId: commentId,
+    fromId: psid,
+    commentConversationId: commentConv,
+    message: '',
+    contentId: up.contentId,
+  });
+  steps.push({
+    step: 'private_reply_media',
+    ok: pr.ok,
+    detail: `[${pr.code}] ${pr.message}${pr.debug ? ` · ${pr.debug}` : ''}`,
+  });
+
+  // 5) Classify (A staging / B upload-valid-send-rejected / C success / D unknown) + record.
+  const classification = classifyControlledPhoto(upDiag, { ok: pr.ok });
+  await recordMediaDiagnostic(
+    supabase,
+    captureId,
+    commentConv,
+    upDiag,
+    { httpStatus: httpStatusOf(pr.debug), success: pr.ok, messageCode: pr.ok ? null : pr.code },
+    classification,
+  );
+  steps.push({
+    step: 'result',
+    ok: pr.ok,
+    detail: pr.ok
+      ? `Media private reply SENT (classification ${classification}). Now visually check the consented account's Messenger for the photo.`
+      : `Media private reply NOT delivered (classification ${classification}). See the step above.`,
+  });
+  return { ok: pr.ok, steps };
 }

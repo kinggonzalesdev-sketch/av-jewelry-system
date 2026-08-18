@@ -10,6 +10,7 @@ import {
   syncPancakeConversationsToCustomers,
 } from '@/lib/integrations/pancake';
 import {
+  runControlledPrivateReplyMediaTest,
   runPrivateReplyControlledTest,
   sendControlledTestPhoto,
 } from '@/lib/integrations/private-reply-test';
@@ -165,6 +166,31 @@ export async function sendControlledPhotoAction(input: {
     const header = result.ok
       ? 'Controlled photo sent to the REAL private conversation.'
       : 'Photo step failed — see below.';
+    return { ok: result.ok, report: `${header}\n\n${lines}` };
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { ok: false, report: cause.message };
+    throw cause;
+  }
+}
+
+/**
+ * CONTROLLED TEST C (Owner click) — deliver the Capture screenshot to a first-time / silent miner
+ * via the LIVE COMMENT itself (a `private_replies` MEDIA reply, window-exempt). Manual + Primary-
+ * Super-Admin gated; NEVER text, NEVER a synthesized id. Proves the Cases 1/2 path before it is
+ * wired into the automatic Capture flow.
+ */
+export async function sendControlledPrivateReplyMediaAction(input: {
+  webhookEventId: string;
+  screenshotCaptureId: string;
+}): Promise<{ ok: boolean; report: string }> {
+  try {
+    const result = await runControlledPrivateReplyMediaTest(input);
+    const lines = result.steps
+      .map((s) => `${s.ok ? '✓' : '✗'} ${s.step}: ${s.detail}`)
+      .join('\n');
+    const header = result.ok
+      ? 'Controlled MEDIA private reply sent to the comment.'
+      : 'Media private-reply step stopped — see below.';
     return { ok: result.ok, report: `${header}\n\n${lines}` };
   } catch (cause) {
     if (cause instanceof AuthorizationError) return { ok: false, report: cause.message };

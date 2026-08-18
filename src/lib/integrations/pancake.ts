@@ -576,7 +576,7 @@ export function summarizeUploadResponse(args: {
  * `{ success: true, id: "<content_id>", type: "PHOTO" }`. The image is read server-side
  * from its short-lived signed URL. Never logs the token.
  */
-async function uploadPancakeImageContent(
+export async function uploadPancakeImageContent(
   imageUrl: string,
 ): Promise<
   | { ok: true; contentId: string; diag: PancakeUploadDiagnostics }
