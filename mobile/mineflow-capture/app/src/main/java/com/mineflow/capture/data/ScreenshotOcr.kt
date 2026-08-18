@@ -105,17 +105,15 @@ object ScreenshotOcr {
     private val MINE = Regex("\\bmine\\b|\\bakin\\b|\\bsakin\\b", RegexOption.IGNORE_CASE)
     private val NUMBER = Regex("\\d{1,3}(?:[.,]\\d{1,3})?")
 
-    // A PINNED-COMMENT CLAIM line: optional "Mine"/"M", then a weight-like number (≤3 integer
-    // digits, optional decimals, optional trailing "g") and NOTHING else — so "10:45", "85%",
-    // "1.2K", "234 viewers", 4-digit years and names never register. Group 1 = the number.
-    // A pinned-comment CLAIM: after an optional "Mine"/"M", the line STARTS with a numeric
-    // value (a weight OR a price). Trailing text is allowed and ignored — "Mine 2.43g LV",
-    // "Mine 5.67 foxtail". A line that starts with words (a question / normal comment like
-    // "anu po pendant…") is NOT a claim. Captures the leading value token: "2.43", "13.91",
-    // "12000", "12,000", "12k", "12.5k", ".5". Separator is ":"/"-" only (a "." would eat the
-    // decimal point of a bare ".5"). NOT end-anchored, so trailing words don't reject it.
-    private val CLAIM = Regex(
-        "^\\s*(?:mine\\b|m\\b)?\\s*[:\\-]?\\s*(\\.?\\d[\\d,]*(?:\\.\\d+)?k?)",
+    // A GRAMS/PRICE NUMBER TOKEN: a WHOLE whitespace-separated token that is just a number —
+    // optionally fused with a mining marker ("M1.5") and/or a trailing unit/marker ("1.5g",
+    // "1.5m"). Group 1 = the numeric core ("1.5", ".7", "12,000", "12k"). Because it must match
+    // the ENTIRE token, an embedded number ("K18", "SBA-P-2265", "10:45", "85%") never registers
+    // as grams. Order-independent + word-agnostic: the marker may also be a SEPARATE token
+    // before/after the number ("Mine 1.5", "1.5 Mine", "rolex Mine 1.1") — handled by tokenising
+    // the line, so ARBITRARY product/description words (any language, emojis) are simply ignored.
+    private val NUMBER_TOKEN = Regex(
+        "^(?:mine|m)?(\\.?\\d[\\d,]*(?:\\.\\d+)?k?)(?:g|m)?$",
         RegexOption.IGNORE_CASE,
     )
 
@@ -185,11 +183,36 @@ object ScreenshotOcr {
     private fun stripClaim(s: String): String =
         s.replace(MINE, "").replace(NUMBER, "").trim().trim('·', '-', ':', '•').trim()
 
-    /** The raw leading value token of a CLAIM line ("2.43", "12000", "12,000", "12k"), or null
-     *  when the line does not START with a value (a question / normal comment). */
-    private fun valueFromClaim(raw: String): String? {
-        val v = CLAIM.find(raw.trim())?.groupValues?.get(1) ?: return null
-        return if (v.any { it.isDigit() }) v else null
+    /** A parsed mining claim: `value` = the representative number for the PC (grams or price),
+     *  `grams` = the normalized weight (only when unambiguous). */
+    private data class Claim(val value: String?, val grams: String?)
+
+    /**
+     * GENERIC pinned-comment claim parse (Owner 2026-08-18) — extract the grams value ANYWHERE in
+     * the line, independent of arbitrary product/description words (English / Filipino / brands /
+     * emojis), with the optional Mine/M/g marker before OR after the number. NOT tied to any item
+     * word-list. Returns:
+     *   - null            → the line has NO standalone number token (a name / question / chat) → not a claim.
+     *   - grams != null   → EXACTLY ONE weight-like value (≤999, not k/comma) → that is the grams.
+     *   - grams == null   → a fixed price (k / comma / >999), OR 2+ weight values → NEEDS REVIEW
+     *                       (it NEVER guesses which of several numbers is the grams).
+     * Only whole-token numbers count, so a number embedded in a code/word ("K18") is ignored, and
+     * numbers on OTHER lines never influence this line (each pinned block is parsed on its own).
+     */
+    private fun parseClaim(raw: String): Claim? {
+        val numbers = raw.trim()
+            .split(Regex("\\s+"))
+            .mapNotNull { t -> NUMBER_TOKEN.find(t)?.groupValues?.get(1) }
+            .filter { it.any(Char::isDigit) }
+        if (numbers.isEmpty()) return null
+        val gramsCandidates = numbers.mapNotNull { gramsFromValue(it) }
+        val grams = if (gramsCandidates.size == 1) gramsCandidates.single() else null
+        val value = when {
+            numbers.size == 1 -> numbers.single()
+            gramsCandidates.size == 1 -> numbers.first { gramsFromValue(it) != null }
+            else -> null // 2+ weight-like numbers → ambiguous → review (no value guessed)
+        }
+        return Claim(value = value, grams = grams)
     }
 
     /**
@@ -223,7 +246,7 @@ object ScreenshotOcr {
                 ol !== claim &&
                     looksLikeName(ol.text) &&
                     !MINE.containsMatchIn(ol.text) &&
-                    valueFromClaim(ol.text) == null &&
+                    parseClaim(ol.text) == null &&
                     ol.box.bottom <= claim.box.top &&
                     (claim.box.top - ol.box.bottom) <= maxGap &&
                     horizontalOverlap(ol.box, claim.box)
@@ -246,23 +269,23 @@ object ScreenshotOcr {
         if (clean.isEmpty()) return OcrGuess(null, null, null, rawLines)
 
         val claims = clean
-            .mapNotNull { ol -> valueFromClaim(ol.text)?.let { ol to it } }
+            .mapNotNull { ol -> parseClaim(ol.text)?.let { ol to it } }
             .filter { it.first.box.top >= minClaimTop } // pinned-zone gate (fallback only)
         if (claims.isEmpty()) return OcrGuess(null, null, null, rawLines)
 
         // Pinned claim = the bottom-most one in the pinned zone (nearest the comment box).
-        val (pinnedLine, value) = claims.maxByOrNull { it.first.box.top }!!
+        val (pinnedLine, claim) = claims.maxByOrNull { it.first.box.top }!!
 
         // Name from the SAME block only — else null (never a name from elsewhere).
         val name = nameForClaim(clean, pinnedLine)
             ?: stripClaim(pinnedLine.text).takeIf { it.isNotBlank() && looksLikeName(it) }
 
-        // itemQuery = the raw pinned value (the PC reinterprets grams vs fixed price); grams is
-        // set only for a real weight — a fixed-price form (k / comma / >999) leaves it null.
+        // itemQuery = the pinned value (the PC reinterprets grams vs fixed price); grams is set
+        // only for ONE real weight — a fixed price OR 2+ ambiguous numbers leaves it null (review).
         return OcrGuess(
             fbName = name,
-            itemQuery = value,
-            grams = gramsFromValue(value),
+            itemQuery = claim.value,
+            grams = claim.grams,
             rawLines = rawLines,
         )
     }

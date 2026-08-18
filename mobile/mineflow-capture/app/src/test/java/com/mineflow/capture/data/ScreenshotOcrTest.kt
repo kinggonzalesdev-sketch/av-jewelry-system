@@ -238,4 +238,62 @@ class ScreenshotOcrTest {
         assertEquals("Juan Dela Cruz", g.fbName)
         assertEquals("0.7", g.grams)
     }
+
+    // GENERIC parser (Owner 2026-08-18): arbitrary non-numeric words (any language / emoji) before,
+    // between, or after the value are ignored; the Mine/M/g marker is optional + order-independent.
+    // These fixed strings only ILLUSTRATE the rule — see the property test for the real proof.
+    @Test
+    fun genericParser_arbitraryWordsIgnored() {
+        assertEquals("1.1", pinnedGrams("Mine 1.1 rolex"))
+        assertEquals("1.1", pinnedGrams("rolex Mine 1.1"))
+        assertEquals("1.1", pinnedGrams("bracelet Mine 1.1"))
+        assertEquals("1.1", pinnedGrams("Mine necklace 1.1"))
+        assertEquals("1.1", pinnedGrams("1.1 Mine ring"))
+        assertEquals("0.7", pinnedGrams("Mine .7 bracelet"))
+        assertEquals("0.7", pinnedGrams(".7 gusto ko ito"))
+        assertEquals("0.8", pinnedGrams("mine .8 akin"))
+        assertEquals("0.9", pinnedGrams("kuha ko Mine .9"))
+        assertEquals("2.35", pinnedGrams("MINE 2.35 reserve"))
+        assertEquals("2.35", pinnedGrams("reserve Mine 2.35"))
+        assertEquals("2.35", pinnedGrams("2.35g reserve"))
+        assertEquals("10.5", pinnedGrams("bracelet 10.5 Mine"))
+        assertEquals("1.25", pinnedGrams("mine 1.25 ❤️"))
+        assertEquals("1.25", pinnedGrams("❤️ mine 1.25 please"))
+        assertEquals("1.5", pinnedGrams("akin na 1.5 Mine"))
+        assertEquals("3.38", pinnedGrams("Mine please 3.38 sakin"))
+        // a number EMBEDDED in a code/word (not a whole token) is NOT grams:
+        assertEquals("1.5", pinnedGrams("Mine 1.5 K18"))
+    }
+
+    // Multiple weight-like numbers in the SAME pinned block → NEVER guess → needs review (null).
+    @Test
+    fun genericParser_multipleNumbers_needsReview() {
+        assertNull(pinnedGrams("Mine 1.1 2.5"))
+        assertNull(pinnedGrams("1.1 2.5 Mine"))
+        assertNull(pinnedGrams("2.5 rolex 1.1"))
+    }
+
+    // A fixed-price form (k / comma / >999) is NOT grams (kept as itemQuery for the PC only).
+    @Test
+    fun genericParser_fixedPriceNotGrams() {
+        assertNull(pinnedGrams("Mine 12000"))
+        assertNull(pinnedGrams("12,000"))
+        assertNull(pinnedGrams("12k"))
+        // grams + price in one line → the single weight is used; the price is ignored.
+        assertEquals("1.5", pinnedGrams("Mine 1.5 12000"))
+    }
+
+    // PROPERTY-STYLE: ANY unknown non-numeric words (not in the examples above) around
+    // "Mine <grams>" yield the SAME grams — proving the parser is generic, not word-list based.
+    @Test
+    fun genericParser_property_unknownWordsDoNotChangeGrams() {
+        val words = listOf("qwertyz", "zzxx", "kahitano", "布", "naa", "po", "###", "b@ng", "LV")
+        for (w in words) {
+            assertEquals("1.5", pinnedGrams("Mine 1.5 $w"))
+            assertEquals("1.5", pinnedGrams("$w Mine 1.5"))
+            assertEquals("1.5", pinnedGrams("Mine $w 1.5"))
+            assertEquals("1.5", pinnedGrams("1.5 Mine $w"))
+            assertEquals("0.7", pinnedGrams("$w .7"))
+        }
+    }
 }
