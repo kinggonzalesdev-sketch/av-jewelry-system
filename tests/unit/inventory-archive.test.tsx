@@ -1,3 +1,5 @@
+import type { ComponentProps } from 'react';
+
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -60,6 +62,73 @@ function row(over: Partial<InventoryRow>): InventoryRow {
     ...over,
   };
 }
+
+describe('InventoryItemActions — role-independent geometry (Owner request 2026-08-18)', () => {
+  // The point: an Admin's Actions cell must look IDENTICAL to the Owner's — same labels, same
+  // button dimensions, ONE horizontal line — even though Admin Edit/Delete route to approval.
+  // (Regression guarded: Admin used to show longer "Request Edit / Request Delete" labels that
+  // wrapped, making Admin rows taller than Owner rows.) These assert the shared classes that
+  // decide the rendered geometry — role must select the handler, never the layout.
+  function measure(props: ComponentProps<typeof InventoryItemActions>) {
+    const { unmount } = render(<InventoryItemActions {...props} />);
+    const view = screen.getByTestId('inventory-view-item-1');
+    const container = view.parentElement as HTMLElement;
+    const edit = screen.queryByTestId('inventory-edit-item-1');
+    const del = screen.queryByTestId('inventory-delete-item-1');
+    const data = {
+      containerClass: container.className,
+      viewClass: view.className,
+      editText: edit?.textContent ?? null,
+      editClass: edit?.className ?? null,
+      deleteText: del?.textContent ?? null,
+      deleteClass: del?.className ?? null,
+    };
+    unmount();
+    return data;
+  }
+  const owner = () =>
+    measure({ row: row({}), canEdit: true, canDelete: true, isOwner: true, canForceDelete: true });
+  const admin = () => measure({ row: row({}), canEdit: true, canDelete: true });
+  const staff = () => measure({ row: row({}), canEdit: false, canDelete: false });
+
+  it('F: the Actions container never wraps (one line) for Owner, Admin, or Staff', () => {
+    for (const m of [owner(), admin(), staff()]) {
+      expect(m.containerClass).toContain('whitespace-nowrap');
+    }
+  });
+
+  it('B/G: Owner and Admin share the IDENTICAL Actions container geometry', () => {
+    expect(admin().containerClass).toBe(owner().containerClass);
+  });
+
+  it('C/D: Admin shows "Edit" / "Delete" — same labels as Owner, never a "Request" label', () => {
+    const a = admin();
+    const o = owner();
+    expect(a.editText).toBe('Edit');
+    expect(a.deleteText).toBe('Delete');
+    expect(a.editText).toBe(o.editText);
+    expect(a.deleteText).toBe(o.deleteText);
+    expect(a.editText).not.toMatch(/request/i);
+    expect(a.deleteText).not.toMatch(/request/i);
+  });
+
+  it('Owner and Admin buttons have identical dimensions (identical classNames)', () => {
+    const a = admin();
+    const o = owner();
+    expect(a.viewClass).toBe(o.viewClass);
+    expect(a.editClass).toBe(o.editClass);
+    expect(a.deleteClass).toBe(o.deleteClass);
+  });
+
+  it('H: Staff (View only) keeps the SAME container + button geometry, gains no permission', () => {
+    const s = staff();
+    const o = owner();
+    expect(s.containerClass).toBe(o.containerClass);
+    expect(s.viewClass).toBe(o.viewClass);
+    expect(s.editText).toBeNull();
+    expect(s.deleteText).toBeNull();
+  });
+});
 
 describe('InventoryItemActions — per-permission Edit / Delete', () => {
   it('shows View always, and Edit + direct Delete for the Super Admin (isOwner)', () => {
