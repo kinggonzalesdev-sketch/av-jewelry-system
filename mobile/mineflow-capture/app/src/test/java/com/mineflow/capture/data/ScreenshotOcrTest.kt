@@ -213,4 +213,29 @@ class ScreenshotOcrTest {
         assertEquals("Juan Dela Cruz", g.fbName)
         assertEquals("11.5", g.grams)
     }
+
+    // Full-screen FALLBACK safety (minClaimTop = the pinned/bottom zone): a claim ABOVE the pinned
+    // zone is NEVER used — the fallback must positively locate the pinned block in the bottom band,
+    // else no local sticker data (needs review). A non-pinned/scrolling comment can't become data.
+    @Test
+    fun fullScreenFallback_rejectsClaimAbovePinnedZone() {
+        val lines = listOf(line("Maria Reyes", 300), line("Mine 8.2", 350))
+        val gated = ScreenshotOcr.guessFrom(lines, minClaimTop = 500)
+        assertNull(gated.fbName)
+        assertNull(gated.grams)
+        // Prove the GATE is what blocks it: unconstrained (ROI-crop pass), the same block is used.
+        val ungated = ScreenshotOcr.guessFrom(lines)
+        assertEquals("Maria Reyes", ungated.fbName)
+        assertEquals("8.2", ungated.grams)
+    }
+
+    @Test
+    fun fullScreenFallback_usesPinnedZoneBlock() {
+        val g = ScreenshotOcr.guessFrom(
+            listOf(line("Juan Dela Cruz", 850), line("Mine .7", 900)),
+            minClaimTop = 500,
+        )
+        assertEquals("Juan Dela Cruz", g.fbName)
+        assertEquals("0.7", g.grams)
+    }
 }

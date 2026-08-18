@@ -129,18 +129,23 @@ object ScreenshotOcr {
             null
         }
         if (roi == null) {
-            ocr(bitmap) { onResult(guessFrom(it)) }
+            // No crop possible → OCR the full screen but STILL gate to the pinned (bottom) zone,
+            // so an arbitrary full-screen name/number can never become sticker data.
+            ocr(bitmap) { onResult(guessFrom(it, minClaimTop = roiTop)) }
             return
         }
         // FAST PATH: the small bottom band. If it confidently yields the pinned name + grams,
-        // use it; otherwise fall back to the full screen so we never miss the pinned comment.
+        // use it; otherwise fall back to the full screen — for BETTER recognition — but ONLY
+        // accept a claim in the pinned (bottom) zone, i.e. positively the pinned block. If the
+        // pinned block isn't in that zone (missed, or placed unusually high), return nothing →
+        // a "needs review" capture. Never a guessed non-pinned name/number.
         ocr(roi) { roiLines ->
             runCatching { roi.recycle() }
             val g = guessFrom(roiLines)
             if (g.fbName != null && g.itemQuery != null) {
                 onResult(g)
             } else {
-                ocr(bitmap) { full -> onResult(guessFrom(full)) }
+                ocr(bitmap) { full -> onResult(guessFrom(full, minClaimTop = roiTop)) }
             }
         }
     }
@@ -227,16 +232,25 @@ object ScreenshotOcr {
             ?.text
     }
 
-    /** PINNED-ONLY extraction (see class doc). `internal` so it is unit-testable. */
-    internal fun guessFrom(olines: List<OLine>): OcrGuess {
+    /**
+     * PINNED-ONLY extraction (see class doc). `internal` so it is unit-testable.
+     *
+     * `minClaimTop` (FULL-SCREEN FALLBACK only): reject any claim whose top is ABOVE the pinned
+     * zone, so a full-screen OCR can NEVER turn an arbitrary/scrolling comment into sticker data —
+     * the fallback must positively locate the pinned block in the bottom band, else return nothing
+     * (a "needs review" capture). The ROI pass passes 0 because its crop IS already the pinned zone.
+     */
+    internal fun guessFrom(olines: List<OLine>, minClaimTop: Int = 0): OcrGuess {
         val rawLines = olines.map { it.text }
         val clean = olines.filterNot { isUiNoise(it.text) }
         if (clean.isEmpty()) return OcrGuess(null, null, null, rawLines)
 
-        val claims = clean.mapNotNull { ol -> valueFromClaim(ol.text)?.let { ol to it } }
+        val claims = clean
+            .mapNotNull { ol -> valueFromClaim(ol.text)?.let { ol to it } }
+            .filter { it.first.box.top >= minClaimTop } // pinned-zone gate (fallback only)
         if (claims.isEmpty()) return OcrGuess(null, null, null, rawLines)
 
-        // Pinned claim = the bottom-most one on screen (nearest the comment box).
+        // Pinned claim = the bottom-most one in the pinned zone (nearest the comment box).
         val (pinnedLine, value) = claims.maxByOrNull { it.first.box.top }!!
 
         // Name from the SAME block only — else null (never a name from elsewhere).
