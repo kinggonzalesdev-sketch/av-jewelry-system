@@ -44,6 +44,50 @@ describe('buildPrivateReplyBody — the verified private_replies mapping', () =>
   });
 });
 
+describe('buildPrivateReplyBody — MEDIA variant (Cases 1/2, comment-entry screenshot)', () => {
+  const media = buildPrivateReplyBody({
+    postId: 'POST_1',
+    messageId: 'COMMENT_1',
+    fromId: 'PSID_1',
+    senderId: 'PANCAKE_USER_1',
+    message: 'ignored for media',
+    contentId: 'CONTENT_abc123',
+  });
+
+  it('attaches the uploaded content id + attachment_type=PHOTO to the SAME comment identity', () => {
+    expect(media.action).toBe('private_replies');
+    expect(media.post_id).toBe('POST_1');
+    expect(media.message_id).toBe('COMMENT_1');
+    expect(media.from_id).toBe('PSID_1');
+    expect(media.sender_id).toBe('PANCAKE_USER_1');
+    expect(media['content_ids[]']).toBe('CONTENT_abc123');
+    expect(media.attachment_type).toBe('PHOTO');
+  });
+
+  it('is media-ONLY — no text alongside content (mirrors reply_inbox), no conversation_id', () => {
+    expect(media).not.toHaveProperty('message');
+    expect(media).not.toHaveProperty('conversation_id');
+  });
+
+  it('omitting contentId keeps the verified TEXT body exactly (media path is opt-in)', () => {
+    const text = buildPrivateReplyBody({
+      postId: 'POST_1',
+      messageId: 'COMMENT_1',
+      fromId: 'PSID_1',
+      senderId: 'PANCAKE_USER_1',
+      message: 'Hi!',
+    });
+    expect(text).toEqual({
+      action: 'private_replies',
+      post_id: 'POST_1',
+      message_id: 'COMMENT_1',
+      from_id: 'PSID_1',
+      sender_id: 'PANCAKE_USER_1',
+      message: 'Hi!',
+    });
+  });
+});
+
 describe('extractPageUsers — only active users[], never disabled_users[]', () => {
   const parsed = extractPageUsers({
     success: true,

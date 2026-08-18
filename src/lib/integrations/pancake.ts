@@ -2126,10 +2126,18 @@ export const DEFAULT_PRIVATE_REPLY_TEXT =
   'Hi {customer_name}! Here is the item you mined during our Live. 💛';
 
 /**
- * The VERIFIED private_replies body — pure + exported so the exact field mapping is
- * unit-lockable. TEXT only: `action=private_replies` + post_id/message_id/from_id/
- * sender_id/message. NO conversation_id in the body, NO content_ids/attachment_type
- * (the official schema has no photo field — the screenshot is sent afterward).
+ * The private_replies body — pure + exported so the exact field mapping is unit-lockable.
+ *
+ * TEXT (verified, unchanged default): `action=private_replies` + post_id/message_id/from_id/
+ * sender_id/message. NO conversation_id in the body, NO content_ids.
+ *
+ * MEDIA (Cases 1/2, Owner 2026-08-18): when `contentId` is set, deliver the SCREENSHOT itself
+ * through the COMMENT entry point (Facebook private replies to a comment are window-exempt for
+ * ~7 days, so a first-time / outside-24h miner gets the photo with NO action). Mirrors the
+ * reply_inbox media contract — `content_ids[]` + `attachment_type=PHOTO`, and (like reply_inbox)
+ * NO text alongside content. The attachment field/type stay env-overridable so the exact Pancake
+ * contract can be corrected during the controlled proof WITHOUT a redeploy. This is an UNPROVEN
+ * variant until Controlled Test C confirms it; the text path above is untouched.
  */
 export function buildPrivateReplyBody(input: {
   postId: string;
@@ -2137,15 +2145,24 @@ export function buildPrivateReplyBody(input: {
   fromId: string;
   senderId: string;
   message: string;
+  contentId?: string | null;
 }): Record<string, string> {
-  return {
+  const body: Record<string, string> = {
     action: 'private_replies',
     post_id: input.postId,
     message_id: input.messageId,
     from_id: input.fromId,
     sender_id: input.senderId,
-    message: input.message,
   };
+  const contentId = (input.contentId ?? '').trim();
+  if (contentId) {
+    const key = process.env.PANCAKE_PRIVATE_REPLY_CONTENT_KEY || 'content_ids[]';
+    body[key] = contentId;
+    body.attachment_type = process.env.PANCAKE_PRIVATE_REPLY_ATTACHMENT_TYPE || 'PHOTO';
+    return body;
+  }
+  body.message = input.message;
+  return body;
 }
 
 /**
@@ -2164,6 +2181,9 @@ export async function sendPancakePrivateReply(input: {
   /** The COMMENT conversation id — used for the endpoint PATH only, not sent in the body. */
   commentConversationId: string;
   message: string;
+  /** MEDIA variant (Cases 1/2): an uploaded screenshot content id to attach to the comment
+   *  private reply itself (window-exempt). Omit for the verified TEXT reply. */
+  contentId?: string | null;
 }): Promise<PancakePrivateReplyResult> {
   const senderId = await resolvePancakeSenderUserId();
   if (!senderId) {
@@ -2225,7 +2245,14 @@ export async function sendPancakePrivateReply(input: {
     // exactly these fields — no conversation_id in the body, no content_ids (text only).
     const form = new URLSearchParams();
     for (const [k, v] of Object.entries(
-      buildPrivateReplyBody({ postId, messageId, fromId, senderId, message: input.message }),
+      buildPrivateReplyBody({
+        postId,
+        messageId,
+        fromId,
+        senderId,
+        message: input.message,
+        ...(input.contentId != null ? { contentId: input.contentId } : {}),
+      }),
     )) {
       form.set(k, v);
     }
