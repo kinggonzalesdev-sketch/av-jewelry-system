@@ -452,6 +452,10 @@ export type PancakeSendResult = {
   /** Diagnostic: the raw HTTP status + response snippet + the endpoint template
    *  used (token stripped). Surfaced by the Test-send tool to debug the contract. */
   debug?: string;
+  /** SANITIZED `upload_contents` diagnostics when a photo was attached (token/PII stripped). */
+  uploadDiagnostics?: PancakeUploadDiagnostics;
+  /** SANITIZED reconstruction of the exact send form keys (token stripped, content id masked). */
+  sentForm?: string;
 };
 
 /** Pull a message id out of Pancake's response without assuming one exact shape. */
@@ -471,6 +475,96 @@ function extractMessageId(body: unknown): string | null {
 }
 
 /**
+ * SANITIZED diagnostics for ONE `upload_contents` attempt. NEVER contains the access
+ * token, the image bytes, or any customer PII — only the endpoint TEMPLATE (page id shown
+ * as a `{page_id}` placeholder), the API version, and the parsed response shape. Surfaced
+ * so a controlled Photo attempt proves exactly where the pipeline first fails.
+ */
+export type PancakeUploadDiagnostics = {
+  /** Endpoint template actually used — token stripped, page id shown as `{page_id}`. */
+  endpoint: string;
+  /** `/public_api/vN` tag parsed from the base (the v1↔v2 reconciliation lever). */
+  apiVersion: string | null;
+  httpStatus: number | null;
+  /** UPLOAD_HTTP_OK — transport-level 2xx. NEVER, on its own, treated as upload success. */
+  httpOk: boolean;
+  /** UPLOAD_SUCCESS — parsed body `success === true` (strict). */
+  success: boolean;
+  /** UPLOAD_CONTENT_ID_PRESENT — a non-empty `id` came back. */
+  contentIdPresent: boolean;
+  /** Last-6 suffix of the returned content id (never the whole value). */
+  contentIdSuffix: string | null;
+  /** UPLOAD_TYPE — the EXACT `type` the upload returned (e.g. `PHOTO`), or null. */
+  type: string | null;
+  /** Sanitized `message_code`/`error` from the response, when present. */
+  messageCode: string | null;
+};
+
+/** Last-6 suffix of an id for diagnostics; never the whole value. */
+function idSuffix(v: unknown): string | null {
+  const s = typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '';
+  if (!s) return null;
+  return s.length <= 6 ? `…${s}` : `…${s.slice(-6)}`;
+}
+
+/** Extract the `/public_api/vN` version tag from an API base, or null. */
+function apiVersionOf(base: string): string | null {
+  const m = /public_api\/(v\d+)/i.exec(base);
+  return m?.[1] ?? null;
+}
+
+/**
+ * Build SANITIZED upload diagnostics from a parsed `upload_contents` response. Pure +
+ * exported for unit testing. Preserves the FULL semantic distinction an operator needs:
+ * UPLOAD_HTTP_OK (transport) vs UPLOAD_SUCCESS (`body.success === true`) vs
+ * UPLOAD_CONTENT_ID_PRESENT vs UPLOAD_TYPE. HTTP 200 alone is NEVER upload success.
+ */
+export function summarizeUploadResponse(args: {
+  endpoint: string;
+  apiVersion: string | null;
+  httpStatus: number | null;
+  httpOk: boolean;
+  body: unknown;
+}): PancakeUploadDiagnostics {
+  const obj =
+    args.body && typeof args.body === 'object'
+      ? (args.body as Record<string, unknown>)
+      : null;
+  const rawId = obj?.id;
+  const contentId =
+    typeof rawId === 'string' ? rawId : typeof rawId === 'number' ? String(rawId) : '';
+  const rawType = obj?.type;
+  const type =
+    typeof rawType === 'string'
+      ? rawType
+      : typeof rawType === 'number'
+        ? String(rawType)
+        : null;
+  const rawCode =
+    obj?.message_code ??
+    obj?.error_code ??
+    obj?.error ??
+    (obj?.success === false ? obj?.message : undefined);
+  const messageCode =
+    typeof rawCode === 'string' && rawCode.trim()
+      ? rawCode.trim().slice(0, 200)
+      : typeof rawCode === 'number'
+        ? String(rawCode)
+        : null;
+  return {
+    endpoint: args.endpoint,
+    apiVersion: args.apiVersion,
+    httpStatus: args.httpStatus,
+    httpOk: args.httpOk,
+    success: obj ? obj.success === true : false,
+    contentIdPresent: Boolean(contentId),
+    contentIdSuffix: idSuffix(contentId),
+    type,
+    messageCode,
+  };
+}
+
+/**
  * Upload a screenshot's BYTES to Pancake and return its `content_id` (Pancake's confirmed
  * image flow, replacing the old `content_url` reference which reply_inbox rejects together
  * with everything). Endpoint: `POST /pages/{page_id}/upload_contents` (env-overridable),
@@ -481,8 +575,14 @@ function extractMessageId(body: unknown): string | null {
 async function uploadPancakeImageContent(
   imageUrl: string,
 ): Promise<
-  | { ok: true; contentId: string }
-  | { ok: false; code: PancakeSendCode; message: string; debug?: string }
+  | { ok: true; contentId: string; diag: PancakeUploadDiagnostics }
+  | {
+      ok: false;
+      code: PancakeSendCode;
+      message: string;
+      debug?: string;
+      diag?: PancakeUploadDiagnostics;
+    }
 > {
   const pageToken = process.env.PANCAKE_PAGE_ACCESS_TOKEN;
   const token = pageToken || process.env.PANCAKE_USER_ACCESS_TOKEN;
@@ -550,6 +650,15 @@ async function uploadPancakeImageContent(
   const rawId = obj?.id;
   const contentId =
     typeof rawId === 'string' ? rawId : typeof rawId === 'number' ? String(rawId) : '';
+  // SANITIZED diagnostics (token/PII/image-free) — captured on BOTH paths so a controlled
+  // retry records the previously-discarded success response (id/type/version), not just failures.
+  const diag = summarizeUploadResponse({
+    endpoint: `${base}${template}`,
+    apiVersion: apiVersionOf(base),
+    httpStatus: res.status,
+    httpOk: res.ok,
+    body,
+  });
   const failed = !res.ok || (obj ? obj.success === false : true) || !contentId;
   if (failed) {
     return {
@@ -557,9 +666,10 @@ async function uploadPancakeImageContent(
       code: 'failed',
       message: 'Pancake rejected the image upload.',
       debug,
+      diag,
     };
   }
-  return { ok: true, contentId };
+  return { ok: true, contentId, diag };
 }
 
 export async function sendPancakeConversationMessage(input: {
@@ -620,8 +730,11 @@ export async function sendPancakeConversationMessage(input: {
   // content_id (the confirmed flow), then attach it as a PHOTO below. reply_inbox forbids a
   // text `message` alongside content, so with an image we send the photo alone.
   let contentId: string | null = null;
+  let uploadDiagnostics: PancakeUploadDiagnostics | undefined;
+  let sentForm: string | undefined;
   if (input.attachmentUrl) {
     const up = await uploadPancakeImageContent(input.attachmentUrl);
+    uploadDiagnostics = up.diag;
     if (!up.ok) {
       return {
         ok: false,
@@ -630,6 +743,7 @@ export async function sendPancakeConversationMessage(input: {
           'The screenshot could not be uploaded to Pancake. The reminder is saved — retry, or send it via Open FB Chat.',
         pancakeMessageId: null,
         ...(up.debug ? { debug: up.debug } : {}),
+        ...(up.diag ? { uploadDiagnostics: up.diag } : {}),
       };
     }
     contentId = up.contentId;
@@ -648,8 +762,11 @@ export async function sendPancakeConversationMessage(input: {
     if (contentId) {
       form.set('content_ids[]', contentId);
       form.set('attachment_type', 'PHOTO');
+      // SANITIZED echo of the EXACT keys sent (content id masked to its last-6 suffix).
+      sentForm = `action=reply_inbox&content_ids[]=${idSuffix(contentId) ?? '—'}&attachment_type=PHOTO`;
     } else {
       form.set('message', input.message);
+      sentForm = `action=reply_inbox&message=<text:${input.message.length}c>`;
     }
     // NOTE ON THE 24-HOUR WINDOW: Facebook blocks a message sent >24h after the
     // customer's last message (error #10, subcode 2018278). The old order tags
@@ -678,6 +795,8 @@ export async function sendPancakeConversationMessage(input: {
       code: 'unavailable',
       message: 'Pancake API unavailable. Please try again in a moment.',
       pancakeMessageId: null,
+      ...(uploadDiagnostics ? { uploadDiagnostics } : {}),
+      ...(sentForm ? { sentForm } : {}),
     };
   }
 
@@ -713,6 +832,8 @@ export async function sendPancakeConversationMessage(input: {
           "Facebook won't auto-send this — the customer last messaged over 24 hours ago (Facebook's messaging policy). The reminder is saved; open the chat and send it yourself (allowed for up to 7 days).",
         pancakeMessageId: null,
         debug,
+        ...(uploadDiagnostics ? { uploadDiagnostics } : {}),
+        ...(sentForm ? { sentForm } : {}),
       };
     }
     return {
@@ -722,6 +843,8 @@ export async function sendPancakeConversationMessage(input: {
         'Pancake rejected the message. The reminder is saved — you can retry, or send it via Open FB Chat.',
       pancakeMessageId: null,
       debug,
+      ...(uploadDiagnostics ? { uploadDiagnostics } : {}),
+      ...(sentForm ? { sentForm } : {}),
     };
   }
 
@@ -731,6 +854,8 @@ export async function sendPancakeConversationMessage(input: {
     message: 'Sent to the customer through Pancake.',
     pancakeMessageId: extractMessageId(body),
     debug,
+    ...(uploadDiagnostics ? { uploadDiagnostics } : {}),
+    ...(sentForm ? { sentForm } : {}),
   };
 }
 

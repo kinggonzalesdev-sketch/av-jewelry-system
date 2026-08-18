@@ -572,10 +572,51 @@ export async function sendControlledTestPhoto(input: {
     message: '',
     attachmentUrl: url,
   });
+
+  // INSTRUMENTATION (sanitized — no token / no image bytes / no PII). Preserve the FULL
+  // semantic distinction UPLOAD_HTTP_OK vs UPLOAD_SUCCESS vs UPLOAD_CONTENT_ID_PRESENT vs
+  // UPLOAD_TYPE, plus the exact send serialization + API version, so ONE controlled retry
+  // pinpoints the first failure (upload staging vs send/attachment vs FB messaging window).
+  const d = photo.uploadDiagnostics;
+  if (d) {
+    steps.push({
+      step: 'upload_contents',
+      ok: d.httpOk && d.success && d.contentIdPresent,
+      detail:
+        `UPLOAD_HTTP_OK=${d.httpOk} (HTTP ${d.httpStatus ?? '—'}) · ` +
+        `UPLOAD_SUCCESS=${d.success} · UPLOAD_CONTENT_ID_PRESENT=${d.contentIdPresent} · ` +
+        `content_id ${d.contentIdSuffix ?? '—'} · UPLOAD_TYPE=${d.type ?? '—'} · ` +
+        `code ${d.messageCode ?? '—'} · endpoint ${d.endpoint} (${d.apiVersion ?? 'v?'})`,
+    });
+  } else {
+    steps.push({
+      step: 'upload_contents',
+      ok: false,
+      detail: 'No upload_contents call was made (missing token/page or unreadable screenshot).',
+    });
+  }
+  if (photo.sentForm) {
+    steps.push({
+      step: 'send_payload',
+      ok: true,
+      detail: `${photo.sentForm} → conversation …${conversationId.slice(-6)} · Content-Type application/x-www-form-urlencoded`,
+    });
+  }
   steps.push({
     step: 'photo',
     ok: photo.ok,
-    detail: `[${photo.code}] ${photo.message}${photo.debug ? ` · ${photo.debug}` : ''} → conversation …${conversationId.slice(-6)}`,
+    detail: `[${photo.code}] ${photo.message}${photo.debug ? ` · ${photo.debug}` : ''}`,
   });
+
+  // Durable sanitized server-side record (retrievable from Vercel logs). No token/image/PII.
+  console.info('[controlled-photo] attempt', {
+    captureId: captureId ? `…${captureId.slice(-6)}` : null,
+    conversation: `…${conversationId.slice(-6)}`,
+    upload: d ?? null,
+    sentForm: photo.sentForm ?? null,
+    sendCode: photo.code,
+    sendOk: photo.ok,
+  });
+
   return { ok: photo.ok, steps };
 }
