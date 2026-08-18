@@ -225,23 +225,16 @@ object StickerEncoder {
     /** Encode a sticker in the active language. */
     fun encode(d: Sticker, tspl: Boolean): ByteArray = if (tspl) encodeTspl(d) else encodeEscPos(d)
 
-    /** A short test print (same shape the web uses to find the working language). */
-    fun encodeTest(tspl: Boolean): ByteArray {
-        if (tspl) {
-            val program = listOf(
-                "SIZE 40 mm,30 mm", "GAP 2 mm,0 mm", "DIRECTION 1", "CLS",
-                "TEXT 16,20,\"3\",0,1,1,\"A.V. Jewelry\"",
-                "TEXT 16,60,\"2\",0,1,1,\"TEST PRINT\"",
-                "PRINT 1,1", "",
-            ).joinToString("\r\n")
-            return program.toByteArray(Charsets.US_ASCII)
-        }
-        val out = ArrayList<Int>()
-        out.addAll(listOf(ESC, 0x40))
-        out.addAll(listOf(ESC, 0x61, 0x01))
-        "A.V. Jewelry\nTEST PRINT".toByteArray(Charsets.US_ASCII).forEach { out.add(it.toInt() and 0xff) }
-        out.addAll(listOf(LF, LF, LF, LF))
-        out.addAll(listOf(GS, 0x56, 0x42, 0x00))
-        return ByteArray(out.size) { (out[it] and 0xff).toByte() }
-    }
+    // Test Print sample identity (Owner-approved). A Test Print is NOT a separate template —
+    // it is the EXACT production capture sticker built from this sample data + the device's
+    // configured price/g + today's local date, through the same fromCapture()+encode() path the
+    // live capture uses. The old hardcoded "A.V. Jewelry / TEST PRINT" payload was removed, so the
+    // operator verifies on paper exactly what a real capture sticker looks like.
+    const val SAMPLE_TEST_NAME = "KING GONZALES"
+    const val SAMPLE_TEST_GRAMS = "11.5"
+
+    /** Build the Test Print sticker: production sample data → shared StickerEncoder (no test-only
+     *  layout). `encode(sampleSticker(rate), tspl)` is byte-identical to a real capture sticker. */
+    fun sampleSticker(pricePerGram: String?): Sticker =
+        fromCapture(SAMPLE_TEST_NAME, SAMPLE_TEST_GRAMS, pricePerGram)
 }

@@ -167,7 +167,12 @@ class BluetoothPrinterActivity : AppCompatActivity() {
         if (!hasBtPermissions()) { ActivityCompat.requestPermissions(this, requiredPerms(), REQ_PERMS); return }
         toast("Printing test…")
         thread {
-            val bytes = StickerEncoder.encodeTest(store.printerTspl)
+            // Test Print = the REAL capture sticker (sample name + configured price/g + local
+            // date) through the shared encoder — never the old "A.V. Jewelry / TEST PRINT".
+            val bytes = StickerEncoder.encode(
+                StickerEncoder.sampleSticker(store.pricePerGram),
+                store.printerTspl,
+            )
             val res = BluetoothPrinterManager.print(this, addr, bytes)
             runOnUiThread { toast(if (res.ok) "Test sent to printer." else (res.error ?: "Test print failed.")); refreshActiveStatus() }
         }
