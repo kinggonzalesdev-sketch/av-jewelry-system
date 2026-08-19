@@ -1,6 +1,7 @@
 package com.mineflow.capture.data
 
 import android.graphics.Bitmap
+import android.util.Log
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
@@ -48,6 +49,8 @@ internal data class OLine(val text: String, val box: Box)
  * the pinned block.
  */
 object ScreenshotOcr {
+
+    private const val TAG = "MineFlowOcr"
 
     // ONE reused recognizer (was re-created every capture). warmUp() primes the model.
     private val recognizer by lazy {
@@ -100,6 +103,17 @@ object ScreenshotOcr {
             "notifications?|marketplace|watch|reels?|feed|share|save|report|more)$",
         RegexOption.IGNORE_CASE,
     )
+    // Individual Facebook UI/chrome WORDS. A line whose tokens are ALL chrome words is interface
+    // text — even when OCR MERGES two labels onto one line ("Overview" tab + "Live" badge →
+    // "Overview Live"), which the EXACT-line UI_TAB match above cannot catch. A real customer name
+    // always carries a NON-chrome token ("Home Reyes" keeps "Reyes"), so an all-chrome line is
+    // never a buyer. This is the STRUCTURAL rule (not a growing phrase blacklist) — Owner 2026-08-19.
+    private val UI_WORD = setOf(
+        "overview", "live", "chat", "replies", "reply", "comment", "comments", "discussion",
+        "details", "home", "menu", "notifications", "notification", "marketplace", "watch",
+        "reels", "reel", "feed", "share", "save", "report", "more", "your", "all", "most",
+        "relevant", "newest", "view",
+    )
     private val MINE = Regex("\\bmine\\b|\\bakin\\b|\\bsakin\\b", RegexOption.IGNORE_CASE)
     // A STANDALONE mining marker / weight-unit token — dropped (together with number tokens) when
     // isolating a name that OCR merged onto the claim line ("King Gonzales Mine 1.5" → "King Gonzales").
@@ -129,7 +143,11 @@ object ScreenshotOcr {
         if (roi == null) {
             // No crop possible → OCR the full screen but STILL gate to the pinned (bottom) zone,
             // so an arbitrary full-screen name/number can never become sticker data.
-            ocr(bitmap) { onResult(guessFrom(it, minClaimTop = roiTop)) }
+            val t0 = android.os.SystemClock.elapsedRealtime()
+            ocr(bitmap) {
+                Log.i(TAG, "timing: roi=none fullOcr=${android.os.SystemClock.elapsedRealtime() - t0}ms lines=${it.size}")
+                onResult(guessFrom(it, minClaimTop = roiTop))
+            }
             return
         }
         // FAST PATH: the small bottom band. If it confidently yields the pinned name + grams,
@@ -137,13 +155,24 @@ object ScreenshotOcr {
         // accept a claim in the pinned (bottom) zone, i.e. positively the pinned block. If the
         // pinned block isn't in that zone (missed, or placed unusually high), return nothing →
         // a "needs review" capture. Never a guessed non-pinned name/number.
+        val tRoi = android.os.SystemClock.elapsedRealtime()
         ocr(roi) { roiLines ->
             runCatching { roi.recycle() }
+            val roiMs = android.os.SystemClock.elapsedRealtime() - tRoi
             val g = guessFrom(roiLines)
             if (g.fbName != null && g.itemQuery != null) {
+                Log.i(TAG, "timing: roiOcr=${roiMs}ms fastPath=HIT lines=${roiLines.size} (no fallback)")
                 onResult(g)
             } else {
-                ocr(bitmap) { full -> onResult(guessFrom(full, minClaimTop = roiTop)) }
+                val tFull = android.os.SystemClock.elapsedRealtime()
+                ocr(bitmap) { full ->
+                    Log.i(
+                        TAG,
+                        "timing: roiOcr=${roiMs}ms fastPath=MISS fullOcr=" +
+                            "${android.os.SystemClock.elapsedRealtime() - tFull}ms (fallback ran → ~2x OCR)",
+                    )
+                    onResult(guessFrom(full, minClaimTop = roiTop))
+                }
             }
         }
     }
@@ -165,9 +194,19 @@ object ScreenshotOcr {
             .addOnFailureListener { onLines(emptyList()) }
     }
 
+    /** A line that is ENTIRELY Facebook UI/chrome — an exact tab label (UI_TAB) OR every token is a
+     *  chrome word (catches OCR-merged chrome like "Overview Live"). Never a customer name. */
+    private fun isChrome(s: String): Boolean {
+        val t = s.trim()
+        if (UI_TAB.matches(t)) return true
+        val words = t.split(Regex("\\s+")).filter { it.isNotBlank() }
+        return words.isNotEmpty() &&
+            words.all { UI_WORD.contains(it.lowercase().trim('·', '-', ':', '•', '.', ',')) }
+    }
+
     private fun isUiNoise(s: String): Boolean =
         UI_NOISE.containsMatchIn(s) || WATCHING.containsMatchIn(s) ||
-            BLOCK.containsMatchIn(s) || UI_TAB.matches(s.trim()) || s.length < 2
+            BLOCK.containsMatchIn(s) || isChrome(s) || s.length < 2
 
     /** A name-like line: 1–5 words, mostly letters, no long digit runs, Title Case. */
     private fun looksLikeName(s: String): Boolean {
@@ -284,9 +323,11 @@ object ScreenshotOcr {
         // Pinned claim = the bottom-most one in the pinned zone (nearest the comment box).
         val (pinnedLine, claim) = claims.maxByOrNull { it.first.box.top }!!
 
-        // Name from the SAME block only — else null (never a name from elsewhere).
+        // Name from the SAME block only — and NEVER Facebook chrome (even merged like "Overview
+        // Live"): if the only candidate is UI chrome, return null → "needs review", never a guess.
         val name = nameForClaim(clean, pinnedLine)
-            ?: stripClaim(pinnedLine.text).takeIf { it.isNotBlank() && looksLikeName(it) }
+            ?: stripClaim(pinnedLine.text)
+                .takeIf { it.isNotBlank() && looksLikeName(it) && !isChrome(it) }
 
         // itemQuery = the pinned value (the PC reinterprets grams vs fixed price); grams is set
         // only for ONE real weight — a fixed price OR 2+ ambiguous numbers leaves it null (review).

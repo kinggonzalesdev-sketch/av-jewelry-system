@@ -314,4 +314,70 @@ class ScreenshotOcrTest {
             assertEquals("2.43", it.grams)
         }
     }
+
+    // --- Facebook UI chrome must NEVER become a customer name (Owner 2026-08-19) ----------------
+    // OCR merged the FB Live tab bar ("Overview" + "Live" badge) onto one line "Overview Live",
+    // which the exact-line UI_TAB match missed → it became the fbName. The structural all-chrome
+    // rule now rejects any line whose tokens are ALL chrome; if the only name candidate is chrome,
+    // fbName is null (Needs Review) — never a manufactured Facebook name.
+
+    @Test
+    fun chrome_mergedOverviewLive_isNotAcceptedAsName() {
+        val g = ScreenshotOcr.guessFrom(listOf(line("Overview Live", 850), line("Mine 1.5", 900)))
+        assertNull(g.fbName)          // chrome rejected → no guessed identity
+        assertEquals("1.5", g.grams)  // grams still parsed (genuinely available)
+    }
+
+    @Test
+    fun chrome_singleTabLabels_areRejected() {
+        for (chrome in listOf("Overview", "Live chat", "Your replies", "Comments")) {
+            val g = ScreenshotOcr.guessFrom(listOf(line(chrome, 850), line("Mine 1.5", 900)))
+            assertNull("'$chrome' must not be a customer name", g.fbName)
+        }
+    }
+
+    @Test
+    fun chrome_mergedOnClaimLine_stripClaimRejectsIt() {
+        // Claim line itself is chrome + a number: stripping marker/number leaves "Overview Live",
+        // which the chrome guard rejects → no name (still Needs Review).
+        val g = ScreenshotOcr.guessFrom(listOf(line("Overview Live Mine 1.5", 900)))
+        assertNull(g.fbName)
+        assertEquals("1.5", g.grams)
+    }
+
+    @Test
+    fun chrome_aboveClaim_realNameCloser_picksTheRealName() {
+        // Chrome higher up must NOT displace the real name directly above the claim.
+        val g = ScreenshotOcr.guessFrom(
+            listOf(line("Overview Live", 800), line("King Gonzales", 850), line("Mine 1.5", 900)),
+        )
+        assertEquals("King Gonzales", g.fbName)
+        assertEquals("1.5", g.grams)
+    }
+
+    @Test
+    fun chrome_withAmbiguousClaim_bothNull_needsReview() {
+        // The exact rehearsal failure shape: chrome name + ambiguous claim (2 weights) → Needs
+        // Review (no name, no grams), never "Overview Live".
+        val g = ScreenshotOcr.guessFrom(listOf(line("Overview Live", 850), line("Mine 1.1 2.5", 900)))
+        assertNull(g.fbName)
+        assertNull(g.grams)
+    }
+
+    @Test
+    fun realNames_stillAccepted_afterChromeGuard() {
+        ScreenshotOcr.guessFrom(listOf(line("Danica Dayoha", 850), line("Mine 1.5", 900))).let {
+            assertEquals("Danica Dayoha", it.fbName)
+            assertEquals("1.5", it.grams)
+        }
+        ScreenshotOcr.guessFrom(listOf(line("King Gonzales", 850), line("Mine .7", 900))).let {
+            assertEquals("King Gonzales", it.fbName)
+            assertEquals("0.7", it.grams)
+        }
+        // A real name that merely CONTAINS a chrome word keeps its non-chrome token.
+        ScreenshotOcr.guessFrom(listOf(line("Home Reyes", 850), line("Mine 2.43g", 900))).let {
+            assertEquals("Home Reyes", it.fbName)
+            assertEquals("2.43", it.grams)
+        }
+    }
 }

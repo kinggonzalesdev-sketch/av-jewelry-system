@@ -532,10 +532,16 @@ class OverlayCaptureService : Service() {
         if (address.isNullOrBlank()) return false
         if (fbName.length < 2 || grams.isNullOrBlank()) return false
         return try {
+            val tEnc = android.os.SystemClock.elapsedRealtime()
             val sticker = StickerEncoder.fromCapture(fbName, grams, store.pricePerGram)
             val bytes = StickerEncoder.encode(sticker, store.printerTspl)
+            val tWrite = android.os.SystemClock.elapsedRealtime()
             val res = BluetoothPrinterManager.print(this, address, bytes)
-            if (res.ok) Log.i(TAG, "capture printed locally (direct, pre-row)")
+            val tEnd = android.os.SystemClock.elapsedRealtime()
+            Log.i(
+                TAG,
+                "timing: stickerEncode=${tWrite - tEnc}ms btWrite=${tEnd - tWrite}ms ok=${res.ok}",
+            )
             res.ok
         } catch (e: Exception) {
             Log.w(TAG, "direct print failed: ${e.javaClass.simpleName}")
