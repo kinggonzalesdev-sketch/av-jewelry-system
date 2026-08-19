@@ -6,23 +6,26 @@ import {
   addCashMovementAction,
   addExpenseAction,
   addRemittanceAction,
-  addTradeAction,
   deleteCashRecordAction,
   loadCashDetailAction,
   loadCashExportAction,
   loadCashSummaryAction,
-  loadTradesExpensesAction,
   loadWalkInItemsAction,
   saveActualCashCountAction,
+  updateCashMovementAction,
   updateExpenseAction,
-  updateTradeAction,
+  updateRemittanceAction,
 } from '@/lib/cash/actions';
 import {
+  CASH_TABS,
+  CASH_TAB_LABEL,
   type CashMovementRow,
   type CashPaymentRow,
+  type CashTab,
   type DailyCashSummary,
   type DetailPage,
   type ExpenseRow,
+  type MutationResult,
   type RemittanceRow,
   type TradeDeductionRow,
   type TradeExpenseRow,
@@ -62,19 +65,6 @@ function toCents(s: string): bigint {
   const c = BigInt(w || '0') * 100n + BigInt((f + '00').slice(0, 2) || '0');
   return neg ? -c : c;
 }
-
-/** An in-progress edit of a Trades & Expenses row (its type is fixed by the record). */
-type EntryEdit = {
-  id: string;
-  type: 'expense' | 'trade';
-  initial: {
-    name: string;
-    amount: string;
-    category: string | null;
-    relatedSale: string | null;
-    remarks: string | null;
-  };
-};
 
 export function DailyCashView({
   date: dateProp,
@@ -151,11 +141,6 @@ export function DailyCashView({
     await refreshSummary();
     setSavingCount(false);
   };
-
-  // "More" cash records — Remittance / Other Cash In / Other Cash Out. These are less
-  // frequent than walk-ins/expenses, so they live behind a "More" button instead of the
-  // main boxes, but they DO affect Expected Cash, so a change here recalculates the totals.
-  const [showMore, setShowMore] = useState(false);
 
   // --- Export (§23: summary + detailed transactions) ------------------------
   const [exporting, setExporting] = useState(false);
@@ -325,21 +310,13 @@ export function DailyCashView({
 
   return (
     <div className="space-y-4">
-      {/* Header */}
+      {/* Header — the Date selector + Export controls stay put while the Details section
+          below is used (§MAIN RULE). */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
           Daily Cash Summary
         </h1>
         <div className="flex items-center gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setShowMore(true)}
-            data-testid="cash-more"
-          >
-            ⋯ More
-          </Button>
           <Button
             type="button"
             variant="outline"
@@ -501,30 +478,19 @@ export function DailyCashView({
         </Card>
       </div>
 
-      {/* Lower area — two side-by-side boxes (Owner-approved layout 2026-08-12), same
-          card style as Cash Breakdown / End of Day. The old 7-tab strip is gone. Left =
-          Sales Walk-ins (the existing table). Right = Trades & Expenses (manual expenses +
-          manual trades, combined). Add/View/Edit/Delete open modals only — nothing here
-          navigates or reloads; a financial change recalculates the totals above in place. */}
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        <SalesWalkInsBox
-          date={date}
-          initialWalkIns={initialWalkIns}
-          admins={admins}
-          canAddWalkIn={canAddWalkIn}
-          isOwner={isOwner}
-          onFinancialChange={refreshSummary}
-        />
-        <TradesExpensesBox date={date} onFinancialChange={refreshSummary} />
-      </div>
-
-      {showMore ? (
-        <MoreCashModal
-          date={date}
-          onClose={() => setShowMore(false)}
-          onChanged={refreshSummary}
-        />
-      ) : null}
+      {/* Details — one self-contained, tabbed section (Owner request 2026-08-19). Every
+          interaction here (tab switch, Add / View / Edit / Delete) stays inside this card:
+          it never navigates, never reloads the page, and never touches the cards / Cash
+          Breakdown / End-of-Day / date above. A financial change re-reads ONLY the day's
+          totals (refreshSummary) so the Actual Cash Count being typed is preserved (§7,§10). */}
+      <DetailsSection
+        date={date}
+        initialWalkIns={initialWalkIns}
+        admins={admins}
+        canAddWalkIn={canAddWalkIn}
+        isOwner={isOwner}
+        onFinancialChange={refreshSummary}
+      />
     </div>
   );
 }
@@ -549,12 +515,54 @@ function BreakRow({
 }
 
 // ===========================================================================
-// Lower area — two side-by-side boxes (Sales Walk-ins · Trades & Expenses)
+// Details — one self-contained, tabbed section (Owner request 2026-08-19).
+//
+// A single card with a 7-tab strip. Clicking a tab swaps ONLY this section's table
+// (lazy-loaded + cached per tab); it never navigates, never reloads the page, and never
+// touches the summary cards, Cash Breakdown, End-of-Day, date, or the Actual Cash Count
+// the operator may be entering. Add / View / Edit / Delete all open modals in place; a
+// financial change re-reads ONLY the day's totals above. Cash Payments and Trade
+// Deductions are DERIVED from orders — read-only (View only, no Add); every other tab
+// carries its own Add button + compact modal.
 // ===========================================================================
 
-/** Left box: the existing Sales Walk-ins table + the in-place "Add New Sale" modal. Its
- *  data + logic are unchanged — only the presentation moved out of the old tab strip. */
-function SalesWalkInsBox({
+type CashEntryKind = 'expense' | 'remittance' | 'cash_in' | 'cash_out';
+
+/** The Add button + modal wiring for each editable tab (the two derived tabs have none). */
+const ENTRY_META: Record<
+  CashEntryKind,
+  { noun: string; addLabel: string; addTestId: string }
+> = {
+  expense: { noun: 'Expense', addLabel: '+ Add Expense', addTestId: 'cash-add-expense' },
+  remittance: {
+    noun: 'Remittance',
+    addLabel: '+ Add Remittance',
+    addTestId: 'cash-add-remittance',
+  },
+  cash_in: { noun: 'Cash In', addLabel: '+ Add Cash In', addTestId: 'cash-add-cashin' },
+  cash_out: {
+    noun: 'Cash Out',
+    addLabel: '+ Add Cash Out',
+    addTestId: 'cash-add-cashout',
+  },
+};
+
+/** Which Add modal a tab opens. The derived tabs (cash_payments, trade_deductions) are
+ *  intentionally absent — they are read-only. */
+const TAB_ENTRY_KIND: Partial<Record<CashTab, CashEntryKind>> = {
+  expenses: 'expense',
+  remittance: 'remittance',
+  other_cash_in: 'cash_in',
+  other_cash_out: 'cash_out',
+};
+
+type CashEntryModalState = {
+  kind: CashEntryKind;
+  /** The row being edited, or null for an Add. */
+  edit: ExpenseRow | RemittanceRow | CashMovementRow | null;
+} | null;
+
+function DetailsSection({
   date,
   initialWalkIns,
   admins,
@@ -569,15 +577,99 @@ function SalesWalkInsBox({
   isOwner: boolean;
   onFinancialChange: () => Promise<void>;
 }) {
-  const [page, setPage] = useState(1);
-  const [size, setSize] = useState(8);
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<DetailPage<WalkInRow>>(initialWalkIns);
+  const [active, setActive] = useState<CashTab>('sales_walkins');
+
+  // Each tab keeps its OWN page/size, so paging one tab never disturbs another (§8).
+  const [tabState, setTabState] = useState<
+    Record<CashTab, { page: number; size: number }>
+  >(
+    () =>
+      Object.fromEntries(CASH_TABS.map((t) => [t, { page: 1, size: 8 }])) as Record<
+        CashTab,
+        { page: number; size: number }
+      >,
+  );
+  const { page, size } = tabState[active];
+  const setPage = (p: number) =>
+    setTabState((s) => ({ ...s, [active]: { ...s[active], page: p } }));
+  const setSize = (n: number) =>
+    setTabState((s) => ({ ...s, [active]: { page: 1, size: n } }));
+
+  // Lazy load + per-(tab·date·page·size) cache (§8): a tab fetches only when first opened,
+  // and serves instantly from cache on return. The SSR-provided first Sales Walk-ins page
+  // seeds the view so the default tab paints with no fetch. `reloadKey` (bumped + cache
+  // cleared on a financial change) forces fresh reads after an add / edit / delete.
+  const [initialDate] = useState(date);
+  const cache = useRef(new Map<string, DetailPage<unknown>>());
+  const [reloadKey, setReloadKey] = useState(0);
+  const currentKey = `${active}|${date}|${page}|${size}|${reloadKey}`;
+  const [loaded, setLoaded] = useState<{ key: string; data: DetailPage<unknown> }>(() => ({
+    key: `sales_walkins|${date}|1|8|0`,
+    data: initialWalkIns,
+  }));
+
+  useEffect(() => {
+    if (loaded.key === currentKey) return;
+    const cached = cache.current.get(currentKey);
+    if (cached) {
+      setLoaded({ key: currentKey, data: cached });
+      return;
+    }
+    // The first Sales Walk-ins page for the SSR date is already in props — never refetch it.
+    if (
+      active === 'sales_walkins' &&
+      date === initialDate &&
+      page === 1 &&
+      size === 8 &&
+      reloadKey === 0
+    ) {
+      cache.current.set(currentKey, initialWalkIns);
+      setLoaded({ key: currentKey, data: initialWalkIns });
+      return;
+    }
+    let alive = true;
+    void loadCashDetailAction(active, date, page, size).then((res) => {
+      if (!alive) return;
+      cache.current.set(currentKey, res);
+      setLoaded({ key: currentKey, data: res });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [
+    currentKey,
+    active,
+    date,
+    page,
+    size,
+    reloadKey,
+    initialDate,
+    initialWalkIns,
+    loaded.key,
+  ]);
+
+  // Derive purely from state (never read the cache ref during render). The active view is
+  // "ready" only when `loaded` matches the current key; until then show "Loading…" — the
+  // effect fills it from the cache on the very next tick (a revisit) or when a fetch returns.
+  // Gating on the exact key also stops one tab's rows from being drawn against another tab's
+  // columns during a switch.
+  const ready = loaded.key === currentKey;
+  const loading = !ready;
+  const rows = ready ? loaded.data.rows : [];
+  const total = ready ? loaded.data.total : 0;
+  const pageCount = Math.max(1, Math.ceil(total / size));
+
+  // A financial add/edit/delete: drop cached pages, re-read the active tab, and recalc ONLY
+  // the day's totals above — never a full-page reload (which would wipe the Actual Cash Count).
+  const afterChange = () => {
+    cache.current.clear();
+    setReloadKey((k) => k + 1);
+    void onFinancialChange();
+  };
+
+  // Walk-in Add opens the shared rich modal; its ~1,900-row item picker lazy-loads on first
+  // open, so opening Daily Cash never pays that inventory read up front.
   const [showWalkIn, setShowWalkIn] = useState(false);
-  const [viewing, setViewing] = useState<RowView | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
-  // The walk-in item picker (~1,900 inventory rows) is LAZY-loaded the first time "+ Add New
-  // Sale" is opened, so opening Daily Cash stays fast. Cached after the first fetch.
   const [walkInItems, setWalkInItems] = useState<WalkInItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
   const openWalkIn = () => {
@@ -594,229 +686,158 @@ function SalesWalkInsBox({
       .finally(() => setLoadingItems(false));
   };
 
-  // The first page for the initial date is server-rendered (initialWalkIns), so skip that
-  // exact first load once; every later date/page/size/refresh re-reads only this box.
-  const firstRun = useRef(true);
-  useEffect(() => {
-    if (firstRun.current) {
-      firstRun.current = false;
-      if (page === 1 && size === 8 && refreshKey === 0) return;
-    }
-    let alive = true;
-    setLoading(true);
-    void loadCashDetailAction('sales_walkins', date, page, size)
-      .then((res) => {
-        if (alive) setData(res as DetailPage<WalkInRow>);
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [date, page, size, refreshKey]);
+  // The compact per-tab Add / Edit modal (Expense · Remittance · Cash In · Cash Out).
+  const [modal, setModal] = useState<CashEntryModalState>(null);
+  const [viewing, setViewing] = useState<RowView | null>(null);
 
-  const pageCount = Math.max(1, Math.ceil(data.total / size));
-  const afterSave = () => {
-    setRefreshKey((k) => k + 1);
-    void onFinancialChange();
-  };
+  const entryKind = TAB_ENTRY_KIND[active] ?? null;
 
   return (
     <Card>
       <CardContent className="p-5">
         <div className="mb-3 flex items-center justify-between gap-2">
           <h2 className="text-sm font-bold uppercase tracking-wide text-foreground">
-            Sales Walk-ins
+            Details
           </h2>
-          {canAddWalkIn ? (
+          {/* The Add button belongs ONLY to the active tab (§2). Derived tabs have none. */}
+          {active === 'sales_walkins' ? (
+            canAddWalkIn ? (
+              <Button
+                type="button"
+                size="sm"
+                onClick={openWalkIn}
+                disabled={loadingItems}
+                data-testid="cash-add-walkin"
+              >
+                {loadingItems ? 'Loading…' : '+ Add New Sale'}
+              </Button>
+            ) : null
+          ) : entryKind ? (
             <Button
               type="button"
               size="sm"
-              onClick={openWalkIn}
-              disabled={loadingItems}
-              data-testid="cash-add-walkin"
+              onClick={() => setModal({ kind: entryKind, edit: null })}
+              data-testid={ENTRY_META[entryKind].addTestId}
             >
-              {loadingItems ? 'Loading…' : '+ Add New Sale'}
+              {ENTRY_META[entryKind].addLabel}
             </Button>
           ) : null}
         </div>
 
-        <WalkInsTable
-          loading={loading}
-          rows={data.rows}
-          isOwner={isOwner}
-          onView={setViewing}
-          onChanged={afterSave}
-        />
+        {/* 7-tab strip — clicking a tab changes ONLY this section (§1). Scrolls sideways on
+            a narrow screen; the page never scrolls horizontally. */}
+        <div className="mb-3 -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+          {CASH_TABS.map((t) => (
+            <button
+              key={t}
+              type="button"
+              aria-pressed={active === t}
+              onClick={() => setActive(t)}
+              data-testid={`cash-tab-${t}`}
+              className={`whitespace-nowrap rounded-md border px-3 py-1.5 text-xs font-medium ${
+                active === t
+                  ? 'border-gold bg-gold/10 text-foreground'
+                  : 'border-border text-muted-foreground hover:bg-accent'
+              }`}
+            >
+              {CASH_TAB_LABEL[t]}
+            </button>
+          ))}
+        </div>
 
-        {data.total > 0 ? (
+        {/* Active tab's table — only this swaps when the tab changes. */}
+        {active === 'sales_walkins' ? (
+          <WalkInsTable
+            loading={loading}
+            rows={rows as WalkInRow[]}
+            isOwner={isOwner}
+            onView={setViewing}
+            onChanged={afterChange}
+          />
+        ) : active === 'cash_payments' ? (
+          <CashPaymentsTable
+            loading={loading}
+            rows={rows as CashPaymentRow[]}
+            onView={setViewing}
+          />
+        ) : active === 'trade_deductions' ? (
+          <TradeDeductionsTable
+            loading={loading}
+            rows={rows as TradeDeductionRow[]}
+            onView={setViewing}
+          />
+        ) : active === 'expenses' ? (
+          <ExpensesTable
+            loading={loading}
+            rows={rows as ExpenseRow[]}
+            onView={setViewing}
+            onEdit={(row) => setModal({ kind: 'expense', edit: row })}
+            onChanged={afterChange}
+          />
+        ) : active === 'remittance' ? (
+          <RemittanceTable
+            loading={loading}
+            rows={rows as RemittanceRow[]}
+            onView={setViewing}
+            onEdit={(row) => setModal({ kind: 'remittance', edit: row })}
+            onChanged={afterChange}
+          />
+        ) : (
+          <MovementsTable
+            loading={loading}
+            rows={rows as CashMovementRow[]}
+            onView={setViewing}
+            onEdit={(row) =>
+              setModal({
+                kind: active === 'other_cash_in' ? 'cash_in' : 'cash_out',
+                edit: row,
+              })
+            }
+            onChanged={afterChange}
+          />
+        )}
+
+        {total > 0 ? (
           <Pagination
             page={Math.min(page, pageCount)}
             pageCount={pageCount}
-            total={data.total}
+            total={total}
             pageSize={size}
             pageSizes={[8, 15, 25, 50]}
             onPageChange={setPage}
-            onPageSizeChange={(n) => {
-              setSize(n);
-              setPage(1);
-            }}
+            onPageSizeChange={setSize}
           />
         ) : null}
       </CardContent>
 
       {showWalkIn ? (
-        // The SHARED rich Walk-In modal (Owner request 2026-08-13) — same component the
-        // Orders "New Entry → Walk In" uses, opened WALK-IN ONLY (no New Entry toggle),
-        // with multi-item entry + the Transfer Destination dropdown. Saving refreshes this
-        // box + the summary totals in place (onSaved); the modal's own "Done" closes it.
+        // The SHARED rich Walk-In modal — same component Orders "New Entry → Walk In" uses,
+        // opened WALK-IN ONLY. Saving refreshes this section + the totals in place (onSaved);
+        // the modal's own "Done" closes it. It never navigates or reloads the page.
         <NewOrderModal
           walkInOnly
           walkInItems={walkInItems}
           admins={admins}
           defaultSaleDate={date}
           onClose={() => setShowWalkIn(false)}
-          onSaved={afterSave}
+          onSaved={afterChange}
         />
       ) : null}
 
-      {viewing ? <RowViewModal view={viewing} onClose={() => setViewing(null)} /> : null}
-    </Card>
-  );
-}
-
-/** Right box: manual Expenses (counted in the Cash Breakdown) + manual Trades (display-
- *  only), one combined paginated list, with an "Add New Entry" modal that picks the type. */
-function TradesExpensesBox({
-  date,
-  onFinancialChange,
-}: {
-  date: string;
-  onFinancialChange: () => Promise<void>;
-}) {
-  const [page, setPage] = useState(1);
-  const [size, setSize] = useState(8);
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<DetailPage<TradeExpenseRow>>({ rows: [], total: 0 });
-  const [showAdd, setShowAdd] = useState(false);
-  const [editing, setEditing] = useState<EntryEdit | null>(null);
-  const [viewing, setViewing] = useState<RowView | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  useEffect(() => {
-    let alive = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch spinner: flip to loading, then swap in server data on arrival
-    setLoading(true);
-    void loadTradesExpensesAction(date, page, size)
-      .then((res) => {
-        if (alive) setData(res);
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [date, page, size, refreshKey]);
-
-  const pageCount = Math.max(1, Math.ceil(data.total / size));
-  // An Expense reduces Expected Cash, so recalc the totals above; a Trade is display-only
-  // (the recalc is a harmless no-op there). Either way nothing else on the page reloads.
-  const afterSave = () => {
-    setRefreshKey((k) => k + 1);
-    void onFinancialChange();
-  };
-
-  return (
-    <Card>
-      <CardContent className="p-5">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-foreground">
-            Trades &amp; Expenses
-          </h2>
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => {
-              setEditing(null);
-              setShowAdd(true);
-            }}
-            data-testid="cash-add-entry"
-          >
-            + Add New Entry
-          </Button>
-        </div>
-
-        <TradesExpensesTable
-          loading={loading}
-          rows={data.rows}
-          onChanged={afterSave}
-          onView={setViewing}
-          onEdit={(row) => {
-            setEditing({
-              id: row.id,
-              type: row.type,
-              initial: {
-                name: row.name,
-                amount: row.amount,
-                category: row.category,
-                relatedSale: row.relatedSale,
-                remarks: row.remarks,
-              },
-            });
-            setShowAdd(true);
-          }}
-        />
-
-        {data.total > 0 ? (
-          <Pagination
-            page={Math.min(page, pageCount)}
-            pageCount={pageCount}
-            total={data.total}
-            pageSize={size}
-            pageSizes={[8, 15, 25, 50]}
-            onPageChange={setPage}
-            onPageSizeChange={(n) => {
-              setSize(n);
-              setPage(1);
-            }}
-          />
-        ) : null}
-      </CardContent>
-
-      {showAdd ? (
-        <AddEntryModal
-          key={editing?.id ?? 'add'}
+      {modal ? (
+        <CashEntryModal
+          state={modal}
           date={date}
-          editing={editing}
-          onClose={() => {
-            setShowAdd(false);
-            setEditing(null);
-          }}
+          onClose={() => setModal(null)}
           onSaved={() => {
-            setShowAdd(false);
-            setEditing(null);
-            afterSave();
+            setModal(null);
+            afterChange();
           }}
         />
       ) : null}
 
       {viewing ? <RowViewModal view={viewing} onClose={() => setViewing(null)} /> : null}
     </Card>
-  );
-}
-
-/** The Type pill (§4): Trade = blue, Expense = purple. Same badge style used elsewhere. */
-function TypeBadge({ type }: { type: 'expense' | 'trade' }) {
-  const color = type === 'trade' ? C.blue : C.purple;
-  return (
-    <span
-      className="rounded-md px-2 py-0.5 text-xs font-semibold"
-      style={{ backgroundColor: `${color}22`, color }}
-    >
-      {type === 'trade' ? 'Trade' : 'Expense'}
-    </span>
   );
 }
 
@@ -851,12 +872,21 @@ function RowViewModal({ view, onClose }: { view: RowView; onClose: () => void })
   );
 }
 
-/** Safe string read off an untyped row value — never Object's "[object Object]". */
-function cashStr(v: unknown): string {
-  return typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '';
+function DetailLoading() {
+  return <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>;
 }
 
-/** The Sales Walk-ins table — the approved design, unchanged (columns, styles, View). */
+function fmt(iso: string): string {
+  if (!iso) return '—';
+  return formatDateTime(iso);
+}
+
+// ===========================================================================
+// Per-tab tables
+// ===========================================================================
+
+/** Sales Walk-ins — the approved design, unchanged (columns, styles, View). The Owner also
+ *  gets order-level Edit / Delete (guarded server-side); both refresh in place. */
 function WalkInsTable({
   loading,
   rows,
@@ -866,15 +896,12 @@ function WalkInsTable({
 }: {
   loading: boolean;
   rows: WalkInRow[];
-  /** The Owner also gets Edit / Delete (order-level, guarded) on each walk-in. */
   isOwner: boolean;
   onView: (view: RowView) => void;
   onChanged: () => void;
 }) {
   const money = usePrivacyMoney();
-  if (loading) {
-    return <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>;
-  }
+  if (loading) return <DetailLoading />;
   return (
     <DataTable
       minWidth={isOwner ? '1040px' : '900px'}
@@ -962,45 +989,33 @@ function WalkInsTable({
   );
 }
 
-/** The combined Trades & Expenses table (#/Name/Amount/Type/Remarks/Action). Reuses the
- *  approved DataTable + View/Edit/Delete controls; the Type pill distinguishes the two. */
-function TradesExpensesTable({
+/** Cash Payments — DERIVED from verified cash payments, read-only (View only, no Add/Edit). */
+function CashPaymentsTable({
   loading,
   rows,
-  onChanged,
   onView,
-  onEdit,
 }: {
   loading: boolean;
-  rows: TradeExpenseRow[];
-  onChanged: () => void;
+  rows: CashPaymentRow[];
   onView: (view: RowView) => void;
-  onEdit: (row: TradeExpenseRow) => void;
 }) {
   const money = usePrivacyMoney();
-  if (loading) {
-    return <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>;
-  }
-  const del = async (row: TradeExpenseRow) => {
-    const table = row.type === 'trade' ? 'daily_cash_trades' : 'daily_cash_expenses';
-    const res = await deleteCashRecordAction(table, row.id);
-    if (res.ok) onChanged();
-  };
+  if (loading) return <DetailLoading />;
   return (
-    <DataTable minWidth="620px" columns={['5%', '30%', '18%', '14%', '21%', '12%']}>
+    <DataTable minWidth="720px" columns={['5%', '27%', '17%', '17%', '20%', '14%']}>
       <Thead>
         <Tr plain>
           <Th kind="center">#</Th>
           <Th>Name</Th>
+          <Th>Order</Th>
           <Th kind="num">Amount</Th>
-          <Th kind="center">Type</Th>
-          <Th kind="center">Remarks</Th>
+          <Th kind="center">Date / Time</Th>
           <Th kind="center">Action</Th>
         </Tr>
       </Thead>
       <tbody>
         {rows.length === 0 ? (
-          <EmptyRow colSpan={6}>No trades or expenses for this date.</EmptyRow>
+          <EmptyRow colSpan={6}>No cash payments for this date.</EmptyRow>
         ) : (
           rows.map((row, i) => (
             <Tr key={row.id}>
@@ -1008,9 +1023,156 @@ function TradesExpensesTable({
               <Td clip title={row.name}>
                 {row.name}
               </Td>
+              <Td clip title={row.orderNumber}>
+                {row.orderNumber}
+              </Td>
               <Td kind="num">{money(row.amount)}</Td>
+              <Td kind="center" className="text-muted-foreground">
+                {fmt(row.at)}
+              </Td>
               <Td kind="center">
-                <TypeBadge type={row.type} />
+                <ViewButton
+                  onView={() =>
+                    onView({
+                      title: `Cash Payment — ${row.name}`,
+                      fields: [
+                        { label: 'Name', value: row.name },
+                        { label: 'Order', value: row.orderNumber },
+                        { label: 'Amount', value: money(row.amount) },
+                        { label: 'Reference', value: row.reference ?? '—' },
+                        { label: 'Date / Time', value: fmt(row.at) },
+                      ],
+                    })
+                  }
+                />
+              </Td>
+            </Tr>
+          ))
+        )}
+      </tbody>
+    </DataTable>
+  );
+}
+
+/** Trade Deductions — DERIVED per-order trade-in deductions, read-only (View only). */
+function TradeDeductionsTable({
+  loading,
+  rows,
+  onView,
+}: {
+  loading: boolean;
+  rows: TradeDeductionRow[];
+  onView: (view: RowView) => void;
+}) {
+  const money = usePrivacyMoney();
+  if (loading) return <DetailLoading />;
+  return (
+    <DataTable minWidth="760px" columns={['5%', '24%', '15%', '20%', '13%', '13%', '10%']}>
+      <Thead>
+        <Tr plain>
+          <Th kind="center">#</Th>
+          <Th>Name</Th>
+          <Th>Order</Th>
+          <Th>Label</Th>
+          <Th kind="num">Amount</Th>
+          <Th kind="center">Date / Time</Th>
+          <Th kind="center">Action</Th>
+        </Tr>
+      </Thead>
+      <tbody>
+        {rows.length === 0 ? (
+          <EmptyRow colSpan={7}>No trade deductions for this date.</EmptyRow>
+        ) : (
+          rows.map((row, i) => (
+            <Tr key={row.id}>
+              <Td kind="center">{i + 1}</Td>
+              <Td clip title={row.name}>
+                {row.name}
+              </Td>
+              <Td clip title={row.orderNumber}>
+                {row.orderNumber}
+              </Td>
+              <Td clip title={row.label} className="text-muted-foreground">
+                {row.label}
+              </Td>
+              <Td kind="num">{money(row.amount)}</Td>
+              <Td kind="center" className="text-muted-foreground">
+                {fmt(row.at)}
+              </Td>
+              <Td kind="center">
+                <ViewButton
+                  onView={() =>
+                    onView({
+                      title: `Trade Deduction — ${row.name}`,
+                      fields: [
+                        { label: 'Name', value: row.name },
+                        { label: 'Order', value: row.orderNumber },
+                        { label: 'Label', value: row.label },
+                        { label: 'Amount', value: money(row.amount) },
+                        { label: 'Date / Time', value: fmt(row.at) },
+                      ],
+                    })
+                  }
+                />
+              </Td>
+            </Tr>
+          ))
+        )}
+      </tbody>
+    </DataTable>
+  );
+}
+
+/** Expenses — manual, counted in the Cash Breakdown. View / Edit / Delete. */
+function ExpensesTable({
+  loading,
+  rows,
+  onView,
+  onEdit,
+  onChanged,
+}: {
+  loading: boolean;
+  rows: ExpenseRow[];
+  onView: (view: RowView) => void;
+  onEdit: (row: ExpenseRow) => void;
+  onChanged: () => void;
+}) {
+  const money = usePrivacyMoney();
+  if (loading) return <DetailLoading />;
+  const del = async (row: ExpenseRow) => {
+    const res = await deleteCashRecordAction('daily_cash_expenses', row.id);
+    if (res.ok) onChanged();
+  };
+  return (
+    <DataTable minWidth="720px" columns={['5%', '26%', '15%', '16%', '24%', '14%']}>
+      <Thead>
+        <Tr plain>
+          <Th kind="center">#</Th>
+          <Th>Name / Payee</Th>
+          <Th kind="num">Amount</Th>
+          <Th kind="center">Category</Th>
+          <Th kind="center">Remarks</Th>
+          <Th kind="center">Action</Th>
+        </Tr>
+      </Thead>
+      <tbody>
+        {rows.length === 0 ? (
+          <EmptyRow colSpan={6}>No expenses for this date.</EmptyRow>
+        ) : (
+          rows.map((row, i) => (
+            <Tr key={row.id}>
+              <Td kind="center">{i + 1}</Td>
+              <Td clip title={row.payee}>
+                {row.payee}
+              </Td>
+              <Td kind="num">{money(row.amount)}</Td>
+              <Td
+                kind="center"
+                clip
+                className="text-muted-foreground"
+                title={row.category ?? undefined}
+              >
+                {row.category ?? '—'}
               </Td>
               <Td
                 kind="center"
@@ -1025,17 +1187,11 @@ function TradesExpensesTable({
                   <ViewButton
                     onView={() =>
                       onView({
-                        title: `${row.type === 'trade' ? 'Trade' : 'Expense'} — ${row.name}`,
+                        title: `Expense — ${row.payee}`,
                         fields: [
-                          { label: 'Name', value: row.name },
+                          { label: 'Name / Payee', value: row.payee },
                           { label: 'Amount', value: money(row.amount) },
-                          {
-                            label: 'Type',
-                            value: row.type === 'trade' ? 'Trade' : 'Expense',
-                          },
-                          row.type === 'trade'
-                            ? { label: 'Related Sale', value: row.relatedSale ?? '—' }
-                            : { label: 'Category', value: row.category ?? '—' },
+                          { label: 'Category', value: row.category ?? '—' },
                           { label: 'Remarks', value: row.remarks ?? '—' },
                           { label: 'Date / Time', value: fmt(row.createdAt) },
                           { label: 'Created By', value: row.createdByName },
@@ -1044,10 +1200,7 @@ function TradesExpensesTable({
                     }
                   />
                   <EditButton onEdit={() => onEdit(row)} />
-                  <DeleteButton
-                    noun={row.type === 'trade' ? 'trade' : 'expense'}
-                    onDelete={() => del(row)}
-                  />
+                  <DeleteButton noun="expense" onDelete={() => del(row)} />
                 </div>
               </Td>
             </Tr>
@@ -1058,9 +1211,154 @@ function TradesExpensesTable({
   );
 }
 
-function fmt(iso: string): string {
-  if (!iso) return '—';
-  return formatDateTime(iso);
+/** Remittance — manual, reduces Expected Cash. View / Edit / Delete. */
+function RemittanceTable({
+  loading,
+  rows,
+  onView,
+  onEdit,
+  onChanged,
+}: {
+  loading: boolean;
+  rows: RemittanceRow[];
+  onView: (view: RowView) => void;
+  onEdit: (row: RemittanceRow) => void;
+  onChanged: () => void;
+}) {
+  const money = usePrivacyMoney();
+  if (loading) return <DetailLoading />;
+  const del = async (row: RemittanceRow) => {
+    const res = await deleteCashRecordAction('daily_cash_remittances', row.id);
+    if (res.ok) onChanged();
+  };
+  const note = (r: RemittanceRow) => r.reference || r.remarks || '—';
+  return (
+    <DataTable minWidth="640px" columns={['16%', '32%', '24%', '16%', '12%']}>
+      <Thead>
+        <Tr plain>
+          <Th kind="num">Amount</Th>
+          <Th>Reference / Remarks</Th>
+          <Th kind="center">Date / Time</Th>
+          <Th kind="center">Recorded By</Th>
+          <Th kind="center">Action</Th>
+        </Tr>
+      </Thead>
+      <tbody>
+        {rows.length === 0 ? (
+          <EmptyRow colSpan={5}>No remittance for this date.</EmptyRow>
+        ) : (
+          rows.map((row) => (
+            <Tr key={row.id}>
+              <Td kind="num">{money(row.amount)}</Td>
+              <Td clip title={note(row)}>
+                {note(row)}
+              </Td>
+              <Td kind="center" className="text-muted-foreground">
+                {fmt(row.createdAt)}
+              </Td>
+              <Td kind="center" clip title={row.createdByName}>
+                {row.createdByName}
+              </Td>
+              <Td kind="center">
+                <div className="flex items-center justify-center gap-1">
+                  <ViewButton
+                    onView={() =>
+                      onView({
+                        title: 'Remittance',
+                        fields: [
+                          { label: 'Amount', value: money(row.amount) },
+                          { label: 'Reference', value: row.reference ?? '—' },
+                          { label: 'Remarks', value: row.remarks ?? '—' },
+                          { label: 'Date / Time', value: fmt(row.createdAt) },
+                          { label: 'Recorded By', value: row.createdByName },
+                        ],
+                      })
+                    }
+                  />
+                  <EditButton onEdit={() => onEdit(row)} />
+                  <DeleteButton noun="remittance" onDelete={() => del(row)} />
+                </div>
+              </Td>
+            </Tr>
+          ))
+        )}
+      </tbody>
+    </DataTable>
+  );
+}
+
+/** Other Cash In / Other Cash Out — manual movements. View / Edit / Delete. */
+function MovementsTable({
+  loading,
+  rows,
+  onView,
+  onEdit,
+  onChanged,
+}: {
+  loading: boolean;
+  rows: CashMovementRow[];
+  onView: (view: RowView) => void;
+  onEdit: (row: CashMovementRow) => void;
+  onChanged: () => void;
+}) {
+  const money = usePrivacyMoney();
+  if (loading) return <DetailLoading />;
+  const del = async (row: CashMovementRow) => {
+    const res = await deleteCashRecordAction('daily_cash_movements', row.id);
+    if (res.ok) onChanged();
+  };
+  return (
+    <DataTable minWidth="600px" columns={['16%', '40%', '20%', '12%', '12%']}>
+      <Thead>
+        <Tr plain>
+          <Th kind="num">Amount</Th>
+          <Th>Remarks</Th>
+          <Th kind="center">Date / Time</Th>
+          <Th kind="center">Recorded By</Th>
+          <Th kind="center">Action</Th>
+        </Tr>
+      </Thead>
+      <tbody>
+        {rows.length === 0 ? (
+          <EmptyRow colSpan={5}>No records for this date.</EmptyRow>
+        ) : (
+          rows.map((row) => (
+            <Tr key={row.id}>
+              <Td kind="num">{money(row.amount)}</Td>
+              <Td clip className="text-muted-foreground" title={row.remarks ?? undefined}>
+                {row.remarks ?? '—'}
+              </Td>
+              <Td kind="center" className="text-muted-foreground">
+                {fmt(row.createdAt)}
+              </Td>
+              <Td kind="center" clip title={row.createdByName}>
+                {row.createdByName}
+              </Td>
+              <Td kind="center">
+                <div className="flex items-center justify-center gap-1">
+                  <ViewButton
+                    onView={() =>
+                      onView({
+                        title: 'Cash Movement',
+                        fields: [
+                          { label: 'Amount', value: money(row.amount) },
+                          { label: 'Remarks', value: row.remarks ?? '—' },
+                          { label: 'Date / Time', value: fmt(row.createdAt) },
+                          { label: 'Recorded By', value: row.createdByName },
+                        ],
+                      })
+                    }
+                  />
+                  <EditButton onEdit={() => onEdit(row)} />
+                  <DeleteButton noun="record" onDelete={() => del(row)} />
+                </div>
+              </Td>
+            </Tr>
+          ))
+        )}
+      </tbody>
+    </DataTable>
+  );
 }
 
 /** Open the row's details in a popup — never navigates away (§4). */
@@ -1155,65 +1453,98 @@ function DeleteButton({
 }
 
 // ===========================================================================
-// Add / Edit entry modal — Trade or Expense (Trades & Expenses box)
+// Add / Edit entry modal — Expense · Remittance · Other Cash In · Other Cash Out.
+// One compact modal drives all four editable tabs; the `kind` picks its fields and which
+// guarded server action runs. It opens over the page (the section stays mounted behind
+// it) and never navigates. On Save it closes, refreshes the active tab, and recalculates
+// only the affected totals above.
 // ===========================================================================
 
-/** The compact modal for the Trades & Expenses box. On ADD it first asks the Type
- *  (Trade / Expense), then shows that type's fields; on EDIT the type is fixed by the
- *  record. Expense → daily_cash_expenses (counted in the Breakdown); Trade →
- *  daily_cash_trades (display-only, never changes Expected Cash). Never navigates. */
-function AddEntryModal({
+function CashEntryModal({
+  state,
   date,
-  editing,
   onClose,
   onSaved,
 }: {
+  state: NonNullable<CashEntryModalState>;
   date: string;
-  editing: EntryEdit | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const init = editing?.initial;
-  const [type, setType] = useState<'expense' | 'trade'>(editing?.type ?? 'expense');
-  const [name, setName] = useState(init?.name ?? '');
-  const [amount, setAmount] = useState(init?.amount ?? '');
-  const [category, setCategory] = useState(init?.category ?? '');
-  const [relatedSale, setRelatedSale] = useState(init?.relatedSale ?? '');
-  const [remarks, setRemarks] = useState(init?.remarks ?? '');
+  const { kind, edit } = state;
+  const editing = edit != null;
+  const asExpense = edit as ExpenseRow | null;
+  const asRemit = edit as RemittanceRow | null;
+  const asMove = edit as CashMovementRow | null;
+
+  const [amount, setAmount] = useState(edit?.amount ?? '');
   const [entryDate, setEntryDate] = useState(date);
+  const [payee, setPayee] = useState(kind === 'expense' ? (asExpense?.payee ?? '') : '');
+  const [category, setCategory] = useState(
+    kind === 'expense' ? (asExpense?.category ?? '') : '',
+  );
+  const [reference, setReference] = useState(
+    kind === 'remittance' ? (asRemit?.reference ?? asRemit?.remarks ?? '') : '',
+  );
+  const [remarks, setRemarks] = useState(
+    kind === 'expense'
+      ? (asExpense?.remarks ?? '')
+      : kind === 'cash_in' || kind === 'cash_out'
+        ? (asMove?.remarks ?? '')
+        : '',
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isTrade = type === 'trade';
-  const title = `${editing ? 'Edit' : 'Add'} ${isTrade ? 'Trade' : 'Expense'}`;
-
   const save = async () => {
     if (busy) return;
+    if (amount.trim() === '') {
+      setError('Enter an amount.');
+      return;
+    }
     setBusy(true);
     setError(null);
-    let res;
-    if (isTrade) {
+    let res: MutationResult;
+    if (kind === 'expense') {
       const payload = {
         date: entryDate,
-        name,
-        amount,
-        relatedSale: relatedSale || null,
-        remarks: remarks || null,
-      };
-      res = editing
-        ? await updateTradeAction(editing.id, payload)
-        : await addTradeAction(payload);
-    } else {
-      const payload = {
-        date: entryDate,
-        payee: name,
+        payee,
         amount,
         category: category || null,
         remarks: remarks || null,
       };
-      res = editing
-        ? await updateExpenseAction(editing.id, payload)
-        : await addExpenseAction(payload);
+      res =
+        editing && asExpense
+          ? await updateExpenseAction(asExpense.id, payload)
+          : await addExpenseAction(payload);
+    } else if (kind === 'remittance') {
+      const payload = {
+        date: entryDate,
+        amount,
+        reference: reference || null,
+        remarks: null,
+      };
+      res =
+        editing && asRemit
+          ? await updateRemittanceAction(asRemit.id, payload)
+          : await addRemittanceAction(payload);
+    } else {
+      const direction = kind === 'cash_in' ? 'in' : 'out';
+      res =
+        editing && asMove
+          ? await updateCashMovementAction(asMove.id, {
+              date: entryDate,
+              movementType: null,
+              amount,
+              remarks: remarks || null,
+            })
+          : await addCashMovementAction({
+              date: entryDate,
+              direction,
+              movementType: null,
+              amount,
+              remarks: remarks || null,
+            });
     }
     setBusy(false);
     if (!res.ok) {
@@ -1223,11 +1554,12 @@ function AddEntryModal({
     onSaved();
   };
 
+  const meta = ENTRY_META[kind];
   return (
     <Modal
       open
       onClose={onClose}
-      title={title}
+      title={`${editing ? 'Edit' : 'Add'} ${meta.noun}`}
       size="sm"
       critical
       footer={
@@ -1241,41 +1573,25 @@ function AddEntryModal({
             disabled={busy}
             data-testid="cash-entry-save"
           >
-            {busy ? 'Saving…' : 'Save'}
+            {busy ? 'Saving…' : `Save ${meta.noun}`}
           </Button>
         </>
       }
     >
       <ModalFormGrid>
-        {/* Type is chosen on ADD (it drives the fields); on EDIT it is fixed by the record. */}
-        {!editing ? (
+        {kind === 'expense' ? (
           <ModalFieldFull>
-            <Label htmlFor="entry-type" className="text-xs">
-              Type
+            <Label htmlFor="entry-payee" className="text-xs">
+              Name / Payee
             </Label>
-            <select
-              id="entry-type"
-              value={type}
-              onChange={(e) => setType(e.target.value === 'trade' ? 'trade' : 'expense')}
-              className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
-              data-testid="cash-entry-type"
-            >
-              <option value="expense">Expense</option>
-              <option value="trade">Trade</option>
-            </select>
+            <Input
+              id="entry-payee"
+              value={payee}
+              onChange={(e) => setPayee(e.target.value)}
+              className="mt-1 h-9"
+            />
           </ModalFieldFull>
         ) : null}
-        <ModalFieldFull>
-          <Label htmlFor="entry-name" className="text-xs">
-            {isTrade ? 'Name' : 'Name / Payee'}
-          </Label>
-          <Input
-            id="entry-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="mt-1 h-9"
-          />
-        </ModalFieldFull>
         <div>
           <Label htmlFor="entry-amount" className="text-xs">
             Amount (₱)
@@ -1299,20 +1615,7 @@ function AddEntryModal({
             className="mt-1 h-9"
           />
         </div>
-        {isTrade ? (
-          <ModalFieldFull>
-            <Label htmlFor="entry-related" className="text-xs">
-              Related Sale / Customer (optional)
-            </Label>
-            <Input
-              id="entry-related"
-              value={relatedSale}
-              onChange={(e) => setRelatedSale(e.target.value)}
-              placeholder="e.g. order # or customer"
-              className="mt-1 h-9"
-            />
-          </ModalFieldFull>
-        ) : (
+        {kind === 'expense' ? (
           <div>
             <Label htmlFor="entry-cat" className="text-xs">
               Category
@@ -1325,264 +1628,39 @@ function AddEntryModal({
               className="mt-1 h-9"
             />
           </div>
-        )}
-        <ModalFieldFull>
-          <Label htmlFor="entry-remarks" className="text-xs">
-            Remarks
-          </Label>
-          <Input
-            id="entry-remarks"
-            value={remarks}
-            onChange={(e) => setRemarks(e.target.value)}
-            className="mt-1 h-9"
-          />
-        </ModalFieldFull>
+        ) : null}
+        {kind === 'remittance' ? (
+          <ModalFieldFull>
+            <Label htmlFor="entry-ref" className="text-xs">
+              Reference / Remarks
+            </Label>
+            <Input
+              id="entry-ref"
+              value={reference}
+              onChange={(e) => setReference(e.target.value)}
+              className="mt-1 h-9"
+            />
+          </ModalFieldFull>
+        ) : null}
+        {kind === 'expense' || kind === 'cash_in' || kind === 'cash_out' ? (
+          <ModalFieldFull>
+            <Label htmlFor="entry-remarks" className="text-xs">
+              Remarks
+            </Label>
+            <Input
+              id="entry-remarks"
+              value={remarks}
+              onChange={(e) => setRemarks(e.target.value)}
+              className="mt-1 h-9"
+            />
+          </ModalFieldFull>
+        ) : null}
       </ModalFormGrid>
       {error ? (
         <p role="alert" className="mt-2 text-sm text-destructive">
           {error}
         </p>
       ) : null}
-    </Modal>
-  );
-}
-
-// ===========================================================================
-// "More" cash records — Remittance / Other Cash In / Other Cash Out. Less-frequent
-// entries kept out of the two main boxes but STILL part of the Cash Breakdown, so an
-// add/delete here recalculates Expected Cash (onChanged). Reuses the existing
-// add/detail/delete actions; never navigates or reloads the page.
-// ===========================================================================
-
-type MoreKind = 'remittance' | 'other_cash_in' | 'other_cash_out';
-type MoreRow = { id: string; amount: string; note: string; createdAt: string };
-
-const MORE_META: Record<
-  MoreKind,
-  { title: string; table: string; noteLabel: string; effect: string }
-> = {
-  remittance: {
-    title: 'Remittance',
-    table: 'daily_cash_remittances',
-    noteLabel: 'Reference / Remarks',
-    effect: 'Reduces Expected Cash on Hand',
-  },
-  other_cash_in: {
-    title: 'Other Cash In',
-    table: 'daily_cash_movements',
-    noteLabel: 'Remarks',
-    effect: 'Adds to Expected Cash on Hand',
-  },
-  other_cash_out: {
-    title: 'Other Cash Out',
-    table: 'daily_cash_movements',
-    noteLabel: 'Remarks',
-    effect: 'Reduces Expected Cash on Hand',
-  },
-};
-
-function MoreCashModal({
-  date,
-  onClose,
-  onChanged,
-}: {
-  date: string;
-  onClose: () => void;
-  onChanged: () => Promise<void>;
-}) {
-  const money = usePrivacyMoney();
-  const [kind, setKind] = useState<MoreKind>('remittance');
-  const [rows, setRows] = useState<MoreRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [amount, setAmount] = useState('');
-  const [note, setNote] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch spinner: flip to loading, then swap in server data on arrival
-    setLoading(true);
-    void loadCashDetailAction(kind, date, 1, 50)
-      .then((res) => {
-        if (!alive) return;
-        setRows(
-          (res.rows as Array<Record<string, unknown>>).map((r) => ({
-            id: cashStr(r.id),
-            amount: cashStr(r.amount) || '0',
-            note:
-              kind === 'remittance'
-                ? cashStr(r.reference) || cashStr(r.remarks)
-                : cashStr(r.remarks),
-            createdAt: cashStr(r.createdAt),
-          })),
-        );
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [kind, date, refreshKey]);
-
-  const add = async () => {
-    if (busy) return;
-    if (amount.trim() === '') {
-      setError('Enter an amount.');
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    const res =
-      kind === 'remittance'
-        ? await addRemittanceAction({
-            date,
-            amount,
-            reference: note.trim() || null,
-            remarks: null,
-          })
-        : await addCashMovementAction({
-            date,
-            direction: kind === 'other_cash_in' ? 'in' : 'out',
-            movementType: null,
-            amount,
-            remarks: note.trim() || null,
-          });
-    setBusy(false);
-    if (!res.ok) {
-      setError(res.error);
-      return;
-    }
-    setAmount('');
-    setNote('');
-    setRefreshKey((k) => k + 1);
-    void onChanged();
-  };
-
-  const del = async (id: string) => {
-    const res = await deleteCashRecordAction(MORE_META[kind].table, id);
-    if (res.ok) {
-      setRefreshKey((k) => k + 1);
-      void onChanged();
-    }
-  };
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title="More Cash Records"
-      size="md"
-      footer={
-        <Button type="button" variant="outline" onClick={onClose}>
-          Close
-        </Button>
-      }
-    >
-      {/* Which record type — Remittance / Other Cash In / Other Cash Out. */}
-      <div className="mb-3 flex flex-wrap gap-1.5">
-        {(Object.keys(MORE_META) as MoreKind[]).map((k) => (
-          <button
-            key={k}
-            type="button"
-            onClick={() => {
-              setKind(k);
-              setError(null);
-            }}
-            data-testid={`cash-more-tab-${k}`}
-            className={`rounded-md border px-2.5 py-1 text-xs font-medium ${
-              kind === k
-                ? 'border-gold bg-gold/10 text-foreground'
-                : 'border-border text-muted-foreground hover:bg-accent'
-            }`}
-          >
-            {MORE_META[k].title}
-          </button>
-        ))}
-      </div>
-
-      {/* Add a record of the selected type. */}
-      <div className="mb-2 flex flex-wrap items-end gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
-        <div className="w-32">
-          <Label htmlFor="more-amount" className="text-xs">
-            Amount (₱)
-          </Label>
-          <MoneyInput
-            id="more-amount"
-            value={amount}
-            onValueChange={setAmount}
-            className="mt-1 h-9"
-          />
-        </div>
-        <div className="min-w-[10rem] flex-1">
-          <Label htmlFor="more-note" className="text-xs">
-            {MORE_META[kind].noteLabel}
-          </Label>
-          <Input
-            id="more-note"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            className="mt-1 h-9"
-          />
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          onClick={() => void add()}
-          disabled={busy}
-          data-testid="cash-more-add"
-        >
-          {busy ? 'Adding…' : '+ Add'}
-        </Button>
-      </div>
-      <p className="mb-2 text-[11px] text-muted-foreground">{MORE_META[kind].effect}.</p>
-      {error ? (
-        <p role="alert" className="mb-2 text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
-
-      {loading ? (
-        <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
-      ) : (
-        <DataTable minWidth="480px" columns={['22%', '40%', '26%', '12%']}>
-          <Thead>
-            <Tr plain>
-              <Th kind="num">Amount</Th>
-              <Th>{MORE_META[kind].noteLabel}</Th>
-              <Th kind="center">Date / Time</Th>
-              <Th kind="center">Action</Th>
-            </Tr>
-          </Thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <EmptyRow colSpan={4}>
-                No {MORE_META[kind].title} for this date.
-              </EmptyRow>
-            ) : (
-              rows.map((r) => (
-                <Tr key={r.id}>
-                  <Td kind="num">{money(r.amount)}</Td>
-                  <Td clip title={r.note}>
-                    {r.note || '—'}
-                  </Td>
-                  <Td kind="center" className="text-muted-foreground">
-                    {fmt(r.createdAt)}
-                  </Td>
-                  <Td kind="center">
-                    <DeleteButton
-                      noun={MORE_META[kind].title.toLowerCase()}
-                      onDelete={() => del(r.id)}
-                    />
-                  </Td>
-                </Tr>
-              ))
-            )}
-          </tbody>
-        </DataTable>
-      )}
     </Modal>
   );
 }

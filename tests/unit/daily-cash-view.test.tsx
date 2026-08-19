@@ -5,17 +5,18 @@ import { DailyCashView } from '@/components/cash/daily-cash-view';
 import type {
   DailyCashSummary,
   DetailPage,
-  TradeExpenseRow,
+  ExpenseRow,
   WalkInRow,
 } from '@/lib/cash/types';
 import type { WalkInItem } from '@/lib/orders/service';
 
 /**
- * Daily Cash Summary — the lower area is two SELF-CONTAINED boxes (Sales Walk-ins ·
- * Trades & Expenses), no tab strip. Add / View / Edit / Delete only touch their own box
- * (and the totals it feeds); nothing here navigates or does a full-page reload
- * (router.refresh) — a reload would wipe the Actual Cash Count the user is entering.
- * These tests lock that contract.
+ * Daily Cash Summary — the lower area is ONE self-contained, tabbed Details section
+ * (Sales Walk-ins · Cash Payments · Trade Deductions · Expenses · Remittance · Other
+ * Cash In · Other Cash Out). Clicking a tab swaps ONLY the Details table; Add / View /
+ * Edit / Delete open modals in place. Nothing here navigates or does a full-page reload
+ * (router.push / router.refresh) — a reload would wipe the Actual Cash Count the operator
+ * is entering. These tests lock that contract.
  */
 
 const m = vi.hoisted(() => ({
@@ -24,11 +25,12 @@ const m = vi.hoisted(() => ({
   loadCashDetailAction: vi.fn(),
   loadCashSummaryAction: vi.fn(),
   loadCashExportAction: vi.fn(),
-  loadTradesExpensesAction: vi.fn(),
   addExpenseAction: vi.fn(),
-  addTradeAction: vi.fn(),
   updateExpenseAction: vi.fn(),
-  updateTradeAction: vi.fn(),
+  addRemittanceAction: vi.fn(),
+  updateRemittanceAction: vi.fn(),
+  addCashMovementAction: vi.fn(),
+  updateCashMovementAction: vi.fn(),
   deleteCashRecordAction: vi.fn(),
   saveActualCashCountAction: vi.fn(),
   loadWalkInItemsAction: vi.fn(),
@@ -51,7 +53,7 @@ vi.mock('@/lib/orders/actions', () => ({
 
 // The shared rich Walk-In modal has its OWN test (new-order-workflow.test.tsx). Here we
 // only assert the Daily Cash INTEGRATION — the button opens it in-section, and a save
-// refreshes the box + totals — so stub it to avoid pulling in its printer/photo/action deps.
+// refreshes the tab + totals — so stub it to avoid pulling in its printer/photo/action deps.
 vi.mock('@/components/orders/new-order-workflow', () => ({
   NewOrderModal: (props: { onSaved?: () => void; onClose?: () => void }) => (
     <div role="dialog">
@@ -70,11 +72,12 @@ vi.mock('@/lib/cash/actions', () => ({
   loadCashDetailAction: m.loadCashDetailAction,
   loadCashSummaryAction: m.loadCashSummaryAction,
   loadCashExportAction: m.loadCashExportAction,
-  loadTradesExpensesAction: m.loadTradesExpensesAction,
   addExpenseAction: m.addExpenseAction,
-  addTradeAction: m.addTradeAction,
   updateExpenseAction: m.updateExpenseAction,
-  updateTradeAction: m.updateTradeAction,
+  addRemittanceAction: m.addRemittanceAction,
+  updateRemittanceAction: m.updateRemittanceAction,
+  addCashMovementAction: m.addCashMovementAction,
+  updateCashMovementAction: m.updateCashMovementAction,
   deleteCashRecordAction: m.deleteCashRecordAction,
   saveActualCashCountAction: m.saveActualCashCountAction,
   loadWalkInItemsAction: m.loadWalkInItemsAction,
@@ -96,33 +99,49 @@ const summary: DailyCashSummary = {
 
 const walkIns: DetailPage<WalkInRow> = { rows: [], total: 0 };
 
-const expenseRow: TradeExpenseRow = {
+const expenseRow: ExpenseRow = {
   id: 'exp-1',
-  type: 'expense',
-  name: 'Jollibee lunch',
+  payee: 'Jollibee lunch',
   amount: '250',
   category: 'Meals',
-  relatedSale: null,
   remarks: 'team',
   createdByName: 'King Gonzales',
   createdAt: '2026-08-10T05:00:00.000Z',
 };
 
-function withExpense(): DetailPage<TradeExpenseRow> {
-  return { rows: [expenseRow], total: 1 };
-}
+const walkInRow: WalkInRow = {
+  id: 'ord-1',
+  orderNumber: 'WI-0001',
+  name: 'Maria Santos',
+  purchased: '9940',
+  nonCash: '0',
+  cash: '9940',
+  tradeDeductions: '0',
+};
 
 const walkInItems: WalkInItem[] = [
   { id: 'inv-1', itemCode: 'K18-001', facebookName: 'Gold Ring', grams: '3.5' },
 ];
 
+/** Make the Expenses tab (and only it) return the one expense row. */
+function expensesReturn(row: ExpenseRow = expenseRow) {
+  m.loadCashDetailAction.mockImplementation((tab: string) =>
+    Promise.resolve(
+      tab === 'expenses' ? { rows: [row], total: 1 } : { rows: [], total: 0 },
+    ),
+  );
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   m.loadCashDetailAction.mockResolvedValue({ rows: [], total: 0 });
   m.loadCashSummaryAction.mockResolvedValue(summary);
-  m.loadTradesExpensesAction.mockResolvedValue({ rows: [], total: 0 });
   m.addExpenseAction.mockResolvedValue({ ok: true });
-  m.addTradeAction.mockResolvedValue({ ok: true });
+  m.updateExpenseAction.mockResolvedValue({ ok: true });
+  m.addRemittanceAction.mockResolvedValue({ ok: true });
+  m.updateRemittanceAction.mockResolvedValue({ ok: true });
+  m.addCashMovementAction.mockResolvedValue({ ok: true });
+  m.updateCashMovementAction.mockResolvedValue({ ok: true });
   m.deleteCashRecordAction.mockResolvedValue({ ok: true });
   m.saveActualCashCountAction.mockResolvedValue({ ok: true });
   m.loadWalkInItemsAction.mockResolvedValue(walkInItems);
@@ -144,16 +163,6 @@ beforeEach(() => {
   });
 });
 
-const walkInRow: WalkInRow = {
-  id: 'ord-1',
-  orderNumber: 'WI-0001',
-  name: 'Maria Santos',
-  purchased: '9940',
-  nonCash: '0',
-  cash: '9940',
-  tradeDeductions: '0',
-};
-
 function renderView(
   opts: { isOwner?: boolean; walkInRows?: DetailPage<WalkInRow> } = {},
 ) {
@@ -169,24 +178,171 @@ function renderView(
   );
 }
 
-describe('Daily Cash — two self-contained boxes', () => {
-  it('renders the two boxes and loads Trades & Expenses on mount — no tab strip', async () => {
+const ALL_TABS = [
+  'sales_walkins',
+  'cash_payments',
+  'trade_deductions',
+  'expenses',
+  'remittance',
+  'other_cash_in',
+  'other_cash_out',
+];
+
+describe('Daily Cash — one self-contained tabbed Details section', () => {
+  it('renders all 7 tabs; Sales Walk-ins is the default and paints from props (no fetch)', () => {
     renderView();
-    expect(screen.getByText('Sales Walk-ins')).toBeInTheDocument();
-    expect(screen.getByText('Trades & Expenses')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Details' })).toBeInTheDocument();
+    for (const t of ALL_TABS) {
+      expect(screen.getByTestId(`cash-tab-${t}`)).toBeInTheDocument();
+    }
+    // Default tab is served by the SSR-provided initialWalkIns — no detail fetch on mount.
+    expect(m.loadCashDetailAction).not.toHaveBeenCalled();
+    // The old two-box layout + "More" button are gone.
+    expect(screen.queryByText('Trades & Expenses')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('cash-more')).not.toBeInTheDocument();
+    expect(m.push).not.toHaveBeenCalled();
+    expect(m.refresh).not.toHaveBeenCalled();
+  });
+
+  it('clicking a tab loads ONLY that tab in place — no navigation, no full reload', async () => {
+    renderView();
+    fireEvent.click(screen.getByTestId('cash-tab-expenses'));
     await waitFor(() =>
-      expect(m.loadTradesExpensesAction).toHaveBeenCalledWith('2026-08-10', 1, 8),
+      expect(m.loadCashDetailAction).toHaveBeenCalledWith('expenses', '2026-08-10', 1, 8),
     );
-    // The old tab strip is gone.
-    expect(screen.queryByTestId('cash-tab-expenses')).not.toBeInTheDocument();
+    // The contextual Add button now belongs to Expenses.
+    expect(screen.getByTestId('cash-add-expense')).toBeInTheDocument();
+    expect(m.push).not.toHaveBeenCalled();
+    expect(m.refresh).not.toHaveBeenCalled();
+  });
+
+  it('switching tabs never resets the Actual Cash Count being entered (§7)', () => {
+    renderView();
+    const count = screen.getByLabelText('Actual Cash Count');
+    fireEvent.change(count, { target: { value: '5000' } });
+    expect(count).toHaveValue('5,000'); // formatted display, live
+
+    fireEvent.click(screen.getByTestId('cash-tab-expenses'));
+    fireEvent.click(screen.getByTestId('cash-tab-remittance'));
+    fireEvent.click(screen.getByTestId('cash-tab-sales_walkins'));
+
+    // Still there — a tab switch never touches the parent's Actual Cash Count state.
+    expect(screen.getByLabelText('Actual Cash Count')).toHaveValue('5,000');
+  });
+
+  it('the Add button is contextual per tab; the derived tabs have none', async () => {
+    renderView();
+    // Sales Walk-ins (default)
+    expect(screen.getByTestId('cash-add-walkin')).toBeInTheDocument();
+
+    const cases: Array<[string, string]> = [
+      ['expenses', 'cash-add-expense'],
+      ['remittance', 'cash-add-remittance'],
+      ['other_cash_in', 'cash-add-cashin'],
+      ['other_cash_out', 'cash-add-cashout'],
+    ];
+    for (const [tab, addId] of cases) {
+      fireEvent.click(screen.getByTestId(`cash-tab-${tab}`));
+      await waitFor(() => expect(screen.getByTestId(addId)).toBeInTheDocument());
+    }
+
+    // Derived, read-only tabs: no Add control at all.
+    fireEvent.click(screen.getByTestId('cash-tab-cash_payments'));
+    expect(screen.queryByTestId('cash-add-expense')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('cash-add-walkin')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('cash-tab-trade_deductions'));
+    expect(screen.queryByTestId('cash-add-expense')).not.toBeInTheDocument();
+  });
+
+  it('"+ Add Expense" opens a modal and Save recalculates totals in place — no full reload', async () => {
+    renderView();
+    fireEvent.click(screen.getByTestId('cash-tab-expenses'));
+    fireEvent.click(await screen.findByTestId('cash-add-expense'));
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent('Add Expense');
+    fireEvent.change(within(dialog).getByLabelText('Amount (₱)'), {
+      target: { value: '250' },
+    });
+    fireEvent.click(screen.getByTestId('cash-entry-save'));
+
+    await waitFor(() => expect(m.addExpenseAction).toHaveBeenCalled());
+    // Totals recalculated via a targeted summary re-read, NOT a router.refresh().
+    await waitFor(() =>
+      expect(m.loadCashSummaryAction).toHaveBeenCalledWith('2026-08-10'),
+    );
+    expect(m.refresh).not.toHaveBeenCalled();
     expect(m.push).not.toHaveBeenCalled();
   });
 
-  it('"+ Add New Sale" opens the shared Walk-In modal in-section — it does not jump to Orders', async () => {
+  it('"+ Add Cash In" saves a movement with direction "in" (Cash Out → "out")', async () => {
+    renderView();
+    fireEvent.click(screen.getByTestId('cash-tab-other_cash_in'));
+    fireEvent.click(await screen.findByTestId('cash-add-cashin'));
+    fireEvent.change(within(screen.getByRole('dialog')).getByLabelText('Amount (₱)'), {
+      target: { value: '300' },
+    });
+    fireEvent.click(screen.getByTestId('cash-entry-save'));
+    await waitFor(() =>
+      expect(m.addCashMovementAction).toHaveBeenCalledWith(
+        expect.objectContaining({ direction: 'in', amount: '300' }),
+      ),
+    );
+  });
+
+  it('View opens a popup showing the row — it does not navigate', async () => {
+    expensesReturn();
+    renderView();
+    fireEvent.click(screen.getByTestId('cash-tab-expenses'));
+    await screen.findByText('Jollibee lunch');
+
+    fireEvent.click(screen.getByText('👁 View'));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Expense — Jollibee lunch')).toBeInTheDocument();
+    expect(within(dialog).getByText('Meals')).toBeInTheDocument();
+    expect(m.push).not.toHaveBeenCalled();
+  });
+
+  it('Edit opens the same row in a prefilled modal — no navigation', async () => {
+    expensesReturn();
+    renderView();
+    fireEvent.click(screen.getByTestId('cash-tab-expenses'));
+    await screen.findByText('Jollibee lunch');
+
+    fireEvent.click(screen.getByText('Edit'));
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent('Edit Expense');
+    expect(within(dialog).getByLabelText('Name / Payee')).toHaveValue('Jollibee lunch');
+    expect(m.push).not.toHaveBeenCalled();
+  });
+
+  it('Delete asks first, then deletes the right record — never on the first click', async () => {
+    expensesReturn();
+    renderView();
+    fireEvent.click(screen.getByTestId('cash-tab-expenses'));
+    await screen.findByText('Jollibee lunch');
+
+    fireEvent.click(screen.getByText('Delete'));
+    expect(m.deleteCashRecordAction).not.toHaveBeenCalled();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent('Delete expense?');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+    await waitFor(() =>
+      expect(m.deleteCashRecordAction).toHaveBeenCalledWith(
+        'daily_cash_expenses',
+        'exp-1',
+      ),
+    );
+    // In-place recalc, never a full reload.
+    await waitFor(() => expect(m.loadCashSummaryAction).toHaveBeenCalled());
+    expect(m.refresh).not.toHaveBeenCalled();
+    expect(m.push).not.toHaveBeenCalled();
+  });
+
+  it('"+ Add New Sale" opens the shared Walk-In modal in-section (lazy item load)', async () => {
     renderView();
     fireEvent.click(screen.getByTestId('cash-add-walkin'));
-    // The walk-in item picker is LAZY-loaded (loadWalkInItemsAction) before the modal opens,
-    // so opening Daily Cash never pays the ~1,900-row inventory read up front.
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('New Walk-In Sale');
     expect(m.loadWalkInItemsAction).toHaveBeenCalled();
@@ -197,55 +353,12 @@ describe('Daily Cash — two self-contained boxes', () => {
   it('saving a walk-in recalculates the totals in place — refetch summary, no full reload', async () => {
     renderView();
     fireEvent.click(screen.getByTestId('cash-add-walkin'));
-    // The item picker lazy-loads first; wait for the modal, then simulate a successful save.
-    // The shared modal signals success via onSaved → afterSave (refreshKey bump + a targeted
-    // summary re-read), NEVER a router.refresh that would wipe the Actual Cash Count the
-    // operator may be entering. (Save/routing logic itself is covered by
-    // new-order-workflow.test.tsx; here the modal is stubbed to its onSaved contract.)
     await screen.findByText('stub-save');
     fireEvent.click(screen.getByText('stub-save'));
     await waitFor(() =>
       expect(m.loadCashSummaryAction).toHaveBeenCalledWith('2026-08-10'),
     );
     expect(m.refresh).not.toHaveBeenCalled();
-    expect(m.push).not.toHaveBeenCalled();
-  });
-
-  it('"+ Add New Entry" opens a modal (Expense by default), not a new page', async () => {
-    renderView();
-    await waitFor(() => expect(m.loadTradesExpensesAction).toHaveBeenCalled());
-    fireEvent.click(screen.getByTestId('cash-add-entry'));
-    expect(screen.getByRole('dialog')).toHaveTextContent('Add Expense');
-    expect(m.push).not.toHaveBeenCalled();
-    expect(m.refresh).not.toHaveBeenCalled();
-  });
-
-  it('picking Type = Trade routes to the display-only trade action, not the expense one', async () => {
-    renderView();
-    await waitFor(() => expect(m.loadTradesExpensesAction).toHaveBeenCalled());
-    fireEvent.click(screen.getByTestId('cash-add-entry'));
-    fireEvent.change(screen.getByTestId('cash-entry-type'), {
-      target: { value: 'trade' },
-    });
-    fireEvent.change(screen.getByLabelText('Name'), {
-      target: { value: 'Old ring trade-in' },
-    });
-    fireEvent.change(screen.getByLabelText('Amount (₱)'), { target: { value: '5000' } });
-    fireEvent.click(screen.getByTestId('cash-entry-save'));
-    await waitFor(() => expect(m.addTradeAction).toHaveBeenCalled());
-    expect(m.addExpenseAction).not.toHaveBeenCalled();
-  });
-
-  it('View opens a popup showing the row — it does not navigate to Orders', async () => {
-    m.loadTradesExpensesAction.mockResolvedValue(withExpense());
-    renderView();
-    await screen.findByText('Jollibee lunch');
-
-    fireEvent.click(screen.getByText('👁 View'));
-
-    const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByText('Expense — Jollibee lunch')).toBeInTheDocument();
-    expect(within(dialog).getByText('Meals')).toBeInTheDocument();
     expect(m.push).not.toHaveBeenCalled();
   });
 
@@ -259,44 +372,6 @@ describe('Daily Cash — two self-contained boxes', () => {
     );
     expect(m.push).not.toHaveBeenCalled();
     expect(m.refresh).not.toHaveBeenCalled();
-  });
-
-  it('Delete asks first — it never deletes on the first click', async () => {
-    m.loadTradesExpensesAction.mockResolvedValue(withExpense());
-    renderView();
-    await screen.findByText('Jollibee lunch');
-
-    fireEvent.click(screen.getByText('Delete'));
-    // A confirmation popup — nothing deleted yet.
-    expect(m.deleteCashRecordAction).not.toHaveBeenCalled();
-    const dialog = screen.getByRole('dialog');
-    expect(dialog).toHaveTextContent('Delete expense?');
-
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
-    await waitFor(() =>
-      expect(m.deleteCashRecordAction).toHaveBeenCalledWith(
-        'daily_cash_expenses',
-        'exp-1',
-      ),
-    );
-    expect(m.push).not.toHaveBeenCalled();
-    expect(m.refresh).not.toHaveBeenCalled();
-  });
-
-  it('saving an entry recalculates the totals in place — refetch summary, no full reload', async () => {
-    renderView();
-    await waitFor(() => expect(m.loadTradesExpensesAction).toHaveBeenCalled());
-
-    fireEvent.click(screen.getByTestId('cash-add-entry'));
-    fireEvent.click(screen.getByTestId('cash-entry-save'));
-
-    await waitFor(() => expect(m.addExpenseAction).toHaveBeenCalled());
-    // Totals recalculated via a targeted summary re-read, NOT a router.refresh().
-    await waitFor(() =>
-      expect(m.loadCashSummaryAction).toHaveBeenCalledWith('2026-08-10'),
-    );
-    expect(m.refresh).not.toHaveBeenCalled();
-    expect(m.push).not.toHaveBeenCalled();
   });
 
   it('the Owner gets Edit + Delete on a walk-in; Delete confirms then refreshes in place', async () => {
@@ -315,7 +390,6 @@ describe('Daily Cash — two self-contained boxes', () => {
     await waitFor(() =>
       expect(m.deleteOrderAction).toHaveBeenCalledWith('ord-1', 'DELETE'),
     );
-    // In-place refresh, NOT a full router.refresh (which would wipe the Actual Cash Count).
     await waitFor(() => expect(m.loadCashSummaryAction).toHaveBeenCalled());
     expect(m.refresh).not.toHaveBeenCalled();
   });
