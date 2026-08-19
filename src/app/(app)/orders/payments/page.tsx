@@ -8,7 +8,6 @@ import {
   requireActiveStaff,
 } from '@/lib/authz/guard';
 import { getAdminNameContext } from '@/lib/authz/admin-name';
-import { listCaptureItems } from '@/lib/orders/service';
 import { listCaptureCustomers } from '@/lib/live/batches';
 import { listDetectedFinancers, listFinancers } from '@/lib/payments/financer';
 import { layawayLedgerStatusCounts } from '@/lib/payments/layaway-ledger';
@@ -82,7 +81,6 @@ export default async function PaymentsPage({
     financers,
     ledgerCounts,
     staff,
-    activeItems,
     captureCustomers,
     admins,
     detectedFinancers,
@@ -97,7 +95,6 @@ export default async function PaymentsPage({
     listFinancers(),
     layawayLedgerStatusCounts(),
     requireActiveStaff(),
-    listCaptureItems(),
     listCaptureCustomers(),
     getAdminNameContext(),
     listDetectedFinancers(),
@@ -152,7 +149,6 @@ export default async function PaymentsPage({
         canDeleteLayaway={canDeleteLayaway}
         canDeleteAllLedger={isOwner}
         canImportExport={isOwner}
-        activeItems={activeItems}
         captureCustomers={captureCustomers.map((c) => c.displayName)}
         admins={admins}
         detectedFinancers={detectedFinancers}

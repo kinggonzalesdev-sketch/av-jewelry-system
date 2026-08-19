@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import {
   createLayawayAccountAction,
+  loadLayawayItemsAction,
   previewLayawayCodeAction,
 } from '@/lib/payments/actions';
 import type { CaptureItem } from '@/lib/orders/service';
@@ -86,31 +87,48 @@ function perGramCentavos(grams: string, rate: string): bigint {
 }
 
 export function LayawayNewEntry({
-  items,
   customers,
   financers,
   admins,
   canCreate,
 }: {
-  items: CaptureItem[];
   customers: string[];
   financers: string[];
   admins: AdminNameContext;
   canCreate: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  // The Active-Inventory item list (~3k rows) is LAZY-loaded the first time New Entry is
+  // opened, so the Payments/Layaway page no longer pays that read on every load. Cached
+  // after the first fetch. The modal opens only AFTER the items arrive, so its item picker
+  // is never empty mid-load (the button shows "Loading…" meanwhile).
+  const [items, setItems] = useState<CaptureItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const openEntry = () => {
+    if (items.length > 0) {
+      setOpen(true);
+      return;
+    }
+    setLoading(true);
+    void loadLayawayItemsAction()
+      .then((res) => {
+        setItems(res);
+        setOpen(true);
+      })
+      .finally(() => setLoading(false));
+  };
 
   return (
     <>
       <Button
         type="button"
-        onClick={() => setOpen(true)}
-        disabled={!canCreate}
+        onClick={openEntry}
+        disabled={!canCreate || loading}
         data-testid="layaway-new-entry"
         className="font-semibold"
         title={canCreate ? undefined : 'Creating a layaway account is Owner/Admin only.'}
       >
-        ＋ New Entry
+        {loading ? 'Loading…' : '＋ New Entry'}
       </Button>
       {open ? (
         <EntryForm

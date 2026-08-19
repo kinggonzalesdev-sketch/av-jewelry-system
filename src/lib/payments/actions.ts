@@ -69,6 +69,7 @@ import {
   type LayawayPageOpts,
   type LayawayPageResult,
 } from '@/lib/payments/layaway-page';
+import { listCaptureItems, type CaptureItem } from '@/lib/orders/service';
 
 /**
  * Phase 6 server actions (Bible §16, §17).
@@ -100,6 +101,17 @@ export async function loadLayawayPageAction(
  */
 export async function loadLayawayDedupKeysAction(): Promise<string[]> {
   return listLayawayDedupKeys();
+}
+
+/**
+ * The Active-Inventory item list for the Layaway "New Entry" picker (~3k rows), fetched
+ * LAZILY the first time New Entry opens so the Payments/Layaway page never loads it up front.
+ * Transport only (like loadLayawayPageAction / loadLayawayDedupKeysAction): `listCaptureItems`
+ * reads through the RLS-scoped client — the SAME boundary the page already applied when it
+ * loaded this list eagerly — and the actual layaway CREATE re-checks `layaway_create` in the DB.
+ */
+export async function loadLayawayItemsAction(): Promise<CaptureItem[]> {
+  return listCaptureItems();
 }
 
 /**

@@ -40,7 +40,6 @@ import type {
 import { LayawayDetailsModal } from '@/components/payments/layaway-details-modal';
 import { LayawayImportButton } from '@/components/payments/layaway-import-modal';
 import { LayawayNewEntry } from '@/components/payments/layaway-new-entry';
-import type { CaptureItem } from '@/lib/orders/service';
 import type { AdminNameContext } from '@/lib/authz/admin-name';
 import { LayawayLedgerViewModal } from '@/components/payments/layaway-ledger-view-modal';
 import { LedgerEditAccount } from '@/components/payments/layaway-ledger-actions';
@@ -218,7 +217,6 @@ export function PaymentsWorkspace({
   canDeleteLayaway,
   canDeleteAllLedger,
   canImportExport,
-  activeItems,
   captureCustomers,
   admins,
   detectedFinancers,
@@ -257,8 +255,6 @@ export function PaymentsWorkspace({
   canDeleteAllLedger: boolean;
   /** SUPER ADMIN only — Excel/CSV import and export (Owner request). */
   canImportExport: boolean;
-  /** Active Inventory, for the New Entry item selector (§1). */
-  activeItems: CaptureItem[];
   captureCustomers: string[];
   admins: AdminNameContext;
   /** Every DETECTED financer (configured + seen on layaway remarks), for the New
@@ -691,7 +687,6 @@ export function PaymentsWorkspace({
                 covers end to end, and two identically-labelled buttons side by
                 side were indistinguishable. */}
             <LayawayNewEntry
-              items={activeItems}
               customers={captureCustomers}
               financers={detectedFinancers}
               admins={admins}
