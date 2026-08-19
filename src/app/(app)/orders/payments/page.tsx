@@ -8,8 +8,7 @@ import {
   requireActiveStaff,
 } from '@/lib/authz/guard';
 import { getAdminNameContext } from '@/lib/authz/admin-name';
-import { listCaptureCustomers } from '@/lib/live/batches';
-import { listDetectedFinancers, listFinancers } from '@/lib/payments/financer';
+import { listFinancers } from '@/lib/payments/financer';
 import { layawayLedgerStatusCounts } from '@/lib/payments/layaway-ledger';
 import { listLayawayPage } from '@/lib/payments/layaway-page';
 import {
@@ -81,9 +80,7 @@ export default async function PaymentsPage({
     financers,
     ledgerCounts,
     staff,
-    captureCustomers,
     admins,
-    detectedFinancers,
   ] = await Promise.all([
     overviewCards(bounds),
     paymentVerificationQueue(),
@@ -95,9 +92,7 @@ export default async function PaymentsPage({
     listFinancers(),
     layawayLedgerStatusCounts(),
     requireActiveStaff(),
-    listCaptureCustomers(),
     getAdminNameContext(),
-    listDetectedFinancers(),
   ]);
 
   // Imported ledger accounts count toward the Active / Completed cards so an import updates the
@@ -149,9 +144,7 @@ export default async function PaymentsPage({
         canDeleteLayaway={canDeleteLayaway}
         canDeleteAllLedger={isOwner}
         canImportExport={isOwner}
-        captureCustomers={captureCustomers.map((c) => c.displayName)}
         admins={admins}
-        detectedFinancers={detectedFinancers}
         canCreateLayaway={canCreateLayaway}
       />
     </div>

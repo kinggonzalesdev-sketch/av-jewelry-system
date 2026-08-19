@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import {
   createLayawayAccountAction,
-  loadLayawayItemsAction,
+  loadLayawayNewEntryDataAction,
   previewLayawayCodeAction,
 } from '@/lib/payments/actions';
 import type { CaptureItem } from '@/lib/orders/service';
@@ -87,32 +87,33 @@ function perGramCentavos(grams: string, rate: string): bigint {
 }
 
 export function LayawayNewEntry({
-  customers,
-  financers,
   admins,
   canCreate,
 }: {
-  customers: string[];
-  financers: string[];
   admins: AdminNameContext;
   canCreate: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  // The Active-Inventory item list (~3k rows) is LAZY-loaded the first time New Entry is
-  // opened, so the Payments/Layaway page no longer pays that read on every load. Cached
-  // after the first fetch. The modal opens only AFTER the items arrive, so its item picker
-  // is never empty mid-load (the button shows "Loading…" meanwhile).
-  const [items, setItems] = useState<CaptureItem[]>([]);
+  // Everything the picker needs — the Active-Inventory item list (~3k rows), the customer
+  // names, and the detected financers — is LAZY-loaded the first time New Entry is opened, so
+  // the Payments/Layaway page no longer pays any of those reads on every load. Cached after the
+  // first fetch. The modal opens only AFTER the data arrives, so its pickers are never empty
+  // mid-load (the button shows "Loading…" meanwhile).
+  const [data, setData] = useState<{
+    items: CaptureItem[];
+    customers: string[];
+    financers: string[];
+  } | null>(null);
   const [loading, setLoading] = useState(false);
   const openEntry = () => {
-    if (items.length > 0) {
+    if (data) {
       setOpen(true);
       return;
     }
     setLoading(true);
-    void loadLayawayItemsAction()
+    void loadLayawayNewEntryDataAction()
       .then((res) => {
-        setItems(res);
+        setData(res);
         setOpen(true);
       })
       .finally(() => setLoading(false));
@@ -130,11 +131,11 @@ export function LayawayNewEntry({
       >
         {loading ? 'Loading…' : '＋ New Entry'}
       </Button>
-      {open ? (
+      {open && data ? (
         <EntryForm
-          items={items}
-          customers={customers}
-          financers={financers}
+          items={data.items}
+          customers={data.customers}
+          financers={data.financers}
           admins={admins}
           onClose={() => setOpen(false)}
         />

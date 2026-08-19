@@ -217,9 +217,7 @@ export function PaymentsWorkspace({
   canDeleteLayaway,
   canDeleteAllLedger,
   canImportExport,
-  captureCustomers,
   admins,
-  detectedFinancers,
   canCreateLayaway,
   initialSection,
   title,
@@ -255,11 +253,7 @@ export function PaymentsWorkspace({
   canDeleteAllLedger: boolean;
   /** SUPER ADMIN only — Excel/CSV import and export (Owner request). */
   canImportExport: boolean;
-  captureCustomers: string[];
   admins: AdminNameContext;
-  /** Every DETECTED financer (configured + seen on layaway remarks), for the New
-   *  Entry Remarks/Financer selector. */
-  detectedFinancers: string[];
   /** Owner/Admin only — the same gate the database applies on save. */
   canCreateLayaway: boolean;
   /** Preselected layaway section (from a dashboard card deep-link). */
@@ -687,8 +681,6 @@ export function PaymentsWorkspace({
                 covers end to end, and two identically-labelled buttons side by
                 side were indistinguishable. */}
             <LayawayNewEntry
-              customers={captureCustomers}
-              financers={detectedFinancers}
               admins={admins}
               canCreate={canCreateLayaway}
             />

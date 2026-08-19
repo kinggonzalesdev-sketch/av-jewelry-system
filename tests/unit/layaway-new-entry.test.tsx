@@ -10,7 +10,7 @@ import type { AdminNameContext } from '@/lib/authz/admin-name';
 // now LAZY-loaded when New Entry opens (loadLayawayItemsAction), so opening is async.
 const h = vi.hoisted(() => ({
   createLayawayAccountAction: vi.fn(),
-  loadLayawayItemsAction: vi.fn(),
+  loadLayawayNewEntryDataAction: vi.fn(),
   // The code preview is derived from the customer's first letter, server-side.
   previewLayawayCodeAction: vi.fn((name: string) => {
     const letter = (name ?? '').toUpperCase().match(/[A-Z]/)?.[0] ?? null;
@@ -20,7 +20,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock('@/lib/payments/actions', () => ({
   createLayawayAccountAction: h.createLayawayAccountAction,
-  loadLayawayItemsAction: h.loadLayawayItemsAction,
+  loadLayawayNewEntryDataAction: h.loadLayawayNewEntryDataAction,
   previewLayawayCodeAction: h.previewLayawayCodeAction,
 }));
 vi.mock('next/navigation', () => ({
@@ -63,22 +63,19 @@ const admins: AdminNameContext = {
 };
 
 beforeEach(() => {
-  // The lazy item fetch resolves to the Active-Inventory fixture.
-  h.loadLayawayItemsAction.mockResolvedValue(items);
+  // The lazy fetch resolves to the New Entry data bundle (items + customers + financers).
+  h.loadLayawayNewEntryDataAction.mockResolvedValue({
+    items,
+    customers: ['Maria Santos'],
+    financers: ['Lalyn'],
+  });
 });
 
-/** Open New Entry. The item list lazy-loads first, then the modal appears — so this awaits. */
+/** Open New Entry. The data bundle lazy-loads first, then the modal appears — so this awaits. */
 async function open() {
-  render(
-    <LayawayNewEntry
-      customers={['Maria Santos']}
-      financers={['Lalyn']}
-      admins={admins}
-      canCreate
-    />,
-  );
+  render(<LayawayNewEntry admins={admins} canCreate />);
   fireEvent.click(screen.getByTestId('layaway-new-entry'));
-  // The modal opens only AFTER loadLayawayItemsAction resolves.
+  // The modal opens only AFTER loadLayawayNewEntryDataAction resolves.
   await screen.findByTestId('layaway-save');
 }
 
@@ -96,20 +93,13 @@ async function priceFirstItem(price = '30000') {
 }
 
 describe('Layaway New Entry — lazy item load', () => {
-  it('loads the Active-Inventory items only when New Entry is opened', async () => {
-    render(
-      <LayawayNewEntry
-        customers={['Maria Santos']}
-        financers={['Lalyn']}
-        admins={admins}
-        canCreate
-      />,
-    );
+  it('loads the New Entry data (items + customers + financers) only when opened', async () => {
+    render(<LayawayNewEntry admins={admins} canCreate />);
     // Not fetched on render — only on demand.
-    expect(h.loadLayawayItemsAction).not.toHaveBeenCalled();
+    expect(h.loadLayawayNewEntryDataAction).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('layaway-new-entry'));
     await screen.findByTestId('layaway-save');
-    expect(h.loadLayawayItemsAction).toHaveBeenCalledTimes(1);
+    expect(h.loadLayawayNewEntryDataAction).toHaveBeenCalledTimes(1);
   });
 });
 

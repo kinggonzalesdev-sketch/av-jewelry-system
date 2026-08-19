@@ -8,9 +8,11 @@ import { revalidatePath } from 'next/cache';
 
 import {
   findOrCreateFinancer,
+  listDetectedFinancers,
   setLayawayDetails,
   type FindOrCreateFinancerResult,
 } from '@/lib/payments/financer';
+import { listCaptureCustomers } from '@/lib/live/batches';
 import {
   activateLayaway,
   listAvailableLayawayCodes,
@@ -104,14 +106,24 @@ export async function loadLayawayDedupKeysAction(): Promise<string[]> {
 }
 
 /**
- * The Active-Inventory item list for the Layaway "New Entry" picker (~3k rows), fetched
- * LAZILY the first time New Entry opens so the Payments/Layaway page never loads it up front.
- * Transport only (like loadLayawayPageAction / loadLayawayDedupKeysAction): `listCaptureItems`
- * reads through the RLS-scoped client — the SAME boundary the page already applied when it
- * loaded this list eagerly — and the actual layaway CREATE re-checks `layaway_create` in the DB.
+ * Everything the Layaway "New Entry" picker needs — the Active-Inventory item list (~3k rows),
+ * the customer names, and the detected financers — fetched LAZILY the first time New Entry opens
+ * so the Payments/Layaway page never loads any of them up front. All three are used ONLY by New
+ * Entry. Transport only (like loadLayawayPageAction / loadLayawayDedupKeysAction): each reader
+ * runs through the RLS-scoped client — the SAME boundary the page applied when it loaded these
+ * eagerly — and the actual layaway CREATE re-checks `layaway_create` in the DB.
  */
-export async function loadLayawayItemsAction(): Promise<CaptureItem[]> {
-  return listCaptureItems();
+export async function loadLayawayNewEntryDataAction(): Promise<{
+  items: CaptureItem[];
+  customers: string[];
+  financers: string[];
+}> {
+  const [items, customers, financers] = await Promise.all([
+    listCaptureItems(),
+    listCaptureCustomers(),
+    listDetectedFinancers(),
+  ]);
+  return { items, customers: customers.map((c) => c.displayName), financers };
 }
 
 /**
