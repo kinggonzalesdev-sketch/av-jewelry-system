@@ -101,9 +101,13 @@ Classify `final_print_source`:
 - ❌ **Webhook secret rotation cutover** — mechanism is live; the Owner does the
   Pancake + Vercel swap AFTER a live session (never mid-live).
 - ~~Layaway "Imported (no item)" backfill~~ — DISREGARDED by Owner 2026-08-19 (not doing it).
-- ❌ **Perf tuning (remaining)** — advisor unused-index / multiple-permissive-policy
-  cleanup only; non-blocking. (Hot-path FK indexes + the Layaway New Entry async
-  item-picker are DONE — see below.) **Capture Phase 2** (`order_source`).
+- ❌ **Perf tuning (remaining)** — advisor **unused-index cleanup DEFERRED** (verified
+  2026-08-20: the flagged ones are mostly trigram SEARCH indexes + sort/filter indexes;
+  `idx_scan=0` on small tables often just means "planner picks seq scan," so dropping them
+  pre-live risks slow search — revisit post-live with query-plan checks). **Multiple-
+  permissive-policy** RLS cleanup remains (touches security → not pre-live). Hot-path FK
+  indexes + the Layaway New Entry async loader (items + customers + financers) are DONE.
+  **Capture Phase 2** (`order_source`).
 
 ## Watch item
 
