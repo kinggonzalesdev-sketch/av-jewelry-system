@@ -3,14 +3,11 @@
 import { useEffect, useState } from 'react';
 
 import {
-  DEFAULT_STICKER_FIELDS,
   printOrderReceipt,
-  stickerDate,
   stickerLineItems,
-  type OrderReceiptData,
   type StickerField,
-  type StickerFields,
 } from '@/lib/print/order-receipt';
+import { buildSampleSticker, STICKER_FIELDS } from '@/lib/print/sample-sticker';
 import {
   readStickerPricePerGram,
   writeStickerFields,
@@ -35,20 +32,6 @@ import { Button } from '@/components/ui/button';
  * function is REUSED unchanged (usePrinter, writeToChannel/encodeReceipt, printOrderReceipt,
  * loadStickerSettingsAction/saveStickerSettingsAction, the shared ₱/gram + auto-print flags).
  */
-
-// The sticker layout is FIXED (Owner): Facebook Name + Price per gram + Date; no item/price.
-const STICKER_FIELDS: StickerFields = {
-  ...DEFAULT_STICKER_FIELDS,
-  name: true,
-  pricePerGram: true,
-  date: true,
-  item: false,
-  price: false,
-};
-
-// Preview-only sample — the real sticker always uses the capture's own pinned name + grams.
-const SAMPLE_NAME = 'KING GONZALES';
-const SAMPLE_GRAMS = '11.5';
 
 /** On-screen preview font per field (scaled to the 40×30 preview box). */
 const PREVIEW_FONT: Record<StickerField, { size: number; weight: number }> = {
@@ -143,15 +126,7 @@ export function StickerPrintPanel() {
     setSaveMsg(res.ok ? 'Sticker settings saved.' : res.error);
   };
 
-  const sample: OrderReceiptData = {
-    customerName: SAMPLE_NAME,
-    itemName: '',
-    grams: SAMPLE_GRAMS,
-    quantity: 1,
-    unitPrice: null,
-    pricePerGram: pricePerGram.trim() || null,
-    date: stickerDate(),
-  };
+  const sample = buildSampleSticker(pricePerGram);
   const lines = stickerLineItems(sample, STICKER_FIELDS);
 
   // ONE Test Print — prints EXACTLY the previewed sticker over Bluetooth when linked, else the

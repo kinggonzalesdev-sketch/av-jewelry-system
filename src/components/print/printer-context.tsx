@@ -17,7 +17,9 @@ import {
   type PrinterChannel,
   type PrinterHandle,
 } from '@/lib/print/bluetooth-printer';
-import { encodeTest, type ReceiptLanguage } from '@/lib/print/receipt-encoders';
+import { encodeReceipt, type ReceiptLanguage } from '@/lib/print/receipt-encoders';
+import { buildSampleSticker, STICKER_FIELDS } from '@/lib/print/sample-sticker';
+import { readStickerPricePerGram } from '@/lib/print/sticker-fields';
 
 /**
  * ONE shared Bluetooth printer connection for the whole app. You connect once
@@ -120,7 +122,10 @@ export function PrinterProvider({ children }: { children: ReactNode }) {
       if (!ch) return;
       setTestResult(null);
       try {
-        await writeToChannel(ch, encodeTest(printLang));
+        // The SAME approved sticker the Live Operations panel + capture print — sample name +
+        // the saved price/g + today's date — NEVER the old "A.V. Jewelry / TEST PRINT".
+        const sample = buildSampleSticker(readStickerPricePerGram());
+        await writeToChannel(ch, encodeReceipt(sample, printLang, STICKER_FIELDS));
         setTestResult(
           'Sent a test print. Did it print? If not, try another channel or format.',
         );

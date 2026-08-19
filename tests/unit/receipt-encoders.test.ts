@@ -11,7 +11,6 @@ import {
 import {
   encodeLabelTspl,
   encodeReceiptEscPos,
-  encodeTest,
   tsplStickerLines,
   wrapWords,
 } from '@/lib/print/receipt-encoders';
@@ -231,17 +230,8 @@ describe('wrapWords', () => {
   });
 });
 
-describe('encodeTest', () => {
-  it('emits a short test in each language', () => {
-    expect(asText(encodeTest('escpos'))).toContain('TEST PRINT');
-    const tspl = asText(encodeTest('tspl'));
-    expect(tspl).toContain('TEST PRINT');
-    expect(tspl).toContain('PRINT 1,1');
-  });
-
+describe('encodeLabelTspl line breaks', () => {
   it('KEEPS TSPL line breaks — stripping CR/LF breaks the whole label', () => {
-    const tspl = asText(encodeTest('tspl'));
-    expect(tspl.split('\n').length).toBeGreaterThan(3);
     const label = asText(encodeLabelTspl(data));
     expect(label.split('\n').length).toBeGreaterThan(3);
   });

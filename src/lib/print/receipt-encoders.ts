@@ -319,26 +319,3 @@ export function encodeSlipTspl(d: OrderSlipData): Uint8Array {
 export function encodeSlip(d: OrderSlipData, language: ReceiptLanguage): Uint8Array {
   return language === 'tspl' ? encodeSlipTspl(d) : encodeSlipEscPos(d);
 }
-
-/** A short test print, used to find the working channel/language on a real device. */
-export function encodeTest(language: ReceiptLanguage): Uint8Array {
-  if (language === 'tspl') {
-    const program = [
-      'SIZE 40 mm,30 mm',
-      'GAP 2 mm,0 mm',
-      'DIRECTION 1',
-      'CLS',
-      `TEXT 16,20,"3",0,1,1,"A.V. Jewelry"`,
-      `TEXT 16,60,"2",0,1,1,"TEST PRINT"`,
-      'PRINT 1,1',
-      '',
-    ].join('\r\n');
-    return new Uint8Array(bytesFromText(program));
-  }
-  const out: number[] = [];
-  out.push(ESC, 0x40); // init
-  out.push(ESC, 0x61, 0x01); // centre
-  out.push(...bytesFromText('A.V. Jewelry\nTEST PRINT'), LF, LF, LF, LF);
-  out.push(GS, 0x56, 0x42, 0x00); // cut (no-op on label printers)
-  return new Uint8Array(out);
-}
