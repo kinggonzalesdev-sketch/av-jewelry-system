@@ -37,6 +37,7 @@ import com.mineflow.capture.data.ApiClient
 import com.mineflow.capture.data.ScreenshotOcr
 import com.mineflow.capture.data.SecureStore
 import com.mineflow.capture.printer.BluetoothPrinterManager
+import com.mineflow.capture.printer.DirectPrintDiag
 import com.mineflow.capture.printer.StickerEncoder
 import com.mineflow.capture.ui.MainActivity
 import org.json.JSONArray
@@ -455,7 +456,13 @@ class OverlayCaptureService : Service() {
             // 2) PRINT THE STICKER NOW — the moment OCR gives a confident name + grams, print
             //    it straight over Bluetooth. NO create, NO claim, NO network wait (~0.5–1s).
             //    The row is created below already-'printed', so the PC never double-prints it.
-            val printedLocally = maybePrintDirect(name, guess?.grams)
+            val diag = maybePrintDirect(name, guess?.grams)
+            val printedLocally = diag.result == "success"
+            // Technical-only diagnostic (no PII) recorded on the created row below, so the direct
+            // attempt is diagnosable read-only from the server — no Logcat / tethered phone needed.
+            val printDiagJson = JSONObject().apply {
+                diag.asDiagMap(System.currentTimeMillis()).forEach { (k, v) -> if (v != null) put(k, v) }
+            }
             val tPrintReq = android.os.SystemClock.elapsedRealtime()
             val t0 = if (lastTapElapsed > 0) lastTapElapsed else tOcrStart
             Log.i(
@@ -468,7 +475,7 @@ class OverlayCaptureService : Service() {
             //    auto-print claim always fails — race-free, no double-print. Idempotent per
             //    device+capture; it appears in the PC's Incoming Captures with the name/grams.
             val created = api.createPendingCapture(
-                captureId, null, ocr, if (printedLocally) "printed" else null,
+                captureId, null, ocr, if (printedLocally) "printed" else null, printDiagJson,
             )
             Log.i(
                 TAG,
@@ -492,7 +499,7 @@ class OverlayCaptureService : Service() {
             val path = runCatching { api.uploadScreenshot(captureId, "image/jpeg", bytes) }.getOrNull()
             if (!path.isNullOrBlank()) {
                 runCatching {
-                    api.createPendingCapture(captureId, path, ocr, if (printedLocally) "printed" else null)
+                    api.createPendingCapture(captureId, path, ocr, if (printedLocally) "printed" else null, printDiagJson)
                 }
                 Log.i(TAG, "capture $captureId screenshot uploaded in ${System.currentTimeMillis() - upAt}ms")
             }
@@ -522,19 +529,20 @@ class OverlayCaptureService : Service() {
      * printed. Safe no-op when this phone has no printer set, or the name/weight is unread
      * (a needs-review capture is left for the operator on the PC — never blind-printed).
      */
-    private fun maybePrintDirect(fbName: String, grams: String?): Boolean {
+    private fun maybePrintDirect(fbName: String, grams: String?): DirectPrintDiag {
+        val t0 = android.os.SystemClock.elapsedRealtime()
         val store = SecureStore.get(this)
         // Printer toggle OFF → NEVER attempt a local Bluetooth write. Leave the capture
         // un-printed (row not born 'printed') so the PC fallback prints it; capture/OCR/upload/
         // send all continue normally. OFF keeps the saved printer.
-        if (!store.printerEnabled) { Log.i(TAG, "PRINT_SOURCE=direct-local SKIP reason=printer_off"); return false }
+        if (!store.printerEnabled) { Log.i(TAG, "PRINT_SOURCE=direct-local SKIP reason=printer_off"); return DirectPrintDiag.skipped("printer_off") }
         val address = store.printerAddress
-        if (address.isNullOrBlank()) { Log.i(TAG, "PRINT_SOURCE=direct-local SKIP reason=no_printer"); return false }
-        if (fbName.length < 2 || grams.isNullOrBlank()) { Log.i(TAG, "PRINT_SOURCE=direct-local SKIP reason=no_name_or_grams"); return false }
+        if (address.isNullOrBlank()) { Log.i(TAG, "PRINT_SOURCE=direct-local SKIP reason=no_printer"); return DirectPrintDiag.skipped("no_printer") }
+        if (fbName.length < 2 || grams.isNullOrBlank()) { Log.i(TAG, "PRINT_SOURCE=direct-local SKIP reason=no_name_or_grams"); return DirectPrintDiag.skipped("no_name_or_grams") }
         // Was the RFCOMM socket ALREADY warm (keep-alive holding it) when we print? A cold socket
         // forces BluetoothPrinterManager.print() into a slow s.connect() (or a failure) — the usual
         // cause of a direct-print MISS that then falls to the mobile poller (post-network). Logged
-        // only — behaviour unchanged.
+        // AND persisted (print_diag) only — behaviour unchanged.
         val socketWarm = BluetoothPrinterManager.isConnected(address)
         return try {
             val tEnc = android.os.SystemClock.elapsedRealtime()
@@ -548,10 +556,15 @@ class OverlayCaptureService : Service() {
                 "PRINT_SOURCE=direct-local socketWarm=$socketWarm stickerEncode=${tWrite - tEnc}ms " +
                     "btWrite=${tEnd - tWrite}ms ok=${res.ok}",
             )
-            res.ok
+            DirectPrintDiag(
+                result = if (res.ok) "success" else "failed",
+                socketWarm = socketWarm,
+                errorClass = if (res.ok) null else "bt_write_fail",
+                durationMs = tEnd - t0,
+            )
         } catch (e: Exception) {
             Log.w(TAG, "PRINT_SOURCE=direct-local socketWarm=$socketWarm ok=false ex=${e.javaClass.simpleName}")
-            false
+            DirectPrintDiag("failed", socketWarm, e.javaClass.simpleName, android.os.SystemClock.elapsedRealtime() - t0)
         }
     }
 

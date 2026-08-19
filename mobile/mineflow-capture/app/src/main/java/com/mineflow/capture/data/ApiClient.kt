@@ -236,6 +236,7 @@ class ApiClient(context: Context) {
         screenshotPath: String?,
         ocr: JSONObject?,
         printStatus: String? = null,
+        printDiag: JSONObject? = null,
     ): Result {
         val payload = JSONObject()
             .put("deviceInstallationId", store.deviceInstallationId)
@@ -245,6 +246,8 @@ class ApiClient(context: Context) {
             // 'printed' when this phone already printed the sticker locally, so the row is
             // born printed and the PC never double-prints it.
             .putOpt("printStatus", printStatus)
+            // Technical-only direct-print diagnostic (no PII) → capture_records.print_diag.
+            .putOpt("printDiag", printDiag)
         return post("/api/mobile/capture/pending", payload)
     }
 

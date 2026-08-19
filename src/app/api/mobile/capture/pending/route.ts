@@ -45,6 +45,8 @@ export async function POST(request: Request): Promise<Response> {
     ocr: body.ocr ?? null,
     // 'printed' when the phone printed the sticker locally before this row existed.
     printStatus: str('printStatus') || null,
+    // Technical-only direct-print diagnostic (no PII) — persisted to capture_records.print_diag.
+    printDiag: body.printDiag ?? null,
   });
 
   if (!result.ok) {
