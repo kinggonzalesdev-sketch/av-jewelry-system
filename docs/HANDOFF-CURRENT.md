@@ -70,6 +70,11 @@ Classify `final_print_source`:
   (tab switch = table-only, no nav/reload; per-tab lazy+cache; Add/View/Edit/Delete
   modals; Actual-Cash-Count preserved; targeted recalc; Cash Payments + Trade
   Deductions read-only). Owner-verified on prod. `av-jewelry-daily-cash-summary`.
+- **Historical Scrap Report (Req 15)** — read-only `/admin/scrap/historical` report of
+  the pre-go-live scrap (₱22,177,199.77 / 468 rows, sold before 2026-08-17), reported
+  SEPARATELY from Daily Cash so past daily figures are never recalculated; reuses the
+  existing scrap readers scoped to the pre-cutoff range (no new DB fn), linked from the
+  Scrap page. No Add/Edit/Delete.
 - **Durable per-capture direct-print diagnostic** — `capture_records.print_diag`
   (technical-only, NO PII; migration `20260819100000_capture_print_diag`); Android
   `maybePrintDirect` returns a `DirectPrintDiag` passed into the capture-create.
@@ -91,8 +96,7 @@ Classify `final_print_source`:
 - ❌ **Webhook secret rotation cutover** — mechanism is live; the Owner does the
   Pancake + Vercel swap AFTER a live session (never mid-live).
 - ❌ **Layaway "Imported (no item)" backfill** — needs the Owner's inventory
-  Unique-Code file. **Historical scrap report (Req 15)** — the pre-go-live
-  ₱22.1M / 468 rows, produced separately.
+  Unique-Code file. (Historical scrap report / Req 15 is now DONE — see above.)
 - ❌ **Perf tuning** (async-dropdown; advisor unindexed-FK / unused-index /
   permissive-policy cleanup) — non-blocking. **Capture Phase 2** (`order_source`).
 

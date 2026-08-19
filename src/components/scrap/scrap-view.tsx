@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 
 import type { ScrapIncomeResult, ScrapSaleRow } from '@/lib/scrap/service';
@@ -173,6 +174,15 @@ export function ScrapView({
             >
               {exporting ? 'Preparing…' : '⭳ Export CSV'}
             </Button>
+            {/* The pre-go-live scrap is reported separately (Req 15) so past Daily Cash
+                figures are never recalculated — read-only. */}
+            <Link
+              href="/admin/scrap/historical"
+              className="inline-flex h-8 items-center rounded-md border border-border px-3 text-sm hover:bg-accent"
+              data-testid="scrap-historical-link"
+            >
+              Historical (pre-go-live)
+            </Link>
           </div>
         </CardHeader>
         <CardContent>
