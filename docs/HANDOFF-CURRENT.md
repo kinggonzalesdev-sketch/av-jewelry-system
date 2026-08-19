@@ -75,6 +75,11 @@ Classify `final_print_source`:
   SEPARATELY from Daily Cash so past daily figures are never recalculated; reuses the
   existing scrap readers scoped to the pre-cutoff range (no new DB fn), linked from the
   Scrap page. No Add/Edit/Delete.
+- **Safe cleanup batch (2026-08-19):** pruned 10 stale in-DB save-point snapshots (kept the
+  newest two); added 5 hot-path FK indexes (capture/payment/layaway join keys, migration
+  `hotpath_fk_indexes`), skipping ~55 useless audit-column ones; and lazy-loaded the Layaway
+  New Entry item picker (`loadLayawayItemsAction`) so the Payments/Layaway page no longer
+  eager-fetches ~3k inventory rows on every open.
 - **Durable per-capture direct-print diagnostic** — `capture_records.print_diag`
   (technical-only, NO PII; migration `20260819100000_capture_print_diag`); Android
   `maybePrintDirect` returns a `DirectPrintDiag` passed into the capture-create.
@@ -95,10 +100,10 @@ Classify `final_print_source`:
   `av-jewelry-pancake-test-b`, `av-jewelry-media-eligibility-fix`.
 - ❌ **Webhook secret rotation cutover** — mechanism is live; the Owner does the
   Pancake + Vercel swap AFTER a live session (never mid-live).
-- ❌ **Layaway "Imported (no item)" backfill** — needs the Owner's inventory
-  Unique-Code file. (Historical scrap report / Req 15 is now DONE — see above.)
-- ❌ **Perf tuning** (async-dropdown; advisor unindexed-FK / unused-index /
-  permissive-policy cleanup) — non-blocking. **Capture Phase 2** (`order_source`).
+- ~~Layaway "Imported (no item)" backfill~~ — DISREGARDED by Owner 2026-08-19 (not doing it).
+- ❌ **Perf tuning (remaining)** — advisor unused-index / multiple-permissive-policy
+  cleanup only; non-blocking. (Hot-path FK indexes + the Layaway New Entry async
+  item-picker are DONE — see below.) **Capture Phase 2** (`order_source`).
 
 ## Watch item
 
