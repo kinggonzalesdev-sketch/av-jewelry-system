@@ -63,7 +63,7 @@ export function SystemDiagnostics({
 
   const rows: Array<[string, string]> = [
     ['Deployment environment', envLabel],
-    ['App version (commit)', commit],
+    ['Web app commit', commit],
     ['Live sync', isSyncing ? 'refreshing…' : 'active (realtime + reconnect)'],
     ['Last official data refresh', lastSync],
     ['Capture device last seen', fmt(device?.lastSeenAt ?? null)],
@@ -134,9 +134,11 @@ export function SystemDiagnostics({
         </details>
 
         <p className="text-[11px] text-muted-foreground">
-          If two devices show different data, compare <strong>Commit</strong> above on each — they
-          must match. Always open the shared address{' '}
+          Web devices should share the same <strong>Web app commit</strong> — always open{' '}
           <span className="font-mono">av-jewelry.vercel.app</span>, not a one-off deployment URL.
+          The Capture app has its OWN Android build version, shown separately as{' '}
+          <strong>Capture app version</strong> above; it does <em>not</em> need to match the web
+          commit.
         </p>
       </div>
     </details>
