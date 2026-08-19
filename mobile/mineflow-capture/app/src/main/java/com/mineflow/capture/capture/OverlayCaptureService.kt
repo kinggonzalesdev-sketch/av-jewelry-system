@@ -527,10 +527,15 @@ class OverlayCaptureService : Service() {
         // Printer toggle OFF → NEVER attempt a local Bluetooth write. Leave the capture
         // un-printed (row not born 'printed') so the PC fallback prints it; capture/OCR/upload/
         // send all continue normally. OFF keeps the saved printer.
-        if (!store.printerEnabled) return false
+        if (!store.printerEnabled) { Log.i(TAG, "PRINT_SOURCE=direct-local SKIP reason=printer_off"); return false }
         val address = store.printerAddress
-        if (address.isNullOrBlank()) return false
-        if (fbName.length < 2 || grams.isNullOrBlank()) return false
+        if (address.isNullOrBlank()) { Log.i(TAG, "PRINT_SOURCE=direct-local SKIP reason=no_printer"); return false }
+        if (fbName.length < 2 || grams.isNullOrBlank()) { Log.i(TAG, "PRINT_SOURCE=direct-local SKIP reason=no_name_or_grams"); return false }
+        // Was the RFCOMM socket ALREADY warm (keep-alive holding it) when we print? A cold socket
+        // forces BluetoothPrinterManager.print() into a slow s.connect() (or a failure) — the usual
+        // cause of a direct-print MISS that then falls to the mobile poller (post-network). Logged
+        // only — behaviour unchanged.
+        val socketWarm = BluetoothPrinterManager.isConnected(address)
         return try {
             val tEnc = android.os.SystemClock.elapsedRealtime()
             val sticker = StickerEncoder.fromCapture(fbName, grams, store.pricePerGram)
@@ -540,11 +545,12 @@ class OverlayCaptureService : Service() {
             val tEnd = android.os.SystemClock.elapsedRealtime()
             Log.i(
                 TAG,
-                "timing: stickerEncode=${tWrite - tEnc}ms btWrite=${tEnd - tWrite}ms ok=${res.ok}",
+                "PRINT_SOURCE=direct-local socketWarm=$socketWarm stickerEncode=${tWrite - tEnc}ms " +
+                    "btWrite=${tEnd - tWrite}ms ok=${res.ok}",
             )
             res.ok
         } catch (e: Exception) {
-            Log.w(TAG, "direct print failed: ${e.javaClass.simpleName}")
+            Log.w(TAG, "PRINT_SOURCE=direct-local socketWarm=$socketWarm ok=false ex=${e.javaClass.simpleName}")
             false
         }
     }

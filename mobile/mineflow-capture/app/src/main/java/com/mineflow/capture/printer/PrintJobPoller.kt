@@ -95,6 +95,9 @@ object PrintJobPoller {
             )
             val bytes = StickerEncoder.encode(sticker, store.printerTspl)
             val res = BluetoothPrinterManager.print(context, address, bytes)
+            // Provenance: this capture was printed by the POST-NETWORK mobile poll queue, NOT the
+            // local-first direct path (which would have marked it printed and skipped this claim).
+            Log.i(TAG, "PRINT_SOURCE=mobile-poller capture=$id ok=${res.ok} (post-network queue claim)")
             api.reportCaptureSticker(id, printed = res.ok)
             res.ok
         } catch (e: Exception) {
