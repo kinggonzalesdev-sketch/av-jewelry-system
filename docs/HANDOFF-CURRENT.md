@@ -1,119 +1,116 @@
-# Handoff — current state (2026-08-12)
+# Handoff — current state (2026-08-19)
 
 Read this first in a new session. Concise pickup state. For the full system
-audit (73 tables, every module's status, env vars, cron, perf), read
-**`docs/HANDOFF-CURRENT-STATE-2026-08-11.md`** — this doc is the *delta on top of
-it* plus what's pending.
+audit (tables, every module's status, env vars, cron, perf) read
+**`docs/HANDOFF-CURRENT-STATE-2026-08-11.md`**. The authoritative, always-current
+changelog is the memory index **`MEMORY.md`** (one line per topic, newest facts in
+each linked note) — this doc is the short "what matters right now" on top of it.
 
 ## Branch, deploy, verify
 
 - **Branch:** `production-ui-integration`. **Main:** `main`.
-- **Production is LIVE, in daily use.** Deploy the working tree with
-  `npx vercel --prod --yes` (standing instruction: auto-deploy every finished
-  change without asking). App + DB co-located in Singapore
+- **Production is LIVE, in daily use.** App + DB co-located in Singapore
   (Vercel `sin1` / Supabase `eqfddwxsmzzojuasffjx`, `ap-southeast-1`).
-- **Verify (all green as of this session):** `npm run typecheck` (tc=0) ·
-  `npm run lint` (clean) · `npm run test` (**1,102 unit pass**). Latest prod
-  deploys reached `READY`.
-- Public demo: `av-jewelry.vercel.app` (demo login `UatPass123!`). Local
-  "Invalid credentials" almost always = Docker/Supabase down, not a bad password.
+- **Deploy** (standing instruction — auto-deploy every finished web change):
+  `npx vercel --prod --yes --build-env APP_COMMIT=$(git rev-parse --short=7 HEAD)`.
+- **Verify (all green 2026-08-19):** `npm run typecheck` (0) · `npm run lint`
+  (clean) · `npm run test` (**1,226 unit pass**) · `npm run build`. Latest prod
+  deploy `av-jewelry-6v19gycmy` → READY.
 - Migrations apply via Supabase MCP `apply_migration` (NOT `supabase db push` —
   blocked by pre-existing migration drift).
+- Public demo: `av-jewelry.vercel.app` (demo login `UatPass123!`). Local
+  "Invalid credentials" almost always = Docker/Supabase down, not a bad password.
 
-## ⏭️ Owner's #1 priority — TOMORROW's live test
+## 🔖 Latest save point (rollback target)
 
-Everything below is code-complete + deployed. The remaining work is the Owner's,
-on-device:
+- Git tag **`savepoint-2026-08-19-cash-7tab-print-diag`** (commit `f910f56`).
+- DB snapshot schema **`savepoint_20260819_cash7tab`** (77 base tables +
+  function/trigger/policy/index defs; live==snapshot verified).
+- Instant code rollback (no rebuild): `npx vercel promote av-jewelry-6v19gycmy --yes`.
+- Restore playbook: `backups/savepoint-2026-08-19-cash-7tab-print-diag/README.md`.
 
-1. **Install the freshly rebuilt APK** (image-pipeline + OCR fixes are only in the
-   new build). 2. **Connect the Bluetooth thermal printer to the phone** (the
-   phone prints locally now — sub-second — instead of round-tripping to the PC).
-3. **Test the one-tap live flow:** pinned-comment name → print in <2s → auto-send
-   the screenshot to that Facebook name. 4. Re-run **"Sync Pancake
-   Conversations"** once before going live.
+## ⏭️ Owner's #1 priority — the on-device live test
 
-## ✅ What changed THIS session (2026-08-12)
+The web + DB are code-complete + deployed. The remaining work is on-device:
 
-**The big one — "No Facebook match" ROOT CAUSE fixed.** A real Facebook *video/Reels*
-live sends comments as `data.post.type: "video"`, but the webhook parser
-hard-required `"livestream"` and silently dropped **every** comment. Fix in
-`src/lib/integrations/pancake-webhook.ts` (`parsePancakeLiveComment`): store ANY
-messaging event that has `page_id` + `data.message.id` + `data.message.from.id`
-(PSID, ≠ page) + `from.name` — covers video comments, livestream, AND inbox DMs.
-Verified live: `pancake_webhook_events` went **2 → 281+**, and every recent
-commenter now resolves to exactly one sendable chat. (Full write-up +
-the PSID constraint is in memory `av-jewelry-capture-facebook-match`.)
+1. **Install the fresh APK** — `mineflow-capture-1.0.12` **build `44091c5`**
+   (`mobile/mineflow-capture/app/build/outputs/apk/debug/app-debug.apk`, rebuild with
+   `:app:assembleDebug`, JDK 21 + cached Gradle 8.7 — see `av-jewelry-capture-speed`).
+   The two phones on the heartbeat still run OLDER builds (`b7b209d`, `3d1f144`) that
+   LACK the durable print diagnostic. Confirm the heartbeat then shows `44091c5`.
+2. **Pair + connect the XP-236B** to the phone → heartbeat `printer_connection_state`
+   should read `connected` (currently `no_printer` / `connecting`).
+3. **One controlled capture** (pinned-comment name) → sticker prints. Then read the
+   durable per-capture diagnostic (query below) to prove whether the phone printed
+   locally or fell back — this is the EVIDENCE gate before any Bluetooth change.
+4. If direct print works → run the one-tap live flow (name → print <2s → auto-send
+   screenshot to that Facebook name). 5. Click **"Sync Pancake Conversations"** once
+   before going live (the webhook is already live; belt-and-suspenders).
 
-- ✅ **Auto-link is now automatic** (no manual Sync needed for new commenters):
-  - Real-time customer link inside `webhook_store_pancake_live_comment` RPC —
-    fills `customers.pancake_conversation_id = {page_id}_{psid}` on a UNIQUE
-    active-name match. Uses `(array_agg(id))[1]` (NOT `min(uuid)` — doesn't exist
-    in PG) and is wrapped in `begin…exception when others then null` so it can
-    NEVER roll back a stored event.
-  - Order-level auto-link (pancake `/resolve` route) + **Send Invoice** dynamic
-    resolve (`for-invoice.ts`) both now call `resolveConversationForName`
-    (webhook fast-match) instead of the old live-API-only lookup that omitted
-    video-live commenters.
-  - **Two name→conversation resolvers are kept in sync** —
-    `resolveConversationForName` (pancake.ts) and `resolveCaptureIdentity`
-    (pending-link.ts) both call the webhook RPC tier.
-- ✅ **OCR garbage fix** — `ScreenshotOcr.kt` `BLOCK` regex drops app/live chrome
-  (GLIVE, "LIVE 01", MineFlow, "Capture Service", Floating Button, Open App) so
-  they never print as the FB name (blank → PC review instead).
-- ✅ **Android image pipeline** — removed dead `savePng` PNG round-trip; capture
-  now local-prints + auto-sends the screenshot. **APK rebuilt + sent.**
-- ✅ **Capture speed** — the incoming-captures engine (realtime + auto-print) was
-  mounted ONLY on the Orders page → captures crawled when the operator was on
-  another page. Moved to `AppShell` (`allowedPages.includes('claim_capture')`) so
-  it runs app-wide + persists across nav. Removed the modal help-text; added a
-  "🔄 Re-check FB" button.
-- ✅ **Inventory server-side pagination** — DONE + deployed. `inventory_active_ids_page`
-  RPC returns page ids + counts (its SQL group CASE mirrors `lib/inventory/group.ts`
-  exactly, verified vs all 2,784 items); `listInventoryActivePage` reuses the
-  proven monitor+custody row-builder so availability is identical; workspace
-  rewired to `initialPage` + debounced server fetch. It's a DISPLAY screen, so
-  pagination never touches stock — can't oversell.
-- ✅ **Privacy Mode batch 2** — masked money in HR (payroll summary, review/attendance,
-  **payslip** — print/PDF keep real values), Invoicing, Fulfillment (workspace,
-  prepare form, collection controls), Layaway ledger modal, Daily Cash. Removed
-  the Dashboard "Custom" range button.
-- ✅ **Daily Cash** — "⋯ More" modal (Remittance / Other Cash In/Out), manual
-  Trades added to CSV export.
-- ✅ **Webhook secret zero-downtime rotation** — `checkSecret` accepts EITHER
-  `PANCAKE_WEBHOOK_SECRET` OR `PANCAKE_WEBHOOK_SECRET_NEXT` (mechanism deployed;
-  the actual cutover is deferred, see below).
-- ✅ **Quick wins** — `customers` normalized-name functional index (fast real-time
-  linking); `pancake_webhook_events` retention pg_cron (daily 30-day purge);
-  deleted stray `av-jewelry-logo.png..png`.
+### Read-only diagnostic query (run after that ONE capture)
+
+```sql
+select capture_id, print_status, sticker_claimed_by, sticker_printed_at, print_diag
+from public.capture_records
+order by captured_at desc limit 1;
+```
+
+Classify `final_print_source`:
+- `print_diag->>'result' = 'success'` → **direct-local** (phone printed; poller + PC
+  correctly skipped). Sub-second local print confirmed.
+- `sticker_claimed_by = 'pc-web'` → **pc-web** (PC fallback printed).
+- `sticker_claimed_by` = a device-id (non-null) → **mobile-poller**, i.e.
+  `maybePrintDirect` FAILED → inspect `print_diag->>'error_class'` and
+  `print_diag->>'socket_warm'` (cold-RFCOMM hypothesis). Only AFTER this evidence do
+  we touch the Bluetooth reliability logic — never before.
+
+## ✅ Recently shipped (see MEMORY.md for the full, dated detail)
+
+- **Daily Cash Summary** lower area = ONE self-contained 7-tab Details section
+  (tab switch = table-only, no nav/reload; per-tab lazy+cache; Add/View/Edit/Delete
+  modals; Actual-Cash-Count preserved; targeted recalc; Cash Payments + Trade
+  Deductions read-only). Owner-verified on prod. `av-jewelry-daily-cash-summary`.
+- **Durable per-capture direct-print diagnostic** — `capture_records.print_diag`
+  (technical-only, NO PII; migration `20260819100000_capture_print_diag`); Android
+  `maybePrintDirect` returns a `DirectPrintDiag` passed into the capture-create.
+  Awaiting the one-capture read above. `av-jewelry-capture-speed`.
+- **Server-side pagination** is DONE + deployed for Inventory, Orders AND Layaway
+  (scales to ~50k). `av-jewelry-pagination-progress`.
+- **Fulfillment Phase A** (`official_orders` single source of truth),
+  **inventory-status integrity guards**, **inventory Edit/Delete approval workflow**
+  (owners = King + April), **Approvals module**, **per-item Remove / Split-to-order**,
+  **media-eligibility P0 fix** — all live. See the matching memory notes.
 
 ## ❌ Pending / deferred (do NOT start without a green light)
 
-- ❌ **Orders + Layaway server-side pagination** — deferred by Owner to *after the
-  live*. Same light-index pattern as Inventory (a `*_ids_page` RPC + reuse the
-  proven row-builder + rewire the workspace). Orders = `orders-view.tsx` /
-  `orders/service.ts`; Layaway = `payments-workspace.tsx`. Orders is card-based
-  and already batch-optimized (~469 rows), so it's not urgent. Details in memory
-  `av-jewelry-pagination-progress`.
+- ❌ **Bluetooth reliability fix** — GATED on the one-capture `print_diag` evidence
+  above. No connection/retry-architecture change until then.
+- ❌ **Pancake photo-send** — controlled Test B (one silent retry) + Test C (genuine-DM
+  photo) still UNPROVEN; v1↔v2 gap; auto-send-later. Keep the test account silent.
+  `av-jewelry-pancake-test-b`, `av-jewelry-media-eligibility-fix`.
 - ❌ **Webhook secret rotation cutover** — mechanism is live; the Owner does the
-  Pancake + Vercel cutover AFTER the live (never mid-live). Steps: set
-  `PANCAKE_WEBHOOK_SECRET_NEXT` in Vercel + redeploy → change Pancake `?secret=`
-  to it → confirm comments flow → promote NEXT → `PANCAKE_WEBHOOK_SECRET`, clear
-  NEXT, redeploy.
+  Pancake + Vercel swap AFTER a live session (never mid-live).
+- ❌ **Layaway "Imported (no item)" backfill** — needs the Owner's inventory
+  Unique-Code file. **Historical scrap report (Req 15)** — the pre-go-live
+  ₱22.1M / 468 rows, produced separately.
+- ❌ **Perf tuning** (async-dropdown; advisor unindexed-FK / unused-index /
+  permissive-policy cleanup) — non-blocking. **Capture Phase 2** (`order_source`).
+
+## Watch item
+
+- DB connections were **42 / 60** (Micro tier cap) while idle. Under a heavy live
+  they can approach 60 → the old slowdown / "invalid credentials". Mitigation: a
+  Supabase **restart** clears a pileup instantly. `av-jewelry-supabase-compute`.
 
 ## House rules that must not regress
 
 - Money is `numeric` in SQL, a **string** in TS — never a JS float; sums happen in
   RLS-scoped SQL. A failed read shows an explicit error, never a false ₱0.
 - Pancake / printer are never faked as "connected".
-- Report progress with **✅ done · ❌ not yet · 🔄 in-progress** markers
-  (Owner preference).
+- No PII in capture diagnostics/logs (names, screenshots, FB messages, BT address,
+  tokens).
+- Report progress with **✅ done · ❌ not yet · 🔄 in-progress** (Owner preference).
 - `<Money amount=…/>` is print-safe (masks screen, shows real on print);
   `usePrivacyMoney()` is a screen-only string formatter (NOT print-safe).
-
-## Source of truth
-
-`docs/FINAL-UI-SOURCE-OF-TRUTH.md` (Owner-decision change log) +
-`docs/HANDOFF-CURRENT-STATE-2026-08-11.md` (full audit). Memory index is in
-`MEMORY.md`; the most load-bearing files right now are
-`av-jewelry-capture-facebook-match`, `av-jewelry-pagination-progress`, and
-`av-jewelry-capture-speed`.
+- Make a **save point** (git tag + in-DB snapshot) before risky DB/system-wide work
+  — `av-jewelry-savepoint-rollback`.
