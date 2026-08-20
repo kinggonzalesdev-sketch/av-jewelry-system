@@ -42,8 +42,9 @@ internal data class OLine(val text: String, val box: Box)
  *   3. SELECT SPATIALLY (via ML Kit bounding boxes, not reading order): the pinned claim =
  *      the bottom-most `Mine`/`M`/bare-weight line; its name = the name-like line DIRECTLY
  *      above it (same column, within ~2 line-heights).
- *   4. No confident pinned name → `fbName = null` → PC "needs review"; the sticker never
- *      prints a guessed identity. Grams may still be kept.
+ *   4. No confident pinned name → `fbName = null` AND grams/value dropped → PC "needs review"
+ *      (a UI banner number such as "Send 200 Stars…" can never become grams). The sticker
+ *      never prints a guessed identity, and grams is only kept when tied to a real name block.
  *
  * The full screenshot is still uploaded for review/sending — only the identity source is
  * the pinned block.
@@ -84,6 +85,15 @@ object ScreenshotOcr {
             "\\bviewers?\\b|\\bmost relevant\\b|\\bnewest\\b|\\ball comments\\b|" +
             "\\bview \\d+ (more )?comments?\\b|\\btap to\\b|\\b(add|write) a comment\\b|" +
             "\\bprivate group\\b|\\bfinish\\b",
+        RegexOption.IGNORE_CASE,
+    )
+    // Facebook ENGAGEMENT / COMPOSER chrome that carries a NUMBER which must NEVER be grams:
+    // the "Send 200 Stars to pin your comment here" gifting banner + the pin-comment prompt.
+    // This is the FB control the Owner saw leak "200" into grams (2026-08-20). It's a targeted
+    // reject of that UI element — the STRUCTURAL guarantee (grams only kept with an associated
+    // name block, in guessFrom) is what generalises beyond this one banner.
+    private val BANNER = Regex(
+        "\\bpin\\s+(your\\s+)?comment\\b|\\bsend\\b[^\\n]*\\bstars?\\b|\\bstars?\\s+to\\s+pin\\b",
         RegexOption.IGNORE_CASE,
     )
     // Hard blocklist: this app's own overlay/notification chrome + a Live badge burned into
@@ -205,7 +215,7 @@ object ScreenshotOcr {
     }
 
     private fun isUiNoise(s: String): Boolean =
-        UI_NOISE.containsMatchIn(s) || WATCHING.containsMatchIn(s) ||
+        UI_NOISE.containsMatchIn(s) || WATCHING.containsMatchIn(s) || BANNER.containsMatchIn(s) ||
             BLOCK.containsMatchIn(s) || isChrome(s) || s.length < 2
 
     /** A name-like line: 1–5 words, mostly letters, no long digit runs, Title Case. */
@@ -328,6 +338,14 @@ object ScreenshotOcr {
         val name = nameForClaim(clean, pinnedLine)
             ?: stripClaim(pinnedLine.text)
                 .takeIf { it.isNotBlank() && looksLikeName(it) && !isChrome(it) }
+
+        // STRUCTURAL SAFETY (Owner 2026-08-20): grams/itemQuery are OPERATIONAL data ONLY when the
+        // claim belongs to a real comment block that ALSO yields a customer name (a same-block name
+        // directly above). A number with NO associated name — e.g. the FB "Send 200 Stars to pin
+        // your comment here" banner — is NEVER kept as grams: the capture becomes "needs review"
+        // instead of a guess. This is the structural guarantee (grams tied to the name/comment
+        // block) that a phrase blacklist alone cannot give.
+        if (name == null) return OcrGuess(null, null, null, rawLines)
 
         // itemQuery = the pinned value (the PC reinterprets grams vs fixed price); grams is set
         // only for ONE real weight — a fixed price OR 2+ ambiguous numbers leaves it null (review).

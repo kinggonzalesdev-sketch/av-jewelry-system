@@ -60,8 +60,9 @@ class ScreenshotOcrTest {
         assertEquals("11", pinnedGrams("11"))
     }
 
-    // Low confidence — a claim with no name-like line directly above it → needs review
-    // (fbName null), never a guessed name. Grams are still kept.
+    // Low confidence — a claim with no name-like line directly above it → needs review.
+    // STRUCTURAL (Owner 2026-08-20): with NO associated name, grams is dropped too — a number is
+    // never kept without a real name/comment block. The whole capture is "needs review".
     @Test
     fun lowConfidence_noNameAbove_needsReview() {
         val g = ScreenshotOcr.guessFrom(
@@ -71,7 +72,7 @@ class ScreenshotOcrTest {
             ),
         )
         assertNull(g.fbName)
-        assertEquals("5.5", g.grams)
+        assertNull(g.grams)
     }
 
     // The real layouts from the operator's screenshots (multi-word names, varied claims).
@@ -190,12 +191,12 @@ class ScreenshotOcrTest {
     }
 
     // Facebook UI tab "Overview" sitting DIRECTLY above the claim must NOT become the printed
-    // name — it is rejected → needs review (null), never a guessed identity. Grams still kept.
+    // name — rejected → needs review. With no real name, grams is dropped too (structural).
     @Test
     fun overviewDirectlyAboveClaim_isRejected_notPrinted() {
         val g = ScreenshotOcr.guessFrom(listOf(line("Overview", 860), line("Mine .7", 900)))
         assertNull(g.fbName)
-        assertEquals("0.7", g.grams)
+        assertNull(g.grams)
     }
 
     // With FB tab chrome AND a real pinned name on screen, the real name wins; tabs never do.
@@ -324,8 +325,8 @@ class ScreenshotOcrTest {
     @Test
     fun chrome_mergedOverviewLive_isNotAcceptedAsName() {
         val g = ScreenshotOcr.guessFrom(listOf(line("Overview Live", 850), line("Mine 1.5", 900)))
-        assertNull(g.fbName)          // chrome rejected → no guessed identity
-        assertEquals("1.5", g.grams)  // grams still parsed (genuinely available)
+        assertNull(g.fbName)  // chrome rejected → no guessed identity (Overview-Live protection kept)
+        assertNull(g.grams)   // structural: no real name block → grams dropped too (needs review)
     }
 
     @Test
@@ -339,10 +340,10 @@ class ScreenshotOcrTest {
     @Test
     fun chrome_mergedOnClaimLine_stripClaimRejectsIt() {
         // Claim line itself is chrome + a number: stripping marker/number leaves "Overview Live",
-        // which the chrome guard rejects → no name (still Needs Review).
+        // which the chrome guard rejects → no name → Needs Review (grams dropped too, structural).
         val g = ScreenshotOcr.guessFrom(listOf(line("Overview Live Mine 1.5", 900)))
         assertNull(g.fbName)
-        assertEquals("1.5", g.grams)
+        assertNull(g.grams)
     }
 
     @Test
@@ -379,5 +380,74 @@ class ScreenshotOcrTest {
             assertEquals("Home Reyes", it.fbName)
             assertEquals("2.43", it.grams)
         }
+    }
+
+    // --- Facebook ACTUAL-LIVE OCR safety (Owner 2026-08-20) --------------------------------------
+    // During an actual Live (nothing pinned) the bottom band shows the FB composer banner
+    // "Send 200 Stars to pin your comment here". Its "200" must NEVER be grams; a UI number must
+    // never pair with a customer name; grams is kept ONLY when tied to a real name/comment block.
+
+    // Test 4 — the "Send 200 Stars to pin your comment here" banner never yields grams 200.
+    @Test
+    fun liveBanner_send200Stars_neverBecomesGrams() {
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                line("King Gonzales", 850),
+                line("Send 200 Stars to pin your comment here", 905),
+            ),
+        )
+        assertNull(g.grams) // banner is chrome → not a claim → 200 is never grams
+        assertNull(g.itemQuery)
+    }
+
+    // Test 5 — a Facebook Live UI number cannot pair with a customer claim (no name block → review).
+    @Test
+    fun liveUiNumber_cannotPairWithCustomerClaim() {
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                line("Andrea Dela Cruz is watching.", 100), // filtered, far above
+                line("200", 905), // a stray UI number, no name/comment block of its own
+            ),
+        )
+        assertNull(g.fbName)
+        assertNull(g.grams)
+    }
+
+    // Test 6 — valid live comment "King Gonzales / 18.4 Mine Subasta M" → 18.4.
+    @Test
+    fun liveValid_kingGonzales_subasta_18point4() {
+        val g = ScreenshotOcr.guessFrom(
+            listOf(line("King Gonzales", 850), line("18.4 Mine Subasta M", 905)),
+        )
+        assertEquals("King Gonzales", g.fbName)
+        assertEquals("18.4", g.grams)
+    }
+
+    // Test 7 — valid live comment "Glaiza Sale Galang / Mine 9.0" → 9 (9.0 normalizes to 9).
+    @Test
+    fun liveValid_glaiza_mine_9() {
+        val g = ScreenshotOcr.guessFrom(
+            listOf(line("Glaiza Sale Galang", 850), line("Mine 9.0", 905)),
+        )
+        assertEquals("Glaiza Sale Galang", g.fbName)
+        assertEquals("9", g.grams)
+    }
+
+    // Test 8 — the replay ".7" case still works (leading-decimal preserved).
+    @Test
+    fun replay_leadingDecimal_point7_stillWorks() {
+        val g = ScreenshotOcr.guessFrom(listOf(line("King Gonzales", 850), line("Mine .7", 905)))
+        assertEquals("King Gonzales", g.fbName)
+        assertEquals("0.7", g.grams)
+    }
+
+    // "M 1.5 subasta rolex" is valid ONLY when safely associated with a name/comment block.
+    @Test
+    fun liveValid_M_grams_subasta_rolex_whenNameAssociated() {
+        val g = ScreenshotOcr.guessFrom(
+            listOf(line("King Gonzales", 850), line("M 1.5 subasta rolex", 905)),
+        )
+        assertEquals("King Gonzales", g.fbName)
+        assertEquals("1.5", g.grams)
     }
 }
