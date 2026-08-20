@@ -23,10 +23,14 @@ import {
  *     downgraded to "Reserved"/"Reserved ✔️"/arbitrary text. A missing screenshot, an unavailable
  *     signed URL, or an upload failure marks the capture 'failed' (reviewable/retryable) and
  *     sends NOTHING.
- *   - Media window: an AUTOMATIC send (`requireMediaWindow`) is only attempted when the customer
- *     already has a customer-initiated inbox interaction (Controlled Test B); otherwise the
- *     capture is parked 'awaiting_inbox'. A MANUAL send may still attempt (and fail cleanly,
- *     never text) — the operator's click is the authorization.
+ *   - Media window: BOTH the automatic and the manual Send gate on the SAME check
+ *     (`requireMediaWindow` → isConversationMediaEligible). A normal reply_inbox PHOTO is only
+ *     attempted when the customer already has a customer-initiated inbox interaction ("Photo
+ *     ready"). A silent/comment-only/outside-24h customer ("Photo waiting") is parked
+ *     'awaiting_inbox' and NOTHING is sent — no doomed attempt, no "Pancake rejected"; the
+ *     operator uses Open FB Chat instead. The function still supports an ungated call, but the
+ *     only manual entry point (`sendCaptureToMessengerAction`) now passes requireMediaWindow:true,
+ *     so manual and auto stay consistent (Owner request 2026-08-20).
  *   - One capture = one photo: an atomic DB claim/finalize (message_status 'sending' → 'sent' /
  *     'failed') rejects a concurrent auto/manual/double-click/repeat-resolver duplicate.
  */
@@ -147,9 +151,10 @@ export async function sendPendingCaptureToMessenger(
     };
   }
 
-  // MEDIA WINDOW — an AUTOMATIC send only when the customer already has a customer-initiated inbox
-  // interaction (Controlled Test B). Otherwise park it 'awaiting_inbox'; a manual send may still
-  // be attempted by the operator (and will fail cleanly, never text, if the window is closed).
+  // MEDIA WINDOW — a normal reply_inbox PHOTO is only attempted when the customer already has a
+  // customer-initiated inbox interaction ("Photo ready"). Otherwise park 'awaiting_inbox' and send
+  // NOTHING ("Photo waiting" → Open FB Chat). BOTH auto and manual pass requireMediaWindow:true, so
+  // neither fires a doomed send / "Pancake rejected" for a known-ineligible customer.
   if (opts?.requireMediaWindow) {
     const eligible = await isConversationMediaEligible(supabase, conversationId);
     if (!eligible) {

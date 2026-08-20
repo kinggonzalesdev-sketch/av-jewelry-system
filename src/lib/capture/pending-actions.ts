@@ -56,14 +56,20 @@ export async function linkCaptureToOrderAction(
 
 /**
  * Manually send a pending capture's screenshot to the customer's Messenger from the
- * PC station. Resolves the conversation from the OCR'd Facebook name, sends through
- * the backend (token stays server-side), and is idempotent. The operator's click is
- * the authorization for this one send.
+ * PC station — the backup/retry entry point for a "Photo ready" capture (an eligible
+ * customer normally auto-sends without any click). Resolves the conversation from the
+ * OCR'd Facebook name, sends through the backend (token stays server-side), and is
+ * idempotent. It gates on the SAME media window as the auto path (`requireMediaWindow:
+ * true`): a "Photo waiting" (silent/comment-only/outside-24h) capture is parked
+ * 'awaiting_inbox' and sends NOTHING — no doomed reply_inbox PHOTO, no "Pancake
+ * rejected" — so the operator uses Open FB Chat instead (Owner request 2026-08-20).
  */
 export async function sendCaptureToMessengerAction(
   captureRecordId: string,
 ): Promise<SendCaptureToMessengerResult> {
-  const result = await sendPendingCaptureToMessenger(captureRecordId);
+  const result = await sendPendingCaptureToMessenger(captureRecordId, {
+    requireMediaWindow: true,
+  });
   if (result.ok) revalidatePath('/orders');
   return result;
 }

@@ -21,6 +21,7 @@ import {
   CaptureLinkPanel,
   type EffectiveCaptureLink,
 } from '@/components/capture/capture-link-panel';
+import { CaptureSendControl } from '@/components/capture/capture-send-control';
 import {
   NewOrderModal,
   type CapturePrefill,
@@ -501,6 +502,16 @@ export function IncomingCapturesStrip({
     try {
       const res = await sendCaptureToMessengerAction(r.captureRecordId);
       if (!res.ok) {
+        // A known-ineligible customer ("Photo waiting") is parked, not failed — show a neutral
+        // per-row note pointing to Open FB Chat, never a red "Pancake rejected" error. (Send
+        // normally only renders when Photo ready; this guards a race where eligibility flipped.)
+        if (res.code === 'awaiting_inbox') {
+          setNotes((cur) => ({
+            ...cur,
+            [r.captureRecordId]: 'Waiting for the customer to message — use Open FB Chat.',
+          }));
+          return;
+        }
         setError(res.error);
         return;
       }
@@ -732,18 +743,18 @@ export function IncomingCapturesStrip({
                     >
                       🖨 Print
                     </Button>
-                    {/* Send the screenshot to the pinned customer's Messenger. Disabled for a
-                  Test capture — a test must never message a real customer. */}
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={sendingId === r.captureRecordId || r.isTest}
-                      onClick={() => void sendToMessenger(r)}
-                      data-testid={`incoming-send-${r.captureRecordId}`}
-                    >
-                      {sendingId === r.captureRecordId ? 'Sending…' : '📨 Send'}
-                    </Button>
+                    {/* Screenshot delivery — driven by the already-computed photo state:
+                        Photo ready → 📨 Send · Photo waiting → 💬 Open FB Chat · no chat →
+                        neutral "Photo waiting". A "Photo waiting" capture never fires a doomed
+                        reply_inbox PHOTO (no "Pancake rejected"). Test → disabled. */}
+                    <CaptureSendControl
+                      captureRecordId={r.captureRecordId}
+                      photoEligible={effectiveLink(r).photoEligible}
+                      fbUrl={effectiveLink(r).fbUrl}
+                      isTest={r.isTest}
+                      sending={sendingId === r.captureRecordId}
+                      onSend={() => void sendToMessenger(r)}
+                    />
                     <Button
                       type="button"
                       size="sm"
