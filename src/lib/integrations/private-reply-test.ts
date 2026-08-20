@@ -255,6 +255,11 @@ export type PrivateReplyTestResult = {
 export type ControlledPhotoResult = { ok: boolean; steps: PrivateReplyTestStep[] };
 
 const ATTACHMENT_BUCKET = 'attachments';
+/** Owner-approved Controlled Test C message. private_replies REQUIRES a non-empty `message` even
+ *  when a PHOTO content id is attached (Test C-A returned error_code 100 "Missing required field:
+ *  message"). This is sent AS the media reply's text in ONE request — NOT a separate/fallback text
+ *  send, and NEVER a "Reserved" substitute. */
+const TEST_C_MEDIA_MESSAGE = 'Hi! Here is the item you mined during our Live. 💛';
 /** Bounded resolve window (never infinite). Env-tunable; capped for the 60s request budget. */
 const RESOLVE_WAIT_MS = Math.min(
   45000,
@@ -863,12 +868,14 @@ export async function runControlledPrivateReplyMediaTest(input: {
   }
 
   // 4) MEDIA private reply — attach the screenshot to the COMMENT reply itself (window-exempt).
+  //    private_replies REQUIRES a non-empty message even with media (Test C-A, error 100), so the
+  //    SAME single request carries the required message + the PHOTO content id — NOT a text fallback.
   const pr = await sendPancakePrivateReply({
     postId,
     messageId: commentId,
     fromId: psid,
     commentConversationId: commentConv,
-    message: '',
+    message: TEST_C_MEDIA_MESSAGE,
     contentId: up.contentId,
   });
   steps.push({

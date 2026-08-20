@@ -50,7 +50,7 @@ describe('buildPrivateReplyBody — MEDIA variant (Cases 1/2, comment-entry scre
     messageId: 'COMMENT_1',
     fromId: 'PSID_1',
     senderId: 'PANCAKE_USER_1',
-    message: 'ignored for media',
+    message: 'Hi! Here is the item you mined during our Live.',
     contentId: 'CONTENT_abc123',
   });
 
@@ -64,8 +64,11 @@ describe('buildPrivateReplyBody — MEDIA variant (Cases 1/2, comment-entry scre
     expect(media.attachment_type).toBe('PHOTO');
   });
 
-  it('is media-ONLY — no text alongside content (mirrors reply_inbox), no conversation_id', () => {
-    expect(media).not.toHaveProperty('message');
+  it('INCLUDES a non-empty message ALONGSIDE the PHOTO (private_replies requires message — Test C-A)', () => {
+    // Corrected 2026-08-20: media-only failed with error_code 100 "Missing required field: message";
+    // the body now carries the message AND the content id in ONE request (not a text fallback).
+    expect(media.message).toBe('Hi! Here is the item you mined during our Live.');
+    expect((media.message ?? '').length).toBeGreaterThan(0);
     expect(media).not.toHaveProperty('conversation_id');
   });
 

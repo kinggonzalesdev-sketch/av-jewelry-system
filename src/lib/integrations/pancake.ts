@@ -2131,13 +2131,15 @@ export const DEFAULT_PRIVATE_REPLY_TEXT =
  * TEXT (verified, unchanged default): `action=private_replies` + post_id/message_id/from_id/
  * sender_id/message. NO conversation_id in the body, NO content_ids.
  *
- * MEDIA (Cases 1/2, Owner 2026-08-18): when `contentId` is set, deliver the SCREENSHOT itself
- * through the COMMENT entry point (Facebook private replies to a comment are window-exempt for
- * ~7 days, so a first-time / outside-24h miner gets the photo with NO action). Mirrors the
- * reply_inbox media contract — `content_ids[]` + `attachment_type=PHOTO`, and (like reply_inbox)
- * NO text alongside content. The attachment field/type stay env-overridable so the exact Pancake
- * contract can be corrected during the controlled proof WITHOUT a redeploy. This is an UNPROVEN
- * variant until Controlled Test C confirms it; the text path above is untouched.
+ * MEDIA (Cases 1/2, Owner 2026-08-18; corrected 2026-08-20): when `contentId` is set, deliver the
+ * SCREENSHOT itself through the COMMENT entry point (Facebook private replies to a comment are
+ * window-exempt ~7 days, so a first-time / outside-24h miner gets the photo with NO action). The
+ * body carries `content_ids[]` + `attachment_type=PHOTO` ALONGSIDE a non-empty `message` —
+ * private_replies REQUIRES `message` even WITH media (Controlled Test C-A: a media-ONLY body
+ * returned error_code 100 "Missing required field: message"). The attachment field/type stay
+ * env-overridable so the exact Pancake contract can be corrected during the controlled proof
+ * WITHOUT a redeploy. Whether Pancake accepts message+PHOTO together is UNPROVEN until the next
+ * Controlled Test C attempt; the text path above is untouched.
  */
 export function buildPrivateReplyBody(input: {
   postId: string;
@@ -2154,14 +2156,14 @@ export function buildPrivateReplyBody(input: {
     from_id: input.fromId,
     sender_id: input.senderId,
   };
+  // `message` is ALWAYS present — private_replies requires it even when media is attached.
+  body.message = input.message;
   const contentId = (input.contentId ?? '').trim();
   if (contentId) {
     const key = process.env.PANCAKE_PRIVATE_REPLY_CONTENT_KEY || 'content_ids[]';
     body[key] = contentId;
     body.attachment_type = process.env.PANCAKE_PRIVATE_REPLY_ATTACHMENT_TYPE || 'PHOTO';
-    return body;
   }
-  body.message = input.message;
   return body;
 }
 

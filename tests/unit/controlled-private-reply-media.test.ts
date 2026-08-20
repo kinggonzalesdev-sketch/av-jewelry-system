@@ -100,22 +100,26 @@ describe('runControlledPrivateReplyMediaTest — Test C (comment-media private r
     });
   });
 
-  it('uploads then attaches the content id to the COMMENT private reply → classification C', async () => {
+  it('attaches the content id + a REQUIRED non-empty message → ONE call, no fallback, classification C', async () => {
     const res = await runControlledPrivateReplyMediaTest({
       webhookEventId: 'wh1',
       screenshotCaptureId: '5543c409-21d6-4a04-9610-da3b3b2e3e71',
     });
     expect(res.ok).toBe(true);
     expect(H.uploadMock).toHaveBeenCalledTimes(1);
+    // Exactly ONE private_replies call — no separate/fallback text send.
     expect(H.prMock).toHaveBeenCalledTimes(1);
-    // media (content id) attached to the comment identity — never text, never a synthetic id.
-    expect(H.prMock.mock.calls[0]?.[0]).toMatchObject({
+    const sent = H.prMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    // media (content id) + a NON-EMPTY message on the SAME comment identity — never a synthetic id,
+    // never text-only. private_replies requires the message even WITH media (Test C-A, error 100).
+    expect(sent).toMatchObject({
       contentId: 'CID_xyz',
-      message: '',
       messageId: '1561919158756882_1745968732977872',
       postId: '588622885161430_1561919158756882',
       fromId: '27782810028035237',
     });
+    expect(typeof sent.message).toBe('string');
+    expect((sent.message as string).length).toBeGreaterThan(0);
     const calls = diagCalls();
     expect(calls).toHaveLength(1);
     expect((calls[0]?.[1] as Record<string, unknown>).p_classification).toBe('C');
