@@ -1,0 +1,13 @@
+-- #7 index cleanup (Owner 2026-08-20). `customers` had TWO byte-identical GIN trigram indexes on
+-- display_name: customers_display_name_trgm_idx (original, from 20260807210000_scale_indexes) and
+-- customers_display_name_trgm (accidental duplicate from 20260818000000_orders_server_side_pagination).
+-- Neither is unique/constraint-backing. Drop the later duplicate; keep the original — search behavior
+-- is unchanged (the remaining index serves every trigram query identically).
+--
+-- The other 22 unused_index advisories are INTENTIONALLY KEPT: they are scale/search (order/inventory/
+-- layaway trigram), hot-path FK, and feature indexes that read as "unused" only because pre-live
+-- traffic is low. Dropping them would undo deliberate perf work; re-evaluate after real traffic.
+-- (3 of the 22 belong to the temporary pancake_webhook_raw_diag table and will drop with it.)
+--
+-- Rollback: create index customers_display_name_trgm on public.customers using gin (display_name gin_trgm_ops);
+drop index if exists public.customers_display_name_trgm;
