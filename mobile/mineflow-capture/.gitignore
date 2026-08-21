@@ -11,3 +11,4 @@
 *.jks
 *.keystore
 keystore.properties
+apk-archive/
