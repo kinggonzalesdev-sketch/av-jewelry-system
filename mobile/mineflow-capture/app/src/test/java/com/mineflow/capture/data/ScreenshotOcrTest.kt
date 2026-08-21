@@ -495,4 +495,197 @@ class ScreenshotOcrTest {
         run("Mine P15000").let { assertNull(it.grams); assertNull(it.itemQuery) }
         run("Mine PHP 15000").let { assertEquals("15000", it.itemQuery); assertNull(it.grams) }
     }
+
+    // --- Adaptive recovery zone via the full-screen fallback (Owner 2026-08-21) -------------------
+    // Fast path (bottom 40%, top >= 0.60) is UNCHANGED. When it finds nothing, the fallback may
+    // inspect the bottom 55% ([0.45, 0.60)) to recover a pinned comment pushed up by large fonts /
+    // Facebook display scaling — but a recovery-area claim is used ONLY when it is the SINGLE
+    // unambiguous strong candidate (exactly one claim, concrete value, same-block name). Two+ claims,
+    // ambiguous value, unclear name, or chrome/banner → Needs Review. No bottom-most guess.
+
+    /** One pinned block (name just above its claim) at fraction [claimFrac] of a screen of height
+     *  [h], read through the FULL-SCREEN FALLBACK gate (established 0.60, recovery floor 0.45). */
+    private fun fallback(h: Int, claim: String, claimFrac: Double, name: String = "Buyer Name"): OcrGuess {
+        val claimTop = (h * claimFrac).toInt()
+        val nameTop = claimTop - 60
+        return ScreenshotOcr.guessFrom(
+            listOf(
+                OLine(name, Box(40, nameTop, 400, nameTop + 40)),
+                OLine(claim, Box(40, claimTop, 400, claimTop + 40)),
+            ),
+            minClaimTop = (h * 0.60).toInt(),
+            recoveryFloor = (h * 0.45).toInt(),
+        )
+    }
+
+    // A — established fast-path zone, tall 1080x2400, claim at 0.77 → accepted.
+    @Test
+    fun recoveryA_established_2400_at077_accepted() {
+        val g = fallback(2400, "Mine 3.39", 0.77, name = "King Gonzales")
+        assertEquals("King Gonzales", g.fbName)
+        assertEquals("3.39", g.grams)
+    }
+
+    // B — established zone, 1080x1920, claim at 0.71 → accepted.
+    @Test
+    fun recoveryB_established_1920_at071_accepted() {
+        val g = fallback(1920, "Mine 1.5", 0.71, name = "Danica Dayoha")
+        assertEquals("Danica Dayoha", g.fbName)
+        assertEquals("1.5", g.grams)
+    }
+
+    // C — recovery zone, 1080x1920, SINGLE clear claim at 0.55 → accepted.
+    @Test
+    fun recoveryC_recovery_1920_at055_singleAccepted() {
+        val g = fallback(1920, "Mine 2.43g", 0.55, name = "Abby Gicain")
+        assertEquals("Abby Gicain", g.fbName)
+        assertEquals("2.43", g.grams)
+    }
+
+    // D — recovery zone, 720x1280, single clear claim at 0.52 → accepted (K: leading decimal .45).
+    @Test
+    fun recoveryD_recovery_1280_at052_singleAccepted() {
+        val g = fallback(1280, "Mine .45", 0.52, name = "Juan Dela Cruz")
+        assertEquals("Juan Dela Cruz", g.fbName)
+        assertEquals("0.45", g.grams)
+    }
+
+    // E — recovery zone, 1200x1920, single clear claim at 0.50 → accepted.
+    @Test
+    fun recoveryE_recovery_1920_at050_singleAccepted() {
+        val g = fallback(1920, "Mine 11.9", 0.50, name = "Glaiza Sale Galang")
+        assertEquals("Glaiza Sale Galang", g.fbName)
+        assertEquals("11.9", g.grams)
+    }
+
+    // F — above the recovery floor (claim at 0.30) → rejected / Needs Review.
+    @Test
+    fun recoveryF_aboveFloor_at030_rejected() {
+        val g = fallback(1920, "Mine 1.5", 0.30, name = "King Gonzales")
+        assertNull(g.fbName)
+        assertNull(g.grams)
+    }
+
+    // G — recovery zone with TWO valid Mine comments → Needs Review (never auto-pick one).
+    @Test
+    fun recoveryG_twoClaimsInRecovery_needsReview() {
+        val h = 1920
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                OLine("Maria Reyes", Box(40, 900, 400, 940)),
+                OLine("Mine 1.5", Box(40, 945, 400, 985)),
+                OLine("Juan Cruz", Box(40, 1000, 400, 1040)),
+                OLine("Mine 2.5", Box(40, 1045, 400, 1085)),
+            ),
+            minClaimTop = (h * 0.60).toInt(),   // 1152
+            recoveryFloor = (h * 0.45).toInt(), // 864
+        )
+        assertNull(g.fbName)
+        assertNull(g.grams)
+    }
+
+    // H — recovery zone, single claim but NO safe same-block name (name far above) → Needs Review.
+    @Test
+    fun recoveryH_recoveryClaim_unclearName_needsReview() {
+        val h = 1920
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                OLine("Maria Reyes", Box(40, 600, 400, 640)),  // far above the claim (gap ~360px)
+                OLine("Mine 1.5", Box(40, 1000, 400, 1040)),   // recovery zone, no adjacent name
+            ),
+            minClaimTop = (h * 0.60).toInt(),
+            recoveryFloor = (h * 0.45).toInt(),
+        )
+        assertNull(g.fbName)
+        assertNull(g.grams)
+    }
+
+    // I — "Send 200 Stars…" banner in the recovery band → 200 never grams (Needs Review).
+    @Test
+    fun recoveryI_send200Stars_rejected() {
+        val h = 1920
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                OLine("King Gonzales", Box(40, 1000, 400, 1040)),
+                OLine("Send 200 Stars to pin your comment here", Box(40, 1050, 400, 1090)),
+            ),
+            minClaimTop = (h * 0.60).toInt(),
+            recoveryFloor = (h * 0.45).toInt(),
+        )
+        assertNull(g.grams)
+        assertNull(g.itemQuery)
+    }
+
+    // J — a Facebook UI number in the recovery band with no real comment block → never grams.
+    @Test
+    fun recoveryJ_uiNumber_rejected() {
+        val h = 1920
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                OLine("Live chat", Box(40, 1000, 400, 1040)),  // chrome tab label
+                OLine("2.5", Box(40, 1050, 400, 1090)),         // stray number, no name block
+            ),
+            minClaimTop = (h * 0.60).toInt(),
+            recoveryFloor = (h * 0.45).toInt(),
+        )
+        assertNull(g.fbName)
+        assertNull(g.grams)
+    }
+
+    // K — leading decimal .45 → 0.45g (parser unchanged; also proven in D within the recovery zone).
+    @Test
+    fun recoveryK_leadingDecimal_045() {
+        assertEquals("0.45", pinnedGrams(".45"))
+    }
+
+    // L — fixed price 15k / 15000 still recognized (value extracted, grams null), incl. from recovery.
+    @Test
+    fun recoveryL_fixedPrice_recognized() {
+        ScreenshotOcr.guessFrom(listOf(line("Buyer Name", 850), line("Mine 15k", 900))).let {
+            assertEquals("15k", it.itemQuery); assertNull(it.grams)
+        }
+        ScreenshotOcr.guessFrom(listOf(line("Buyer Name", 850), line("Mine 15000", 900))).let {
+            assertEquals("15000", it.itemQuery); assertNull(it.grams)
+        }
+        val rec = fallback(1920, "Mine 15000", 0.55, name = "King Gonzales")
+        assertEquals("King Gonzales", rec.fbName)
+        assertEquals("15000", rec.itemQuery)
+        assertNull(rec.grams)
+    }
+
+    // SAFETY — an established pinned claim wins; a higher recovery-zone claim is IGNORED, not merged
+    // into the decision (a scrolling comment in the recovery band can't hijack a real pinned one).
+    @Test
+    fun recovery_establishedPresent_ignoresRecoveryClaim() {
+        val h = 1920
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                OLine("Scroller Name", Box(40, 1000, 400, 1040)),  // recovery zone
+                OLine("Mine 9.9", Box(40, 1045, 400, 1085)),       // recovery claim → ignored
+                OLine("King Gonzales", Box(40, 1400, 400, 1440)),  // established zone (pinned)
+                OLine("Mine 1.5", Box(40, 1445, 400, 1485)),
+            ),
+            minClaimTop = (h * 0.60).toInt(),   // 1152
+            recoveryFloor = (h * 0.45).toInt(), // 864
+        )
+        assertEquals("King Gonzales", g.fbName)
+        assertEquals("1.5", g.grams)
+    }
+
+    // SAFETY — a lone recovery-zone claim that is itself ambiguous (two weights, value null) →
+    // Needs Review, even though it is the only candidate. The value must be concrete.
+    @Test
+    fun recovery_singleButAmbiguousValue_needsReview() {
+        val h = 1920
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                OLine("King Gonzales", Box(40, 1000, 400, 1040)),
+                OLine("Mine 1.1 2.5", Box(40, 1050, 400, 1090)),   // two weights → value null
+            ),
+            minClaimTop = (h * 0.60).toInt(),
+            recoveryFloor = (h * 0.45).toInt(),
+        )
+        assertNull(g.fbName)
+        assertNull(g.grams)
+    }
 }

@@ -37,8 +37,10 @@ internal data class OLine(val text: String, val box: Box)
  * How:
  *   1. FAST PATH — OCR just the bottom band (where the pinned comment sits) → materially
  *      faster than full-screen OCR. If it yields a confident name+grams, use it.
- *   2. FALLBACK — if the band was inconclusive, OCR the full screen (never miss a pinned
- *      comment placed unusually high).
+ *   2. FALLBACK — if the band was inconclusive, OCR the full screen. It re-checks the established
+ *      bottom-40% zone AND (Owner 2026-08-21) a recovery area down to the bottom 55%, to catch a
+ *      pinned comment pushed up by large fonts / FB display scaling. A recovery-area claim is used
+ *      ONLY when it is the SINGLE unambiguous strong candidate — else "needs review", never a guess.
  *   3. SELECT SPATIALLY (via ML Kit bounding boxes, not reading order): the pinned claim =
  *      the bottom-most `Mine`/`M`/bare-weight line; its name = the name-like line DIRECTLY
  *      above it (same column, within ~2 line-heights).
@@ -59,7 +61,16 @@ object ScreenshotOcr {
     }
 
     // OCR the bottom 40% first — the pinned comment always sits there on the FB Live screen.
+    // This is the FAST PATH crop AND the established pinned zone; it is deliberately UNCHANGED.
     private const val PINNED_ROI_TOP_FRACTION = 0.60
+
+    // FULL-SCREEN FALLBACK recovery floor (Owner 2026-08-21). ONLY when the fast-path bottom-40%
+    // band yields nothing, the fallback may inspect down to the bottom 55% to recover a pinned
+    // comment PUSHED UP by large fonts / Facebook display scaling / short (16:9, tablet) screens.
+    // A claim in the newly admitted recovery area [0.45, 0.60) is accepted ONLY if it is the SINGLE
+    // unambiguous strong candidate — NEVER a bottom-most guess among several. Wrong-customer
+    // prevention over automation. The fast path and the established >=0.60 zone are untouched.
+    private const val FALLBACK_MIN_CLAIM_TOP_FRACTION = 0.45
 
     /** Prime the ML Kit model (and download if needed) so the first real capture is fast. */
     fun warmUp() {
@@ -145,6 +156,8 @@ object ScreenshotOcr {
         val h = bitmap.height
         val w = bitmap.width
         val roiTop = (h * PINNED_ROI_TOP_FRACTION).toInt().coerceIn(0, maxOf(0, h - 1))
+        // Fallback-only recovery floor (bottom 55%); never above 0 or below the established zone.
+        val recoveryTop = (h * FALLBACK_MIN_CLAIM_TOP_FRACTION).toInt().coerceIn(0, roiTop)
         val roi = if (h - roiTop >= 8 && w >= 8) {
             runCatching { Bitmap.createBitmap(bitmap, 0, roiTop, w, h - roiTop) }.getOrNull()
         } else {
@@ -156,7 +169,7 @@ object ScreenshotOcr {
             val t0 = android.os.SystemClock.elapsedRealtime()
             ocr(bitmap) {
                 Log.i(TAG, "timing: roi=none fullOcr=${android.os.SystemClock.elapsedRealtime() - t0}ms lines=${it.size}")
-                onResult(guessFrom(it, minClaimTop = roiTop))
+                onResult(guessFrom(it, minClaimTop = roiTop, recoveryFloor = recoveryTop))
             }
             return
         }
@@ -181,7 +194,7 @@ object ScreenshotOcr {
                         "timing: roiOcr=${roiMs}ms fastPath=MISS fullOcr=" +
                             "${android.os.SystemClock.elapsedRealtime() - tFull}ms (fallback ran → ~2x OCR)",
                     )
-                    onResult(guessFrom(full, minClaimTop = roiTop))
+                    onResult(guessFrom(full, minClaimTop = roiTop, recoveryFloor = recoveryTop))
                 }
             }
         }
@@ -315,23 +328,49 @@ object ScreenshotOcr {
     /**
      * PINNED-ONLY extraction (see class doc). `internal` so it is unit-testable.
      *
-     * `minClaimTop` (FULL-SCREEN FALLBACK only): reject any claim whose top is ABOVE the pinned
-     * zone, so a full-screen OCR can NEVER turn an arbitrary/scrolling comment into sticker data —
-     * the fallback must positively locate the pinned block in the bottom band, else return nothing
-     * (a "needs review" capture). The ROI pass passes 0 because its crop IS already the pinned zone.
+     * `minClaimTop` (FULL-SCREEN FALLBACK only): the ESTABLISHED pinned zone. A claim at/below it
+     * (top >= minClaimTop) uses the current behavior — the bottom-most one is the pinned claim — so
+     * a full-screen OCR can never turn a scrolling comment above the band into sticker data. The
+     * ROI pass passes 0 because its crop IS already the pinned zone.
+     *
+     * `recoveryFloor` (FULL-SCREEN FALLBACK only, Owner 2026-08-21): a floor BELOW minClaimTop (the
+     * bottom 55%) consulted ONLY when the established zone has no claim — to recover a pinned comment
+     * pushed up by large fonts / Facebook display scaling. A claim in the recovery area
+     * [recoveryFloor, minClaimTop) is accepted ONLY if it is the SINGLE unambiguous strong candidate
+     * (exactly one admissible claim, carrying a concrete grams/fixed value, with a same-block name);
+     * two+ claims or any ambiguity → "needs review". Defaults to minClaimTop (NO recovery zone), so
+     * the fast path is unchanged. Never a bottom-most guess in the recovery area.
      */
-    internal fun guessFrom(olines: List<OLine>, minClaimTop: Int = 0): OcrGuess {
+    internal fun guessFrom(olines: List<OLine>, minClaimTop: Int = 0, recoveryFloor: Int = minClaimTop): OcrGuess {
         val rawLines = olines.map { it.text }
         val clean = olines.filterNot { isUiNoise(it.text) }
         if (clean.isEmpty()) return OcrGuess(null, null, null, rawLines)
 
-        val claims = clean
+        // Every parsed claim at/below the RECOVERY floor (top >= recoveryFloor). Claims ABOVE the
+        // recovery floor (higher on screen = scrolling) are ignored entirely — never sticker data.
+        // For the fast path / normal fallback recoveryFloor == minClaimTop, so this IS the old gate.
+        val admissible = clean
             .mapNotNull { ol -> parseClaim(ol.text)?.let { ol to it } }
-            .filter { it.first.box.top >= minClaimTop } // pinned-zone gate (fallback only)
-        if (claims.isEmpty()) return OcrGuess(null, null, null, rawLines)
+            .filter { it.first.box.top >= recoveryFloor }
+        if (admissible.isEmpty()) return OcrGuess(null, null, null, rawLines)
 
-        // Pinned claim = the bottom-most one in the pinned zone (nearest the comment box).
-        val (pinnedLine, claim) = claims.maxByOrNull { it.first.box.top }!!
+        // Two-tier selection (Owner 2026-08-21):
+        //  • ESTABLISHED zone (top >= minClaimTop): the proven pinned band. If ANY claim is here,
+        //    keep the CURRENT behavior — the bottom-most one (nearest the comment box) is the pinned
+        //    claim. Recovery-zone claims are ignored (an established claim IS the pinned one; a
+        //    recovery claim always sits above it).
+        //  • RECOVERY zone only ([recoveryFloor, minClaimTop), reached when the established band is
+        //    empty — a pinned comment pushed up by large fonts / FB display scaling): accept ONLY
+        //    when there is EXACTLY ONE admissible claim AND it carries a concrete business value
+        //    (grams or a fixed price). Two+ claims, or a lone ambiguous 2+-number blob (value null)
+        //    → "needs review". NO bottom-most guess in the recovery area (wrong-customer prevention).
+        val established = admissible.filter { it.first.box.top >= minClaimTop }
+        val (pinnedLine, claim) = if (established.isNotEmpty()) {
+            established.maxByOrNull { it.first.box.top }!!
+        } else {
+            admissible.singleOrNull()?.takeIf { it.second.value != null }
+                ?: return OcrGuess(null, null, null, rawLines)
+        }
 
         // Name from the SAME block only — and NEVER Facebook chrome (even merged like "Overview
         // Live"): if the only candidate is UI chrome, return null → "needs review", never a guess.
