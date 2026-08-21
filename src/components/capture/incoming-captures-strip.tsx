@@ -775,6 +775,7 @@ export function IncomingCapturesStrip({
                       isTest={r.isTest}
                       sending={sendingId === r.captureRecordId}
                       onSend={() => void sendToMessenger(r)}
+                      linkSent={r.messageStatus === 'link_sent'}
                     />
                     <Button
                       type="button"

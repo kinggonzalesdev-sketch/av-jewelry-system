@@ -11,6 +11,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
  * NOT offer a doomed Send. This control renders exactly one thing per state, driven by the
  * already-computed `photoEligible` (never recomputed here — no duplicated eligibility logic):
  *
+ *   Link sent (Route B)        → 🔗 Link sent   (a secure-link Private Reply already went out; NEVER resend)
  *   Photo ready               → 📨 Send        (the manual backup/retry; eligible normally auto-sends)
  *   Photo waiting + FB chat    → 💬 Open FB Chat (the human fallback, allowed up to 7 days)
  *   Photo waiting + no chat     → Photo waiting  (neutral, disabled)
@@ -26,6 +27,7 @@ export function CaptureSendControl({
   isTest,
   sending,
   onSend,
+  linkSent = false,
 }: {
   captureRecordId: string;
   photoEligible: boolean;
@@ -33,6 +35,9 @@ export function CaptureSendControl({
   isTest: boolean;
   sending: boolean;
   onSend: () => void;
+  /** Route B already sent a secure-link Private Reply for this capture (message_status
+   *  'link_sent') — show a done state and never offer a second send. */
+  linkSent?: boolean;
 }) {
   // A Test capture never messages a real customer — keep Send visible but disabled.
   if (isTest) {
@@ -45,6 +50,22 @@ export function CaptureSendControl({
         data-testid={`incoming-send-${captureRecordId}`}
       >
         📨 Send
+      </Button>
+    );
+  }
+
+  // Route B secure-link Private Reply already sent — terminal, never resend (one reply per comment).
+  if (linkSent) {
+    return (
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled
+        data-testid={`incoming-linksent-${captureRecordId}`}
+        title="A secure screenshot link was sent to the customer via a Pancake Private Reply — not resent."
+      >
+        🔗 Link sent
       </Button>
     );
   }
