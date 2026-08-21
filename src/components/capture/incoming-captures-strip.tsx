@@ -803,6 +803,7 @@ export function IncomingCapturesStrip({
                       <CaptureLinkPanel
                         captureRecordId={r.captureRecordId}
                         link={effectiveLink(r)}
+                        linkSent={r.messageStatus === 'link_sent'}
                         onChanged={(res) =>
                           setLinkOverrides((cur) => ({
                             ...cur,

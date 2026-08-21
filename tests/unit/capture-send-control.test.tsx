@@ -4,10 +4,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { CaptureSendControl } from '@/components/capture/capture-send-control';
 
 /**
- * The per-row screenshot-delivery control renders exactly one thing, driven by the already-computed
- * `photoEligible` (Owner request 2026-08-20): Photo ready → 📨 Send · Photo waiting + FB chat → 💬
- * Open FB Chat · Photo waiting + no chat → neutral disabled "Photo waiting". A "Photo waiting"
- * capture must NEVER expose the Send button (that would be a doomed reply_inbox PHOTO).
+ * The per-row screenshot-delivery control (Owner 2026-08-20, extended for Route B 2026-08-21):
+ *   Route B link already sent → 🔗 Link sent (disabled, never resend)
+ *   Photo ready               → 📨 Send
+ *   Photo waiting             → 🔗 Send link (Route B TEXT Private Reply + secure /m link — the same
+ *                               onSend handler, NEVER a doomed reply_inbox PHOTO) + 💬 Open FB Chat
+ *                               when a chat URL exists.
+ *   Test capture              → 📨 Send disabled.
+ * The invariant preserved: a "Photo waiting" capture NEVER exposes the doomed photo Send
+ * (`incoming-send`); its Send goes to Route B (`incoming-sendlink`).
  */
 const ID = 'cap-1';
 
@@ -50,7 +55,8 @@ describe('CaptureSendControl', () => {
     expect(send).toHaveTextContent('Sending…');
   });
 
-  it('Photo waiting + FB chat URL → 💬 Open FB Chat (new tab), and NO Send button', () => {
+  it('Photo waiting + FB chat → 🔗 Send link (Route B) + 💬 Open FB Chat, and NO photo Send', () => {
+    const onSend = vi.fn();
     render(
       <CaptureSendControl
         captureRecordId={ID}
@@ -58,19 +64,21 @@ describe('CaptureSendControl', () => {
         fbUrl="https://m.me/waiting"
         isTest={false}
         sending={false}
-        onSend={vi.fn()}
+        onSend={onSend}
       />,
     );
+    const sendLink = screen.getByTestId(`incoming-sendlink-${ID}`);
+    expect(sendLink).toHaveTextContent('Send link');
+    fireEvent.click(sendLink);
+    expect(onSend).toHaveBeenCalledTimes(1);
     const open = screen.getByTestId(`incoming-openfb-${ID}`);
-    expect(open).toHaveTextContent('Open FB Chat');
     expect(open).toHaveAttribute('href', 'https://m.me/waiting');
     expect(open).toHaveAttribute('target', '_blank');
-    // The doomed Send route is not offered for a waiting customer.
+    // The doomed reply_inbox PHOTO Send is never offered for a waiting customer.
     expect(screen.queryByTestId(`incoming-send-${ID}`)).toBeNull();
-    expect(screen.queryByTestId(`incoming-waiting-${ID}`)).toBeNull();
   });
 
-  it('Photo waiting + no FB chat URL → neutral disabled "Photo waiting" (no Send, no Open FB Chat)', () => {
+  it('Photo waiting + no FB chat → 🔗 Send link only (Route B), no Open FB Chat, no photo Send', () => {
     render(
       <CaptureSendControl
         captureRecordId={ID}
@@ -81,11 +89,28 @@ describe('CaptureSendControl', () => {
         onSend={vi.fn()}
       />,
     );
-    const waiting = screen.getByTestId(`incoming-waiting-${ID}`);
-    expect(waiting).toBeDisabled();
-    expect(waiting).toHaveTextContent('Photo waiting');
-    expect(screen.queryByTestId(`incoming-send-${ID}`)).toBeNull();
+    expect(screen.getByTestId(`incoming-sendlink-${ID}`)).toHaveTextContent('Send link');
     expect(screen.queryByTestId(`incoming-openfb-${ID}`)).toBeNull();
+    expect(screen.queryByTestId(`incoming-send-${ID}`)).toBeNull();
+  });
+
+  it('Route B link already sent → 🔗 Link sent, disabled, no other send controls (never resend)', () => {
+    render(
+      <CaptureSendControl
+        captureRecordId={ID}
+        photoEligible={false}
+        fbUrl="https://m.me/x"
+        isTest={false}
+        sending={false}
+        onSend={vi.fn()}
+        linkSent
+      />,
+    );
+    const done = screen.getByTestId(`incoming-linksent-${ID}`);
+    expect(done).toBeDisabled();
+    expect(done).toHaveTextContent('Link sent');
+    expect(screen.queryByTestId(`incoming-sendlink-${ID}`)).toBeNull();
+    expect(screen.queryByTestId(`incoming-send-${ID}`)).toBeNull();
   });
 
   it('Test capture → Send stays disabled (a test never messages a real customer), even if eligible', () => {

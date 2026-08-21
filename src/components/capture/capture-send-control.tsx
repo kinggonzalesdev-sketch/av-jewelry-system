@@ -13,8 +13,9 @@ import { Button, buttonVariants } from '@/components/ui/button';
  *
  *   Link sent (Route B)        → 🔗 Link sent   (a secure-link Private Reply already went out; NEVER resend)
  *   Photo ready               → 📨 Send        (the manual backup/retry; eligible normally auto-sends)
- *   Photo waiting + FB chat    → 💬 Open FB Chat (the human fallback, allowed up to 7 days)
- *   Photo waiting + no chat     → Photo waiting  (neutral, disabled)
+ *   Photo waiting             → 🔗 Send link   (Route B: TEXT Private Reply with a secure /m link — the
+ *                                               same handler; NEVER a doomed reply_inbox PHOTO) + 💬 Open
+ *                                               FB Chat when a chat URL exists (the Route C human fallback)
  *   Test capture               → 📨 Send disabled (a test must never message a real customer)
  *
  * The Send entry point stays ready to host a future verified silent-commenter PHOTO route: when
@@ -87,34 +88,35 @@ export function CaptureSendControl({
     );
   }
 
-  // Photo waiting — no supported auto/normal PHOTO route. Offer the human fallback (Open FB Chat)
-  // when we have a usable Messenger URL; never attempt the doomed reply_inbox PHOTO.
-  if (fbUrl) {
-    return (
-      <a
-        href={fbUrl}
-        target="_blank"
-        rel="noreferrer"
-        className={buttonVariants({ variant: 'outline', size: 'sm' })}
-        data-testid={`incoming-openfb-${captureRecordId}`}
-        title="No auto-photo route yet (the customer hasn't sent an Inbox message) — open the chat and send it yourself (allowed up to 7 days)."
-      >
-        💬 Open FB Chat
-      </a>
-    );
-  }
-
-  // Photo waiting with no usable FB chat URL — a neutral, disabled waiting state (no route at all).
+  // Photo waiting — no NORMAL Inbox PHOTO route. Offer the Route B secure-link Private Reply
+  // ("Send link" → the SAME onSend handler, which routes to a TEXT Private Reply carrying a secure
+  // /m link, NEVER a doomed reply_inbox PHOTO; the auto path also attempts this — this is the manual
+  // trigger / retry). Open FB Chat stays as the human Route C fallback when a chat URL exists.
   return (
-    <Button
-      type="button"
-      size="sm"
-      variant="outline"
-      disabled
-      data-testid={`incoming-waiting-${captureRecordId}`}
-      title="Waiting for the customer to send an Inbox message — a photo can't be sent yet."
-    >
-      Photo waiting
-    </Button>
+    <span className="inline-flex flex-wrap items-center gap-1">
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={sending}
+        onClick={onSend}
+        data-testid={`incoming-sendlink-${captureRecordId}`}
+        title="Send the screenshot as a secure link via a Pancake Private Reply to the exact resolved Live comment (within 7 days). If the comment can't be safely resolved it becomes Needs Review — never a doomed photo send."
+      >
+        {sending ? 'Sending…' : '🔗 Send link'}
+      </Button>
+      {fbUrl ? (
+        <a
+          href={fbUrl}
+          target="_blank"
+          rel="noreferrer"
+          className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          data-testid={`incoming-openfb-${captureRecordId}`}
+          title="Or open the chat and send it yourself (allowed up to 7 days)."
+        >
+          💬 Open FB Chat
+        </a>
+      ) : null}
+    </span>
   );
 }

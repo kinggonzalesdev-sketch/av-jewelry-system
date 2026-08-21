@@ -43,6 +43,7 @@ export function CaptureLinkPanel({
   link,
   onChanged,
   onRecheck,
+  linkSent = false,
 }: {
   captureRecordId: string;
   link: EffectiveCaptureLink;
@@ -51,6 +52,9 @@ export function CaptureLinkPanel({
    *  Pancake and retries the match) — the fix for a commenter the realtime webhook was
    *  slow to deliver. Returns the fresh link. When omitted, no Re-check button shows. */
   onRecheck?: (captureRecordId: string) => Promise<CaptureLinkResult>;
+  /** Route B already sent a secure-link Private Reply (message_status 'link_sent') — shown in
+   *  place of "Photo waiting" so the operator sees the screenshot was delivered. */
+  linkSent?: boolean;
 }) {
   const [picking, setPicking] = useState(false);
   const [candidates, setCandidates] = useState<CaptureCandidateOption[] | null>(null);
@@ -116,6 +120,13 @@ export function CaptureLinkPanel({
           title="The customer has a recent Inbox message — a photo can be auto-sent now."
         >
           · Photo ready
+        </span>
+      ) : linkSent ? (
+        <span
+          className="text-sky-600"
+          title="A secure screenshot link was sent to the customer via a Pancake Private Reply."
+        >
+          · Secure link sent 🔗
         </span>
       ) : (
         <span
