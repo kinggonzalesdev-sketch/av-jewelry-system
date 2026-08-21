@@ -4,6 +4,7 @@ import { recordAuditEvent } from '@/lib/audit/log';
 import { requirePermission } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 import { isConversationMediaEligible } from '@/lib/capture/media-window';
+import { attemptSecureLinkPrivateReply } from '@/lib/capture/route-b';
 import {
   conversationBelongsToPage,
   getActivePancakePageId,
@@ -79,12 +80,13 @@ export async function sendPendingCaptureToMessenger(
     pancake_conversation_id: string | null;
   };
 
-  // Idempotent: never resend a capture that already went out.
-  if (row.message_status === 'sent') {
+  // Idempotent: never resend a capture that already went out (a PHOTO 'sent', or a Route B
+  // secure-link Private Reply 'link_sent').
+  if (row.message_status === 'sent' || row.message_status === 'link_sent') {
     return {
       ok: true,
       code: 'already_sent',
-      message: 'Already sent to Messenger — not resent.',
+      message: 'Already sent — not resent.',
     };
   }
 
@@ -158,15 +160,36 @@ export async function sendPendingCaptureToMessenger(
   if (opts?.requireMediaWindow) {
     const eligible = await isConversationMediaEligible(supabase, conversationId);
     if (!eligible) {
+      // ROUTE B — not Inbox-media-eligible ("Photo waiting"): if MineFlow can prove the EXACT Live
+      // comment identity, create/reuse a secure screenshot link and send ONE Pancake Private Reply
+      // TEXT (idempotent, atomic — never two replies). No exact comment / outside the 7-day window
+      // → Route C: park 'awaiting_inbox' for Open FB Chat. Never a doomed reply_inbox PHOTO here.
+      const rb = await attemptSecureLinkPrivateReply({
+        supabase,
+        captureRecordId: id,
+        fbName: fbName ?? '',
+        value: ocrStr(row.ocr, 'itemQuery', 'grams', 'weight'),
+        screenshotPath: path,
+      });
+      if (rb.ok) {
+        await supabase.rpc('mark_capture_photo_state', {
+          p_capture_id: id,
+          p_status: 'link_sent',
+        });
+        return {
+          ok: true,
+          code: rb.code === 'already_sent' ? 'already_sent' : 'sent',
+          message:
+            rb.code === 'already_sent'
+              ? 'Secure link already sent — not resent.'
+              : 'Sent a secure screenshot link via Private Reply ✓',
+        };
+      }
       await supabase.rpc('mark_capture_photo_state', {
         p_capture_id: id,
         p_status: 'awaiting_inbox',
       });
-      return {
-        ok: false,
-        code: 'awaiting_inbox',
-        error: 'Waiting for the customer to message first — screenshot not auto-sent.',
-      };
+      return { ok: false, code: 'awaiting_inbox', error: rb.message };
     }
   }
 

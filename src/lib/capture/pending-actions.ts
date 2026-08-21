@@ -152,7 +152,8 @@ async function maybeAutoSend(
   if (
     link.linkStatus !== 'linked' ||
     cap.is_test === true ||
-    cap.message_status === 'sent'
+    cap.message_status === 'sent' ||
+    cap.message_status === 'link_sent'
   ) {
     return false;
   }

@@ -79,10 +79,15 @@ describe('privileged Supabase client isolation', () => {
     //   - lib/integrations/pancake-webhook.ts — realtime Pancake identity ingest; no
     //     user session, so its authority is the PANCAKE_WEBHOOK_SECRET check in its only
     //     caller, the /api/webhooks/pancake route. The write is strictly fill-only.
+    //   - lib/capture/share-link-resolve.ts — the PUBLIC /m/{token} screenshot page has no
+    //     user session; its authority is the opaque, HASHED, unexpired, un-revoked token
+    //     validated by resolve_capture_share_link. Read-only: it returns ONLY a 5-minute
+    //     signed URL for that one capture's screenshot — never the token/path/customer data.
     const sanctioned = [
       /team-accounts\.ts$/,
       /pancake-system\.ts$/,
       /pancake-webhook\.ts$/,
+      /share-link-resolve\.ts$/,
     ];
 
     const sourceFiles = collectSourceFiles(srcDir).filter(

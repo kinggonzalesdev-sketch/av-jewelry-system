@@ -53,6 +53,8 @@ function read(relative: string): string {
 const AUTHORIZED_EXCEPTIONS = {
   'auth/actions.ts': 'sign-in cannot require an authenticated session',
   'audit/log.ts': 'logging a denial cannot require the permission that was denied',
+  'capture/share-link.ts':
+    'pure token crypto with NO database access — the ".update(" WRITE_CALL matched is the AES-GCM cipher.update(), not a DB write; the guard lives in its callers (pc-send requirePermission, the DEFINER RPCs re-check is_active_staff)',
 } as const;
 
 describe('server actions are transport only (Bible §29.3, invariant #1)', () => {

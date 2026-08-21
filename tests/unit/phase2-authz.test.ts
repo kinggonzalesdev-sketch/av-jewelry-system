@@ -229,10 +229,14 @@ describe('password policy', () => {
 
   it('implements no custom password hashing anywhere', () => {
     const sources = collectFiles(join(projectRoot, 'src'), /\.(ts|tsx)$/);
-    const offenders = sources.filter((file) =>
-      /\b(bcrypt|scrypt|argon2|pbkdf2|createHash\(['"]sha)/i.test(
-        stripComments(readFileSync(file, 'utf8')),
-      ),
+    const offenders = sources.filter(
+      (file) =>
+        // capture/share-link.ts hashes an OPAQUE RANDOM token (SHA-256, the public /m lookup key),
+        // never a password. This rule targets custom PASSWORD hashing; token hashing is legitimate.
+        !/[\\/]capture[\\/]share-link\.ts$/.test(file) &&
+        /\b(bcrypt|scrypt|argon2|pbkdf2|createHash\(['"]sha)/i.test(
+          stripComments(readFileSync(file, 'utf8')),
+        ),
     );
 
     expect(offenders).toEqual([]);
