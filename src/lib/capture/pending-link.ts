@@ -69,6 +69,22 @@ function asRow(data: unknown): Row | null {
   return (data as Row | null) ?? null;
 }
 
+/** The active customer that OWNS a specific on-page conversation — for webhook-resolved exact
+ *  identity, so a pile of same-name duplicates never hides the one real linked customer. */
+async function customerByConversation(
+  supabase: SupabaseClient,
+  conversationId: string,
+): Promise<Row | null> {
+  const { data } = await supabase
+    .from('customers')
+    .select(SELECT)
+    .eq('is_active', true)
+    .eq('pancake_conversation_id', conversationId)
+    .limit(1)
+    .maybeSingle();
+  return asRow(data);
+}
+
 /** Active customers whose name shares the first token — the candidate pool. */
 async function candidateRows(supabase: SupabaseClient, name: string): Promise<Row[]> {
   const firstToken = name.split(/\s+/)[0] ?? name;
@@ -191,36 +207,58 @@ export async function resolveCaptureIdentity(
     };
   };
 
-  // Tier 1 — EXACT full name.
+  // Same-name customers, EXACT first then first+last (middle-name tolerant). Duplicate RECORDS of
+  // one person are collapsed by their conversation below — Owner priority: an exact Pancake identity
+  // beats a pile of duplicate name-only rows, so a picker never shows for one real person.
   const exact = rows.filter((c) => normalizeName(c.display_name ?? '') === norm);
-  const exactUsable = exact.filter((c) => onPage(c.pancake_conversation_id));
-  if (exactUsable.length === 1)
-    return linkedFromRow(
-      exactUsable[0]!,
-      exactUsable[0]!.pancake_conversation_id as string,
-      exact.length,
-    );
-  if (exact.length > 1)
-    return { ...NO_MATCH, linkStatus: 'needs_confirmation', matchCount: exact.length };
-  if (exact.length === 1) return resolveKnownCustomer(exact[0]!);
-
-  // Tier 2 — FIRST+LAST (middle-name tolerant).
   const fl = rows.filter((c) => nameKey(c.display_name ?? '') === key);
-  const flUsable = fl.filter((c) => onPage(c.pancake_conversation_id));
-  if (flUsable.length === 1)
-    return linkedFromRow(flUsable[0]!, flUsable[0]!.pancake_conversation_id as string, 1);
-  if (fl.length > 1)
-    return { ...NO_MATCH, linkStatus: 'needs_confirmation', matchCount: fl.length };
-  if (fl.length === 1) return resolveKnownCustomer(fl[0]!);
+  const sameName = exact.length > 0 ? exact : fl;
 
-  // Tier 2.5 — WEBHOOK FAST-MATCH: a recent Live commenter whose comment the Pancake
-  // webhook captured (it stores page_id + the person's PSID + name). Builds the
-  // messageable {page_id}_{psid} chat straight from that stored identity — no slow,
-  // rate-limited conversations API — so a pinned commenter who is NOT yet a saved
-  // customer still resolves to a Facebook match and can be sent to. This is the SAME
-  // source the manual "Send to Messenger" resolver uses; wiring it here keeps the
-  // strip's match, the Android auto-send, and Send consistent. Unique name only (a
-  // shared name never guesses); a blank/wrong-page id falls through to the live lookup.
+  if (sameName.length > 0) {
+    const usable = sameName.filter((c) => onPage(c.pancake_conversation_id));
+    const distinctConvs = new Set(usable.map((c) => c.pancake_conversation_id));
+    // ONE saved identity — even when SEVERAL duplicate records share the SAME chat → auto-select it.
+    if (distinctConvs.size === 1) {
+      const chosen = usable[0]!;
+      return linkedFromRow(chosen, chosen.pancake_conversation_id as string, 1);
+    }
+    // 2+ genuinely DIFFERENT saved conversations for this name → the operator must pick.
+    if (distinctConvs.size > 1) {
+      return { ...NO_MATCH, linkStatus: 'needs_confirmation', matchCount: distinctConvs.size };
+    }
+    // No saved chat on any record → resolve the EXACT identity from the webhook (a unique recent
+    // Live commenter / DM PSID) BEFORE ever showing a same-name picker (Owner priority 3). The SAME
+    // resolver manual Send + Android auto-send use; unique name only (a shared name never guesses).
+    const wh = await resolveConversationFromWebhook(supabase, name, activePage);
+    if (wh.conversationId) {
+      const owner =
+        sameName.find((c) => c.pancake_conversation_id === wh.conversationId) ??
+        (await customerByConversation(supabase, wh.conversationId));
+      if (owner) return linkedFromRow(owner, wh.conversationId, 1);
+      if (sameName.length === 1) return linkedFromRow(sameName[0]!, wh.conversationId, 1);
+      // Several name-only duplicates + a unique resolved chat with no saved owner → link the chat
+      // (auto-send works); never pick one duplicate record as "the" customer.
+      return {
+        linkStatus: 'linked',
+        customerId: null,
+        customerName: name,
+        conversationId: wh.conversationId,
+        conversationAvailable: true,
+        fbUrl: null,
+        matchCount: 1,
+      };
+    }
+    if (wh.matchCount > 1) {
+      return { ...NO_MATCH, linkStatus: 'needs_confirmation', matchCount: wh.matchCount };
+    }
+    // No webhook signal + no saved chat: 2+ duplicates → operator picks; exactly 1 → live lookup.
+    if (sameName.length > 1) {
+      return { ...NO_MATCH, linkStatus: 'needs_confirmation', matchCount: sameName.length };
+    }
+    return resolveKnownCustomer(sameName[0]!);
+  }
+
+  // No saved customer with this name at all — a not-yet-saved Live commenter: webhook then live.
   const wh = await resolveConversationFromWebhook(supabase, name, activePage);
   if (wh.conversationId) {
     return {
@@ -233,10 +271,9 @@ export async function resolveCaptureIdentity(
       matchCount: 1,
     };
   }
-  if (wh.matchCount > 1)
+  if (wh.matchCount > 1) {
     return { ...NO_MATCH, linkStatus: 'needs_confirmation', matchCount: wh.matchCount };
-
-  // Tier 3 — LIVE lookup for a not-yet-saved customer (single unambiguous chat only).
+  }
   const live = await findRecentPancakeConversationByName(name, {
     sinceDays: 7,
     maxPages: 8,
@@ -252,8 +289,9 @@ export async function resolveCaptureIdentity(
       matchCount: 1,
     };
   }
-  if (live.matchCount > 1)
+  if (live.matchCount > 1) {
     return { ...NO_MATCH, linkStatus: 'needs_confirmation', matchCount: live.matchCount };
+  }
   return NO_MATCH;
 }
 
