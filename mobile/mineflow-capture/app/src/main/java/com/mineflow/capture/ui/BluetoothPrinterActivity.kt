@@ -9,6 +9,9 @@ import android.graphics.Typeface
 import android.location.LocationManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.text.InputType
 import android.view.ViewGroup
@@ -29,8 +32,6 @@ import com.mineflow.capture.data.ApiClient
 import com.mineflow.capture.data.SecureStore
 import com.mineflow.capture.printer.BluetoothPrinterManager
 import com.mineflow.capture.printer.PrintJobPoller
-import com.mineflow.capture.printer.PrinterToggle
-import com.mineflow.capture.printer.PrinterToggleState
 import com.mineflow.capture.printer.StickerEncoder
 import kotlin.concurrent.thread
 
@@ -66,8 +67,13 @@ class BluetoothPrinterActivity : AppCompatActivity() {
     private val found = LinkedHashMap<String, BluetoothPrinterManager.Printer>()
     private var scanning = false
     private var pendingScan = false
-    private var suppressSpinner = false
-    @Volatile private var connecting = false
+    // Connection state: `connecting` is TRANSIENT (an attempt is in flight); the resumed-only
+    // status tick clears it the moment the ACTUAL socket is connected — the UI never trusts a stale
+    // boolean. `connectFailed` shows the one-shot "Connection failed" until the next attempt.
+    private var connecting = false
+    private var connectFailed = false
+    private var connectStartMs = 0L
+    private val ui = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -141,13 +147,59 @@ class BluetoothPrinterActivity : AppCompatActivity() {
         if (hasBtPermissions()) loadBonded() else ActivityCompat.requestPermissions(this, requiredPerms(), REQ_PERMS)
         // Keep the warm connection + print pump running when the printer is ON.
         if (!store.printerAddress.isNullOrBlank() && store.printerEnabled) PrintJobPoller.start(this)
-        refreshPrinterUi()
+        // Entering the screen shows the ACTUAL connection state — never a stale connecting/failed
+        // flag carried over from a previous visit (test 6: correct saved printer + real state).
+        connecting = false
+        connectFailed = false
         rebuildPrinterSpinner()
+        startStatusTick()
     }
 
     override fun onPause() {
         super.onPause()
+        ui.removeCallbacks(statusTick)
         if (scanning) { BluetoothPrinterManager.stopDiscovery(this); scanning = false }
+    }
+
+    // ---- Live status: the UI always reflects the REAL socket state (not a stale boolean) --------
+
+    private fun startStatusTick() {
+        ui.removeCallbacks(statusTick)
+        ui.post(statusTick)
+    }
+
+    /** Runs only while the screen is resumed. Clears the transient `connecting` the instant the
+     *  actual socket is connected, or marks it failed after a timeout, then repaints — so
+     *  "Connecting…" can never stick once the printer is really connected. */
+    private val statusTick = object : Runnable {
+        override fun run() {
+            if (connecting) {
+                val addr = store.printerAddress
+                val connected = !addr.isNullOrBlank() && BluetoothPrinterManager.isConnected(addr)
+                if (connected) {
+                    connecting = false; connectFailed = false
+                } else if (SystemClock.elapsedRealtime() - connectStartMs > CONNECT_TIMEOUT_MS) {
+                    connecting = false; connectFailed = true
+                }
+            }
+            refreshPrinterUi()
+            ui.postDelayed(this, STATUS_TICK_MS)
+        }
+    }
+
+    /** Begin a connection attempt: keep-alive warms the socket in the background AND we fire an
+     *  immediate explicit connect; the status tick owns the UI so it flips to Connected the moment
+     *  the socket is up (whichever path wins) and never waits on the blocking connect() to return. */
+    private fun beginConnect(addr: String) {
+        if (!hasBtPermissions()) { ActivityCompat.requestPermissions(this, requiredPerms(), REQ_PERMS); return }
+        store.printerEnabled = true
+        connectFailed = false
+        connecting = true
+        connectStartMs = SystemClock.elapsedRealtime()
+        refreshPrinterUi()
+        PrintJobPoller.start(this) // keep-alive + print pump (warms the socket)
+        thread { BluetoothPrinterManager.connect(this, addr) } // immediate attempt; tick owns the UI state
+        startStatusTick()
     }
 
     // ---- ON/OFF toggle -------------------------------------------------------
@@ -155,28 +207,8 @@ class BluetoothPrinterActivity : AppCompatActivity() {
     private fun onToggleClicked() {
         val addr = store.printerAddress
         if (addr.isNullOrBlank()) { toast("Choose a printer from the dropdown first."); return }
-        if (store.printerEnabled) confirmTurnOff() else turnOn(addr)
-    }
-
-    /** OFF → ON: reconnect to the SAVED printer (no scan). Shows Connecting…, then Connected only
-     *  once the socket is actually ready; a failed reconnect reverts to OFF and says so. */
-    private fun turnOn(addr: String) {
-        if (!hasBtPermissions()) { ActivityCompat.requestPermissions(this, requiredPerms(), REQ_PERMS); return }
-        store.printerEnabled = true
-        connecting = true
-        refreshPrinterUi()
-        PrintJobPoller.start(this) // resume keep-alive + print pump
-        thread {
-            val res = BluetoothPrinterManager.connect(this, addr)
-            runOnUiThread {
-                connecting = false
-                if (!res.ok) {
-                    store.printerEnabled = false // do NOT pretend it's connected
-                    toast("Unable to connect to ${store.printerName ?: "printer"}.")
-                }
-                refreshPrinterUi()
-            }
-        }
+        if (connecting) return // an attempt is already in flight — protect against duplicate taps
+        if (BluetoothPrinterManager.isConnected(addr)) confirmTurnOff() else beginConnect(addr)
     }
 
     /** ON → OFF: confirm first (guards against an accidental tap). */
@@ -192,6 +224,7 @@ class BluetoothPrinterActivity : AppCompatActivity() {
     private fun turnOff() {
         store.printerEnabled = false // intent OFF — keeps the saved printer (never unpaired/forgotten)
         connecting = false
+        connectFailed = false
         thread {
             // Close the socket cleanly; the keep-alive won't reconnect and the poller won't print
             // while OFF (both gate on printerEnabled), so OFF stays off.
@@ -239,16 +272,9 @@ class BluetoothPrinterActivity : AppCompatActivity() {
         }
         store.printerAddress = p.address
         store.printerName = p.name
-        store.printerEnabled = true // selecting a printer turns it ON
-        connecting = true
-        refreshPrinterUi(); rebuildPrinterSpinner()
-        toast("${p.name} selected.")
-        // Warm the connection + make sure the print pump is running.
-        PrintJobPoller.start(this)
-        thread {
-            BluetoothPrinterManager.connect(this, p.address)
-            runOnUiThread { connecting = false; refreshPrinterUi(); rebuildPrinterSpinner() }
-        }
+        rebuildPrinterSpinner()      // reflect the new active (✓) in the dropdown
+        toast("${p.name} selected.") // genuine user change only (the listener ignores re-selects)
+        beginConnect(p.address)      // connect + drive the live status via the tick
     }
 
     private fun onTestPrint() {
@@ -291,47 +317,58 @@ class BluetoothPrinterActivity : AppCompatActivity() {
             p.name + suffix + mark
         }
         val display = labels.ifEmpty { listOf("No printers — tap Scan for printers") }
-        suppressSpinner = true
         printerSpinner.adapter =
             ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, display)
         val idx = printers.indexOfFirst { it.address == selected }
         if (idx >= 0) printerSpinner.setSelection(idx)
         printerSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
-                if (suppressSpinner) return
-                printers.getOrNull(position)?.let { setActive(it) }
+                // Act ONLY on a genuine user CHANGE. A programmatic pre-select / restore / re-pick of
+                // the already-active printer selects the SAME address → ignored: no "selected" toast,
+                // no reconnect. This replaces the timing-fragile suppress flag (fixes both issues).
+                val p = printers.getOrNull(position) ?: return
+                if (p.address == store.printerAddress) return
+                setActive(p)
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
-        printerSpinner.post { suppressSpinner = false }
     }
 
-    /** Reflect the two-fact state (configured vs enabled vs live socket) via the pure resolver. */
+    /** Reflect the ACTUAL socket state — never a stale boolean. `connected` (live isConnected) wins,
+     *  so the loading state stops the instant the printer is really connected even if the blocking
+     *  connect() call hasn't returned. `connecting` shows only during a live attempt (the status tick
+     *  clears it); "Connection failed" is a one-shot until the next attempt. */
     private fun refreshPrinterUi() {
         val addr = store.printerAddress
-        val name = store.printerName ?: "XP-236B"
-        val state = PrinterToggle.resolve(
-            hasPrinter = !addr.isNullOrBlank(),
-            enabled = store.printerEnabled,
-            connected = !addr.isNullOrBlank() && BluetoothPrinterManager.isConnected(addr),
-            connecting = connecting,
-        )
-        when (state) {
-            PrinterToggleState.NO_PRINTER -> {
+        val name = store.printerName ?: "Printer"
+        val connected = !addr.isNullOrBlank() && BluetoothPrinterManager.isConnected(addr)
+        when (
+            resolvePrinterDisplay(
+                hasPrinter = !addr.isNullOrBlank(),
+                connected = connected,
+                connecting = connecting,
+                connectFailed = connectFailed,
+            )
+        ) {
+            PrinterDisplay.NO_PRINTER -> {
                 statusText.text = "No printer selected"; statusText.setTextColor(beige)
-                toggleBtn.text = "Connect"
+                toggleBtn.text = "Connect"; toggleBtn.isEnabled = false
             }
-            PrinterToggleState.OFF -> {
-                statusText.text = "$name  ·  Disconnected"; statusText.setTextColor(beige)
-                toggleBtn.text = "Connect"
-            }
-            PrinterToggleState.CONNECTING -> {
-                statusText.text = "$name  ·  Connecting…"; statusText.setTextColor(gold)
-                toggleBtn.text = "Disconnect"
-            }
-            PrinterToggleState.CONNECTED -> {
+            PrinterDisplay.CONNECTED -> {
                 statusText.text = "$name  ·  Connected"; statusText.setTextColor(green)
-                toggleBtn.text = "Disconnect"
+                toggleBtn.text = "Disconnect"; toggleBtn.isEnabled = true
+            }
+            PrinterDisplay.CONNECTING -> {
+                statusText.text = "$name  ·  Connecting…"; statusText.setTextColor(gold)
+                toggleBtn.text = "Connecting…"; toggleBtn.isEnabled = false // protect from duplicate taps
+            }
+            PrinterDisplay.FAILED -> {
+                statusText.text = "$name  ·  Connection failed"; statusText.setTextColor(gold)
+                toggleBtn.text = "Connect"; toggleBtn.isEnabled = true
+            }
+            PrinterDisplay.DISCONNECTED -> {
+                statusText.text = "$name  ·  Not connected"; statusText.setTextColor(beige)
+                toggleBtn.text = "Connect"; toggleBtn.isEnabled = true
             }
         }
         if (!scanning) scanBtn.text = scanIdleLabel()
@@ -408,6 +445,8 @@ class BluetoothPrinterActivity : AppCompatActivity() {
 
     companion object {
         private const val REQ_PERMS = 42
+        private const val CONNECT_TIMEOUT_MS = 12_000L // after this with no live socket → "Connection failed"
+        private const val STATUS_TICK_MS = 700L        // how often the resumed screen re-reads the real state
         fun open(context: Context) {
             context.startActivity(Intent(context, BluetoothPrinterActivity::class.java))
         }
