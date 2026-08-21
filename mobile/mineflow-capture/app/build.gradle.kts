@@ -45,8 +45,8 @@ android {
         applicationId = "com.mineflow.capture"
         minSdk = 26
         targetSdk = 34
-        versionCode = 14
-        versionName = "1.0.13"
+        versionCode = 15
+        versionName = "1.0.14"
 
         // The MineFlow backend the app talks to — the SAME production system as web.
         buildConfigField(
@@ -108,4 +108,7 @@ dependencies {
 
     // Pure-JVM unit tests for the pinned-comment selection logic (no device needed).
     testImplementation("junit:junit:4.13.2")
+    // Android's bundled org.json is a non-functional STUB under JVM unit tests; the real
+    // implementation on the TEST classpath lets us unit-test JSON-shaped logic (the rate sync).
+    testImplementation("org.json:json:20231013")
 }

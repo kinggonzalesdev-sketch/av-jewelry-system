@@ -59,5 +59,28 @@ export async function POST(request: Request): Promise<Response> {
       { status: 422 },
     );
   }
-  return NextResponse.json({ ok: true, ...(data ?? { claimed: false }) });
+
+  const base = { ok: true, ...(data ?? { claimed: false }) };
+
+  // Piggyback the ONE saved web Sticker Settings price-per-gram so the phone can mirror it
+  // LOCALLY (the sticker is still generated on-device with NO round-trip before printing — the
+  // direct/local print reads the cached value; this poll just keeps that cache in sync). Respects
+  // the show-price toggle (off/unset → null → phone prints grams only). On a read error we OMIT
+  // the field entirely so a transient failure never wipes the phone's cached rate.
+  const stickerRes = await staff.supabase
+    .from('sticker_settings')
+    .select('price_per_gram, show_price_per_gram')
+    .eq('id', 1)
+    .maybeSingle();
+  if (!stickerRes.error) {
+    const s = stickerRes.data as
+      | { price_per_gram: string | null; show_price_per_gram: boolean | null }
+      | null;
+    const raw =
+      s && s.show_price_per_gram !== false && typeof s.price_per_gram === 'string'
+        ? s.price_per_gram.trim()
+        : '';
+    return NextResponse.json({ ...base, pricePerGram: raw !== '' ? raw : null });
+  }
+  return NextResponse.json(base);
 }

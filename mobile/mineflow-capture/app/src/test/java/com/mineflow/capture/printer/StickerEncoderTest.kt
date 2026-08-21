@@ -80,4 +80,69 @@ class StickerEncoderTest {
         // Byte-identical → the Test Print and a real capture sticker share one formatter/layout.
         assertArrayEquals(viaCapture, viaTestPrint)
     }
+
+    // ---- Actual-capture grams+price regression (Owner 2026-08-21) --------------------------------
+    // The capture sticker must show "GRAMS • ₱RATE/g" using the CONFIGURED rate (₱ → P, • → - after
+    // ASCII folding for the thermal codepage). The rate now mirrors the saved web Sticker Settings
+    // (synced into the phone's local cache); these prove the formatter given that rate.
+
+    // 1 — grams capture with the configured rate 6800.
+    @Test
+    fun capture_grams_withRate6800_showsGramsAndPerGram() {
+        val out = String(
+            StickerEncoder.encode(StickerEncoder.fromCapture("KING GONZALES", "11.5", "6800"), tspl = true),
+            Charsets.US_ASCII,
+        )
+        assertTrue(out.contains("KING GONZALES"))
+        assertTrue(out.contains("11.5g - P6,800/g")) // "11.5g • ₱6,800/g" asciified, one line
+    }
+
+    // 2 — leading decimal .45 → 0.45g • ₱6,800/g.
+    @Test
+    fun capture_leadingDecimal045_withRate() {
+        val out = String(
+            StickerEncoder.encode(StickerEncoder.fromCapture("KING GONZALES", ".45", "6800"), tspl = true),
+            Charsets.US_ASCII,
+        )
+        assertTrue(out.contains("0.45g - P6,800/g"))
+    }
+
+    // 3 — a DIFFERENT configured rate renders that rate (not a hardcoded 6800).
+    @Test
+    fun capture_differentConfiguredRate7500() {
+        val out = String(
+            StickerEncoder.encode(StickerEncoder.fromCapture("KING GONZALES", "11.5", "7500"), tspl = true),
+            Charsets.US_ASCII,
+        )
+        assertTrue(out.contains("11.5g - P7,500/g"))
+        assertFalse(out.contains("6,800"))
+    }
+
+    // 4 — a fixed-price capture never reaches the phone encoder (maybePrintDirect requires grams);
+    //     even so, fromCapture(name, grams=null, rate) prints ONLY the per-gram rate line — it never
+    //     invents a weight ("Ng") and never mislabels a fixed price with "/g".
+    @Test
+    fun capture_noGrams_neverFabricatesGramsOrCombinedLine() {
+        val s = StickerEncoder.fromCapture("KING GONZALES", null, "6800")
+        assertNull(s.grams)
+        val out = String(StickerEncoder.encode(s, tspl = true), Charsets.US_ASCII)
+        assertFalse(out.contains("null"))
+        assertFalse(out.contains("g - P")) // no "<grams>g • ₱rate/g" combined line without a weight
+    }
+
+    // 5 — missing / unreadable grams is never invented.
+    @Test
+    fun capture_missingGrams_doesNotInventGrams() {
+        assertNull(StickerEncoder.fromCapture("KING GONZALES", null, "6800").grams)
+        assertNull(StickerEncoder.fromCapture("KING GONZALES", "", "6800").grams)
+        assertNull(StickerEncoder.normalizeGrams("abc"))
+    }
+
+    // 6 — Test Print and an actual capture are byte-identical at the configured rate 6800.
+    @Test
+    fun capture_and_testPrint_identicalAt6800() {
+        val cap = StickerEncoder.encode(StickerEncoder.fromCapture("KING GONZALES", "11.5", "6800"), tspl = true)
+        val test = StickerEncoder.encode(StickerEncoder.sampleSticker("6800"), tspl = true)
+        assertArrayEquals(cap, test)
+    }
 }

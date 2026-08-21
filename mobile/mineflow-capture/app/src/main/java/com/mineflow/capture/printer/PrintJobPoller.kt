@@ -46,6 +46,19 @@ object PrintJobPoller {
                     if (store.isLoggedIn && !store.printerAddress.isNullOrBlank() && store.printerEnabled) {
                         // 1) Live capture stickers (shared PC+phone queue — exactly once).
                         val cap = api.claimCaptureSticker()
+                        // Mirror the ONE saved web Sticker Settings price-per-gram into the LOCAL
+                        // cache (store.pricePerGram) that the direct/local print reads — so the
+                        // capture sticker shows "…g • ₱rate/g" using the configured rate, and a
+                        // later web change is picked up on the next poll. This is a background sync
+                        // ONLY; the print path never waits on the network. Field absent (older
+                        // server) → leave the cache alone; present → set/clear to match the server.
+                        if (cap.has("pricePerGram")) {
+                            val r = sharedRate(cap)
+                            if (store.pricePerGram != r) {
+                                store.pricePerGram = r
+                                Log.i(TAG, "sticker rate synced from Sticker Settings: ${r ?: "(none)"}")
+                            }
+                        }
                         if (cap.optBoolean("claimed", false)) {
                             drainedOne = printCaptureSticker(app, api, store, cap)
                         } else {
@@ -75,6 +88,17 @@ object PrintJobPoller {
         worker = null
         BluetoothPrinterManager.stopKeepAlive()
     }
+
+    /**
+     * The shared price-per-gram carried on a capture-claim response (web Sticker Settings parity):
+     * a trimmed rate string, or null when the server says none / the price line is hidden (empty or
+     * JSON null). Pure (no Android deps) so the sync rule is unit-testable. The CALLER must first
+     * check `resp.has("pricePerGram")` — an ABSENT field (older server) means "leave the local cache
+     * alone", which is different from a present null ("clear it").
+     */
+    internal fun sharedRate(resp: org.json.JSONObject): String? =
+        if (resp.isNull("pricePerGram")) null
+        else resp.optString("pricePerGram").trim().ifEmpty { null }
 
     /** Print a claimed LIVE capture sticker (shared PC+phone queue). Returns true when
      *  printed (drain the next). On failure it releases the claim (report failed) so the
