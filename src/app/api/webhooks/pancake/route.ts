@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 
 import {
-  captureWebhookRawDiag,
   logLiveCommentReceipt,
   parsePancakeLiveComment,
   storePancakeLiveComment,
@@ -79,13 +78,6 @@ export async function POST(request: Request): Promise<Response> {
       { status: 400 },
     );
   }
-
-  // TEMPORARY pin-signal diagnostic (INSTRUMENTATION ONLY; OFF unless PANCAKE_WEBHOOK_DIAG_CAPTURE=on).
-  // Copies the FULL parsed body of EVERY event — including non-comment events and repeated/updated
-  // same-(page_id, comment_id) events the code below ignores/dedups — to a separate diagnostic
-  // table, then continues UNCHANGED. Best-effort + bounded: it cannot change the response, and when
-  // the flag is off it is a no-op (zero DB work, production behavior identical).
-  await captureWebhookRawDiag(body);
 
   // MILESTONE 1: ONLY receive → validate → store Facebook Live comments → log → 200,
   // fast. No orders, no Capture auto-match, no customer-link changes yet (later phases).
