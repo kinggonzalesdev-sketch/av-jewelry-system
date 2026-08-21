@@ -418,15 +418,31 @@ export function IncomingCapturesStrip({
         for (let i = 0; i < 5 && alive; i += 1) {
           const claim = await claimCaptureStickerAction();
           if (!claim.claimed) break;
-          const data: OrderReceiptData = {
-            customerName: claim.fbName || '—',
-            itemName: '',
-            grams: normalizeGrams(claim.grams),
-            quantity: 1,
-            unitPrice: null,
-            pricePerGram: readStickerPricePerGram() || null,
-            date: stickerDate(),
-          };
+          // Classify the RAW claim value (same rule as the strip + the phone): a Fixed Price
+          // ("15k"/"15000"/"₱15,000") prints "FIXED • ₱X"; a real weight prints "Xg • ₱rate/g".
+          // (Before, the RPC digit-extracted "15" from "15k" and this always printed grams.)
+          const rawValue = claim.value ?? claim.grams;
+          const data: OrderReceiptData =
+            (classifyCaptureValue(rawValue) ?? 'grams') === 'fixed'
+              ? {
+                  customerName: claim.fbName || '—',
+                  itemName: '',
+                  grams: null,
+                  quantity: 1,
+                  unitPrice: null,
+                  pricePerGram: null,
+                  fixedPrice: parseFixedPrice(rawValue),
+                  date: stickerDate(),
+                }
+              : {
+                  customerName: claim.fbName || '—',
+                  itemName: '',
+                  grams: normalizeGrams(rawValue),
+                  quantity: 1,
+                  unitPrice: null,
+                  pricePerGram: readStickerPricePerGram() || null,
+                  date: stickerDate(),
+                };
           try {
             await writeToChannel(
               activeChannel,

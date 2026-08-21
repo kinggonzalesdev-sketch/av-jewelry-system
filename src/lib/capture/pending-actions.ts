@@ -279,7 +279,14 @@ export async function listCaptureCandidatesAction(
 
 /** One claimed capture sticker to print (shared PC+phone queue), or nothing waiting. */
 export type CaptureStickerClaim =
-  | { claimed: true; captureRecordId: string; fbName: string; grams: string | null }
+  | {
+      claimed: true;
+      captureRecordId: string;
+      fbName: string;
+      grams: string | null;
+      /** The RAW captured value ("11.5" / "15k" / "15,000") for grams-vs-fixed classification. */
+      value: string | null;
+    }
   | { claimed: false };
 
 /**
@@ -299,6 +306,7 @@ export async function claimCaptureStickerAction(): Promise<CaptureStickerClaim> 
       capture_record_id?: string;
       fb_name?: string;
       grams?: string;
+      value?: string;
     } | null;
   };
   if (!data || data.claimed !== true || !data.capture_record_id)
@@ -308,6 +316,7 @@ export async function claimCaptureStickerAction(): Promise<CaptureStickerClaim> 
     captureRecordId: data.capture_record_id,
     fbName: (data.fb_name ?? '').trim(),
     grams: (data.grams ?? '').trim() || null,
+    value: (data.value ?? '').trim() || null,
   };
 }
 

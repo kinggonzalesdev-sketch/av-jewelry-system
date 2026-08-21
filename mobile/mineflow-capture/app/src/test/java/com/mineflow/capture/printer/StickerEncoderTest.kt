@@ -145,4 +145,94 @@ class StickerEncoderTest {
         val test = StickerEncoder.encode(StickerEncoder.sampleSticker("6800"), tspl = true)
         assertArrayEquals(cap, test)
     }
+
+    // ---- Fixed Price: RAW-token classification decided BEFORE any grams extraction (Owner 2026-08-21)
+    //      k / ₱ / P / PHP / thousands-comma / bare-integer>=1000 → FIXED; decimals & <=999 → GRAMS.
+
+    @Test
+    fun fixedPricePeso_kSuffix() {
+        assertEquals("15000", StickerEncoder.fixedPricePeso("15k"))
+        assertEquals("15000", StickerEncoder.fixedPricePeso("15K"))
+        assertEquals("16200", StickerEncoder.fixedPricePeso("16.2k"))
+        assertEquals("1000", StickerEncoder.fixedPricePeso("1k"))
+    }
+
+    @Test
+    fun fixedPricePeso_currencyMarker() {
+        assertEquals("15000", StickerEncoder.fixedPricePeso("₱15000"))
+        assertEquals("15000", StickerEncoder.fixedPricePeso("₱15,000"))
+        assertEquals("15000", StickerEncoder.fixedPricePeso("P15000"))
+        assertEquals("15000", StickerEncoder.fixedPricePeso("PHP 15000"))
+    }
+
+    @Test
+    fun fixedPricePeso_thousandsComma() {
+        assertEquals("15000", StickerEncoder.fixedPricePeso("15,000"))
+        assertEquals("16234", StickerEncoder.fixedPricePeso("16,234"))
+        assertEquals("1000", StickerEncoder.fixedPricePeso("1,000"))
+    }
+
+    @Test
+    fun fixedPricePeso_bareIntegerAtLeast1000() {
+        assertEquals("1000", StickerEncoder.fixedPricePeso("1000"))
+        assertEquals("15000", StickerEncoder.fixedPricePeso("15000"))
+        assertEquals("16234", StickerEncoder.fixedPricePeso("16234"))
+    }
+
+    @Test
+    fun fixedPricePeso_weightsAndJunkAreNotFixed() {
+        assertNull(StickerEncoder.fixedPricePeso(".45"))
+        assertNull(StickerEncoder.fixedPricePeso(".7"))
+        assertNull(StickerEncoder.fixedPricePeso("1.5"))
+        assertNull(StickerEncoder.fixedPricePeso("11.5"))
+        assertNull(StickerEncoder.fixedPricePeso("500"))       // bare <=999 → grams, not fixed
+        assertNull(StickerEncoder.fixedPricePeso("200 stars")) // banner junk → never a price
+        assertNull(StickerEncoder.fixedPricePeso(null))
+        assertNull(StickerEncoder.fixedPricePeso(""))
+    }
+
+    // fromCaptureAuto: the RAW value decides FIXED vs GRAMS; neither → null (skip / needs review).
+    @Test
+    fun fromCaptureAuto_classifiesFixedVsGrams() {
+        StickerEncoder.fromCaptureAuto("King Gonzales", null, "15k", "6800").let {
+            assertEquals("15000", it!!.fixedPrice); assertNull(it.grams)
+        }
+        StickerEncoder.fromCaptureAuto("King Gonzales", null, "16234", "6800").let {
+            assertEquals("16234", it!!.fixedPrice)
+        }
+        StickerEncoder.fromCaptureAuto("King Gonzales", "11.5", "11.5", "6800").let {
+            assertNull(it!!.fixedPrice); assertEquals("11.5", it.grams); assertEquals("6800", it.pricePerGram)
+        }
+        assertNull(StickerEncoder.fromCaptureAuto("King Gonzales", null, "200 stars", "6800"))
+        assertNull(StickerEncoder.fromCaptureAuto("King Gonzales", null, null, "6800"))
+    }
+
+    // Encoded FIXED sticker = "FIXED • ₱X" (asciified "FIXED - PX") and NEVER "/g".
+    @Test
+    fun encode_fixedPrice_showsFixed_neverPerGram() {
+        fun fixed(v: String) = String(
+            StickerEncoder.encode(StickerEncoder.fromCaptureAuto("KING GONZALES", null, v, "6800")!!, tspl = true),
+            Charsets.US_ASCII,
+        )
+        // 15000 / 15k / 15,000 all render the SAME fixed sticker; 16.2k / 16234 / 1000 too.
+        listOf("15000", "15k", "15,000", "₱15,000", "P15000", "PHP 15000").forEach {
+            assertTrue("$it → FIXED - P15,000", fixed(it).contains("FIXED - P15,000"))
+            assertFalse("$it has /g", fixed(it).contains("/g"))
+        }
+        assertTrue(fixed("16.2k").contains("FIXED - P16,200"))
+        assertTrue(fixed("16234").contains("FIXED - P16,234"))
+        assertTrue(fixed("1000").contains("FIXED - P1,000"))
+        assertTrue(fixed("1k").contains("FIXED - P1,000"))
+    }
+
+    // Grams sticker still uses the CURRENT locally saved rate (unchanged path).
+    @Test
+    fun grams_sticker_stillUsesSavedRate() {
+        val out = String(
+            StickerEncoder.encode(StickerEncoder.fromCaptureAuto("KING GONZALES", "11.5", "11.5", "7000")!!, tspl = true),
+            Charsets.US_ASCII,
+        )
+        assertTrue(out.contains("11.5g - P7,000/g"))
+        assertFalse(out.contains("FIXED"))
+    }
 }

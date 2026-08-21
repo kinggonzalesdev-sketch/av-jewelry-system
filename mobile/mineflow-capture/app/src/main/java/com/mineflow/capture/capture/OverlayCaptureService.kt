@@ -456,7 +456,7 @@ class OverlayCaptureService : Service() {
             // 2) PRINT THE STICKER NOW — the moment OCR gives a confident name + grams, print
             //    it straight over Bluetooth. NO create, NO claim, NO network wait (~0.5–1s).
             //    The row is created below already-'printed', so the PC never double-prints it.
-            val diag = maybePrintDirect(name, guess?.grams)
+            val diag = maybePrintDirect(name, guess?.grams, guess?.itemQuery)
             val printedLocally = diag.result == "success"
             // Technical-only diagnostic (no PII) recorded on the created row below, so the direct
             // attempt is diagnosable read-only from the server — no Logcat / tethered phone needed.
@@ -529,7 +529,7 @@ class OverlayCaptureService : Service() {
      * printed. Safe no-op when this phone has no printer set, or the name/weight is unread
      * (a needs-review capture is left for the operator on the PC — never blind-printed).
      */
-    private fun maybePrintDirect(fbName: String, grams: String?): DirectPrintDiag {
+    private fun maybePrintDirect(fbName: String, grams: String?, itemQuery: String?): DirectPrintDiag {
         val t0 = android.os.SystemClock.elapsedRealtime()
         val store = SecureStore.get(this)
         // Printer toggle OFF → NEVER attempt a local Bluetooth write. Leave the capture
@@ -538,7 +538,12 @@ class OverlayCaptureService : Service() {
         if (!store.printerEnabled) { Log.i(TAG, "PRINT_SOURCE=direct-local SKIP reason=printer_off"); return DirectPrintDiag.skipped("printer_off") }
         val address = store.printerAddress
         if (address.isNullOrBlank()) { Log.i(TAG, "PRINT_SOURCE=direct-local SKIP reason=no_printer"); return DirectPrintDiag.skipped("no_printer") }
-        if (fbName.length < 2 || grams.isNullOrBlank()) { Log.i(TAG, "PRINT_SOURCE=direct-local SKIP reason=no_name_or_grams"); return DirectPrintDiag.skipped("no_name_or_grams") }
+        if (fbName.length < 2) { Log.i(TAG, "PRINT_SOURCE=direct-local SKIP reason=no_name"); return DirectPrintDiag.skipped("no_name") }
+        // Classify the RAW value LOCALLY: a FIXED PRICE (k / ₱ / P / PHP / comma / >=1000) prints
+        // "FIXED • ₱X"; a real weight prints "Xg • ₱rate/g"; neither → needs review (skip). This is
+        // decided on-device BEFORE any server call, so the fixed-price sticker is as fast as grams.
+        val sticker = StickerEncoder.fromCaptureAuto(fbName, grams, itemQuery, store.pricePerGram)
+        if (sticker == null) { Log.i(TAG, "PRINT_SOURCE=direct-local SKIP reason=no_value"); return DirectPrintDiag.skipped("no_value") }
         // Was the RFCOMM socket ALREADY warm (keep-alive holding it) when we print? A cold socket
         // forces BluetoothPrinterManager.print() into a slow s.connect() (or a failure) — the usual
         // cause of a direct-print MISS that then falls to the mobile poller (post-network). Logged
@@ -546,7 +551,6 @@ class OverlayCaptureService : Service() {
         val socketWarm = BluetoothPrinterManager.isConnected(address)
         return try {
             val tEnc = android.os.SystemClock.elapsedRealtime()
-            val sticker = StickerEncoder.fromCapture(fbName, grams, store.pricePerGram)
             val bytes = StickerEncoder.encode(sticker, store.printerTspl)
             val tWrite = android.os.SystemClock.elapsedRealtime()
             val res = BluetoothPrinterManager.print(this, address, bytes)

@@ -44,6 +44,8 @@ object StickerEncoder {
         val unitPrice: String?,
         val pricePerGram: String?,
         val date: String,
+        /** A FIXED-PRICE capture prints "FIXED • ₱X" (no /g) instead of the grams line. */
+        val fixedPrice: String? = null,
     )
 
     private data class SizedLine(val text: String, val font: String)
@@ -78,6 +80,60 @@ object StickerEncoder {
         date = today(),
     )
 
+    /**
+     * FIXED-PRICE classification of the RAW captured value token (Owner 2026-08-21) — decided from
+     * the RAW token, and NEVER by stripping k / comma / ₱ / P / PHP first, so "15k" is a price
+     * (₱15,000), never grams. Mirrors the web parseFixedPrice + classifyCaptureValue EXACTLY:
+     *   fixed → a "k"/"K" suffix, a ₱ / P / PHP marker, a thousands comma, OR a bare integer >= 1000
+     *   grams → a decimal / leading-decimal, or a bare integer <= 999  (returns null here)
+     * Returns the peso amount ("15k"→"15000", "16.2k"→"16200", "₱15,000"→"15000", "1000"→"1000"),
+     * or null when the value is NOT a fixed price (a weight, or unparseable — e.g. "200 stars").
+     */
+    fun fixedPricePeso(rawValue: String?): String? {
+        val raw = rawValue?.trim()?.lowercase() ?: return null
+        if (raw.isEmpty()) return null
+        val hadMarker = Regex("^(?:₱|php|p)\\s*\\d").containsMatchIn(raw) // ₱/P/PHP price marker
+        val s = raw.replace(Regex("^(?:₱|php|p)\\s*"), "")
+        val hasK = s.endsWith("k")
+        val hasComma = s.contains(",")
+        val cleaned = s.replace(Regex("[,\\s]"), "").replace(Regex("k$"), "")
+        val n = cleaned.toDoubleOrNull() ?: return null
+        if (n <= 0) return null
+        val bareInt = Regex("^\\d+$").matches(s)
+        // FIXED only with a real price signal — never a bare decimal or a <=999 bare integer (grams).
+        val isFixed = hasK || hasComma || hadMarker || (bareInt && n >= 1000)
+        if (!isFixed) return null
+        val pesos = if (hasK || (!hasComma && !hadMarker && n < 1000)) n * 1000 else n
+        return Math.round(pesos).toString()
+    }
+
+    /** A FIXED-PRICE capture sticker (prints "FIXED • ₱X", no /g). `pesos` is the plain amount. */
+    fun fromCaptureFixed(fbName: String, pesos: String): Sticker = Sticker(
+        customerName = fbName.ifBlank { "—" },
+        grams = null,
+        quantity = 1,
+        unitPrice = null,
+        pricePerGram = null,
+        date = today(),
+        fixedPrice = pesos,
+    )
+
+    /**
+     * The direct-local capture sticker, classifying the RAW value FIRST: a FIXED PRICE
+     * (k / ₱ / P / PHP / comma / >=1000) → "FIXED • ₱X"; otherwise a real weight → "Xg • ₱rate/g";
+     * otherwise null → the phone skips (needs review). Purely local — never a server round-trip.
+     */
+    fun fromCaptureAuto(
+        fbName: String,
+        grams: String?,
+        itemQuery: String?,
+        pricePerGram: String?,
+    ): Sticker? {
+        fixedPricePeso(itemQuery)?.let { return fromCaptureFixed(fbName, it) } // RAW-token fixed FIRST
+        if (normalizeGrams(grams) != null) return fromCapture(fbName, grams, pricePerGram)
+        return null
+    }
+
     // ---- Peso formatting (port of formatPeso): ₱ + commas, 2dp only when needed -----
     private fun formatPeso(raw: String): String {
         val s = raw.trim().ifEmpty { return "₱0" }
@@ -106,17 +162,22 @@ object StickerEncoder {
         return if (n % 1.0 == 0.0) n.toLong().toString() else n.toString().trimEnd('0').trimEnd('.')
     }
 
-    /** The sticker lines (default fields: name · grams+₱rate/g · date). */
+    /** The sticker lines: name · (FIXED • ₱X | grams+₱rate/g) · date. */
     private fun lineItems(d: Sticker): List<Kinded> {
         val out = ArrayList<Kinded>()
         out.add(Kinded(d.customerName.ifBlank { "—" }, "name"))
-        // pricePerGram line: "11.5g • ₱7,500/g", or just the rate, or just grams.
-        val g = normalizeGrams(d.grams)
-        if (d.pricePerGram != null) {
-            val perGram = "${formatPeso(d.pricePerGram)}/g"
-            out.add(Kinded(if (g != null) "${g}g • $perGram" else perGram, "pricePerGram"))
-        } else if (g != null) {
-            out.add(Kinded("${g}g", "pricePerGram"))
+        if (d.fixedPrice != null) {
+            // FIXED PRICE — "FIXED • ₱15,000" (never a /g rate). Matches the PC fixed-price sticker.
+            out.add(Kinded("FIXED • ${formatPeso(d.fixedPrice)}", "price"))
+        } else {
+            // pricePerGram line: "11.5g • ₱7,500/g", or just the rate, or just grams.
+            val g = normalizeGrams(d.grams)
+            if (d.pricePerGram != null) {
+                val perGram = "${formatPeso(d.pricePerGram)}/g"
+                out.add(Kinded(if (g != null) "${g}g • $perGram" else perGram, "pricePerGram"))
+            } else if (g != null) {
+                out.add(Kinded("${g}g", "pricePerGram"))
+            }
         }
         out.add(Kinded(d.date, "date"))
         return out

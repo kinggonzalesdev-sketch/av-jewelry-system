@@ -169,11 +169,18 @@ object PrintJobPoller {
         val id = cap.optString("capture_record_id").ifBlank { return false }
         val address = store.printerAddress ?: return false
         return try {
-            val sticker = StickerEncoder.fromCapture(
+            // Classify the RAW value: a FIXED PRICE ("15k"/"15000"/"₱15,000") prints "FIXED • ₱X";
+            // a real weight prints "Xg • ₱rate/g". Matches the direct-local + PC classification.
+            val sticker = StickerEncoder.fromCaptureAuto(
                 cap.optString("fb_name"),
                 cap.optString("grams").ifBlank { null },
+                cap.optString("value").ifBlank { null },
                 store.pricePerGram,
             )
+            if (sticker == null) {
+                api.reportCaptureSticker(id, printed = false)
+                return false
+            }
             val bytes = StickerEncoder.encode(sticker, store.printerTspl)
             val res = BluetoothPrinterManager.print(context, address, bytes)
             // Provenance: this capture was printed by the POST-NETWORK mobile poll queue, NOT the
