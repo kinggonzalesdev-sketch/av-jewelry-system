@@ -37,6 +37,7 @@ import {
   stickerDate,
   normalizeGrams,
   parseFixedPrice,
+  classifyCaptureValue,
   formatStickerPeso,
   type OrderReceiptData,
 } from '@/lib/print/order-receipt';
@@ -356,7 +357,11 @@ export function IncomingCapturesStrip({
   // Build the sticker for a capture: Facebook Name / grams • ₱rate/g / Date. The rate
   // ALWAYS comes from Sticker Settings (the pinned comment never carries a price); the
   // grams comes from the OCR (or the operator's correction). Pure — no side effects.
-  const modeOf = (id: string): 'grams' | 'fixed' => priceMode[id] ?? 'grams';
+  // Grams vs Fixed Price. The operator's explicit toggle (priceMode) wins; otherwise the mode is
+  // AUTO-DETECTED from the OCR'd claim value (".45"/"1.5" → Grams; "15k"/"15000"/"₱15,000" → Fixed).
+  // The operator can always flip it — this only sets the initial/default selection.
+  const modeOf = (r: PendingCaptureRow): 'grams' | 'fixed' =>
+    priceMode[r.captureRecordId] ?? classifyCaptureValue(r.itemQuery ?? r.grams) ?? 'grams';
 
   const stickerFor = (
     r: PendingCaptureRow,
@@ -465,7 +470,7 @@ export function IncomingCapturesStrip({
       setError('Connect the printer first (Sticker Settings → Test Print).');
       return;
     }
-    const mode = modeOf(r.captureRecordId);
+    const mode = modeOf(r);
     const raw = gramsEdits[r.captureRecordId] ?? r.grams ?? '';
     if (mode === 'grams' && normalizeGrams(raw) === null) {
       setError('Enter the weight in grams before printing.');
@@ -668,7 +673,7 @@ export function IncomingCapturesStrip({
                               setPriceMode((cur) => ({ ...cur, [r.captureRecordId]: m }))
                             }
                             className={`px-1.5 py-0.5 text-[10px] font-semibold ${
-                              modeOf(r.captureRecordId) === m
+                              modeOf(r) === m
                                 ? 'bg-gold text-black'
                                 : 'text-muted-foreground hover:bg-accent'
                             }`}
@@ -679,13 +684,13 @@ export function IncomingCapturesStrip({
                         ))}
                       </div>
                       <label className="flex items-center gap-1 text-muted-foreground">
-                        {modeOf(r.captureRecordId) === 'fixed' ? 'Price' : 'Grams'}
+                        {modeOf(r) === 'fixed' ? 'Price' : 'Grams'}
                         <input
                           type="text"
                           inputMode="decimal"
                           value={gramsEdits[r.captureRecordId] ?? r.grams ?? ''}
                           placeholder={
-                            modeOf(r.captureRecordId) === 'fixed'
+                            modeOf(r) === 'fixed'
                               ? 'e.g. 12.5 → ₱12,500'
                               : 'e.g. 11.5'
                           }
@@ -699,7 +704,7 @@ export function IncomingCapturesStrip({
                           data-testid={`incoming-grams-${r.captureRecordId}`}
                         />
                       </label>
-                      {modeOf(r.captureRecordId) === 'fixed'
+                      {modeOf(r) === 'fixed'
                         ? (() => {
                             const fp = parseFixedPrice(
                               gramsEdits[r.captureRecordId] ?? r.grams ?? '',

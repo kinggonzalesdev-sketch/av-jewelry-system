@@ -450,4 +450,49 @@ class ScreenshotOcrTest {
         assertEquals("King Gonzales", g.fbName)
         assertEquals("1.5", g.grams)
     }
+
+    // --- Grams vs Fixed Price: the task's explicit value matrix, WITH a name (Owner 2026-08-21) ----
+
+    // Grams: leading decimals get a leading zero and stay grams (never a whole number); decimals
+    // pass through; trailing zeros are dropped by convention (.10 → 0.1). Name from the same block.
+    @Test
+    fun taskGramsMatrix_withName() {
+        fun run(claim: String) =
+            ScreenshotOcr.guessFrom(listOf(line("King Gonzales", 850), line(claim, 900)))
+        run("Mine .10").let { assertEquals("King Gonzales", it.fbName); assertEquals("0.1", it.grams) }
+        run("Mine .20").let { assertEquals("0.2", it.grams) }
+        run("Mine .45").let { assertEquals("0.45", it.grams) }
+        run(".45 Mine").let { assertEquals("0.45", it.grams) }
+        run("Mine 0.45").let { assertEquals("0.45", it.grams) }
+        run("Mine 1.5").let { assertEquals("1.5", it.grams) }
+        run("Mine 3.39").let { assertEquals("3.39", it.grams) }
+        run("Mine 11.9").let { assertEquals("11.9", it.grams) }
+    }
+
+    // Fixed-price integers/k/comma WITH a name: the value is extracted for the PC (itemQuery), grams
+    // stays null (never a grams sticker on the phone). The PC classifies it as Fixed.
+    @Test
+    fun taskFixedValues_extracted_withName() {
+        fun run(claim: String) =
+            ScreenshotOcr.guessFrom(listOf(line("King Gonzales", 850), line(claim, 900)))
+        run("Mine 15000").let {
+            assertEquals("King Gonzales", it.fbName); assertEquals("15000", it.itemQuery); assertNull(it.grams)
+        }
+        run("Mine 15,000").let { assertEquals("15,000", it.itemQuery); assertNull(it.grams) }
+        run("Mine 15k").let { assertEquals("15k", it.itemQuery); assertNull(it.grams) }
+        run("Mine 15K").let { assertEquals("15K", it.itemQuery); assertNull(it.grams) }
+    }
+
+    // Peso-marker boundary on the phone: a FUSED ₱/P prefix ("₱15,000", "P15000") is not a number
+    // token → Needs Review; the operator sets the price on the PC, where parseFixedPrice/
+    // classifyCaptureValue understand ₱/P/PHP. A space-separated "PHP 15000" still extracts the bare
+    // "15000" (grams null → the PC classifies it Fixed).
+    @Test
+    fun pesoMarker_fusedPrefix_needsReview_spacedPhpExtractsNumber() {
+        fun run(claim: String) =
+            ScreenshotOcr.guessFrom(listOf(line("King Gonzales", 850), line(claim, 900)))
+        run("Mine ₱15,000").let { assertNull(it.grams); assertNull(it.itemQuery) }
+        run("Mine P15000").let { assertNull(it.grams); assertNull(it.itemQuery) }
+        run("Mine PHP 15000").let { assertEquals("15000", it.itemQuery); assertNull(it.grams) }
+    }
 }

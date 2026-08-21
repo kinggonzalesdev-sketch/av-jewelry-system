@@ -70,13 +70,17 @@ export function formatStickerPeso(amount: string): string {
  */
 export function normalizeGrams(value: string | number | null | undefined): string | null {
   if (value === null || value === undefined) return null;
+  // Match a decimal, a LEADING-decimal (".45"), or an integer. A leading decimal must keep its
+  // value — ".45" is 0.45g and NEVER 45g — so it always gets an explicit leading zero. (The old
+  // regex `\d+(?:\.\d+)?` matched ".45" as "45", turning 0.45g into 45g.)
   const match = String(value)
     .replace(/,/g, '')
-    .match(/\d+(?:\.\d+)?/);
+    .match(/\d+(?:\.\d+)?|\.\d+/);
   if (!match) return null;
-  const n = Number.parseFloat(match[0]);
+  const numStr = match[0].startsWith('.') ? `0${match[0]}` : match[0];
+  const n = Number.parseFloat(numStr);
   if (!Number.isFinite(n) || n <= 0) return null;
-  // Number() drops trailing zeros: 11.50 -> 11.5, 20.0 -> 20, 0.70 -> 0.7.
+  // Number() drops trailing zeros: 11.50 -> 11.5, 20.0 -> 20, 0.70 -> 0.7, 0.10 -> 0.1.
   return String(n);
 }
 
@@ -94,7 +98,12 @@ export function parseFixedPrice(
   value: string | number | null | undefined,
 ): string | null {
   if (value === null || value === undefined) return null;
-  const s = String(value).trim().toLowerCase();
+  // Strip a leading peso marker so "₱15,000", "P15000", "PHP 15000" all parse — the marker is an
+  // explicit FIXED-PRICE signal, not part of the number.
+  const s = String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/^(?:₱|php|p)\s*/, '');
   if (!s) return null;
   const hasK = /k$/.test(s);
   const hasComma = s.includes(',');
@@ -104,6 +113,39 @@ export function parseFixedPrice(
   // "k", or a bare sub-1,000 number, means thousands; anything else is literal pesos.
   const pesos = hasK || (!hasComma && n < 1000) ? n * 1000 : n;
   return String(Math.round(pesos));
+}
+
+/** The Capture value's detected type — a weight in grams vs a fixed peso price. */
+export type CaptureValueType = 'grams' | 'fixed';
+
+/**
+ * Classify a captured claim value (the OCR'd pinned-comment number) as grams vs a fixed price, so
+ * Incoming Captures can auto-select the right mode. SAFE BY DESIGN — it never turns a realistic
+ * jewelry gram weight into a price:
+ *
+ *   grams → a leading-decimal (".45") or any decimal ("0.45", "1.5", "3.39", "11.9") with no price
+ *           signal; a bare integer ≤ 999 (matches the phone's ≤999-grams rule in gramsFromValue)
+ *   fixed → an explicit price signal: a "k"/"K" suffix, a thousands comma, a ₱ / P / PHP marker; or
+ *           a bare integer ≥ 1000 (no jewelry piece weighs ≥1000 g — that is a price)
+ *
+ * Returns null when there is no usable number (the caller keeps its default mode). The operator can
+ * always override the mode manually.
+ */
+export function classifyCaptureValue(
+  value: string | number | null | undefined,
+): CaptureValueType | null {
+  if (value === null || value === undefined) return null;
+  const s = String(value).trim().toLowerCase();
+  if (!s) return null;
+  // Explicit price signals win.
+  if (/k$/.test(s)) return 'fixed'; // 15k / 15K
+  if (/^(?:₱|php|p)\s*\d/.test(s)) return 'fixed'; // ₱15000 / P15000 / PHP 15000
+  if (s.includes(',')) return 'fixed'; // 15,000 (thousands grouping)
+  // A decimal weight (leading-decimal ".45" or normal "0.45"/"1.5") is always grams.
+  if (/^\.\d+$/.test(s) || /^\d+\.\d+$/.test(s)) return 'grams';
+  // A bare integer: ≥1000 is a price, ≤999 is a gram weight (the safe boundary).
+  if (/^\d+$/.test(s)) return Number.parseInt(s, 10) >= 1000 ? 'fixed' : 'grams';
+  return null; // no clean number → keep the default mode
 }
 
 /** The four sticker lines. Pure — the one place the format is defined. Order:

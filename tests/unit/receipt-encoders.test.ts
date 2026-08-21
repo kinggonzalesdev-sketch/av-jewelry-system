@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   normalizeGrams,
   parseFixedPrice,
+  classifyCaptureValue,
   stickerLineItems,
   stickerLines,
   type OrderReceiptData,
@@ -50,6 +51,65 @@ describe('parseFixedPrice (Fixed Price capture mode)', () => {
     expect(parseFixedPrice('')).toBeNull();
     expect(parseFixedPrice(null)).toBeNull();
     expect(parseFixedPrice('abc')).toBeNull();
+  });
+  it('strips a leading peso marker ₱ / P / PHP', () => {
+    expect(parseFixedPrice('₱15,000')).toBe('15000');
+    expect(parseFixedPrice('₱15000')).toBe('15000');
+    expect(parseFixedPrice('P15000')).toBe('15000');
+    expect(parseFixedPrice('PHP 15000')).toBe('15000');
+    expect(parseFixedPrice('php15000')).toBe('15000');
+    expect(parseFixedPrice('15000')).toBe('15000');
+    expect(parseFixedPrice('15,000')).toBe('15000');
+    expect(parseFixedPrice('15k')).toBe('15000');
+    expect(parseFixedPrice('15K')).toBe('15000');
+  });
+});
+
+describe('normalizeGrams — leading-decimal normalization', () => {
+  it('a leading decimal gets a leading zero and stays grams (never a whole number)', () => {
+    expect(normalizeGrams('.10')).toBe('0.1');
+    expect(normalizeGrams('.20')).toBe('0.2');
+    expect(normalizeGrams('.45')).toBe('0.45');
+    expect(normalizeGrams('.7')).toBe('0.7');
+  });
+  it('regular gram weights are preserved (trailing zeros dropped by convention)', () => {
+    expect(normalizeGrams('0.45')).toBe('0.45');
+    expect(normalizeGrams('1.5')).toBe('1.5');
+    expect(normalizeGrams('3.39')).toBe('3.39');
+    expect(normalizeGrams('11.9')).toBe('11.9');
+    expect(normalizeGrams('11.50')).toBe('11.5');
+    expect(normalizeGrams('0.70')).toBe('0.7');
+    expect(normalizeGrams('20')).toBe('20');
+  });
+  it('reads a bare weight out of a longer string; rejects non-numbers', () => {
+    expect(normalizeGrams('Mine .45')).toBe('0.45');
+    expect(normalizeGrams('')).toBeNull();
+    expect(normalizeGrams('abc')).toBeNull();
+  });
+});
+
+describe('classifyCaptureValue — grams vs Fixed Price auto-detection', () => {
+  it('grams: leading decimals + decimals', () => {
+    for (const g of ['.10', '.20', '.45', '.7', '0.45', '1.5', '3.39', '11.9']) {
+      expect(classifyCaptureValue(g)).toBe('grams');
+    }
+  });
+  it('fixed: k / K / thousands comma / ₱ / P / PHP / large integer', () => {
+    for (const f of ['15000', '15,000', '15k', '15K', '₱15,000', 'P15000', 'PHP 15000']) {
+      expect(classifyCaptureValue(f)).toBe('fixed');
+    }
+  });
+  it('safe bare-integer boundary: ≤999 grams, ≥1000 fixed (no jewelry weighs ≥1000 g)', () => {
+    expect(classifyCaptureValue('5')).toBe('grams');
+    expect(classifyCaptureValue('20')).toBe('grams');
+    expect(classifyCaptureValue('999')).toBe('grams');
+    expect(classifyCaptureValue('1000')).toBe('fixed');
+    expect(classifyCaptureValue('20000')).toBe('fixed');
+  });
+  it('no usable number → null (caller keeps its default mode; a name never classifies)', () => {
+    expect(classifyCaptureValue('')).toBeNull();
+    expect(classifyCaptureValue(null)).toBeNull();
+    expect(classifyCaptureValue('Pia')).toBeNull();
   });
 });
 
