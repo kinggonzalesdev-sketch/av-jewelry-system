@@ -322,6 +322,22 @@ class ApiClient(context: Context) {
         return post("/api/mobile/print/capture-result", payload).ok
     }
 
+    /** Outcome of pushing this phone's explicit Save Rate to the shared server Sticker Settings. */
+    data class RatePush(val ok: Boolean, val rev: String?)
+
+    /**
+     * Push the operator's LOCAL Save Rate up to the shared server Sticker Settings so other phones
+     * eventually receive it. Returns the new server revision (updated_at epoch ms) on success. A
+     * failure leaves the local rate authoritative (the poller keeps it dirty and retries). An empty
+     * string clears the shared rate. NEVER on the print path — background reconcile only.
+     */
+    fun pushStickerRate(rate: String?): RatePush {
+        val payload = JSONObject().put("pricePerGram", rate ?: "")
+        val res = post("/api/mobile/sticker-rate", payload)
+        if (!res.ok) return RatePush(false, null)
+        return RatePush(true, res.body.optString("pricePerGramRev").trim().ifEmpty { null })
+    }
+
     // ---- Low-level ------------------------------------------------------------
 
     private fun get(path: String): Result = execute(

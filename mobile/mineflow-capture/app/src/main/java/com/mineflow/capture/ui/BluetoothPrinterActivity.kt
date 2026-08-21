@@ -12,16 +12,20 @@ import android.os.Bundle
 import android.provider.Settings
 import android.text.InputType
 import android.view.ViewGroup
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.mineflow.capture.data.ApiClient
 import com.mineflow.capture.data.SecureStore
 import com.mineflow.capture.printer.BluetoothPrinterManager
 import com.mineflow.capture.printer.PrintJobPoller
@@ -56,12 +60,13 @@ class BluetoothPrinterActivity : AppCompatActivity() {
     private lateinit var toggleBtn: Button
     private lateinit var scanBtn: Button
     private lateinit var langBtn: Button
-    private lateinit var list: LinearLayout
+    private lateinit var printerSpinner: Spinner
 
-    // address -> printer, merged from bonded + discovery so the list is one set.
+    // address -> printer, merged from bonded + discovery so the dropdown is one set.
     private val found = LinkedHashMap<String, BluetoothPrinterManager.Printer>()
     private var scanning = false
     private var pendingScan = false
+    private var suppressSpinner = false
     @Volatile private var connecting = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -74,47 +79,60 @@ class BluetoothPrinterActivity : AppCompatActivity() {
             setPadding(pad, pad, pad, pad)
         }
 
-        root.addView(title("Bluetooth / Printer"))
+        root.addView(title("Bluetooth Printer"))
 
-        // ---- PRIMARY: ON/OFF toggle for the saved printer (no daily scan needed) ----
+        // Live connection status of the selected printer (compact — no MAC/paired clutter).
         statusText = TextView(this).apply { setTextColor(beige); textSize = 15f; setPadding(0, dp(4), 0, dp(2)) }
         root.addView(statusText, wide())
+
+        // ---- ONE dropdown of available / paired / discovered printers (replaces the old list) ----
+        root.addView(fieldLabel("Printer"))
+        printerSpinner = Spinner(this)
+        root.addView(printerSpinner, wide())
+        scanBtn = outlineButton(scanIdleLabel()) { onScanClicked() }
+        root.addView(scanBtn, wide().apply { topMargin = dp(2) })
+
+        // Connect / Disconnect (reconnect to the selected printer — no scan) + Test Print.
         toggleBtn = goldButton("") { onToggleClicked() }
         root.addView(toggleBtn, wide().apply { topMargin = dp(8) })
+        root.addView(outlineButton("Test Print") { onTestPrint() }, wide().apply { topMargin = dp(6) })
 
-        val testBtn = outlineButton("Test Print") { onTestPrint() }
-        root.addView(testBtn, wide().apply { topMargin = dp(6) })
-
-        // ---- SETUP: Select / Change Printer (Bluetooth scan lives here, NOT the daily action) ----
-        root.addView(sectionHeader("Select / Change Printer"))
-        scanBtn = goldButton(scanIdleLabel()) { onScanClicked() }
-        root.addView(scanBtn, wide().apply { topMargin = dp(4) })
-        list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        root.addView(list, wide())
-
-        // ---- SETUP: printer language + sticker rate ----
-        langBtn = outlineButton("") { store.printerTspl = !store.printerTspl; updateLangLabel() }
-        updateLangLabel()
-        root.addView(langBtn, wide().apply { topMargin = dp(12) })
-
-        root.addView(TextView(this).apply {
-            text = "Sticker price per gram (₱) — optional"; setTextColor(beige); textSize = 12f
-            setPadding(0, dp(12), 0, dp(2))
-        }, wide())
+        // ---- Sticker Price Per Gram → Save Rate (DIRECTLY below Test Print) ----
+        root.addView(sectionHeader("Sticker Price Per Gram"))
         val rate = EditText(this).apply {
             setText(store.pricePerGram ?: "")
-            hint = "e.g. 7500"
+            hint = "₱ e.g. 7500"
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
             setTextColor(ivory); setHintTextColor(beige)
         }
         root.addView(rate, wide())
-        root.addView(outlineButton("Save rate") {
-            store.pricePerGram = rate.text.toString().trim().ifEmpty { null }
-            toast("Sticker rate saved.")
-        }, wide().apply { topMargin = dp(4) })
+        root.addView(goldButton("Save Rate") { onSaveRate(rate) }, wide().apply { topMargin = dp(4) })
+
+        // Printer language (TSPL/ESC-POS) — capability preserved, kept compact at the bottom.
+        langBtn = outlineButton("") { store.printerTspl = !store.printerTspl; updateLangLabel() }
+        updateLangLabel()
+        root.addView(langBtn, wide().apply { topMargin = dp(16) })
 
         val scroll = ScrollView(this).apply { addView(root) }
         setContentView(scroll)
+    }
+
+    /** Save Rate: the LOCAL value becomes authoritative IMMEDIATELY (the very next Capture uses it,
+     *  zero server wait), and is pushed to the shared server in the background so other phones sync
+     *  later. A failed push keeps the local rate (still dirty → the poller retries). Never reverts. */
+    private fun onSaveRate(rate: EditText) {
+        val v = rate.text.toString().trim()
+        if (v.isNotEmpty() && !Regex("^\\d{1,9}(\\.\\d{1,2})?$").matches(v)) {
+            toast("Enter a valid rate, e.g. 7500."); return
+        }
+        store.pricePerGram = v.ifEmpty { null }
+        store.pricePerGramDirty = true // LOCAL wins now — the background poll must not overwrite it.
+        toast(if (v.isEmpty()) "Rate cleared." else "Rate saved — next sticker prints ₱$v/g.")
+        val ctx = applicationContext
+        thread {
+            val res = ApiClient(ctx).pushStickerRate(store.pricePerGram)
+            if (res.ok) { store.pricePerGramServerRev = res.rev; store.pricePerGramDirty = false }
+        }
     }
 
     override fun onResume() {
@@ -124,7 +142,7 @@ class BluetoothPrinterActivity : AppCompatActivity() {
         // Keep the warm connection + print pump running when the printer is ON.
         if (!store.printerAddress.isNullOrBlank() && store.printerEnabled) PrintJobPoller.start(this)
         refreshPrinterUi()
-        renderList()
+        rebuildPrinterSpinner()
     }
 
     override fun onPause() {
@@ -136,7 +154,7 @@ class BluetoothPrinterActivity : AppCompatActivity() {
 
     private fun onToggleClicked() {
         val addr = store.printerAddress
-        if (addr.isNullOrBlank()) { onScanClicked(); return } // "Select Printer" state → scan
+        if (addr.isNullOrBlank()) { toast("Choose a printer from the dropdown first."); return }
         if (store.printerEnabled) confirmTurnOff() else turnOn(addr)
     }
 
@@ -184,8 +202,7 @@ class BluetoothPrinterActivity : AppCompatActivity() {
 
     // ---- Select / Change Printer (scan) --------------------------------------
 
-    private fun scanIdleLabel(): String =
-        if (store.printerAddress.isNullOrBlank()) "Select Printer" else "Change Printer"
+    private fun scanIdleLabel(): String = "Scan for printers"
 
     private fun onScanClicked() {
         if (!hasBtPermissions()) {
@@ -199,7 +216,7 @@ class BluetoothPrinterActivity : AppCompatActivity() {
         if (!locationServicesOn()) {
             toast("Turn ON Location — Android needs it to scan for Bluetooth printers.")
             try { startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) } catch (_: Exception) {}
-            loadBonded(); renderList()
+            loadBonded(); rebuildPrinterSpinner()
             return
         }
         if (scanning) { BluetoothPrinterManager.stopDiscovery(this); scanning = false; scanBtn.text = scanIdleLabel(); return }
@@ -208,7 +225,7 @@ class BluetoothPrinterActivity : AppCompatActivity() {
         scanBtn.text = "Scanning… (tap to stop)"
         val started = BluetoothPrinterManager.startDiscovery(
             this,
-            onFound = { p -> runOnUiThread { found[p.address] = p; renderList() } },
+            onFound = { p -> runOnUiThread { found[p.address] = p; rebuildPrinterSpinner() } },
             onFinished = { runOnUiThread { scanning = false; scanBtn.text = scanIdleLabel() } },
         )
         if (!started) { scanning = false; scanBtn.text = scanIdleLabel(); toast("Could not start scan.") }
@@ -216,7 +233,7 @@ class BluetoothPrinterActivity : AppCompatActivity() {
 
     private fun setActive(p: BluetoothPrinterManager.Printer) {
         if (!p.bonded) {
-            toast("Pairing ${p.name}… accept on the phone, then tap Set as Active again.")
+            toast("Pairing ${p.name}… accept on the phone, then pick it again from the dropdown.")
             BluetoothPrinterManager.pair(this, p.address)
             return
         }
@@ -224,13 +241,13 @@ class BluetoothPrinterActivity : AppCompatActivity() {
         store.printerName = p.name
         store.printerEnabled = true // selecting a printer turns it ON
         connecting = true
-        refreshPrinterUi(); renderList()
-        toast("${p.name} set as active printer.")
+        refreshPrinterUi(); rebuildPrinterSpinner()
+        toast("${p.name} selected.")
         // Warm the connection + make sure the print pump is running.
         PrintJobPoller.start(this)
         thread {
             BluetoothPrinterManager.connect(this, p.address)
-            runOnUiThread { connecting = false; refreshPrinterUi(); renderList() }
+            runOnUiThread { connecting = false; refreshPrinterUi(); rebuildPrinterSpinner() }
         }
     }
 
@@ -259,38 +276,34 @@ class BluetoothPrinterActivity : AppCompatActivity() {
         BluetoothPrinterManager.bondedPrinters(this).forEach { found[it.address] = it }
     }
 
-    private fun renderList() {
-        list.removeAllViews()
+    /** Rebuild the single printer dropdown from the merged bonded + discovered set. Selecting an
+     *  item makes it the active printer (pair if needed, then connect); the active one is pre-
+     *  selected and marked ✓. Only the NAME shows — a short MAC suffix appears ONLY to disambiguate
+     *  duplicate names (no paired/connected/MAC clutter for normal staff). Device-local: the choice
+     *  is remembered per phone and never shared. */
+    private fun rebuildPrinterSpinner() {
+        val printers = found.values.toList()
         val selected = store.printerAddress
-        if (found.isEmpty()) {
-            list.addView(TextView(this).apply {
-                text = "No printers yet. Turn ON Location + Bluetooth, then tap Select / Change Printer — or pair the printer in Android Bluetooth settings (PIN 0000) and reopen this screen."
-                setTextColor(beige); textSize = 12f; setPadding(0, dp(6), 0, dp(6))
-            }, wide())
-            return
+        val nameCounts = printers.groupingBy { it.name }.eachCount()
+        val labels = printers.map { p ->
+            val suffix = if ((nameCounts[p.name] ?: 0) > 1) "  (…${p.address.takeLast(5)})" else ""
+            val mark = if (p.address == selected) "  ✓" else ""
+            p.name + suffix + mark
         }
-        found.values.forEach { p ->
-            val connected = BluetoothPrinterManager.isConnected(p.address)
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(10), dp(10), dp(10), dp(10))
-                setBackgroundColor(if (p.address == selected) Color.parseColor("#1C1A12") else Color.parseColor("#141414"))
+        val display = labels.ifEmpty { listOf("No printers — tap Scan for printers") }
+        suppressSpinner = true
+        printerSpinner.adapter =
+            ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, display)
+        val idx = printers.indexOfFirst { it.address == selected }
+        if (idx >= 0) printerSpinner.setSelection(idx)
+        printerSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
+                if (suppressSpinner) return
+                printers.getOrNull(position)?.let { setActive(it) }
             }
-            row.addView(TextView(this).apply {
-                text = p.name + if (p.address == selected) "   ★ ACTIVE" else ""
-                setTextColor(if (p.address == selected) gold else ivory); textSize = 15f
-                setTypeface(null, Typeface.BOLD)
-            }, wide())
-            row.addView(TextView(this).apply {
-                val paired = if (p.bonded) "Paired" else "Not paired"
-                val conn = if (connected) "Connected" else "Disconnected"
-                text = "${p.address}   ·   $paired   ·   $conn"
-                setTextColor(if (connected) green else beige); textSize = 11f
-            }, wide())
-            row.addView(goldButton(if (p.bonded) "Set as Active Printer" else "Pair") { setActive(p) },
-                wide().apply { topMargin = dp(6) })
-            list.addView(row, wide().apply { topMargin = dp(8) })
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
+        printerSpinner.post { suppressSpinner = false }
     }
 
     /** Reflect the two-fact state (configured vs enabled vs live socket) via the pure resolver. */
@@ -305,20 +318,20 @@ class BluetoothPrinterActivity : AppCompatActivity() {
         )
         when (state) {
             PrinterToggleState.NO_PRINTER -> {
-                statusText.text = "No printer linked"; statusText.setTextColor(beige)
-                toggleBtn.text = "Select Printer"
+                statusText.text = "No printer selected"; statusText.setTextColor(beige)
+                toggleBtn.text = "Connect"
             }
             PrinterToggleState.OFF -> {
                 statusText.text = "$name  ·  Disconnected"; statusText.setTextColor(beige)
-                toggleBtn.text = "Turn ON"
+                toggleBtn.text = "Connect"
             }
             PrinterToggleState.CONNECTING -> {
                 statusText.text = "$name  ·  Connecting…"; statusText.setTextColor(gold)
-                toggleBtn.text = "Turn OFF"
+                toggleBtn.text = "Disconnect"
             }
             PrinterToggleState.CONNECTED -> {
                 statusText.text = "$name  ·  Connected"; statusText.setTextColor(green)
-                toggleBtn.text = "Turn OFF"
+                toggleBtn.text = "Disconnect"
             }
         }
         if (!scanning) scanBtn.text = scanIdleLabel()
@@ -332,7 +345,7 @@ class BluetoothPrinterActivity : AppCompatActivity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQ_PERMS) {
             if (hasBtPermissions()) {
-                loadBonded(); renderList(); refreshPrinterUi()
+                loadBonded(); rebuildPrinterSpinner(); refreshPrinterUi()
                 if (pendingScan) { pendingScan = false; onScanClicked() }
             } else {
                 toast("Bluetooth permission is needed to find and print to the printer.")
@@ -374,6 +387,9 @@ class BluetoothPrinterActivity : AppCompatActivity() {
     private fun sectionHeader(text: String) = TextView(this).apply {
         this.text = text; setTextColor(ivory); textSize = 15f; setTypeface(null, Typeface.BOLD)
         setPadding(0, dp(16), 0, dp(4))
+    }
+    private fun fieldLabel(text: String) = TextView(this).apply {
+        this.text = text; setTextColor(beige); textSize = 12f; setPadding(0, dp(10), 0, dp(2))
     }
     private fun goldButton(label: String, onClick: () -> Unit) = Button(this).apply {
         text = label; isAllCaps = false

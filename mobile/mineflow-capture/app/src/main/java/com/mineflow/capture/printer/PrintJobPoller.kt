@@ -46,19 +46,11 @@ object PrintJobPoller {
                     if (store.isLoggedIn && !store.printerAddress.isNullOrBlank() && store.printerEnabled) {
                         // 1) Live capture stickers (shared PC+phone queue — exactly once).
                         val cap = api.claimCaptureSticker()
-                        // Mirror the ONE saved web Sticker Settings price-per-gram into the LOCAL
-                        // cache (store.pricePerGram) that the direct/local print reads — so the
-                        // capture sticker shows "…g • ₱rate/g" using the configured rate, and a
-                        // later web change is picked up on the next poll. This is a background sync
-                        // ONLY; the print path never waits on the network. Field absent (older
-                        // server) → leave the cache alone; present → set/clear to match the server.
-                        if (cap.has("pricePerGram")) {
-                            val r = sharedRate(cap)
-                            if (store.pricePerGram != r) {
-                                store.pricePerGram = r
-                                Log.i(TAG, "sticker rate synced from Sticker Settings: ${r ?: "(none)"}")
-                            }
-                        }
+                        // Reconcile the sticker rate WITHOUT ever fighting an explicit local Save
+                        // Rate: dirty (unsynced local save) → PUSH it up (local stays authoritative);
+                        // otherwise PULL only a strictly-newer server revision. Background only — the
+                        // print path always reads the local cache with zero network wait.
+                        reconcileRate(api, store, cap)
                         if (cap.optBoolean("claimed", false)) {
                             drainedOne = printCaptureSticker(app, api, store, cap)
                         } else {
@@ -89,16 +81,81 @@ object PrintJobPoller {
         BluetoothPrinterManager.stopKeepAlive()
     }
 
-    /**
-     * The shared price-per-gram carried on a capture-claim response (web Sticker Settings parity):
-     * a trimmed rate string, or null when the server says none / the price line is hidden (empty or
-     * JSON null). Pure (no Android deps) so the sync rule is unit-testable. The CALLER must first
-     * check `resp.has("pricePerGram")` — an ABSENT field (older server) means "leave the local cache
-     * alone", which is different from a present null ("clear it").
-     */
+    /** The shared price-per-gram carried on a capture-claim response (web Sticker Settings parity):
+     *  a trimmed rate string, or null when the server says none / the price line is hidden (empty or
+     *  JSON null). The CALLER checks `resp.has("pricePerGram")` — ABSENT (older server) ≠ present null. */
     internal fun sharedRate(resp: org.json.JSONObject): String? =
         if (resp.isNull("pricePerGram")) null
         else resp.optString("pricePerGram").trim().ifEmpty { null }
+
+    /** The shared Sticker Settings revision (server updated_at, epoch ms) on a capture-claim
+     *  response, or null when absent/blank. Compared numerically so a stale copy never wins. */
+    internal fun sharedRev(resp: org.json.JSONObject): String? =
+        if (!resp.has("pricePerGramRev") || resp.isNull("pricePerGramRev")) null
+        else resp.optString("pricePerGramRev").trim().ifEmpty { null }
+
+    internal data class RateDecision(val action: String, val rate: String?, val rev: String?)
+
+    /** Is server revision [server] STRICTLY newer than the last-accepted [local]? A blank local rev
+     *  (never synced) accepts any server rev; a non-numeric server rev is treated as not-newer
+     *  (fail-safe: keep local). */
+    internal fun revNewer(server: String?, local: String?): Boolean {
+        val s = server?.trim()?.toLongOrNull() ?: return false
+        val l = local?.trim()?.toLongOrNull() ?: return true
+        return s > l
+    }
+
+    /**
+     * PURE rate-ownership decision (unit-tested). From the local state + the server's {rate, rev}:
+     *   - server didn't send the field (older server) → 'none' (keep local, untouched);
+     *   - a DIRTY local save (explicit Save Rate not yet pushed) → 'push' the LOCAL rate up — the
+     *     local value stays authoritative and is NEVER overwritten here;
+     *   - otherwise PULL only a strictly-newer server revision → 'pull'; else 'none'.
+     * This is the fix for the build-15 regression where the poll clobbered a fresh local Save Rate.
+     */
+    internal fun rateDecision(
+        present: Boolean,
+        dirty: Boolean,
+        localRate: String?,
+        localRev: String?,
+        serverRate: String?,
+        serverRev: String?,
+    ): RateDecision {
+        if (!present) return RateDecision("none", null, null)
+        if (dirty) return RateDecision("push", localRate, null)
+        if (revNewer(serverRev, localRev)) return RateDecision("pull", serverRate, serverRev)
+        return RateDecision("none", null, null)
+    }
+
+    /** Execute the reconcile against the network (push) / local cache (pull). Background only —
+     *  never on the print path. A failed push KEEPS the local save authoritative (retries next poll). */
+    private fun reconcileRate(api: ApiClient, store: SecureStore, cap: org.json.JSONObject) {
+        val d = rateDecision(
+            present = cap.has("pricePerGram"),
+            dirty = store.pricePerGramDirty,
+            localRate = store.pricePerGram,
+            localRev = store.pricePerGramServerRev,
+            serverRate = sharedRate(cap),
+            serverRev = sharedRev(cap),
+        )
+        when (d.action) {
+            "push" -> {
+                val res = api.pushStickerRate(store.pricePerGram)
+                if (res.ok) {
+                    store.pricePerGramServerRev = res.rev
+                    store.pricePerGramDirty = false
+                    Log.i(TAG, "sticker rate pushed to Sticker Settings (rev=${res.rev ?: "-"})")
+                } else {
+                    Log.i(TAG, "sticker rate push deferred — local Save Rate kept authoritative")
+                }
+            }
+            "pull" -> {
+                store.pricePerGram = d.rate
+                store.pricePerGramServerRev = d.rev
+                Log.i(TAG, "sticker rate pulled from Sticker Settings: ${d.rate ?: "(none)"} rev=${d.rev ?: "-"}")
+            }
+        }
+    }
 
     /** Print a claimed LIVE capture sticker (shared PC+phone queue). Returns true when
      *  printed (drain the next). On failure it releases the claim (report failed) so the

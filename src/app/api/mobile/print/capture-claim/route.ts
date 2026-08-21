@@ -69,18 +69,25 @@ export async function POST(request: Request): Promise<Response> {
   // the field entirely so a transient failure never wipes the phone's cached rate.
   const stickerRes = await staff.supabase
     .from('sticker_settings')
-    .select('price_per_gram, show_price_per_gram')
+    .select('price_per_gram, show_price_per_gram, updated_at')
     .eq('id', 1)
     .maybeSingle();
   if (!stickerRes.error) {
-    const s = stickerRes.data as
-      | { price_per_gram: string | null; show_price_per_gram: boolean | null }
-      | null;
+    const s = stickerRes.data;
     const raw =
       s && s.show_price_per_gram !== false && typeof s.price_per_gram === 'string'
         ? s.price_per_gram.trim()
         : '';
-    return NextResponse.json({ ...base, pricePerGram: raw !== '' ? raw : null });
+    // pricePerGramRev = the shared settings revision (updated_at epoch ms). The phone pulls a
+    // server rate ONLY when this is strictly newer than the rev it last accepted — so a stale
+    // server copy can never revert a fresher local Save Rate (build-15 regression fix).
+    const updatedAt = typeof s?.updated_at === 'string' ? s.updated_at : null;
+    const revMs = updatedAt ? Date.parse(updatedAt) : NaN;
+    return NextResponse.json({
+      ...base,
+      pricePerGram: raw !== '' ? raw : null,
+      pricePerGramRev: Number.isFinite(revMs) ? revMs : null,
+    });
   }
   return NextResponse.json(base);
 }

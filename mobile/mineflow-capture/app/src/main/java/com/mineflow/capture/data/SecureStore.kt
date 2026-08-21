@@ -65,6 +65,20 @@ class SecureStore private constructor(private val prefs: SharedPreferences) {
         get() = prefs.getString(KEY_PRICE_PER_GRAM, null)
         set(value) = prefs.edit().putString(KEY_PRICE_PER_GRAM, value).apply()
 
+    /** LOCAL OWNERSHIP (2026-08-21): true when the operator tapped Save Rate on THIS phone and the
+     *  new value has not yet been pushed to the shared server settings. While dirty the local value
+     *  is AUTHORITATIVE — the background poll must NOT overwrite it; it pushes it up instead. */
+    var pricePerGramDirty: Boolean
+        get() = prefs.getBoolean(KEY_PRICE_DIRTY, false)
+        set(value) = prefs.edit().putBoolean(KEY_PRICE_DIRTY, value).apply()
+
+    /** The shared Sticker Settings revision (server updated_at, epoch ms as text) this phone last
+     *  accepted. A server value is pulled ONLY when its rev is strictly newer — so a stale server
+     *  copy can never revert a newer local/other-device save. Empty until the first sync. */
+    var pricePerGramServerRev: String?
+        get() = prefs.getString(KEY_PRICE_REV, null)
+        set(value) = prefs.edit().putString(KEY_PRICE_REV, value).apply()
+
     // Signed in while we hold EITHER a live access token OR a refresh token: an access
     // token expires after ~1h (shorter than a live), but the refresh token lets us mint
     // a new one silently. Only a real logout / a failed refresh clears both.
@@ -85,6 +99,8 @@ class SecureStore private constructor(private val prefs: SharedPreferences) {
         private const val KEY_PRINTER_ENABLED = "printer_enabled"
         private const val KEY_PRINTER_TSPL = "printer_tspl"
         private const val KEY_PRICE_PER_GRAM = "price_per_gram"
+        private const val KEY_PRICE_DIRTY = "price_per_gram_dirty"
+        private const val KEY_PRICE_REV = "price_per_gram_server_rev"
 
         @Volatile private var instance: SecureStore? = null
 
