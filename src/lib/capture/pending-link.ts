@@ -338,7 +338,20 @@ export async function listCaptureCandidates(
       normalizeName(c.display_name ?? '') === norm ||
       nameKey(c.display_name ?? '') === key,
   );
-  return picked.slice(0, 8).map((c) => ({
+  // Collapse DUPLICATE records that point to the SAME on-page conversation into ONE candidate
+  // (matching resolveCaptureIdentity) — the operator picks a person, not a stray duplicate row.
+  // Name-only rows (no on-page chat) are each kept, since they may be genuinely different people.
+  const seenConv = new Set<string>();
+  const deduped = picked.filter((c) => {
+    const conv = conversationBelongsToPage(c.pancake_conversation_id, activePage)
+      ? (c.pancake_conversation_id as string)
+      : null;
+    if (!conv) return true;
+    if (seenConv.has(conv)) return false;
+    seenConv.add(conv);
+    return true;
+  });
+  return deduped.slice(0, 8).map((c) => ({
     customerId: c.id,
     displayName: (c.display_name ?? '').trim(),
     contactNumber: (c.contact_number ?? '').trim() || null,
