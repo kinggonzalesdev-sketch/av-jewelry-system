@@ -80,9 +80,13 @@ export async function sendPendingCaptureToMessenger(
     pancake_conversation_id: string | null;
   };
 
-  // Idempotent: never resend a capture that already went out (a PHOTO 'sent', or a Route B
-  // secure-link Private Reply 'link_sent').
-  if (row.message_status === 'sent' || row.message_status === 'link_sent') {
+  // Idempotent for the ACTUAL PHOTO: never resend once a photo has gone out ('sent'). A capture that
+  // only got the Route B secure-link TEXT ('link_sent') is NOT blocked here (Owner 2026-08-22): if
+  // the customer later becomes Photo-ready, the operator may still deliver the actual screenshot
+  // PHOTO. One-photo-per-capture is still guaranteed downstream by claim_capture_photo_send (it
+  // claims only from a non-'sent' state), and Route B re-entry stays idempotent (the existing link is
+  // already 'sent' → no second Private Reply).
+  if (row.message_status === 'sent') {
     return {
       ok: true,
       code: 'already_sent',

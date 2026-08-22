@@ -571,6 +571,13 @@ export function IncomingCapturesStrip({
         setError(res.error);
         return;
       }
+      // Persisted → make the saved grams the row's baseline so the row is no longer "dirty" and the
+      // action area returns to the correct state (Send if Photo ready, the sent status, or waiting).
+      setRows((cur) =>
+        cur.map((x) =>
+          x.captureRecordId === r.captureRecordId ? { ...x, grams: grams.trim() } : x,
+        ),
+      );
       setNotes((cur) => ({ ...cur, [r.captureRecordId]: 'Saved ✓' }));
     } catch {
       setError('Could not save the edits.');
@@ -810,7 +817,12 @@ export function IncomingCapturesStrip({
                       sending={sendingId === r.captureRecordId}
                       saving={savingId === r.captureRecordId}
                       messageStatus={r.messageStatus}
-                      routeReason={r.routeReason}
+                      // Save shows ONLY when the operator has actually changed the grams / Fixed
+                      // Price value from what's stored (never a permanent button).
+                      dirty={
+                        gramsEdits[r.captureRecordId] !== undefined &&
+                        (gramsEdits[r.captureRecordId] ?? '').trim() !== (r.grams ?? '').trim()
+                      }
                       onSend={() => void sendToMessenger(r)}
                       onSave={() => void saveEdits(r)}
                     />

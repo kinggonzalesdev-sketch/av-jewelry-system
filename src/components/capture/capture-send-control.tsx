@@ -3,24 +3,26 @@
 import { Button, buttonVariants } from '@/components/ui/button';
 
 /**
- * The per-row action control in Incoming Captures (Owner 2026-08-22 — messaging is now fully
- * AUTOMATIC + SERVER-SIDE via the durable cron router, so the operator NEVER clicks to send).
+ * The per-row action control in Incoming Captures (Owner 2026-08-22 — messaging is AUTOMATIC +
+ * server-side; the row shows the CURRENT actionable state, never stale internal router states).
  *
- * What the operator sees here:
- *   • 💾 Save — persists their row edits (corrected grams + note) ONLY. It NEVER sends a Messenger
- *     message. This replaces the old "🔗 Auto-sending secure link…" button the Owner asked to remove.
- *   • 📨 Send Photo — shown ONLY when the customer is genuinely Photo-ready (media-eligible) and the
- *     screenshot hasn't been sent yet: a MANUAL backup that delivers the ACTUAL screenshot PHOTO
- *     (never a secure link). The server auto-sends this too; this is just the manual retry.
- *   • A finite STATUS chip (not a button) once the server router finishes:
- *        message_status 'sent'      → "AUTO SS Sent to Messenger ✓"   (actual photo delivered)
- *        message_status 'link_sent' → "AUTO TEXT Sent to Messenger ✓" (secure-link Private Reply)
- *        message_status 'failed'    → the router's finite reason (route_reason), e.g. "AUTO TEXT
- *                                     Failed · awaiting comment context"
- *   • 💬 Open FB Chat — the human fallback, shown when a send failed or is still waiting.
+ * Precedence — the row reflects ONE authoritative messaging state, highest first:
+ *   1. Test capture        → 📨 Send disabled (a test never messages a real customer).
+ *   2. Photo already sent  → "AUTO SS Sent to Messenger ✓" (message_status 'sent'; no duplicate Send).
+ *   3. Photo READY         → 📨 Send (the ACTUAL screenshot photo). This SUPERSEDES any stale/pending
+ *                            Route-B state (awaiting / failed / "pending") — current eligibility is
+ *                            authoritative; the customer is reachable now, so send the real photo.
+ *   4. TEXT already sent    → "AUTO TEXT Sent to Messenger ✓" (message_status 'link_sent', still
+ *                            Photo-waiting) — the secure-link Private Reply audit.
+ *   5. Photo waiting        → the panel shows "Photo waiting"; here only 💬 Open FB Chat (human
+ *                            fallback). Route B runs in the background.
  *
- * There is NO indefinite "sending…" spinner: the router persists a finite state, which this only
- * DISPLAYS. A Test capture never messages a real customer (Send stays disabled).
+ * NEVER shown in the normal row: internal router terminology (pending / awaiting comment context /
+ * sending / backoff / route_reason). Those live in diagnostics/audit only.
+ *
+ * 💾 Save is NOT a permanent action — it appears ONLY when the operator has unsaved edits (`dirty`,
+ * e.g. a changed grams / Fixed Price value). It persists edits and NEVER sends any Messenger message;
+ * after a successful Save the row returns to the correct state above.
  */
 export function CaptureSendControl({
   captureRecordId,
@@ -30,7 +32,7 @@ export function CaptureSendControl({
   sending,
   saving,
   messageStatus,
-  routeReason,
+  dirty,
   onSend,
   onSave,
 }: {
@@ -40,14 +42,14 @@ export function CaptureSendControl({
   isTest: boolean;
   sending: boolean;
   saving: boolean;
-  /** The durable router's message_status: 'sent' | 'link_sent' | 'failed' | 'awaiting_inbox' | … */
+  /** Router state: 'sent' (photo) | 'link_sent' (TEXT) | 'failed' | 'awaiting_inbox' | 'pending' | … */
   messageStatus: string | null;
-  /** The router's last human-safe finite reason (shown when failed). */
-  routeReason: string | null;
+  /** True only when the operator has unsaved row edits (changed grams / Fixed Price value). */
+  dirty: boolean;
   onSend: () => void;
   onSave: () => void;
 }) {
-  // A Test capture never messages a real customer — keep a disabled Send as the visible marker.
+  // Test capture: a disabled Send marker; nothing else (a test never messages, never needs Save).
   if (isTest) {
     return (
       <Button
@@ -63,11 +65,11 @@ export function CaptureSendControl({
   }
 
   const status = messageStatus ?? '';
-  const sent = status === 'sent';
+  const photoSent = status === 'sent';
   const linkSent = status === 'link_sent';
-  const failed = status === 'failed';
 
-  const saveButton = (
+  // Save ONLY when there are unsaved edits — never a permanent primary action, never sends anything.
+  const saveButton = dirty ? (
     <Button
       type="button"
       size="sm"
@@ -75,75 +77,68 @@ export function CaptureSendControl({
       disabled={saving}
       onClick={onSave}
       data-testid={`incoming-save-${captureRecordId}`}
-      title="Save your edits (corrected grams / note). Messaging is automatic — this never sends anything."
+      title="Save your edits (grams / Fixed Price). Messaging is automatic — this never sends anything."
     >
       {saving ? 'Saving…' : '💾 Save'}
     </Button>
-  );
-
-  const openFbChat = fbUrl ? (
-    <a
-      href={fbUrl}
-      target="_blank"
-      rel="noreferrer"
-      className={buttonVariants({ variant: 'outline', size: 'sm' })}
-      data-testid={`incoming-openfb-${captureRecordId}`}
-      title="Human fallback: open the chat and send it yourself (allowed up to 7 days)."
-    >
-      💬 Open FB Chat
-    </a>
   ) : null;
 
-  // TERMINAL success → a finite green status chip (not a button) + Save (edits still allowed).
-  if (sent || linkSent) {
-    return (
-      <span className="inline-flex flex-wrap items-center gap-1">
-        <span
-          className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-700"
-          data-testid={`incoming-status-${captureRecordId}`}
-        >
-          {sent ? 'AUTO SS Sent to Messenger ✓' : 'AUTO TEXT Sent to Messenger ✓'}
-        </span>
-        {saveButton}
+  // The SINGLE current messaging element, in authoritative precedence.
+  let messaging: React.ReactNode;
+  if (photoSent) {
+    messaging = (
+      <span
+        className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-700"
+        data-testid={`incoming-status-${captureRecordId}`}
+      >
+        AUTO SS Sent to Messenger ✓
       </span>
     );
-  }
-
-  // TERMINAL failure → a finite reason chip + Save + the human fallback (never a spinner).
-  if (failed) {
-    return (
-      <span className="inline-flex flex-wrap items-center gap-1">
-        <span
-          className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] font-semibold text-amber-800"
-          data-testid={`incoming-status-${captureRecordId}`}
-        >
-          {routeReason?.trim() || 'AUTO Failed · needs attention'}
-        </span>
-        {saveButton}
-        {openFbChat}
+  } else if (photoEligible) {
+    // Photo READY supersedes any stale Route-B awaiting/failed/pending state → send the real photo.
+    messaging = (
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={sending}
+        onClick={onSend}
+        data-testid={`incoming-send-${captureRecordId}`}
+        title="Send the ACTUAL screenshot photo now (the server also auto-sends it to eligible customers)."
+      >
+        {sending ? 'Sending…' : '📨 Send'}
+      </Button>
+    );
+  } else if (linkSent) {
+    messaging = (
+      <span
+        className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-700"
+        data-testid={`incoming-status-${captureRecordId}`}
+      >
+        AUTO TEXT Sent to Messenger ✓
       </span>
     );
+  } else {
+    // Photo waiting — the panel already shows "Photo waiting"; Route B is automatic + server-side.
+    // Offer only the human fallback (never internal pending/awaiting text).
+    messaging = fbUrl ? (
+      <a
+        href={fbUrl}
+        target="_blank"
+        rel="noreferrer"
+        className={buttonVariants({ variant: 'outline', size: 'sm' })}
+        data-testid={`incoming-openfb-${captureRecordId}`}
+        title="Human fallback: open the chat and send it yourself (allowed up to 7 days)."
+      >
+        💬 Open FB Chat
+      </a>
+    ) : null;
   }
 
-  // NOT yet sent. Photo-ready → a MANUAL actual-photo backup (the server also auto-sends). Photo
-  // waiting → just Save + the fallback; the secure-link TEXT is sent automatically by the server.
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
-      {photoEligible ? (
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={sending}
-          onClick={onSend}
-          data-testid={`incoming-send-${captureRecordId}`}
-          title="Send the ACTUAL screenshot photo now (manual backup — the server also auto-sends it)."
-        >
-          {sending ? 'Sending…' : '📨 Send Photo'}
-        </Button>
-      ) : null}
+      {messaging}
       {saveButton}
-      {!photoEligible ? openFbChat : null}
     </span>
   );
 }
