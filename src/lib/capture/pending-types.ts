@@ -92,4 +92,7 @@ export type PendingCaptureRow = {
   fbUrl: string | null;
   /** Whether this capture's screenshot has already been sent ('sent'/'failed'/other). */
   messageStatus: string | null;
+  /** Durable auto-router's last human-safe finite reason (e.g. "AUTO TEXT Sent to Messenger ✓",
+   *  "AUTO TEXT Failed · awaiting comment context"). Null until the server router has run. */
+  routeReason: string | null;
 };

@@ -83,11 +83,15 @@ describe('privileged Supabase client isolation', () => {
     //     user session; its authority is the opaque, HASHED, unexpired, un-revoked token
     //     validated by resolve_capture_share_link. Read-only: it returns ONLY a 5-minute
     //     signed URL for that one capture's screenshot — never the token/path/customer data.
+    //   - lib/capture/auto-router.ts — the DURABLE capture auto-router has no user session; its
+    //     authority is the CRON_SECRET check in its only caller, /api/cron/capture-autosend. Every
+    //     DB write goes through the SAME service_role-gated capture RPCs (atomic claim/finalize).
     const sanctioned = [
       /team-accounts\.ts$/,
       /pancake-system\.ts$/,
       /pancake-webhook\.ts$/,
       /share-link-resolve\.ts$/,
+      /auto-router\.ts$/,
     ];
 
     const sourceFiles = collectSourceFiles(srcDir).filter(

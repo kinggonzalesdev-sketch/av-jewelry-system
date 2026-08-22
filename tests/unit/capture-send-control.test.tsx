@@ -4,132 +4,91 @@ import { describe, expect, it, vi } from 'vitest';
 import { CaptureSendControl } from '@/components/capture/capture-send-control';
 
 /**
- * The per-row screenshot-delivery control (Owner 2026-08-20; Route B auto-send 2026-08-22):
- *   Route B link already sent → ✓ Link sent (disabled, never resend)
- *   Photo ready               → 📨 Send (actual PHOTO)
- *   Photo waiting             → 🔗 Auto-sending secure link… (a passive status — Route B now fires AND
- *                               retries automatically, so the manual "Send link" button is RETIRED)
- *                               + 💬 Open FB Chat fallback when a chat URL exists.
- *   Test capture              → 📨 Send disabled.
- * Invariants preserved: a "Photo waiting" capture NEVER exposes the doomed photo Send
- * (`incoming-send`), and there is no manual `incoming-sendlink` button any more (auto handles it).
+ * The per-row action control (Owner 2026-08-22 — messaging is fully AUTOMATIC + server-side):
+ *   💾 Save         → saves operator edits ONLY; NEVER sends (no Messenger call).
+ *   📨 Send Photo   → shown only when Photo-ready + not yet sent; a MANUAL actual-photo backup.
+ *   status chip     → finite AUTO SS/TEXT Sent ✓ (message_status sent/link_sent) or the router's
+ *                     finite failure reason (message_status failed) — a chip, never a button.
+ *   💬 Open FB Chat → human fallback on failure / while waiting.
+ * Invariants: NO "Send link" button, NO indefinite "Auto-sending…" spinner, and Save never sends.
  */
 const ID = 'cap-1';
 
+const base = {
+  captureRecordId: ID,
+  photoEligible: false,
+  fbUrl: null as string | null,
+  isTest: false,
+  sending: false,
+  saving: false,
+  messageStatus: null as string | null,
+  routeReason: null as string | null,
+  onSend: vi.fn(),
+  onSave: vi.fn(),
+};
+
 describe('CaptureSendControl', () => {
-  it('Photo ready → 📨 Send, enabled, and clicking sends', () => {
+  it('Photo waiting (unsent) → 💾 Save only, no send/sendlink/spinner', () => {
+    render(<CaptureSendControl {...base} onSend={vi.fn()} onSave={vi.fn()} />);
+    expect(screen.getByTestId(`incoming-save-${ID}`)).toHaveTextContent('Save');
+    expect(screen.queryByTestId(`incoming-send-${ID}`)).toBeNull();
+    expect(screen.queryByTestId(`incoming-sendlink-${ID}`)).toBeNull();
+    expect(screen.queryByTestId(`incoming-waiting-${ID}`)).toBeNull();
+  });
+
+  it('Save click calls onSave, never onSend', () => {
+    const onSend = vi.fn();
+    const onSave = vi.fn();
+    render(<CaptureSendControl {...base} onSend={onSend} onSave={onSave} />);
+    fireEvent.click(screen.getByTestId(`incoming-save-${ID}`));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('Photo ready (unsent) → 📨 Send Photo (actual photo) + Save', () => {
     const onSend = vi.fn();
     render(
-      <CaptureSendControl
-        captureRecordId={ID}
-        photoEligible
-        fbUrl="https://m.me/ready"
-        isTest={false}
-        sending={false}
-        onSend={onSend}
-      />,
+      <CaptureSendControl {...base} photoEligible fbUrl="https://m.me/ready" onSend={onSend} onSave={vi.fn()} />,
     );
     const send = screen.getByTestId(`incoming-send-${ID}`);
-    expect(send).not.toBeDisabled();
-    expect(send).toHaveTextContent('Send');
-    // Never the doomed-send-avoidance controls when the photo is actually deliverable.
-    expect(screen.queryByTestId(`incoming-openfb-${ID}`)).toBeNull();
-    expect(screen.queryByTestId(`incoming-waiting-${ID}`)).toBeNull();
+    expect(send).toHaveTextContent('Send Photo');
     fireEvent.click(send);
     expect(onSend).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId(`incoming-save-${ID}`)).toBeInTheDocument();
   });
 
-  it('Photo ready + sending → shows Sending… and is disabled', () => {
-    render(
-      <CaptureSendControl
-        captureRecordId={ID}
-        photoEligible
-        fbUrl={null}
-        isTest={false}
-        sending
-        onSend={vi.fn()}
-      />,
-    );
-    const send = screen.getByTestId(`incoming-send-${ID}`);
-    expect(send).toBeDisabled();
-    expect(send).toHaveTextContent('Sending…');
-  });
-
-  it('Photo waiting + FB chat → auto-sending status (NO manual Send link) + 💬 Open FB Chat, and NO photo Send', () => {
-    render(
-      <CaptureSendControl
-        captureRecordId={ID}
-        photoEligible={false}
-        fbUrl="https://m.me/waiting"
-        isTest={false}
-        sending={false}
-        onSend={vi.fn()}
-      />,
-    );
-    // Route B fires AND retries automatically now — the manual "Send link" button is retired.
-    expect(screen.queryByTestId(`incoming-sendlink-${ID}`)).toBeNull();
-    expect(screen.getByTestId(`incoming-waiting-${ID}`)).toHaveTextContent(
-      'Auto-sending secure link',
-    );
-    const open = screen.getByTestId(`incoming-openfb-${ID}`);
-    expect(open).toHaveAttribute('href', 'https://m.me/waiting');
-    expect(open).toHaveAttribute('target', '_blank');
-    // The doomed reply_inbox PHOTO Send is never offered for a waiting customer.
+  it('message_status link_sent → "AUTO TEXT Sent to Messenger ✓" status chip (not a button)', () => {
+    render(<CaptureSendControl {...base} messageStatus="link_sent" onSend={vi.fn()} onSave={vi.fn()} />);
+    const chip = screen.getByTestId(`incoming-status-${ID}`);
+    expect(chip).toHaveTextContent('AUTO TEXT Sent to Messenger ✓');
+    expect(chip.tagName).not.toBe('BUTTON');
     expect(screen.queryByTestId(`incoming-send-${ID}`)).toBeNull();
   });
 
-  it('Photo waiting + no FB chat → auto-sending status only, no Open FB Chat, no photo Send', () => {
-    render(
-      <CaptureSendControl
-        captureRecordId={ID}
-        photoEligible={false}
-        fbUrl={null}
-        isTest={false}
-        sending={false}
-        onSend={vi.fn()}
-      />,
-    );
-    expect(screen.getByTestId(`incoming-waiting-${ID}`)).toHaveTextContent(
-      'Auto-sending secure link',
-    );
-    expect(screen.queryByTestId(`incoming-sendlink-${ID}`)).toBeNull();
-    expect(screen.queryByTestId(`incoming-openfb-${ID}`)).toBeNull();
-    expect(screen.queryByTestId(`incoming-send-${ID}`)).toBeNull();
+  it('message_status sent → "AUTO SS Sent to Messenger ✓" status chip', () => {
+    render(<CaptureSendControl {...base} messageStatus="sent" onSend={vi.fn()} onSave={vi.fn()} />);
+    expect(screen.getByTestId(`incoming-status-${ID}`)).toHaveTextContent('AUTO SS Sent to Messenger ✓');
   });
 
-  it('Route B link already sent → ✓ Link sent, disabled, no other send controls (never resend)', () => {
+  it('message_status failed → shows the router\'s finite reason + Save + Open FB Chat, no spinner', () => {
     render(
       <CaptureSendControl
-        captureRecordId={ID}
-        photoEligible={false}
+        {...base}
+        messageStatus="failed"
+        routeReason="AUTO TEXT Failed · awaiting comment context"
         fbUrl="https://m.me/x"
-        isTest={false}
-        sending={false}
         onSend={vi.fn()}
-        linkSent
+        onSave={vi.fn()}
       />,
     );
-    const done = screen.getByTestId(`incoming-linksent-${ID}`);
-    expect(done).toBeDisabled();
-    expect(done).toHaveTextContent('Link sent');
-    expect(screen.queryByTestId(`incoming-sendlink-${ID}`)).toBeNull();
-    expect(screen.queryByTestId(`incoming-waiting-${ID}`)).toBeNull();
-    expect(screen.queryByTestId(`incoming-send-${ID}`)).toBeNull();
+    expect(screen.getByTestId(`incoming-status-${ID}`)).toHaveTextContent('awaiting comment context');
+    expect(screen.getByTestId(`incoming-save-${ID}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`incoming-openfb-${ID}`)).toHaveAttribute('href', 'https://m.me/x');
   });
 
-  it('Test capture → Send stays disabled (a test never messages a real customer), even if eligible', () => {
-    render(
-      <CaptureSendControl
-        captureRecordId={ID}
-        photoEligible
-        fbUrl="https://m.me/test"
-        isTest
-        sending={false}
-        onSend={vi.fn()}
-      />,
-    );
-    const send = screen.getByTestId(`incoming-send-${ID}`);
-    expect(send).toBeDisabled();
-    expect(screen.queryByTestId(`incoming-openfb-${ID}`)).toBeNull();
+  it('Test capture → Send stays disabled and no Save (a test never messages a real customer)', () => {
+    render(<CaptureSendControl {...base} isTest photoEligible fbUrl="https://m.me/test" onSend={vi.fn()} onSave={vi.fn()} />);
+    expect(screen.getByTestId(`incoming-send-${ID}`)).toBeDisabled();
+    expect(screen.queryByTestId(`incoming-save-${ID}`)).toBeNull();
   });
 });

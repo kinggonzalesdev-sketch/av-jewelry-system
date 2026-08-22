@@ -3,23 +3,24 @@
 import { Button, buttonVariants } from '@/components/ui/button';
 
 /**
- * The per-row screenshot-delivery control in Incoming Captures (Owner request 2026-08-20).
+ * The per-row action control in Incoming Captures (Owner 2026-08-22 — messaging is now fully
+ * AUTOMATIC + SERVER-SIDE via the durable cron router, so the operator NEVER clicks to send).
  *
- * A screenshot PHOTO can only be auto/normal-sent when the customer has a genuine, recent Inbox
- * DM ("Photo ready"). A silent/comment-only/outside-24h customer ("Photo waiting") has NO
- * supported PHOTO route — the normal reply_inbox PHOTO would be rejected by Facebook — so we must
- * NOT offer a doomed Send. This control renders exactly one thing per state, driven by the
- * already-computed `photoEligible` (never recomputed here — no duplicated eligibility logic):
+ * What the operator sees here:
+ *   • 💾 Save — persists their row edits (corrected grams + note) ONLY. It NEVER sends a Messenger
+ *     message. This replaces the old "🔗 Auto-sending secure link…" button the Owner asked to remove.
+ *   • 📨 Send Photo — shown ONLY when the customer is genuinely Photo-ready (media-eligible) and the
+ *     screenshot hasn't been sent yet: a MANUAL backup that delivers the ACTUAL screenshot PHOTO
+ *     (never a secure link). The server auto-sends this too; this is just the manual retry.
+ *   • A finite STATUS chip (not a button) once the server router finishes:
+ *        message_status 'sent'      → "AUTO SS Sent to Messenger ✓"   (actual photo delivered)
+ *        message_status 'link_sent' → "AUTO TEXT Sent to Messenger ✓" (secure-link Private Reply)
+ *        message_status 'failed'    → the router's finite reason (route_reason), e.g. "AUTO TEXT
+ *                                     Failed · awaiting comment context"
+ *   • 💬 Open FB Chat — the human fallback, shown when a send failed or is still waiting.
  *
- *   Link sent (Route B)        → ✓ Link sent   (a secure-link Private Reply went out; waiting for reply — NEVER resend)
- *   Photo ready               → 📨 Send        (the manual backup/retry; eligible normally auto-sends the PHOTO)
- *   Photo waiting             → 🔗 Auto-sending secure link…  (Route B now fires AND retries automatically,
- *                                               NO operator click — Owner 2026-08-22; the manual "Send link"
- *                                               button is retired) + 💬 Open FB Chat as the human fallback
- *   Test capture               → 📨 Send disabled (a test must never message a real customer)
- *
- * The Send entry point stays ready to host a future verified silent-commenter PHOTO route: when
- * one exists, `photoEligible` simply becomes true for that state and Send lights up — no UI rework.
+ * There is NO indefinite "sending…" spinner: the router persists a finite state, which this only
+ * DISPLAYS. A Test capture never messages a real customer (Send stays disabled).
  */
 export function CaptureSendControl({
   captureRecordId,
@@ -27,20 +28,26 @@ export function CaptureSendControl({
   fbUrl,
   isTest,
   sending,
+  saving,
+  messageStatus,
+  routeReason,
   onSend,
-  linkSent = false,
+  onSave,
 }: {
   captureRecordId: string;
   photoEligible: boolean;
   fbUrl: string | null;
   isTest: boolean;
   sending: boolean;
+  saving: boolean;
+  /** The durable router's message_status: 'sent' | 'link_sent' | 'failed' | 'awaiting_inbox' | … */
+  messageStatus: string | null;
+  /** The router's last human-safe finite reason (shown when failed). */
+  routeReason: string | null;
   onSend: () => void;
-  /** Route B already sent a secure-link Private Reply for this capture (message_status
-   *  'link_sent') — show a done state and never offer a second send. */
-  linkSent?: boolean;
+  onSave: () => void;
 }) {
-  // A Test capture never messages a real customer — keep Send visible but disabled.
+  // A Test capture never messages a real customer — keep a disabled Send as the visible marker.
   if (isTest) {
     return (
       <Button
@@ -55,65 +62,88 @@ export function CaptureSendControl({
     );
   }
 
-  // Route B secure-link Private Reply already sent — terminal, never resend (one reply per comment).
-  if (linkSent) {
+  const status = messageStatus ?? '';
+  const sent = status === 'sent';
+  const linkSent = status === 'link_sent';
+  const failed = status === 'failed';
+
+  const saveButton = (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      disabled={saving}
+      onClick={onSave}
+      data-testid={`incoming-save-${captureRecordId}`}
+      title="Save your edits (corrected grams / note). Messaging is automatic — this never sends anything."
+    >
+      {saving ? 'Saving…' : '💾 Save'}
+    </Button>
+  );
+
+  const openFbChat = fbUrl ? (
+    <a
+      href={fbUrl}
+      target="_blank"
+      rel="noreferrer"
+      className={buttonVariants({ variant: 'outline', size: 'sm' })}
+      data-testid={`incoming-openfb-${captureRecordId}`}
+      title="Human fallback: open the chat and send it yourself (allowed up to 7 days)."
+    >
+      💬 Open FB Chat
+    </a>
+  ) : null;
+
+  // TERMINAL success → a finite green status chip (not a button) + Save (edits still allowed).
+  if (sent || linkSent) {
     return (
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        disabled
-        data-testid={`incoming-linksent-${captureRecordId}`}
-        title="A secure screenshot link was sent to the customer via a Pancake Private Reply — waiting for their reply. Not resent."
-      >
-        ✓ Link sent
-      </Button>
+      <span className="inline-flex flex-wrap items-center gap-1">
+        <span
+          className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-700"
+          data-testid={`incoming-status-${captureRecordId}`}
+        >
+          {sent ? 'AUTO SS Sent to Messenger ✓' : 'AUTO TEXT Sent to Messenger ✓'}
+        </span>
+        {saveButton}
+      </span>
     );
   }
 
-  // Photo ready — the eligible customer already has an open Inbox window, so the normal
-  // reply_inbox PHOTO can be delivered. This is the backup/retry click (auto-send handles most).
-  if (photoEligible) {
+  // TERMINAL failure → a finite reason chip + Save + the human fallback (never a spinner).
+  if (failed) {
     return (
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        disabled={sending}
-        onClick={onSend}
-        data-testid={`incoming-send-${captureRecordId}`}
-      >
-        {sending ? 'Sending…' : '📨 Send'}
-      </Button>
+      <span className="inline-flex flex-wrap items-center gap-1">
+        <span
+          className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] font-semibold text-amber-800"
+          data-testid={`incoming-status-${captureRecordId}`}
+        >
+          {routeReason?.trim() || 'AUTO Failed · needs attention'}
+        </span>
+        {saveButton}
+        {openFbChat}
+      </span>
     );
   }
 
-  // Photo waiting — no NORMAL Inbox PHOTO route. Route B (secure-link Private Reply to the exact Live
-  // comment) now fires AND retries AUTOMATICALLY with NO operator click (Owner 2026-08-22), so the
-  // manual "Send link" button is retired: show a passive auto-status. Open FB Chat stays as the human
-  // fallback (allowed up to 7 days) for when the Private Reply link genuinely can't be sent. The
-  // `sending`/`onSend` props remain for the Photo-ready manual PHOTO retry above.
+  // NOT yet sent. Photo-ready → a MANUAL actual-photo backup (the server also auto-sends). Photo
+  // waiting → just Save + the fallback; the secure-link TEXT is sent automatically by the server.
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
-      <span
-        className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-amber-700"
-        data-testid={`incoming-waiting-${captureRecordId}`}
-        title="A secure screenshot link is being sent automatically to the customer's exact Live comment via a Pancake Private Reply — no action needed. If it can't be sent, use Open FB Chat."
-      >
-        🔗 Auto-sending secure link…
-      </span>
-      {fbUrl ? (
-        <a
-          href={fbUrl}
-          target="_blank"
-          rel="noreferrer"
-          className={buttonVariants({ variant: 'outline', size: 'sm' })}
-          data-testid={`incoming-openfb-${captureRecordId}`}
-          title="Fallback: open the chat and send it yourself (allowed up to 7 days)."
+      {photoEligible ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={sending}
+          onClick={onSend}
+          data-testid={`incoming-send-${captureRecordId}`}
+          title="Send the ACTUAL screenshot photo now (manual backup — the server also auto-sends it)."
         >
-          💬 Open FB Chat
-        </a>
+          {sending ? 'Sending…' : '📨 Send Photo'}
+        </Button>
       ) : null}
+      {saveButton}
+      {!photoEligible ? openFbChat : null}
     </span>
   );
 }

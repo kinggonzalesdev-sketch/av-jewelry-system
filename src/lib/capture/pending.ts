@@ -52,7 +52,7 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
   const { data, error } = await supabase
     .from('capture_records')
     .select(
-      'id, captured_at, screenshot_path, ocr, is_test, link_status, customer_id, pancake_conversation_id, message_status, customers ( display_name, facebook_conversation_url )',
+      'id, captured_at, screenshot_path, ocr, is_test, link_status, customer_id, pancake_conversation_id, message_status, route_reason, customers ( display_name, facebook_conversation_url )',
     )
     .eq('source', 'floating')
     .is('official_order_id', null)
@@ -76,6 +76,7 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
     customer_id: string | null;
     pancake_conversation_id: string | null;
     message_status: string | null;
+    route_reason: string | null;
     customers: CustJoin | CustJoin[] | null;
   }>;
 
@@ -127,6 +128,7 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
       photoEligible: eligible[i] === true,
       fbUrl: (cust?.facebook_conversation_url ?? '').trim() || null,
       messageStatus: r.message_status ?? null,
+      routeReason: (r.route_reason ?? '').trim() || null,
     };
   });
 }

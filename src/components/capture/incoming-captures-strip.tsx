@@ -9,6 +9,7 @@ import {
   markCaptureStickerPrintedAction,
   releaseCaptureStickerAction,
   resolveCaptureLinkAction,
+  saveCaptureEditsAction,
   sendCaptureToMessengerAction,
 } from '@/lib/capture/pending-actions';
 import {
@@ -58,13 +59,6 @@ function ocrStr(ocr: unknown, ...keys: string[]): string | null {
   return null;
 }
 
-// AUTO SECURE-LINK retry cadence (Owner 2026-08-22). A "Photo waiting" capture whose exact Live
-// comment wasn't resolvable at the capture instant (Pancake webhook lag) is retried on this bounded
-// schedule until the secure-link Private Reply sends — NO operator click. Route B is idempotent
-// (reuse-by-capture + atomic pending→sending claim), so a repeat can never send a second reply.
-const ROUTE_B_RETRY_MS = 4000;
-const ROUTE_B_MAX_TRIES = 10; // ~40s of coverage — well past normal webhook lag, then Open FB Chat.
-
 /**
  * Incoming Captures — the PC's live station. Floating-screenshot captures uploaded
  * from the phone appear here in realtime (no refresh). "Use" opens New Order
@@ -98,6 +92,8 @@ export function IncomingCapturesStrip({
   const [busy, setBusy] = useState<string | null>(null);
   // The capture whose screenshot is mid-send to Messenger (per-row spinner).
   const [sendingId, setSendingId] = useState<string | null>(null);
+  // The capture whose operator edits (grams/note) are mid-save (per-row "Save" spinner).
+  const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Operator's grams correction per capture (for the review case + manual reprint),
   // and a short per-row status note ("Printed ✓").
@@ -113,13 +109,6 @@ export function IncomingCapturesStrip({
   );
   // Captures we've already kicked a resolution for, so each resolves exactly once.
   const resolvedRef = useRef<Set<string>>(new Set());
-  // Route B auto-retry bookkeeping (Owner 2026-08-22): per-capture attempt count (bounded),
-  // in-flight guard (no overlap), and terminal-done set (stop once the link is sent). A live mirror
-  // of `rows` so the stable retry interval always reads the latest without resetting on every nudge.
-  const routeBTriesRef = useRef<Map<string, number>>(new Map());
-  const routeBBusyRef = useRef<Set<string>>(new Set());
-  const routeBDoneRef = useRef<Set<string>>(new Set());
-  const rowsRef = useRef<PendingCaptureRow[]>([]);
 
   // Set by the auto-print effect below; lets the realtime handler kick an INSTANT drain
   // the moment a capture arrives (null while no printer is connected / auto-print off).
@@ -227,6 +216,10 @@ export function IncomingCapturesStrip({
             (typeof raw.message_status === 'string'
               ? raw.message_status
               : prev?.messageStatus) ?? null,
+          routeReason:
+            (typeof raw.route_reason === 'string' && raw.route_reason.trim()
+              ? raw.route_reason
+              : prev?.routeReason) ?? null,
         };
         return prev
           ? cur.map((r) => (r.captureRecordId === id ? row : r))
@@ -368,59 +361,10 @@ export function IncomingCapturesStrip({
     }
   }, [rows, linkOverrides]);
 
-  // Keep a live mirror of rows for the stable auto-retry interval below (so it never resets when a
-  // realtime nudge lands mid-Live).
-  useEffect(() => {
-    rowsRef.current = rows;
-  }, [rows]);
-
-  // AUTO SECURE-LINK (Owner 2026-08-22): "Photo waiting" (message_status 'awaiting_inbox') means the
-  // exact Live comment usually wasn't resolvable when the capture first landed (webhook lag), so the
-  // server parked it. Re-attempt Route B on a BOUNDED schedule until the secure-link Private Reply
-  // sends ('link_sent') — with NO operator click. A stable interval (mounted once) reads rowsRef, so
-  // frequent realtime nudges during a Live can't starve it. Route B is idempotent (reuse-by-capture
-  // + atomic claim), so repeats can never double-send; after the budget the capture stays
-  // 'awaiting_inbox' and Open FB Chat is the manual fallback. Test captures are never messaged.
-  useEffect(() => {
-    const interval = setInterval(() => {
-      for (const r of rowsRef.current) {
-        const id = r.captureRecordId;
-        if (
-          r.isTest ||
-          r.messageStatus !== 'awaiting_inbox' ||
-          routeBDoneRef.current.has(id) ||
-          routeBBusyRef.current.has(id) ||
-          (routeBTriesRef.current.get(id) ?? 0) >= ROUTE_B_MAX_TRIES
-        ) {
-          continue;
-        }
-        routeBTriesRef.current.set(id, (routeBTriesRef.current.get(id) ?? 0) + 1);
-        routeBBusyRef.current.add(id);
-        sendCaptureToMessengerAction(id)
-          .then((res) => {
-            if (res.ok && (res.code === 'sent' || res.code === 'already_sent')) {
-              routeBDoneRef.current.add(id);
-              // Optimistic: flip only awaiting_inbox → link_sent (realtime carries the authoritative
-              // status; a rare eligibility-flip that sent a real PHOTO is corrected to 'sent' there).
-              setRows((cur) =>
-                cur.map((x) =>
-                  x.captureRecordId === id && x.messageStatus === 'awaiting_inbox'
-                    ? { ...x, messageStatus: 'link_sent' }
-                    : x,
-                ),
-              );
-              setNotes((cur) => ({
-                ...cur,
-                [id]: 'Secure link sent ✓ — waiting for customer reply.',
-              }));
-            }
-          })
-          .catch(() => undefined)
-          .finally(() => routeBBusyRef.current.delete(id));
-      }
-    }, ROUTE_B_RETRY_MS);
-    return () => clearInterval(interval);
-  }, []);
+  // Messaging is fully AUTOMATIC + SERVER-SIDE now (Owner 2026-08-22): the durable Vercel-cron
+  // router (/api/cron/capture-autosend) sends Route A (photo) / Route B (secure-link TEXT) with
+  // bounded retries and finite states, independent of this tab. The old client retry loop is gone —
+  // the strip only DISPLAYS the router's result (message_status + route_reason). No send-on-render.
 
   // Build the sticker for a capture: Facebook Name / grams • ₱rate/g / Date. The rate
   // ALWAYS comes from Sticker Settings (the pinned comment never carries a price); the
@@ -609,6 +553,29 @@ export function IncomingCapturesStrip({
       setError('Could not send to Messenger.');
     } finally {
       setSendingId(null);
+    }
+  };
+
+  // "Save" — persist the operator's row edits (corrected grams + note) ONLY. Messaging is fully
+  // automatic + server-side now, so this NEVER sends anything to Messenger. The saved grams then
+  // flows to the sticker and the durable auto-router.
+  const saveEdits = async (r: PendingCaptureRow) => {
+    if (savingId) return;
+    setSavingId(r.captureRecordId);
+    setError(null);
+    try {
+      const grams = gramsEdits[r.captureRecordId] ?? r.grams ?? '';
+      const note = notes[r.captureRecordId] ?? '';
+      const res = await saveCaptureEditsAction(r.captureRecordId, grams, note);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setNotes((cur) => ({ ...cur, [r.captureRecordId]: 'Saved ✓' }));
+    } catch {
+      setError('Could not save the edits.');
+    } finally {
+      setSavingId(null);
     }
   };
 
@@ -832,18 +799,20 @@ export function IncomingCapturesStrip({
                     >
                       🖨 Print
                     </Button>
-                    {/* Screenshot delivery — driven by the already-computed photo state:
-                        Photo ready → 📨 Send · Photo waiting → 💬 Open FB Chat · no chat →
-                        neutral "Photo waiting". A "Photo waiting" capture never fires a doomed
-                        reply_inbox PHOTO (no "Pancake rejected"). Test → disabled. */}
+                    {/* Messaging is AUTOMATIC + server-side. This control only offers 💾 Save (edits
+                        only, never sends), a MANUAL 📨 Send Photo when Photo-ready, the finite
+                        AUTO SS/TEXT Sent ✓ / Failed status, and the 💬 Open FB Chat fallback. */}
                     <CaptureSendControl
                       captureRecordId={r.captureRecordId}
                       photoEligible={effectiveLink(r).photoEligible}
                       fbUrl={effectiveLink(r).fbUrl}
                       isTest={r.isTest}
                       sending={sendingId === r.captureRecordId}
+                      saving={savingId === r.captureRecordId}
+                      messageStatus={r.messageStatus}
+                      routeReason={r.routeReason}
                       onSend={() => void sendToMessenger(r)}
-                      linkSent={r.messageStatus === 'link_sent'}
+                      onSave={() => void saveEdits(r)}
                     />
                     <Button
                       type="button"

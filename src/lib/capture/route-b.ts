@@ -84,6 +84,9 @@ export async function attemptSecureLinkPrivateReply(input: {
   fbName: string;
   value: string | null;
   screenshotPath: string | null;
+  /** The capture's EXACT customer PSID (from its linked inbox conversation), when known. Lets the
+   *  resolver key off the precise identity instead of fuzzy name-matching — the reliable path. */
+  psid?: string | null;
 }): Promise<RouteBResult> {
   const { supabase, captureRecordId, fbName } = input;
   if (!input.screenshotPath) {
@@ -105,6 +108,7 @@ export async function attemptSecureLinkPrivateReply(input: {
         p_name: fbName,
         p_value: input.value,
         p_active_page: activePage,
+        p_psid: input.psid ?? null,
       })
     ).data as ResolvedComment | null;
     if (!rc?.resolved || !rc.page_id || !rc.post_id || !rc.comment_id) {

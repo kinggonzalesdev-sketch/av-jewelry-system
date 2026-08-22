@@ -343,6 +343,30 @@ export async function releaseCaptureStickerAction(
   await supabase.rpc('release_capture_sticker', { p_capture_record_id: captureRecordId });
 }
 
+/**
+ * Save the operator's row edits (corrected grams + note) onto a pending capture. This is the "Save"
+ * button that replaces the old auto-sending control — it persists edits ONLY and NEVER sends a
+ * Messenger message (messaging is fully automatic + server-side now). The corrected grams then flows
+ * to the sticker and the durable auto-router.
+ */
+export async function saveCaptureEditsAction(
+  captureRecordId: string,
+  grams: string | null,
+  note: string | null,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!captureRecordId) return { ok: false, error: 'Missing capture.' };
+  await requirePermission('claim_capture');
+  const supabase = await createClient();
+  const { error } = await supabase.rpc('save_capture_operator_edit', {
+    p_capture_id: captureRecordId,
+    p_grams: (grams ?? '').trim() || null,
+    p_note: (note ?? '').trim() || null,
+  });
+  if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  revalidatePath('/orders');
+  return { ok: true };
+}
+
 /** Discard a junk pending capture (no order created from it). */
 export async function dismissPendingCaptureAction(
   captureRecordId: string,
