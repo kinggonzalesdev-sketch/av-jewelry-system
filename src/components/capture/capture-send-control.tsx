@@ -3,26 +3,23 @@
 import { Button, buttonVariants } from '@/components/ui/button';
 
 /**
- * The per-row action control in Incoming Captures (Owner 2026-08-22 — messaging is AUTOMATIC +
- * server-side; the row shows the CURRENT actionable state, never stale internal router states).
+ * The per-row ACTION control in Incoming Captures (Owner 2026-08-22).
  *
- * Precedence — the row reflects ONE authoritative messaging state, highest first:
- *   1. Test capture        → 📨 Send disabled (a test never messages a real customer).
- *   2. Photo already sent  → "AUTO SS Sent to Messenger ✓" (message_status 'sent'; no duplicate Send).
- *   3. Photo READY         → 📨 Send (the ACTUAL screenshot photo). This SUPERSEDES any stale/pending
- *                            Route-B state (awaiting / failed / "pending") — current eligibility is
- *                            authoritative; the customer is reachable now, so send the real photo.
- *   4. TEXT already sent    → "AUTO TEXT Sent to Messenger ✓" (message_status 'link_sent', still
- *                            Photo-waiting) — the secure-link Private Reply audit.
- *   5. Photo waiting        → the panel shows "Photo waiting"; here only 💬 Open FB Chat (human
- *                            fallback). Route B runs in the background.
+ * This is the right-side action area only: `Print | Send | Use | Dismiss`. It renders NO delivery
+ * status — the "AUTO TEXT Sent to Messenger ✓" / "AUTO SS Sent to Messenger ✓" statuses live in a
+ * DEDICATED area UNDER the Grams/Price (see incoming-captures-strip), and a status must NEVER occupy
+ * or replace the Send button.
  *
- * NEVER shown in the normal row: internal router terminology (pending / awaiting comment context /
- * sending / backoff / route_reason). Those live in diagnostics/audit only.
- *
- * 💾 Save is NOT a permanent action — it appears ONLY when the operator has unsaved edits (`dirty`,
- * e.g. a changed grams / Fixed Price value). It persists edits and NEVER sends any Messenger message;
- * after a successful Save the row returns to the correct state above.
+ *   📨 Send — shown ONLY when the customer is genuinely Photo-ready (media-eligible) AND the actual
+ *             PHOTO has not been sent. Send ALWAYS means the actual screenshot PHOTO (never a secure
+ *             link / Private Reply TEXT). A doomed photo send is never offered.
+ *   💬 Open FB Chat — the human fallback while Photo-waiting (Route B TEXT runs automatically in the
+ *             background; the operator never clicks to send it).
+ *   💾 Save — appears ONLY when the operator has unsaved grams / Fixed-Price edits (`dirty`); it
+ *             persists edits and NEVER sends anything.
+ *   (photo already sent) — no Send (prevents a duplicate/misleading send); the AUTO SS status shows
+ *             under Grams/Price.
+ *   Test capture — a disabled Send marker (a test never messages a real customer).
  */
 export function CaptureSendControl({
   captureRecordId,
@@ -64,11 +61,9 @@ export function CaptureSendControl({
     );
   }
 
-  const status = messageStatus ?? '';
-  const photoSent = status === 'sent';
-  const linkSent = status === 'link_sent';
+  const photoSent = (messageStatus ?? '') === 'sent';
 
-  // Save ONLY when there are unsaved edits — never a permanent primary action, never sends anything.
+  // Save ONLY when there are unsaved edits — never a permanent action, never sends anything.
   const saveButton = dirty ? (
     <Button
       type="button"
@@ -83,20 +78,11 @@ export function CaptureSendControl({
     </Button>
   ) : null;
 
-  // The SINGLE current messaging element, in authoritative precedence.
-  let messaging: React.ReactNode;
-  if (photoSent) {
-    messaging = (
-      <span
-        className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-700"
-        data-testid={`incoming-status-${captureRecordId}`}
-      >
-        AUTO SS Sent to Messenger ✓
-      </span>
-    );
-  } else if (photoEligible) {
-    // Photo READY supersedes any stale Route-B awaiting/failed/pending state → send the real photo.
-    messaging = (
+  // The single ACTION element (never a status): Send when Photo-ready-and-unsent; the human fallback
+  // while Photo-waiting; nothing once the photo is sent (its AUTO SS status sits under Grams/Price).
+  let action: React.ReactNode = null;
+  if (photoEligible && !photoSent) {
+    action = (
       <Button
         type="button"
         size="sm"
@@ -109,19 +95,8 @@ export function CaptureSendControl({
         {sending ? 'Sending…' : '📨 Send'}
       </Button>
     );
-  } else if (linkSent) {
-    messaging = (
-      <span
-        className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-700"
-        data-testid={`incoming-status-${captureRecordId}`}
-      >
-        AUTO TEXT Sent to Messenger ✓
-      </span>
-    );
-  } else {
-    // Photo waiting — the panel already shows "Photo waiting"; Route B is automatic + server-side.
-    // Offer only the human fallback (never internal pending/awaiting text).
-    messaging = fbUrl ? (
+  } else if (!photoSent && !photoEligible && fbUrl) {
+    action = (
       <a
         href={fbUrl}
         target="_blank"
@@ -132,12 +107,13 @@ export function CaptureSendControl({
       >
         💬 Open FB Chat
       </a>
-    ) : null;
+    );
   }
 
+  if (!action && !saveButton) return null;
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
-      {messaging}
+      {action}
       {saveButton}
     </span>
   );

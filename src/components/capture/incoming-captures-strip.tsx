@@ -548,7 +548,19 @@ export function IncomingCapturesStrip({
         setError(res.error);
         return;
       }
-      setNotes((cur) => ({ ...cur, [r.captureRecordId]: res.message }));
+      // Success → the ACTUAL screenshot PHOTO went out. Reflect it immediately in the dedicated
+      // status area under Grams/Price (message_status 'sent' → "AUTO SS Sent to Messenger ✓"); the
+      // server revalidation confirms it. No separate note (the status line is the single source).
+      setRows((cur) =>
+        cur.map((x) =>
+          x.captureRecordId === r.captureRecordId ? { ...x, messageStatus: 'sent' } : x,
+        ),
+      );
+      setNotes((cur) => {
+        const next = { ...cur };
+        delete next[r.captureRecordId];
+        return next;
+      });
     } catch {
       setError('Could not send to Messenger.');
     } finally {
@@ -789,12 +801,37 @@ export function IncomingCapturesStrip({
                               </span>
                             )
                           : null}
-                      {notes[r.captureRecordId] ? (
-                        <span className="text-[10px] font-medium text-emerald-600">
-                          {notes[r.captureRecordId]}
-                        </span>
-                      ) : null}
                     </div>
+                    {/* DEDICATED messaging-status area (Owner 2026-08-22) — the AUTO TEXT/SS delivery
+                        status lives HERE, directly UNDER Grams/Price. Statuses ONLY: they NEVER
+                        occupy or replace the Send action. Internal router terms (pending / awaiting
+                        comment context / sending / backoff) are never shown — only the finite success
+                        states, plus transient operator notes (Saved ✓ / Printed ✓). */}
+                    {(() => {
+                      const autoStatus =
+                        r.messageStatus === 'sent'
+                          ? 'AUTO SS Sent to Messenger ✓'
+                          : r.messageStatus === 'link_sent'
+                            ? 'AUTO TEXT Sent to Messenger ✓'
+                            : null;
+                      const note = notes[r.captureRecordId] ?? null;
+                      if (!autoStatus && !note) return null;
+                      return (
+                        <div
+                          className="mt-1 flex flex-col gap-0.5"
+                          data-testid={`incoming-msgstatus-${r.captureRecordId}`}
+                        >
+                          {autoStatus ? (
+                            <span className="text-[11px] font-semibold text-emerald-600">
+                              {autoStatus}
+                            </span>
+                          ) : null}
+                          {note ? (
+                            <span className="text-[10px] font-medium text-emerald-600">{note}</span>
+                          ) : null}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
