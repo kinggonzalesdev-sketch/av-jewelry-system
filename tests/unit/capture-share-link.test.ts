@@ -109,4 +109,27 @@ describe('first name + Private Reply template', () => {
       buildPrivateReplyMessage({ firstName: '', mode: 'fixed', fixedPrice: '15000' }),
     ).toContain('Hi beshy! 💛');
   });
+
+  // GUARD (Owner 2026-08-22 payment-link incident): the AUTO TEXT must NEVER carry ANY link — no
+  // URL, no /orders, no /payments, no secure 🔗 link, no "vercel"/"http". A customer only ever
+  // receives the plain mode-aware deposit message. This locks MineFlow's automatic messaging as
+  // link-free so no future edit can reintroduce a payment/orders/screenshot URL.
+  it('AUTO TEXT contains NO link of any kind (both modes)', () => {
+    const grams = buildPrivateReplyMessage({
+      firstName: 'Roshelle',
+      mode: 'grams',
+      grams: '3.55',
+      pricePerGram: '7100',
+    });
+    const fixed = buildPrivateReplyMessage({
+      firstName: 'Roshelle',
+      mode: 'fixed',
+      fixedPrice: '15000',
+    });
+    for (const msg of [grams, fixed]) {
+      expect(msg).not.toMatch(/https?:\/\//i);
+      expect(msg).not.toMatch(/\/orders|\/payments|orders\/payments/i);
+      expect(msg).not.toMatch(/vercel|avjewelry\.online|l\.php|🔗/i);
+    }
+  });
 });
