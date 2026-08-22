@@ -28,15 +28,16 @@ describe('message template variables', () => {
     ]);
   });
 
-  it('covers the invoice and (single) reminder template', () => {
-    expect(TEMPLATE_KEYS).toEqual(['invoice', 'reminder_1']);
+  it('covers invoice, the single reminder, and the AUTO TEXT template', () => {
+    expect(TEMPLATE_KEYS).toEqual(['invoice', 'reminder_1', 'auto_text']);
   });
 
-  it('offers only Invoice in the Settings editor — the Reminder card was removed', () => {
+  it('offers Invoice + Auto Sent Text Message in the Settings editor; no Reminder card', () => {
     // Owner request 2026-08-05: no Reminder editor card. reminder_1 stays a valid
     // template key (the For Reminder order flow still renders + sends it), but it is
-    // no longer editable from Settings.
-    expect(EDITABLE_TEMPLATE_KEYS).toEqual(['invoice']);
+    // no longer editable from Settings. Owner 2026-08-22: the Capture AUTO TEXT
+    // (auto_text) is editable from Settings alongside Invoice.
+    expect(EDITABLE_TEMPLATE_KEYS).toEqual(['invoice', 'auto_text']);
     expect(EDITABLE_TEMPLATE_KEYS).not.toContain('reminder_1');
     expect(TEMPLATE_KEYS).toContain('reminder_1');
   });

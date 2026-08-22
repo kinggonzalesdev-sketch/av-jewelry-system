@@ -3,28 +3,45 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { recordAuditEvent, type AuditOutcome } from '@/lib/audit/log';
+import { decryptShareToken, firstNameOf, newShareToken, shareLinkUrl } from '@/lib/capture/share-link';
 import {
-  buildPrivateReplyMessage,
-  decryptShareToken,
-  firstNameOf,
-  newShareToken,
-  shareLinkUrl,
-} from '@/lib/capture/share-link';
+  AUTO_TEXT_DEFAULT_BODY,
+  AUTO_TEXT_KEY,
+  buildAutoTextValues,
+  renderAutoText,
+} from '@/lib/messaging/auto-text';
 import { getActivePancakePageId, sendPancakePrivateReply } from '@/lib/integrations/pancake';
-import {
-  classifyCaptureValue,
-  normalizeGrams,
-  parseFixedPrice,
-} from '@/lib/print/order-receipt';
+import { classifyCaptureValue, normalizeGrams, parseFixedPrice } from '@/lib/print/order-receipt';
+
+/** Read the Owner-editable AUTO TEXT template body via the caller's client (works for the PC staff
+ *  session AND the service-role router). Falls back to the shipped default so a send never breaks if
+ *  the row is missing/unreadable — the default is byte-identical to the seeded `auto_text` row. */
+async function readAutoTextTemplateBody(supabase: SupabaseClient): Promise<string> {
+  try {
+    const { data } = await supabase
+      .from('message_templates')
+      .select('body')
+      .eq('key', AUTO_TEXT_KEY)
+      .maybeSingle();
+    const body =
+      typeof (data as { body?: unknown } | null)?.body === 'string'
+        ? (data as { body: string }).body
+        : '';
+    return body.trim() ? body : AUTO_TEXT_DEFAULT_BODY;
+  } catch {
+    return AUTO_TEXT_DEFAULT_BODY;
+  }
+}
 
 /**
  * Build the AUTO TEXT from the FINALIZED Capture business data (Owner 2026-08-22). Messaging NEVER
  * reclassifies: it reuses the SAME upstream classifier the sticker uses (classifyCaptureValue →
  * grams via normalizeGrams / fixed via parseFixedPrice) + the ONE shared sticker rate
  * (sticker_settings.price_per_gram, read via the caller's client so it works for the PC session AND
- * the service-role router). Returns null when the business data is INCOMPLETE (unclassifiable value,
- * missing grams/price, or grams with no rate) so the ONE Private Reply is NOT consumed — it stays
- * retryable until the Capture is finalized.
+ * the service-role router). The computed total + conditional 20% layaway DP and the mode-aware line
+ * suppression come from the shared AUTO TEXT engine, rendering the Owner's SAVED template. Returns
+ * null when the business data is INCOMPLETE (unclassifiable value, missing grams/price, or grams with
+ * no rate) so the ONE Private Reply is NOT consumed — it stays retryable until the Capture is final.
  */
 async function buildAutoTextMessage(
   supabase: SupabaseClient,
@@ -32,11 +49,8 @@ async function buildAutoTextMessage(
   value: string | null,
 ): Promise<string | null> {
   const mode = classifyCaptureValue(value);
-  if (mode === 'fixed') {
-    const fixedPrice = parseFixedPrice(value);
-    if (!fixedPrice) return null;
-    return buildPrivateReplyMessage({ firstName: firstNameOf(fbName), mode: 'fixed', fixedPrice });
-  }
+  let values: Record<string, string> | null = null;
+
   if (mode === 'grams') {
     const grams = normalizeGrams(value);
     if (!grams) return null;
@@ -50,14 +64,21 @@ async function buildAutoTextMessage(
         ? ((data as { price_per_gram: string }).price_per_gram).trim()
         : '';
     if (!pricePerGram) return null; // grams needs a rate — else keep it reviewable, don't send.
-    return buildPrivateReplyMessage({
-      firstName: firstNameOf(fbName),
+    values = buildAutoTextValues({
       mode: 'grams',
+      firstName: firstNameOf(fbName),
       grams,
       pricePerGram,
     });
+  } else if (mode === 'fixed') {
+    const fixedPrice = parseFixedPrice(value);
+    if (!fixedPrice) return null;
+    values = buildAutoTextValues({ mode: 'fixed', firstName: firstNameOf(fbName), fixedPrice });
   }
-  return null; // unclassifiable value → incomplete → do not consume the Private Reply.
+
+  if (!values) return null; // unclassifiable / incomplete → do not consume the Private Reply.
+  const body = await readAutoTextTemplateBody(supabase);
+  return renderAutoText(body, values);
 }
 
 /**

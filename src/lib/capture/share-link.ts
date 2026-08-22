@@ -2,8 +2,6 @@ import 'server-only';
 
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
 
-import { formatStickerPeso } from '@/lib/print/order-receipt';
-
 /**
  * Secure screenshot-link tokens (Owner 2026-08-21, Route B).
  *
@@ -83,38 +81,8 @@ export function firstNameOf(name: string | null | undefined): string {
   return /[A-Za-z]/.test(first) ? first : '';
 }
 
-/**
- * The finalized Capture business data the AUTO TEXT consumes (Owner 2026-08-22). The messaging layer
- * NEVER reclassifies — `mode`/`grams`/`fixedPrice`/`pricePerGram` come from the SAME upstream Capture
- * classification the sticker uses (classifyCaptureValue / normalizeGrams / parseFixedPrice + the
- * shared sticker rate), so pinned comment → sticker → AUTO TEXT always agree.
- */
-export type PrivateReplyClaim = {
-  firstName: string;
-  mode: 'grams' | 'fixed';
-  /** Normalized grams ("3.55" / "0.55") — required when mode is 'grams'. */
-  grams?: string | null;
-  /** Effective ₱/g rate (raw "7100") — required when mode is 'grams'; formatted here. */
-  pricePerGram?: string | null;
-  /** Peso amount ("15000") — required when mode is 'fixed'; formatted here. */
-  fixedPrice?: string | null;
-};
-
-/**
- * The EXACT Owner-approved Private Reply TEXT template (Owner 2026-08-22), MODE-AWARE:
- *   GRAMS → "Item Per Gram: ₱{rate}/g" + "Grams: {grams}g"
- *   FIXED → "Fixed Price: ₱{price}"    (never any grams / per-gram line)
- * Both end with "Kindly settle your deposit." There is exactly ONE pricing block; the two modes are
- * mutually exclusive so a mixed grams+fixed message is impossible.
- */
-export function buildPrivateReplyMessage(claim: PrivateReplyClaim): string {
-  const greeting = claim.firstName ? `Hi beshy ${claim.firstName}!` : 'Hi beshy!';
-  const head = `${greeting} 💛 Thank you for mining with A.V. Jewelry ✨`;
-  const tail = `Kindly settle your deposit.\n\nThank you, beshy!`;
-  const body =
-    claim.mode === 'fixed'
-      ? `Fixed Price: ${formatStickerPeso(claim.fixedPrice ?? '0')}`
-      : `Item Per Gram: ${formatStickerPeso(claim.pricePerGram ?? '0')}/g\n` +
-        `Grams: ${(claim.grams ?? '').trim()}g`;
-  return `${head}\n\n${body}\n\n${tail}`;
-}
+// NOTE: the AUTO TEXT (Private Reply) message body is now the configurable, mode-aware
+// "Auto Sent Text Message" template (Owner 2026-08-22) — see lib/messaging/auto-text.ts
+// (buildAutoTextValues + renderAutoText) and route-b.ts. The old hardcoded
+// buildPrivateReplyMessage helper was retired; this module keeps only the secure-token +
+// first-name primitives it uniquely owns.

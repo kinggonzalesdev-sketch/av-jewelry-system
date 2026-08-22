@@ -9,14 +9,14 @@ import {
   saveMessageTemplateAction,
 } from '@/lib/messaging/actions';
 import type { MessageTemplate, TemplateHistoryEntry } from '@/lib/messaging/templates';
+import { unsupportedTokens } from '@/lib/messaging/template-vars';
 import {
-  renderTemplate,
-  SAMPLE_VALUES,
-  TEMPLATE_VARIABLES,
-  unsupportedTokens,
-} from '@/lib/messaging/template-vars';
-import { AUTO_TEXT_KEY } from '@/lib/messaging/auto-text';
-import { AutoTextTemplateCard } from '@/components/settings/auto-text-template-card';
+  AUTO_TEXT_TOKENS,
+  AUTO_TEXT_VARIABLES,
+  autoTextSampleValues,
+  renderAutoText,
+  type AutoTextMode,
+} from '@/lib/messaging/auto-text';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 
@@ -35,16 +35,18 @@ function fmtDateTime(iso: string | null): string {
 }
 
 /**
- * One template's editor: content, clickable variable chips, a live preview built
- * from sample data, Save, Reset to Default, and its version history.
+ * The "Auto Sent Text Message" editor (Owner 2026-08-22) — the Capture Route B Private Reply.
  *
- * The preview uses the SAME substitution the server uses when it renders a real
- * message, so what the Owner sees here is what a customer will get — only with
- * sample values instead of a real order's.
+ * SEPARATE from the Invoice Message template: it has its own variables, its own validation whitelist,
+ * and a MODE-AWARE Live Preview (Grams / Fixed Price) that runs the SAME engine the server uses, with
+ * real computed totals + the conditional 20% Layaway DP. One template body carries both pricing blocks;
+ * the inapplicable lines are suppressed automatically per mode. Save / Reset / History reuse the shared
+ * message-template actions (this key is 'auto_text').
  */
-function TemplateCard({ template }: { template: MessageTemplate }) {
+export function AutoTextTemplateCard({ template }: { template: MessageTemplate }) {
   const router = useRouter();
   const [body, setBody] = useState(template.body);
+  const [previewMode, setPreviewMode] = useState<AutoTextMode>('grams');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -54,12 +56,11 @@ function TemplateCard({ template }: { template: MessageTemplate }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const submittingRef = useRef(false);
 
-  const unknown = unsupportedTokens(body);
+  const unknown = unsupportedTokens(body, AUTO_TEXT_TOKENS);
   const blank = body.trim().length === 0;
   const dirty = body !== template.body;
   const canSave = !pending && !blank && unknown.length === 0 && dirty;
 
-  /** Insert a variable AT THE CURSOR, not at the end. */
   const insertVariable = (token: string) => {
     const el = textareaRef.current;
     if (!el) {
@@ -68,10 +69,8 @@ function TemplateCard({ template }: { template: MessageTemplate }) {
     }
     const start = el.selectionStart ?? body.length;
     const end = el.selectionEnd ?? body.length;
-    const next = body.slice(0, start) + token + body.slice(end);
-    setBody(next);
+    setBody(body.slice(0, start) + token + body.slice(end));
     setSaved(false);
-    // Restore the caret just after the inserted token.
     requestAnimationFrame(() => {
       el.focus();
       el.setSelectionRange(start + token.length, start + token.length);
@@ -121,6 +120,8 @@ function TemplateCard({ template }: { template: MessageTemplate }) {
     if (history === null) setHistory(await loadTemplateHistoryAction(template.key));
   };
 
+  const previewText = renderAutoText(body, autoTextSampleValues(previewMode));
+
   return (
     <section
       className="rounded-xl border border-border bg-card p-4"
@@ -134,12 +135,20 @@ function TemplateCard({ template }: { template: MessageTemplate }) {
         </p>
       </div>
 
-      {/* Variable chips — click to insert at the cursor. */}
+      <p className="mb-2 rounded-md border border-dashed border-border bg-secondary/30 p-2 text-[11px] text-muted-foreground">
+        This is the message a customer receives automatically when the actual screenshot can’t be sent
+        (Photo waiting). The <strong>grams</strong> lines (Item Per Gram, Grams) and the{' '}
+        <strong>Fixed Price</strong> line are shown or hidden automatically to match each capture’s
+        mode — you keep ONE template. <strong>Total Amount</strong> is computed (grams × rate, or the
+        fixed price). <strong>For Layaway DP</strong> appears only when the total is ₱15,000 or more
+        (20% of the total). Edit the wording freely; the numbers always come from the capture.
+      </p>
+
       <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
         Available variables
       </p>
       <div className="mb-2 flex flex-wrap gap-1">
-        {TEMPLATE_VARIABLES.map((v) => (
+        {AUTO_TEXT_VARIABLES.map((v) => (
           <button
             key={v.token}
             type="button"
@@ -164,22 +173,42 @@ function TemplateCard({ template }: { template: MessageTemplate }) {
             setBody(e.target.value);
             setSaved(false);
           }}
-          rows={10}
+          rows={16}
           data-testid={`template-body-${template.key}`}
           className="block w-full resize-y whitespace-pre-wrap rounded-md border border-border bg-background p-2 font-mono text-xs outline-none focus:border-gold"
         />
       </label>
 
-      {/* Live preview — same substitution the server does, with sample data. */}
+      {/* Live preview — SAME engine + computed values the customer gets; toggle the capture mode. */}
       <div className="mt-2">
-        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Live preview (sample data)
-        </p>
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Live preview (sample data)
+          </p>
+          <div className="inline-flex overflow-hidden rounded-md border border-border" role="group">
+            {(['grams', 'fixed'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setPreviewMode(m)}
+                data-testid={`autotext-preview-mode-${m}`}
+                aria-pressed={previewMode === m}
+                className={`px-2 py-0.5 text-[10px] font-medium ${
+                  previewMode === m
+                    ? 'bg-gold text-black'
+                    : 'bg-background text-muted-foreground hover:bg-accent'
+                }`}
+              >
+                {m === 'grams' ? 'Grams' : 'Fixed Price'}
+              </button>
+            ))}
+          </div>
+        </div>
         <pre
           className="whitespace-pre-wrap rounded-md border border-dashed border-border bg-secondary/30 p-2 text-xs"
           data-testid={`template-preview-${template.key}`}
         >
-          {renderTemplate(body, SAMPLE_VALUES)}
+          {previewText}
         </pre>
       </div>
 
@@ -190,8 +219,8 @@ function TemplateCard({ template }: { template: MessageTemplate }) {
       ) : null}
       {unknown.length > 0 ? (
         <p role="alert" className="mt-2 text-xs text-destructive">
-          Unsupported variable{unknown.length > 1 ? 's' : ''}: {unknown.join(', ')}. Use
-          only the variables above.
+          Unsupported variable{unknown.length > 1 ? 's' : ''}: {unknown.join(', ')}. Use only the
+          variables above.
         </p>
       ) : null}
       {error ? (
@@ -224,17 +253,11 @@ function TemplateCard({ template }: { template: MessageTemplate }) {
         >
           Reset to Default
         </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={() => void openHistory()}
-        >
+        <Button type="button" size="sm" variant="outline" onClick={() => void openHistory()}>
           History
         </Button>
       </div>
 
-      {/* Reset needs a confirmation — it discards the current wording. */}
       <Modal
         open={confirmReset}
         onClose={() => setConfirmReset(false)}
@@ -244,11 +267,7 @@ function TemplateCard({ template }: { template: MessageTemplate }) {
         description="The current wording is replaced by the shipped default."
         footer={
           <>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setConfirmReset(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => setConfirmReset(false)}>
               Cancel
             </Button>
             <Button
@@ -263,12 +282,11 @@ function TemplateCard({ template }: { template: MessageTemplate }) {
         }
       >
         <p className="text-sm">
-          <strong>{template.label}</strong> goes back to its original wording. The current
-          version is kept in history, so this can be undone by pasting it back.
+          <strong>{template.label}</strong> goes back to its original wording. The current version is
+          kept in history, so this can be undone by pasting it back.
         </p>
       </Modal>
 
-      {/* Version history. */}
       <Modal
         open={showHistory}
         onClose={() => setShowHistory(false)}
@@ -304,31 +322,5 @@ function TemplateCard({ template }: { template: MessageTemplate }) {
         )}
       </Modal>
     </section>
-  );
-}
-
-/** The Message Templates screen — Super Admin only (the page enforces it too). */
-export function MessageTemplatesPanel({ templates }: { templates: MessageTemplate[] }) {
-  if (templates.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        No message templates could be loaded.
-      </p>
-    );
-  }
-  // Invoice/Reminder templates use the plain substitution editor; the AUTO TEXT template gets its own
-  // mode-aware editor (computed totals + conditional Layaway DP). Render the standard cards first, then
-  // the AUTO TEXT card, so "Auto Sent Text Message" reads as an addition below Invoice Message.
-  const standard = templates.filter((t) => t.key !== AUTO_TEXT_KEY);
-  const autoText = templates.filter((t) => t.key === AUTO_TEXT_KEY);
-  return (
-    <div className="space-y-4" data-testid="message-templates">
-      {standard.map((t) => (
-        <TemplateCard key={t.key} template={t} />
-      ))}
-      {autoText.map((t) => (
-        <AutoTextTemplateCard key={t.key} template={t} />
-      ))}
-    </div>
   );
 }

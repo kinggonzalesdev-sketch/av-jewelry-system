@@ -6,10 +6,12 @@ import { createClient } from '@/lib/supabase/server';
 import {
   EDITABLE_TEMPLATE_KEYS,
   renderTemplate,
+  SUPPORTED_TOKENS,
   tokensUsed,
   unsupportedTokens,
   type TemplateKey,
 } from '@/lib/messaging/template-vars';
+import { AUTO_TEXT_KEY, AUTO_TEXT_TOKENS } from '@/lib/messaging/auto-text';
 import { getOrderDetail } from '@/lib/orders/detail';
 import { formatPeso } from '@/lib/payments/format';
 
@@ -159,7 +161,10 @@ export async function saveMessageTemplate(
   }
 
   if (!body.trim()) return { ok: false, error: 'A message template cannot be blank.' };
-  const unknown = unsupportedTokens(body);
+  // Each template validates against its OWN variable whitelist — the AUTO TEXT set is different from
+  // the Invoice/Reminder set, so a valid {price_per_gram} is never rejected as "unsupported".
+  const supported = key === AUTO_TEXT_KEY ? AUTO_TEXT_TOKENS : SUPPORTED_TOKENS;
+  const unknown = unsupportedTokens(body, supported);
   if (unknown.length > 0) {
     return {
       ok: false,

@@ -8,6 +8,7 @@ import { attemptSecureLinkPrivateReply } from '@/lib/capture/route-b';
 import {
   conversationBelongsToPage,
   getActivePancakePageId,
+  resolveConversationForName,
   sendPancakeConversationMessage,
 } from '@/lib/integrations/pancake';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -119,13 +120,31 @@ async function routeOne(
     return { outcome: 'awaiting', reason: 'no_screenshot' };
   }
 
-  // A real on-page inbox conversation enables Route A (photo eligibility) + resolution by exact PSID.
+  // A real on-page inbox conversation stored on the capture.
   const onPageConv =
     conversationId && conversationBelongsToPage(conversationId, activePage) ? conversationId : null;
 
+  // SCREENSHOT HAS PRIORITY (Owner 2026-08-22). The actual PHOTO must win whenever the EXACT customer
+  // has a genuine media-eligible Inbox conversation — even when THIS capture has no stored
+  // pancake_conversation_id yet (webhook lag, or a comment-first identity). So mirror the proven
+  // manual path (pc-send): use the stored on-page conversation, else RESOLVE the customer's real Inbox
+  // conversation by the exact name (unique-match only — a wrong-page/ambiguous name yields nothing).
+  // Media eligibility is the AUTHORITATIVE gate below: a discovered {page}_{psid} with no genuine
+  // Inbox DM (a comment-only "Photo waiting" customer) fails it and correctly falls to Route B.
+  let convForPhoto = onPageConv;
+  if (!convForPhoto && fbName) {
+    const resolved = await resolveConversationForName(admin, fbName, {
+      sinceDays: 14,
+      maxPages: 8,
+    });
+    if (resolved.conversationId && conversationBelongsToPage(resolved.conversationId, activePage)) {
+      convForPhoto = resolved.conversationId;
+    }
+  }
+
   // ROUTE A — genuine media eligibility → actual screenshot PHOTO (never a secure link instead).
-  if (onPageConv) {
-    const eligible = await isConversationMediaEligible(admin, onPageConv);
+  if (convForPhoto) {
+    const eligible = await isConversationMediaEligible(admin, convForPhoto);
     if (eligible) {
       const signed = (await admin.storage
         .from(CAPTURE_BUCKET)
@@ -139,7 +158,7 @@ async function routeOne(
       const claim = (
         await admin.rpc('claim_capture_photo_send', {
           p_capture_id: id,
-          p_conversation_id: onPageConv,
+          p_conversation_id: convForPhoto,
         })
       ).data as string;
       if (claim === 'already_sent') {
@@ -149,7 +168,7 @@ async function routeOne(
       if (claim !== 'claimed') return { outcome: 'in_progress', reason: 'photo_in_progress' };
 
       const res = await sendPancakeConversationMessage({
-        conversationId: onPageConv,
+        conversationId: convForPhoto,
         message: '',
         attachmentUrl,
       });
@@ -157,7 +176,7 @@ async function routeOne(
         p_capture_id: id,
         p_ok: res.ok,
         p_pancake_message_id: res.pancakeMessageId,
-        p_conversation_id: onPageConv,
+        p_conversation_id: convForPhoto,
       });
       await setRouteReason(
         admin,
@@ -169,10 +188,10 @@ async function routeOne(
   }
 
   // ROUTE B — secure-link Private Reply TEXT to the EXACT resolved Live comment (verified Test-B
-  // contract). Keyed off the exact PSID when we have the conversation, else resolved BY NAME
-  // (resolve_exact_live_comment gates unique-PSID + can_reply_privately, else Needs Review) — so a
-  // capture the PC never opened still auto-sends, fully server-side.
-  const psid = onPageConv ? psidFromConversationId(onPageConv) : null;
+  // contract). Keyed off the exact PSID when we have the conversation (stored OR discovered above),
+  // else resolved BY NAME (resolve_exact_live_comment gates unique-PSID + can_reply_privately, else
+  // Needs Review) — so a capture the PC never opened still auto-sends, fully server-side.
+  const psid = convForPhoto ? psidFromConversationId(convForPhoto) : null;
   if (!psid && !fbName) {
     await admin.rpc('mark_capture_photo_state', { p_capture_id: id, p_status: 'awaiting_inbox' });
     await setRouteReason(admin, id, 'AUTO TEXT pending · awaiting comment context');

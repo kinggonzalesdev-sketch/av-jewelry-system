@@ -28,7 +28,10 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 vi.mock('@/lib/integrations/pancake', () => ({
   getActivePancakePageId: vi.fn(() => Promise.resolve('PAGE')),
-  conversationBelongsToPage: vi.fn(() => true),
+  conversationBelongsToPage: vi.fn((id: string) => (id ?? '').startsWith('PAGE_')),
+  resolveConversationForName: vi.fn(() =>
+    Promise.resolve({ conversationId: null, matchCount: 0, source: 'none' }),
+  ),
   sendPancakeConversationMessage: vi.fn(() =>
     Promise.resolve({ ok: true, code: 'sent', message: 'ok', pancakeMessageId: 'MID' }),
   ),
@@ -66,6 +69,12 @@ describe('durable auto-router — routing decisions', () => {
     vi.mocked(pancake.sendPancakeConversationMessage).mockClear();
     vi.mocked(routeB.attemptSecureLinkPrivateReply).mockReset();
     vi.mocked(mediaWindow.isConversationMediaEligible).mockReset();
+    // Default: no Inbox conversation discoverable by name (Part-1 tests override this).
+    vi.mocked(pancake.resolveConversationForName).mockResolvedValue({
+      conversationId: null,
+      matchCount: 0,
+      source: 'none',
+    });
   });
 
   it('ROUTE A — media-eligible → sends the ACTUAL photo, never a secure link', async () => {
@@ -104,6 +113,41 @@ describe('durable auto-router — routing decisions', () => {
     expect(photoStateOf()).toBe('awaiting_inbox');
     expect(reasonOf()).toContain('awaiting comment context');
     expect(summary.outcomes.awaiting).toBe(1);
+  });
+
+  // PART 1 (Owner 2026-08-22, "Ruby Rosé"): the actual screenshot PHOTO must win even when the
+  // capture has NO stored pancake_conversation_id — the router resolves the customer's real Inbox
+  // conversation by name and, if it is media-eligible, sends the PHOTO instead of the AUTO TEXT.
+  it('SCREENSHOT PRIORITY — no stored conversation, name resolves to a media-eligible Inbox → sends the PHOTO, not AUTO TEXT', async () => {
+    claimedBatch = [cap({ pancake_conversation_id: null, ocr: { fbName: 'Ruby Rosé', itemQuery: '1.5' } })];
+    vi.mocked(pancake.resolveConversationForName).mockResolvedValue({
+      conversationId: 'PAGE_777',
+      matchCount: 1,
+      source: 'customer',
+    });
+    vi.mocked(mediaWindow.isConversationMediaEligible).mockResolvedValue(true);
+    const summary = await routePendingCapturesSystem();
+    expect(vi.mocked(pancake.sendPancakeConversationMessage)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(routeB.attemptSecureLinkPrivateReply)).not.toHaveBeenCalled();
+    expect(reasonOf()).toContain('AUTO SS Sent to Messenger ✓');
+    expect(summary.outcomes.photo_sent).toBe(1);
+  });
+
+  it('no stored conversation, name resolves but NOT media-eligible → Route B, keyed off the discovered PSID', async () => {
+    claimedBatch = [cap({ pancake_conversation_id: null, ocr: { fbName: 'Ruby Rosé', itemQuery: '1.5' } })];
+    vi.mocked(pancake.resolveConversationForName).mockResolvedValue({
+      conversationId: 'PAGE_777',
+      matchCount: 1,
+      source: 'customer',
+    });
+    vi.mocked(mediaWindow.isConversationMediaEligible).mockResolvedValue(false);
+    vi.mocked(routeB.attemptSecureLinkPrivateReply).mockResolvedValue({ ok: true, code: 'sent', url: 'u' });
+    const summary = await routePendingCapturesSystem();
+    const arg = vi.mocked(routeB.attemptSecureLinkPrivateReply).mock.calls[0]![0];
+    expect(arg.psid).toBe('777');
+    expect(vi.mocked(pancake.sendPancakeConversationMessage)).not.toHaveBeenCalled();
+    expect(photoStateOf()).toBe('link_sent');
+    expect(summary.outcomes.text_sent).toBe(1);
   });
 
   it('always finalizes the sweep by moving budget-exhausted captures to a finite state', async () => {

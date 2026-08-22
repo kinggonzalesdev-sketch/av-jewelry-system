@@ -9,14 +9,18 @@
 // Owner request: the For Reminder flow now sends a SINGLE reminder, so reminder_2
 // and reminder_3 were retired (removed from Settings and the database). reminder_1
 // stays a valid key because the For Reminder order flow still renders + sends it.
-export const TEMPLATE_KEYS = ['invoice', 'reminder_1'] as const;
+// `auto_text` (Owner 2026-08-22) is the Capture Route B "Auto Sent Text Message" —
+// its variables + computed values live in lib/messaging/auto-text.ts, but it is a
+// first-class editable template key here so Save/Reset/History treat it like the rest.
+export const TEMPLATE_KEYS = ['invoice', 'reminder_1', 'auto_text'] as const;
 export type TemplateKey = (typeof TEMPLATE_KEYS)[number];
 
 // Owner request 2026-08-05: the Reminder template EDITOR was removed from
 // Settings → Message Templates. Only these keys get a card there. The reminder is
 // still composed and sent from the Orders → For Reminder flow (its own inline
-// editor), which reads reminder_1's body straight from the database.
-export const EDITABLE_TEMPLATE_KEYS = ['invoice'] as const;
+// editor), which reads reminder_1's body straight from the database. `auto_text`
+// gets its own card (Owner 2026-08-22), rendered with a dedicated mode-aware editor.
+export const EDITABLE_TEMPLATE_KEYS = ['invoice', 'auto_text'] as const;
 
 /** Every variable a template may use, with what it means and a sample value. */
 export const TEMPLATE_VARIABLES: ReadonlyArray<{
@@ -65,10 +69,15 @@ export function renderTemplate(body: string, values: Record<string, string>): st
 /**
  * Tokens used in the body that are NOT supported. A template that references an
  * unknown variable would silently render a blank, so the editor refuses to save it.
+ * `supported` defaults to the Invoice/Reminder set; the AUTO TEXT editor passes its
+ * own whitelist (AUTO_TEXT_TOKENS) so each template validates against its own variables.
  */
-export function unsupportedTokens(body: string): string[] {
+export function unsupportedTokens(
+  body: string,
+  supported: readonly string[] = SUPPORTED_TOKENS,
+): string[] {
   const found = body.match(/\{[a-z_]+\}/g) ?? [];
-  return [...new Set(found.filter((t) => !SUPPORTED_TOKENS.includes(t)))];
+  return [...new Set(found.filter((t) => !supported.includes(t)))];
 }
 
 /** Which tokens a template needs — used to spot missing order data before sending. */
