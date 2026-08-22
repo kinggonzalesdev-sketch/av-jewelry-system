@@ -2,6 +2,7 @@ import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { recordAuditEvent, type AuditOutcome } from '@/lib/audit/log';
 import {
   buildPrivateReplyMessage,
   decryptShareToken,
@@ -10,6 +11,29 @@ import {
   shareLinkUrl,
 } from '@/lib/capture/share-link';
 import { getActivePancakePageId, sendPancakePrivateReply } from '@/lib/integrations/pancake';
+
+/**
+ * PII-SAFE pipeline audit (Owner 2026-08-22): record WHERE the secure-link flow landed so an
+ * operator/dev can tell the failing stage at a glance — never a token, PSID, comment/post id, or
+ * message body. Stage tags: COMMENT_MATCH · SECURE_LINK · PRIVATE_REPLY_TEXT (PHOTO_ELIGIBILITY and
+ * INBOX_PHOTO are recorded on the PHOTO path in pc-send). Best-effort; never blocks the send.
+ */
+type RouteBStage = 'COMMENT_MATCH' | 'SECURE_LINK' | 'PRIVATE_REPLY_TEXT';
+async function auditRouteB(
+  captureRecordId: string,
+  stage: RouteBStage,
+  outcome: AuditOutcome,
+  code: string,
+): Promise<void> {
+  await recordAuditEvent({
+    action: 'capture_secure_link',
+    entityType: 'capture_record',
+    entityId: captureRecordId,
+    outcome,
+    reason: `${stage}:${code}`,
+    context: { stage, code },
+  });
+}
 
 const LINK_TTL_MS = 72 * 3600 * 1000; // 72-hour link expiry
 const WINDOW_MS = 7 * 24 * 3600 * 1000; // Pancake Private Reply 7-day window
@@ -92,6 +116,7 @@ export async function attemptSecureLinkPrivateReply(input: {
     }
     const ts = rc.event_timestamp ? Date.parse(rc.event_timestamp) : NaN;
     if (!Number.isFinite(ts) || Date.now() - ts > WINDOW_MS) {
+      await auditRouteB(captureRecordId, 'COMMENT_MATCH', 'failed', 'outside_window');
       return {
         ok: false,
         code: 'outside_window',
@@ -100,6 +125,7 @@ export async function attemptSecureLinkPrivateReply(input: {
     }
     const tok = newShareToken();
     if (!tok.ciphertext) {
+      await auditRouteB(captureRecordId, 'SECURE_LINK', 'failed', 'no_key');
       return { ok: false, code: 'no_key', message: 'Secure-link key not configured.' };
     }
     const up = (
@@ -117,6 +143,7 @@ export async function attemptSecureLinkPrivateReply(input: {
       })
     ).data as ShareLinkRow | null;
     if (!up?.id) {
+      await auditRouteB(captureRecordId, 'SECURE_LINK', 'failed', 'link_failed');
       return { ok: false, code: 'link_failed', message: 'Could not create the secure link.' };
     }
     link = {
@@ -156,6 +183,7 @@ export async function attemptSecureLinkPrivateReply(input: {
       p_result: 'sent',
       p_msg_id: pr.pancakeMessageId,
     });
+    await auditRouteB(captureRecordId, 'PRIVATE_REPLY_TEXT', 'succeeded', 'sent');
     return { ok: true, code: 'sent', url };
   }
   // A definite PRE-SEND failure → release to retry; anything after contacting Pancake → terminal
@@ -167,5 +195,6 @@ export async function attemptSecureLinkPrivateReply(input: {
     p_result: preSend ? 'retry' : 'failed',
     p_msg_id: null,
   });
+  await auditRouteB(captureRecordId, 'PRIVATE_REPLY_TEXT', 'failed', pr.code);
   return { ok: false, code: pr.code, message: pr.message };
 }

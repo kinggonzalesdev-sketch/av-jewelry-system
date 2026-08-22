@@ -58,6 +58,13 @@ function ocrStr(ocr: unknown, ...keys: string[]): string | null {
   return null;
 }
 
+// AUTO SECURE-LINK retry cadence (Owner 2026-08-22). A "Photo waiting" capture whose exact Live
+// comment wasn't resolvable at the capture instant (Pancake webhook lag) is retried on this bounded
+// schedule until the secure-link Private Reply sends — NO operator click. Route B is idempotent
+// (reuse-by-capture + atomic pending→sending claim), so a repeat can never send a second reply.
+const ROUTE_B_RETRY_MS = 4000;
+const ROUTE_B_MAX_TRIES = 10; // ~40s of coverage — well past normal webhook lag, then Open FB Chat.
+
 /**
  * Incoming Captures — the PC's live station. Floating-screenshot captures uploaded
  * from the phone appear here in realtime (no refresh). "Use" opens New Order
@@ -106,6 +113,13 @@ export function IncomingCapturesStrip({
   );
   // Captures we've already kicked a resolution for, so each resolves exactly once.
   const resolvedRef = useRef<Set<string>>(new Set());
+  // Route B auto-retry bookkeeping (Owner 2026-08-22): per-capture attempt count (bounded),
+  // in-flight guard (no overlap), and terminal-done set (stop once the link is sent). A live mirror
+  // of `rows` so the stable retry interval always reads the latest without resetting on every nudge.
+  const routeBTriesRef = useRef<Map<string, number>>(new Map());
+  const routeBBusyRef = useRef<Set<string>>(new Set());
+  const routeBDoneRef = useRef<Set<string>>(new Set());
+  const rowsRef = useRef<PendingCaptureRow[]>([]);
 
   // Set by the auto-print effect below; lets the realtime handler kick an INSTANT drain
   // the moment a capture arrives (null while no printer is connected / auto-print off).
@@ -353,6 +367,60 @@ export function IncomingCapturesStrip({
         .catch(() => undefined);
     }
   }, [rows, linkOverrides]);
+
+  // Keep a live mirror of rows for the stable auto-retry interval below (so it never resets when a
+  // realtime nudge lands mid-Live).
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
+
+  // AUTO SECURE-LINK (Owner 2026-08-22): "Photo waiting" (message_status 'awaiting_inbox') means the
+  // exact Live comment usually wasn't resolvable when the capture first landed (webhook lag), so the
+  // server parked it. Re-attempt Route B on a BOUNDED schedule until the secure-link Private Reply
+  // sends ('link_sent') — with NO operator click. A stable interval (mounted once) reads rowsRef, so
+  // frequent realtime nudges during a Live can't starve it. Route B is idempotent (reuse-by-capture
+  // + atomic claim), so repeats can never double-send; after the budget the capture stays
+  // 'awaiting_inbox' and Open FB Chat is the manual fallback. Test captures are never messaged.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      for (const r of rowsRef.current) {
+        const id = r.captureRecordId;
+        if (
+          r.isTest ||
+          r.messageStatus !== 'awaiting_inbox' ||
+          routeBDoneRef.current.has(id) ||
+          routeBBusyRef.current.has(id) ||
+          (routeBTriesRef.current.get(id) ?? 0) >= ROUTE_B_MAX_TRIES
+        ) {
+          continue;
+        }
+        routeBTriesRef.current.set(id, (routeBTriesRef.current.get(id) ?? 0) + 1);
+        routeBBusyRef.current.add(id);
+        sendCaptureToMessengerAction(id)
+          .then((res) => {
+            if (res.ok && (res.code === 'sent' || res.code === 'already_sent')) {
+              routeBDoneRef.current.add(id);
+              // Optimistic: flip only awaiting_inbox → link_sent (realtime carries the authoritative
+              // status; a rare eligibility-flip that sent a real PHOTO is corrected to 'sent' there).
+              setRows((cur) =>
+                cur.map((x) =>
+                  x.captureRecordId === id && x.messageStatus === 'awaiting_inbox'
+                    ? { ...x, messageStatus: 'link_sent' }
+                    : x,
+                ),
+              );
+              setNotes((cur) => ({
+                ...cur,
+                [id]: 'Secure link sent ✓ — waiting for customer reply.',
+              }));
+            }
+          })
+          .catch(() => undefined)
+          .finally(() => routeBBusyRef.current.delete(id));
+      }
+    }, ROUTE_B_RETRY_MS);
+    return () => clearInterval(interval);
+  }, []);
 
   // Build the sticker for a capture: Facebook Name / grams • ₱rate/g / Date. The rate
   // ALWAYS comes from Sticker Settings (the pinned comment never carries a price); the

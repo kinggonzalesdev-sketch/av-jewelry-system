@@ -240,8 +240,8 @@ export async function sendPendingCaptureToMessenger(
       entityType: 'capture_record',
       entityId: id,
       outcome: 'failed',
-      reason: result.code,
-      context: { code: result.code, conversationId, hadAttachment: true, debug },
+      reason: `INBOX_PHOTO:${result.code}`,
+      context: { stage: 'INBOX_PHOTO', code: result.code, conversationId, hadAttachment: true, debug },
     }).catch(() => undefined);
     return { ok: false, code: result.code, error: result.message };
   }

@@ -81,13 +81,13 @@ export function firstNameOf(name: string | null | undefined): string {
   return /[A-Za-z]/.test(first) ? first : '';
 }
 
-/** The EXACT Owner-approved Private Reply TEXT template (first name optional). */
+/** The EXACT Owner-approved Private Reply TEXT template (first name optional, Owner 2026-08-22). */
 export function buildPrivateReplyMessage(firstName: string, url: string): string {
   const greeting = firstName ? `Hi beshy ${firstName}!` : 'Hi beshy!';
   return (
     `${greeting} 💛 Thank you for mining with A.V. Jewelry ✨\n\n` +
-    `Here's the screenshot of your mined item:\n🔗 ${url}\n\n` +
-    `Please reply here if you have any questions or concerns with your order.\n\n` +
+    `Here's the screenshot of your mined item:\n\n🔗 ${url}\n\n` +
+    `Please reply here if you have any questions or concerns about your order.\n\n` +
     `Thank you, beshy!`
   );
 }

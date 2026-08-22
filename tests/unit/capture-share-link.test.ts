@@ -63,12 +63,17 @@ describe('first name + Private Reply template', () => {
     expect(firstNameOf(null)).toBe('');
   });
 
-  it('exact template with a first name', () => {
+  it('exact Owner template (2026-08-22): blank line before the 🔗 URL, "about your order"', () => {
     const msg = buildPrivateReplyMessage('King', 'https://x/m/TOK');
-    expect(msg).toContain('Hi beshy King! 💛 Thank you for mining with A.V. Jewelry ✨');
-    expect(msg).toContain('🔗 https://x/m/TOK');
-    expect(msg).toContain('Please reply here if you have any questions or concerns with your order.');
-    expect(msg).toContain('Thank you, beshy!');
+    // Full-string equality locks the EXACT template the Owner approved.
+    expect(msg).toBe(
+      'Hi beshy King! 💛 Thank you for mining with A.V. Jewelry ✨\n\n' +
+        "Here's the screenshot of your mined item:\n\n🔗 https://x/m/TOK\n\n" +
+        'Please reply here if you have any questions or concerns about your order.\n\n' +
+        'Thank you, beshy!',
+    );
+    // The URL sits on its own line with a blank line above it (never glued to the label).
+    expect(msg).toContain('mined item:\n\n🔗 https://x/m/TOK');
   });
 
   it('falls back to "Hi beshy!" without a first name', () => {

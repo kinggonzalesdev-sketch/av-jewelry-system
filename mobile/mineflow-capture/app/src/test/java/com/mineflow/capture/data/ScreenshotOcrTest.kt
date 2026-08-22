@@ -688,4 +688,109 @@ class ScreenshotOcrTest {
         assertNull(g.fbName)
         assertNull(g.grams)
     }
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────
+    // OWNER 2026-08-22 — real operator test: leading-decimal weights (.xx) SOMETIMES became
+    // "Name not read". Diagnosis from the STORED capture OCR (capture_records.ocr): the numeric
+    // PARSER is correct — every .xx normalises to 0.xx grams; the failures were rapid-fire screens
+    // with MULTIPLE / duplicate values near the pinned anchor, which the wrong-customer safety gate
+    // correctly sends to Needs Review. `.88` "passed for Gen but failed for King" = capture LAYOUT/
+    // timing (one clean pinned block vs a cluttered multi-comment scroll), NOT a decimal or name
+    // bug. These tests LOCK the parser contract AND the safety gate together (no production change).
+    // ─────────────────────────────────────────────────────────────────────────────────────────
+
+    // Every valid leading-decimal jewelry weight stays GRAMS (never Fixed Price). 0.10==0.1, 0.20==0.2.
+    @Test
+    fun owner_leadingDecimalMatrix_allGrams() {
+        assertEquals("0.1", pinnedGrams(".10"))
+        assertEquals("0.12", pinnedGrams(".12"))
+        assertEquals("0.2", pinnedGrams(".20"))
+        assertEquals("0.23", pinnedGrams(".23"))
+        assertEquals("0.44", pinnedGrams(".44"))
+        assertEquals("0.45", pinnedGrams(".45"))
+        assertEquals("0.55", pinnedGrams(".55"))
+        assertEquals("0.88", pinnedGrams(".88"))
+    }
+
+    // Existing safe grams (whole + non-leading decimals) preserved exactly.
+    @Test
+    fun owner_regularGrams_preserved() {
+        assertEquals("1.21", pinnedGrams("1.21"))
+        assertEquals("1.99", pinnedGrams("1.99"))
+        assertEquals("3.39", pinnedGrams("3.39"))
+        assertEquals("11.9", pinnedGrams("11.9"))
+    }
+
+    // Fixed Price forms stay Fixed (value extracted, grams null) — k / comma / >999 never grams.
+    @Test
+    fun owner_fixedPrice_preserved() {
+        listOf("15000", "15,000", "15k").forEach { v ->
+            val g = ScreenshotOcr.guessFrom(listOf(line("Buyer Name", 850), line(v, 900)))
+            assertEquals(v, g.itemQuery)
+            assertNull(g.grams)
+        }
+    }
+
+    // A leading-decimal claim reads for names of DIFFERENT lengths — a short and a long FB name.
+    @Test
+    fun owner_leadingDecimal_readsShortAndLongNames() {
+        ScreenshotOcr.guessFrom(listOf(line("Gen Gonz", 850), line(".88", 900))).let {
+            assertEquals("Gen Gonz", it.fbName); assertEquals("0.88", it.grams)
+        }
+        ScreenshotOcr.guessFrom(
+            listOf(line("Maria Kristina Delos Santos", 850), line(".55", 900)),
+        ).let {
+            assertEquals("Maria Kristina Delos Santos", it.fbName)
+            assertEquals("0.55", it.grams)
+        }
+    }
+
+    // Robustness: OCR emits the SAME pinned value twice (line-doubling / rapid re-comment). The
+    // buyer is still unambiguous (one name, one value) → reads; it does NOT fall to Needs Review.
+    @Test
+    fun owner_leadingDecimal_duplicateValueLine_stillReads() {
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                line("King Gonzales", 820),
+                line(".88", 870),
+                line(".88", 910), // OCR duplicate of the same pinned value, directly below
+            ),
+        )
+        assertEquals("King Gonzales", g.fbName)
+        assertEquals("0.88", g.grams)
+    }
+
+    // THE REAL FAILURE (mirrors stored captures ~11:37): the SAME buyer rapid-fires several DIFFERENT
+    // weights (.44 / .12) pushed above the pinned band. Two+ distinct concrete values in the recovery
+    // area → Needs Review (never auto-pick one). This is the safety behavior the Owner asked to
+    // PRESERVE — "Name not read" is correct here, not a decimal parser bug.
+    @Test
+    fun owner_rapidFireMultipleDecimals_needsReview() {
+        val h = 1920
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                OLine("King Gonzales", Box(40, 900, 400, 940)),
+                OLine(".44", Box(40, 945, 400, 985)),
+                OLine("King Gonzales", Box(40, 1000, 400, 1040)),
+                OLine(".12", Box(40, 1045, 400, 1085)),
+            ),
+            minClaimTop = (h * 0.60).toInt(),   // 1152 — pinned band empty (values pushed up)
+            recoveryFloor = (h * 0.45).toInt(), // 864
+        )
+        assertNull(g.fbName)
+        assertNull(g.grams)
+    }
+
+    // 200 Stars stays rejected even directly under a real name (banner number never grams).
+    @Test
+    fun owner_send200Stars_rejectedUnderName() {
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                line("King Gonzales", 850),
+                line("Send 200 Stars to pin your comment here.", 900),
+            ),
+        )
+        assertNull(g.grams)
+        assertNull(g.itemQuery)
+    }
 }

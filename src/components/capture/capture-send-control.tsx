@@ -11,11 +11,11 @@ import { Button, buttonVariants } from '@/components/ui/button';
  * NOT offer a doomed Send. This control renders exactly one thing per state, driven by the
  * already-computed `photoEligible` (never recomputed here — no duplicated eligibility logic):
  *
- *   Link sent (Route B)        → 🔗 Link sent   (a secure-link Private Reply already went out; NEVER resend)
- *   Photo ready               → 📨 Send        (the manual backup/retry; eligible normally auto-sends)
- *   Photo waiting             → 🔗 Send link   (Route B: TEXT Private Reply with a secure /m link — the
- *                                               same handler; NEVER a doomed reply_inbox PHOTO) + 💬 Open
- *                                               FB Chat when a chat URL exists (the Route C human fallback)
+ *   Link sent (Route B)        → ✓ Link sent   (a secure-link Private Reply went out; waiting for reply — NEVER resend)
+ *   Photo ready               → 📨 Send        (the manual backup/retry; eligible normally auto-sends the PHOTO)
+ *   Photo waiting             → 🔗 Auto-sending secure link…  (Route B now fires AND retries automatically,
+ *                                               NO operator click — Owner 2026-08-22; the manual "Send link"
+ *                                               button is retired) + 💬 Open FB Chat as the human fallback
  *   Test capture               → 📨 Send disabled (a test must never message a real customer)
  *
  * The Send entry point stays ready to host a future verified silent-commenter PHOTO route: when
@@ -64,9 +64,9 @@ export function CaptureSendControl({
         variant="outline"
         disabled
         data-testid={`incoming-linksent-${captureRecordId}`}
-        title="A secure screenshot link was sent to the customer via a Pancake Private Reply — not resent."
+        title="A secure screenshot link was sent to the customer via a Pancake Private Reply — waiting for their reply. Not resent."
       >
-        🔗 Link sent
+        ✓ Link sent
       </Button>
     );
   }
@@ -88,23 +88,20 @@ export function CaptureSendControl({
     );
   }
 
-  // Photo waiting — no NORMAL Inbox PHOTO route. Offer the Route B secure-link Private Reply
-  // ("Send link" → the SAME onSend handler, which routes to a TEXT Private Reply carrying a secure
-  // /m link, NEVER a doomed reply_inbox PHOTO; the auto path also attempts this — this is the manual
-  // trigger / retry). Open FB Chat stays as the human Route C fallback when a chat URL exists.
+  // Photo waiting — no NORMAL Inbox PHOTO route. Route B (secure-link Private Reply to the exact Live
+  // comment) now fires AND retries AUTOMATICALLY with NO operator click (Owner 2026-08-22), so the
+  // manual "Send link" button is retired: show a passive auto-status. Open FB Chat stays as the human
+  // fallback (allowed up to 7 days) for when the Private Reply link genuinely can't be sent. The
+  // `sending`/`onSend` props remain for the Photo-ready manual PHOTO retry above.
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        disabled={sending}
-        onClick={onSend}
-        data-testid={`incoming-sendlink-${captureRecordId}`}
-        title="Send the screenshot as a secure link via a Pancake Private Reply to the exact resolved Live comment (within 7 days). If the comment can't be safely resolved it becomes Needs Review — never a doomed photo send."
+      <span
+        className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-amber-700"
+        data-testid={`incoming-waiting-${captureRecordId}`}
+        title="A secure screenshot link is being sent automatically to the customer's exact Live comment via a Pancake Private Reply — no action needed. If it can't be sent, use Open FB Chat."
       >
-        {sending ? 'Sending…' : '🔗 Send link'}
-      </Button>
+        🔗 Auto-sending secure link…
+      </span>
       {fbUrl ? (
         <a
           href={fbUrl}
@@ -112,7 +109,7 @@ export function CaptureSendControl({
           rel="noreferrer"
           className={buttonVariants({ variant: 'outline', size: 'sm' })}
           data-testid={`incoming-openfb-${captureRecordId}`}
-          title="Or open the chat and send it yourself (allowed up to 7 days)."
+          title="Fallback: open the chat and send it yourself (allowed up to 7 days)."
         >
           💬 Open FB Chat
         </a>

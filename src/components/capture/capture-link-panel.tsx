@@ -124,9 +124,9 @@ export function CaptureLinkPanel({
       ) : linkSent ? (
         <span
           className="text-sky-600"
-          title="A secure screenshot link was sent to the customer via a Pancake Private Reply."
+          title="A secure screenshot link was sent to the customer via a Pancake Private Reply — waiting for their reply."
         >
-          · Secure link sent 🔗
+          · Link sent ✓ · waiting for reply
         </span>
       ) : (
         <span

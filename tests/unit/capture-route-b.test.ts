@@ -18,6 +18,12 @@ vi.mock('@/lib/integrations/pancake', () => ({
   ),
 }));
 
+// Audit is best-effort + session-scoped (no request context in unit tests) — stub it to a no-op so
+// the pipeline-stage audit calls don't reach into Supabase/next headers here.
+vi.mock('@/lib/audit/log', () => ({
+  recordAuditEvent: vi.fn(() => Promise.resolve()),
+}));
+
 beforeAll(() => {
   process.env.CAPTURE_LINK_ENC_KEY = Buffer.alloc(32, 9).toString('base64');
 });

@@ -4,15 +4,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { CaptureSendControl } from '@/components/capture/capture-send-control';
 
 /**
- * The per-row screenshot-delivery control (Owner 2026-08-20, extended for Route B 2026-08-21):
- *   Route B link already sent → 🔗 Link sent (disabled, never resend)
- *   Photo ready               → 📨 Send
- *   Photo waiting             → 🔗 Send link (Route B TEXT Private Reply + secure /m link — the same
- *                               onSend handler, NEVER a doomed reply_inbox PHOTO) + 💬 Open FB Chat
- *                               when a chat URL exists.
+ * The per-row screenshot-delivery control (Owner 2026-08-20; Route B auto-send 2026-08-22):
+ *   Route B link already sent → ✓ Link sent (disabled, never resend)
+ *   Photo ready               → 📨 Send (actual PHOTO)
+ *   Photo waiting             → 🔗 Auto-sending secure link… (a passive status — Route B now fires AND
+ *                               retries automatically, so the manual "Send link" button is RETIRED)
+ *                               + 💬 Open FB Chat fallback when a chat URL exists.
  *   Test capture              → 📨 Send disabled.
- * The invariant preserved: a "Photo waiting" capture NEVER exposes the doomed photo Send
- * (`incoming-send`); its Send goes to Route B (`incoming-sendlink`).
+ * Invariants preserved: a "Photo waiting" capture NEVER exposes the doomed photo Send
+ * (`incoming-send`), and there is no manual `incoming-sendlink` button any more (auto handles it).
  */
 const ID = 'cap-1';
 
@@ -55,8 +55,7 @@ describe('CaptureSendControl', () => {
     expect(send).toHaveTextContent('Sending…');
   });
 
-  it('Photo waiting + FB chat → 🔗 Send link (Route B) + 💬 Open FB Chat, and NO photo Send', () => {
-    const onSend = vi.fn();
+  it('Photo waiting + FB chat → auto-sending status (NO manual Send link) + 💬 Open FB Chat, and NO photo Send', () => {
     render(
       <CaptureSendControl
         captureRecordId={ID}
@@ -64,13 +63,14 @@ describe('CaptureSendControl', () => {
         fbUrl="https://m.me/waiting"
         isTest={false}
         sending={false}
-        onSend={onSend}
+        onSend={vi.fn()}
       />,
     );
-    const sendLink = screen.getByTestId(`incoming-sendlink-${ID}`);
-    expect(sendLink).toHaveTextContent('Send link');
-    fireEvent.click(sendLink);
-    expect(onSend).toHaveBeenCalledTimes(1);
+    // Route B fires AND retries automatically now — the manual "Send link" button is retired.
+    expect(screen.queryByTestId(`incoming-sendlink-${ID}`)).toBeNull();
+    expect(screen.getByTestId(`incoming-waiting-${ID}`)).toHaveTextContent(
+      'Auto-sending secure link',
+    );
     const open = screen.getByTestId(`incoming-openfb-${ID}`);
     expect(open).toHaveAttribute('href', 'https://m.me/waiting');
     expect(open).toHaveAttribute('target', '_blank');
@@ -78,7 +78,7 @@ describe('CaptureSendControl', () => {
     expect(screen.queryByTestId(`incoming-send-${ID}`)).toBeNull();
   });
 
-  it('Photo waiting + no FB chat → 🔗 Send link only (Route B), no Open FB Chat, no photo Send', () => {
+  it('Photo waiting + no FB chat → auto-sending status only, no Open FB Chat, no photo Send', () => {
     render(
       <CaptureSendControl
         captureRecordId={ID}
@@ -89,12 +89,15 @@ describe('CaptureSendControl', () => {
         onSend={vi.fn()}
       />,
     );
-    expect(screen.getByTestId(`incoming-sendlink-${ID}`)).toHaveTextContent('Send link');
+    expect(screen.getByTestId(`incoming-waiting-${ID}`)).toHaveTextContent(
+      'Auto-sending secure link',
+    );
+    expect(screen.queryByTestId(`incoming-sendlink-${ID}`)).toBeNull();
     expect(screen.queryByTestId(`incoming-openfb-${ID}`)).toBeNull();
     expect(screen.queryByTestId(`incoming-send-${ID}`)).toBeNull();
   });
 
-  it('Route B link already sent → 🔗 Link sent, disabled, no other send controls (never resend)', () => {
+  it('Route B link already sent → ✓ Link sent, disabled, no other send controls (never resend)', () => {
     render(
       <CaptureSendControl
         captureRecordId={ID}
@@ -110,6 +113,7 @@ describe('CaptureSendControl', () => {
     expect(done).toBeDisabled();
     expect(done).toHaveTextContent('Link sent');
     expect(screen.queryByTestId(`incoming-sendlink-${ID}`)).toBeNull();
+    expect(screen.queryByTestId(`incoming-waiting-${ID}`)).toBeNull();
     expect(screen.queryByTestId(`incoming-send-${ID}`)).toBeNull();
   });
 
