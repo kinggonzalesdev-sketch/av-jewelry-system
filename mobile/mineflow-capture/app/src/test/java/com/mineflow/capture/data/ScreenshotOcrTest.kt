@@ -879,4 +879,94 @@ class ScreenshotOcrTest {
         val out = ScreenshotOcr.restoreLeadingDecimals(clean)
         assertEquals(listOf("Chin Cha", "Mine 5.5"), out.map { it.text })
     }
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────
+    // OWNER 2026-08-22 (P0-1) — WRONG VALUE regression: current ".4"/".5" printed 99g because the
+    // fast path picked an OLDER stacked ".99" comment. A current Capture must NEVER select an older
+    // visible comment; competing comments → Needs Review. NEVER the previous value.
+    // ─────────────────────────────────────────────────────────────────────────────────────────
+
+    // THE EXACT FAILURE (dots intact): .77/.88/.99 stacked with the current .4 lowest → the older
+    // .99 must NEVER win. Competing stack → Needs Review.
+    @Test
+    fun owner_stacked_currentDot4_neverPicksOlder99() {
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                OLine("King Gonzales", Box(40, 700, 400, 740)),
+                OLine(".77", Box(40, 745, 200, 785)),
+                OLine("King Gonzales", Box(40, 790, 400, 830)),
+                OLine(".88", Box(40, 835, 200, 875)),
+                OLine("King Gonzales", Box(40, 880, 400, 920)),
+                OLine(".99", Box(40, 925, 200, 965)),
+                OLine("King Gonzales", Box(40, 970, 400, 1010)),
+                OLine(".4", Box(40, 1015, 200, 1055)),
+            ),
+        )
+        assertNull(g.grams)   // competing comments → Needs Review — NEVER "0.99"
+    }
+
+    // THE REAL CAPTURE SHAPE (c2fa139e — ML Kit dropped the dots: .99→99, .4→4, stacked). Must NOT
+    // print 99g; competing → Needs Review.
+    @Test
+    fun owner_stacked_dotLost_neverPrints99() {
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                OLine("King Gonzales", Box(40, 800, 400, 840)),
+                OLine("99", Box(40, 845, 160, 885)),
+                OLine("King Gonzales", Box(40, 890, 400, 930)),
+                OLine("4", Box(40, 935, 120, 975)),
+            ),
+        )
+        assertNull(g.grams)   // NEVER 99g
+        assertNull(g.fbName)
+    }
+
+    // Same for ".5": .77/.88/.99 + current .5 stacked → Needs Review, NEVER .99.
+    @Test
+    fun owner_stacked_currentDot5_neverPicksOlder99() {
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                OLine("King Gonzales", Box(40, 800, 400, 840)),
+                OLine(".88", Box(40, 845, 200, 885)),
+                OLine("King Gonzales", Box(40, 890, 400, 930)),
+                OLine(".99", Box(40, 935, 200, 975)),
+                OLine("King Gonzales", Box(40, 980, 400, 1020)),
+                OLine(".5", Box(40, 1025, 200, 1065)),
+            ),
+        )
+        assertNull(g.grams)
+    }
+
+    // An ISOLATED clean pin (only "…is watching" noise above it, no competing claim) STILL prints —
+    // the competing-comment guard must not over-reject the normal single-pin case.
+    @Test
+    fun owner_isolatedCleanPins_stillPrint() {
+        assertEquals("0.4", pinnedGrams(".4"))
+        assertEquals("0.5", pinnedGrams(".5"))
+        assertEquals("0.88", pinnedGrams(".88"))
+        assertEquals("0.99", pinnedGrams(".99"))
+    }
+
+    // A genuinely scrolling claim FAR above (> 3 line-heights) does NOT block the pinned comment.
+    @Test
+    fun owner_scrollingFarAbove_stillPrintsPinned() {
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                OLine("Maria Reyes", Box(40, 300, 400, 340)),
+                OLine(".77", Box(40, 345, 200, 385)),   // far above (scrolling)
+                OLine("King Gonzales", Box(40, 900, 400, 940)),
+                OLine(".4", Box(40, 945, 200, 985)),    // the isolated pinned comment
+            ),
+        )
+        assertEquals("King Gonzales", g.fbName)
+        assertEquals("0.4", g.grams)
+    }
+
+    // Fixed Price (isolated) unchanged; a competing DIFFERENT value would still be Needs Review.
+    @Test
+    fun owner_fixedPrice_isolatedStillWorks() {
+        val g = ScreenshotOcr.guessFrom(listOf(line("King Gonzales", 850), line("15000", 900)))
+        assertEquals("15000", g.itemQuery)
+        assertNull(g.grams)
+    }
 }

@@ -313,6 +313,30 @@ object ScreenshotOcr {
         else n.toString().trimEnd('0').trimEnd('.')
     }
 
+    /** The first standalone business-number token in a line ("4", "99", ".4", ".99", "12,000",
+     *  "15k", "8.2"), or null. Marker-fused ("Mine 1.5") + trailing-unit ("1.5g") handled like the
+     *  parser. Used ONLY by the competing-comment guard, so single-char digits count too. */
+    private fun firstNumberToken(text: String): String? =
+        text.trim().split(Regex("\\s+")).firstNotNullOfOrNull { t ->
+            NUMBER_TOKEN.find(t)?.groupValues?.get(1)?.takeIf { it.any(Char::isDigit) }
+        }
+
+    /** A business-number carried by a line that is NOT Facebook chrome/banner/watching — the "200"
+     *  in "Send 200 Stars…" is excluded here. Unlike isUiNoise it does NOT drop 1-char lines, so a
+     *  dot-lost single-digit value (".4" → "4") is still seen as a competing comment. */
+    private fun carriesNumber(text: String): String? {
+        if (UI_NOISE.containsMatchIn(text) || WATCHING.containsMatchIn(text) ||
+            BANNER.containsMatchIn(text) || BLOCK.containsMatchIn(text) || isChrome(text)
+        ) {
+            return null
+        }
+        return firstNumberToken(text)
+    }
+
+    /** Compare business values so ".4"/"4"/".99"/"99"/"15k" normalize consistently (grams where
+     *  applicable, else the raw token). Distinct intended values normalize distinctly. */
+    private fun normNum(s: String): String = gramsFromValue(s) ?: s.lowercase()
+
     private fun horizontalOverlap(a: Box, b: Box): Boolean =
         minOf(a.right, b.right) - maxOf(a.left, b.left) > 0
 
@@ -449,6 +473,29 @@ object ScreenshotOcr {
         } else {
             admissible.singleOrNull()?.takeIf { it.second.value != null }
                 ?: return OcrGuess(null, null, null, rawLines)
+        }
+
+        // COMPETING-COMMENT SAFETY (Owner 2026-08-22, P0). A current Capture must NEVER print an
+        // OLDER visible comment just because it OCR'd better. Scan the RAW lines in the established
+        // band (chrome/banner excluded, but 1-char digits KEPT — a dot-lost ".4"→"4" is dropped by
+        // isUiNoise's length<2 yet IS a real competing comment): the LOWEST business-number line is
+        // the current comment; if ANY DIFFERENT-valued business-number line sits within ~3
+        // line-heights of it, we cannot prove which comment is authoritative → "needs review", never
+        // a guess. (Real cause of ".4/.5 printed 99g": the current single-digit was filtered and an
+        // older 2-digit .99 won.) A single isolated pinned comment still prints; SAME-value
+        // duplicates never compete; a claim scrolling FAR above (> 3 line-heights) is not a
+        // competitor.
+        val numbered = olines.filter { it.box.top >= minClaimTop && carriesNumber(it.text) != null }
+        val lowestNum = numbered.maxByOrNull { it.box.top }
+        if (lowestNum != null) {
+            val lowVal = normNum(carriesNumber(lowestNum.text)!!)
+            val lh = maxOf(lowestNum.box.height, 24)
+            val competing = numbered.any { ol ->
+                ol !== lowestNum &&
+                    normNum(carriesNumber(ol.text)!!) != lowVal &&
+                    kotlin.math.abs(ol.box.top - lowestNum.box.top) <= lh * 3
+            }
+            if (competing) return OcrGuess(null, null, null, rawLines)
         }
 
         // Name from the SAME block only — and NEVER Facebook chrome (even merged like "Overview

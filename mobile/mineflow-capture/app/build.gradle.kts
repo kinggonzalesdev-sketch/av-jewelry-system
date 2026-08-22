@@ -45,8 +45,8 @@ android {
         applicationId = "com.mineflow.capture"
         minSdk = 26
         targetSdk = 34
-        versionCode = 19
-        versionName = "1.0.18"
+        versionCode = 20
+        versionName = "1.0.19"
 
         // The MineFlow backend the app talks to — the SAME production system as web.
         buildConfigField(

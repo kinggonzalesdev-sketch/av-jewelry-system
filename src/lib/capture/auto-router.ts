@@ -109,63 +109,74 @@ async function routeOne(
   const id = cap.id;
   const conversationId = (cap.pancake_conversation_id ?? '').trim();
   const path = (cap.screenshot_path ?? '').trim();
-
-  // Only ever route a real on-page inbox conversation. Anything else → park + let it exhaust.
-  if (!conversationId || !conversationBelongsToPage(conversationId, activePage) || !path) {
-    await admin.rpc('mark_capture_photo_state', { p_capture_id: id, p_status: 'awaiting_inbox' });
-    await setRouteReason(admin, id, 'AUTO pending · no on-page conversation / screenshot');
-    return { outcome: 'awaiting', reason: 'no_on_page_conversation' };
-  }
-
   const fbName = ocrStr(cap.ocr, 'fbName', 'fb_name', 'name') ?? '';
   const value = ocrStr(cap.ocr, 'itemQuery', 'grams', 'weight');
 
-  // ROUTE A — genuine media eligibility → actual screenshot PHOTO (never a secure link instead).
-  const eligible = await isConversationMediaEligible(admin, conversationId);
-  if (eligible) {
-    const signed = (await admin.storage
-      .from(CAPTURE_BUCKET)
-      .createSignedUrl(path, 600)) as { data: { signedUrl?: string } | null };
-    const attachmentUrl = signed.data?.signedUrl ?? null;
-    if (!attachmentUrl) {
-      await admin.rpc('mark_capture_photo_state', { p_capture_id: id, p_status: 'awaiting_inbox' });
-      await setRouteReason(admin, id, 'AUTO SS pending · screenshot URL unavailable');
-      return { outcome: 'awaiting', reason: 'no_signed_url' };
-    }
-    const claim = (
-      await admin.rpc('claim_capture_photo_send', {
-        p_capture_id: id,
-        p_conversation_id: conversationId,
-      })
-    ).data as string;
-    if (claim === 'already_sent') {
-      await setRouteReason(admin, id, 'AUTO SS Sent to Messenger ✓');
-      return { outcome: 'already_sent', reason: 'already_sent' };
-    }
-    if (claim !== 'claimed') return { outcome: 'in_progress', reason: 'photo_in_progress' };
-
-    const res = await sendPancakeConversationMessage({
-      conversationId,
-      message: '',
-      attachmentUrl,
-    });
-    await admin.rpc('finalize_capture_photo_send', {
-      p_capture_id: id,
-      p_ok: res.ok,
-      p_pancake_message_id: res.pancakeMessageId,
-      p_conversation_id: conversationId,
-    });
-    await setRouteReason(
-      admin,
-      id,
-      res.ok ? 'AUTO SS Sent to Messenger ✓' : `AUTO SS Failed · ${res.code}`,
-    );
-    return { outcome: res.ok ? 'photo_sent' : 'photo_failed', reason: res.code };
+  if (!path) {
+    await admin.rpc('mark_capture_photo_state', { p_capture_id: id, p_status: 'awaiting_inbox' });
+    await setRouteReason(admin, id, 'AUTO not sent · no screenshot');
+    return { outcome: 'awaiting', reason: 'no_screenshot' };
   }
 
-  // ROUTE B — not Inbox-eligible → secure-link Private Reply TEXT to the EXACT resolved Live comment
-  // (verified Test-B contract), keyed off the capture's exact customer PSID.
-  const psid = psidFromConversationId(conversationId);
+  // A real on-page inbox conversation enables Route A (photo eligibility) + resolution by exact PSID.
+  const onPageConv =
+    conversationId && conversationBelongsToPage(conversationId, activePage) ? conversationId : null;
+
+  // ROUTE A — genuine media eligibility → actual screenshot PHOTO (never a secure link instead).
+  if (onPageConv) {
+    const eligible = await isConversationMediaEligible(admin, onPageConv);
+    if (eligible) {
+      const signed = (await admin.storage
+        .from(CAPTURE_BUCKET)
+        .createSignedUrl(path, 600)) as { data: { signedUrl?: string } | null };
+      const attachmentUrl = signed.data?.signedUrl ?? null;
+      if (!attachmentUrl) {
+        await admin.rpc('mark_capture_photo_state', { p_capture_id: id, p_status: 'awaiting_inbox' });
+        await setRouteReason(admin, id, 'AUTO SS pending · screenshot URL unavailable');
+        return { outcome: 'awaiting', reason: 'no_signed_url' };
+      }
+      const claim = (
+        await admin.rpc('claim_capture_photo_send', {
+          p_capture_id: id,
+          p_conversation_id: onPageConv,
+        })
+      ).data as string;
+      if (claim === 'already_sent') {
+        await setRouteReason(admin, id, 'AUTO SS Sent to Messenger ✓');
+        return { outcome: 'already_sent', reason: 'already_sent' };
+      }
+      if (claim !== 'claimed') return { outcome: 'in_progress', reason: 'photo_in_progress' };
+
+      const res = await sendPancakeConversationMessage({
+        conversationId: onPageConv,
+        message: '',
+        attachmentUrl,
+      });
+      await admin.rpc('finalize_capture_photo_send', {
+        p_capture_id: id,
+        p_ok: res.ok,
+        p_pancake_message_id: res.pancakeMessageId,
+        p_conversation_id: onPageConv,
+      });
+      await setRouteReason(
+        admin,
+        id,
+        res.ok ? 'AUTO SS Sent to Messenger ✓' : `AUTO SS Failed · ${res.code}`,
+      );
+      return { outcome: res.ok ? 'photo_sent' : 'photo_failed', reason: res.code };
+    }
+  }
+
+  // ROUTE B — secure-link Private Reply TEXT to the EXACT resolved Live comment (verified Test-B
+  // contract). Keyed off the exact PSID when we have the conversation, else resolved BY NAME
+  // (resolve_exact_live_comment gates unique-PSID + can_reply_privately, else Needs Review) — so a
+  // capture the PC never opened still auto-sends, fully server-side.
+  const psid = onPageConv ? psidFromConversationId(onPageConv) : null;
+  if (!psid && !fbName) {
+    await admin.rpc('mark_capture_photo_state', { p_capture_id: id, p_status: 'awaiting_inbox' });
+    await setRouteReason(admin, id, 'AUTO TEXT pending · awaiting comment context');
+    return { outcome: 'awaiting', reason: 'no_identity' };
+  }
   const rb = await attemptSecureLinkPrivateReply({
     supabase: admin,
     captureRecordId: id,

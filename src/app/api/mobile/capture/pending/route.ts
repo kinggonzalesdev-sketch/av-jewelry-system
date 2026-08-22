@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
 
+import { routePendingCapturesSystem } from '@/lib/capture/auto-router';
 import { createPendingCapture } from '@/lib/capture/service';
 import { authenticateMobile } from '@/lib/mobile/auth';
 
@@ -52,5 +53,18 @@ export async function POST(request: Request): Promise<Response> {
   if (!result.ok) {
     return NextResponse.json({ ok: false, error: result.error }, { status: 422 });
   }
+
+  // IMMEDIATE server-side autosend attempt (Owner 2026-08-22): don't wait for the 1-minute cron —
+  // AFTER the response (never blocking the phone's fast capture path), run one durable routing sweep
+  // so a capture whose exact Live comment already arrived auto-sends within ~1s. Idempotent (atomic
+  // DB claims + backoff), so this and the cron can never send a duplicate photo or Private Reply.
+  after(async () => {
+    try {
+      await routePendingCapturesSystem();
+    } catch {
+      /* best-effort — the every-minute cron is the durable recovery fallback */
+    }
+  });
+
   return NextResponse.json(result);
 }
