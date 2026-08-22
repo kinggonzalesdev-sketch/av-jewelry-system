@@ -793,4 +793,90 @@ class ScreenshotOcrTest {
         assertNull(g.grams)
         assertNull(g.itemQuery)
     }
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────
+    // OWNER 2026-08-22 (P0-A) — small-decimal LIVE reliability. A CLEAN pinned ".xx" must read; when
+    // ML Kit split/dropped/misread the decimal POINT (real evidence: ".23" arrived as "O King
+    // Gonzales" + "23"), restoreLeadingDecimals rebuilds it — but ONLY on positive structural
+    // evidence, never a blind "23 → 0.23" (23g is legitimate).
+    // ─────────────────────────────────────────────────────────────────────────────────────────
+
+    // CLEAN-PIN CONTRACT — every .1–.9, .11–.19, .22–.99, and 1.1–1.5 reads as grams (dot intact).
+    @Test
+    fun owner_cleanPin_smallDecimalMatrix() {
+        assertEquals("0.1", pinnedGrams(".1"))
+        assertEquals("0.5", pinnedGrams(".5"))
+        assertEquals("0.9", pinnedGrams(".9"))
+        assertEquals("0.11", pinnedGrams(".11"))
+        assertEquals("0.15", pinnedGrams(".15"))
+        assertEquals("0.19", pinnedGrams(".19"))
+        assertEquals("0.22", pinnedGrams(".22"))
+        assertEquals("0.33", pinnedGrams(".33"))
+        assertEquals("0.66", pinnedGrams(".66"))
+        assertEquals("0.77", pinnedGrams(".77"))
+        assertEquals("0.99", pinnedGrams(".99"))
+        assertEquals("1.1", pinnedGrams("1.1"))
+        assertEquals("1.3", pinnedGrams("1.3"))
+        assertEquals("1.5", pinnedGrams("1.5"))
+    }
+
+    // PATTERN 1 — a real point spaced from its digits in ONE line (". 23") → ".23" → 0.23g.
+    @Test
+    fun owner_restore_spacedDot() {
+        val g = ScreenshotOcr.guessFrom(listOf(line("King Gonzales", 850), line(". 23", 900)))
+        assertEquals("King Gonzales", g.fbName)
+        assertEquals("0.23", g.grams)
+    }
+
+    // PATTERN 2 — a standalone decimal-point line immediately LEFT of a bare "23" (same row) → 0.23g.
+    @Test
+    fun owner_restore_standaloneDotLeftOfNumber() {
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                OLine("King Gonzales", Box(40, 800, 400, 840)),
+                OLine(".", Box(40, 900, 60, 940)),
+                OLine("23", Box(66, 900, 150, 940)),
+            ),
+        )
+        assertEquals("King Gonzales", g.fbName)
+        assertEquals("0.23", g.grams)
+    }
+
+    // PATTERN 3 — the REAL failure: a lone glyph fused onto the name ("O King Gonzales") + a dotless
+    // "23" below → strip the glyph AND restore the decimal (both from one coupled evidence).
+    @Test
+    fun owner_restore_glyphFusedOnName_theOKingGonzalesCase() {
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                OLine("O King Gonzales", Box(40, 850, 400, 890)),
+                OLine("23", Box(40, 900, 120, 940)),
+            ),
+        )
+        assertEquals("King Gonzales", g.fbName)
+        assertEquals("0.23", g.grams)
+    }
+
+    // SAFETY — a bare "23" with NO decimal evidence STAYS grams (23g), never blindly reconstructed.
+    @Test
+    fun owner_restore_bareIntegerNoEvidence_staysGrams() {
+        val g = ScreenshotOcr.guessFrom(listOf(line("King Gonzales", 850), line("23", 900)))
+        assertEquals("King Gonzales", g.fbName)
+        assertEquals("23", g.grams)   // NOT "0.23" — 23g is legitimate; we never guess.
+    }
+
+    // SAFETY — a valid decimal value ("5.5") is untouched even if the name carries a stray glyph
+    // (no dotless-integer coupling → no reconstruction of a correct value).
+    @Test
+    fun owner_restore_validDecimalUntouched() {
+        val g = ScreenshotOcr.guessFrom(listOf(line("O King Gonzales", 850), line("Mine 5.5", 900)))
+        assertEquals("5.5", g.grams)
+    }
+
+    // restoreLeadingDecimals is a NO-OP on clean lines (no spurious rewrites).
+    @Test
+    fun owner_restore_noOpOnCleanLines() {
+        val clean = listOf(line("Chin Cha", 850), line("Mine 5.5", 900))
+        val out = ScreenshotOcr.restoreLeadingDecimals(clean)
+        assertEquals(listOf("Chin Cha", "Mine 5.5"), out.map { it.text })
+    }
 }

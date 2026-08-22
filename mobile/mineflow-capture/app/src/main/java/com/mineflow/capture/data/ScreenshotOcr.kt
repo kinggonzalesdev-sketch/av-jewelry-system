@@ -152,6 +152,18 @@ object ScreenshotOcr {
         RegexOption.IGNORE_CASE,
     )
 
+    // LEADING-DECIMAL RESTORATION (Owner 2026-08-22). Real Live captures showed a pinned ".23" arrive
+    // as "O King Gonzales" + "23": ML Kit split/dropped/misread the decimal POINT — as a spaced token
+    // (". 23"), a standalone glyph, or a stray leading char fused onto the NAME line. We restore the
+    // decimal ONLY on POSITIVE, structural evidence of a real point (never a blind "23 → 0.23", since
+    // 23g is legitimate). Three safe patterns, all in restoreLeadingDecimals below.
+    private val LEAD_DOT_SPACED = Regex("^[.·•]\\s+(\\d{1,2})$")   // Pattern 1: ". 23" → ".23"
+    private val DOT_GLYPH = Regex("^[.·•]$")                        // a standalone decimal-point line
+    private val BARE_SMALL_INT = Regex("^(\\d{1,2})$")             // a dotless .xx candidate (no dot)
+    // Pattern 3: a lone leading glyph OCR often makes of a decimal point (incl. O/0/°) fused onto the
+    // Title-cased buyer name, e.g. "O King Gonzales". Only stripped WITH the dotless-value coupling.
+    private val NAME_LEAD_GLYPH = Regex("^([O0°.·•])\\s+([A-Za-zÀ-ÿ].{1,48})$")
+
     fun analyze(bitmap: Bitmap, onResult: (OcrGuess) -> Unit) {
         val h = bitmap.height
         val w = bitmap.width
@@ -326,6 +338,70 @@ object ScreenshotOcr {
     }
 
     /**
+     * Restore a leading-decimal weight the OCR split/dropped/misread (Owner 2026-08-22). `internal`
+     * so it is unit-testable. Returns a NEW line list; the original rawLines are kept for diagnostics.
+     * Every rewrite requires POSITIVE structural evidence of a real decimal point — a dotless bare
+     * integer with NO such evidence is LEFT ALONE (it may legitimately be grams, e.g. 23g):
+     *   1. ". 23" (a real point, spaced from the digits in one line)      → ".23"
+     *   2. a standalone "."/"·"/"•" line immediately LEFT of a bare "23"   → ".23" (drop the dot line)
+     *   3. a lone leading glyph fused onto the buyer NAME ("O King …") AND a dotless bare-integer
+     *      value in the SAME block below it → strip the glyph from the name AND restore ".value"
+     *      (both corrections come from ONE coupled evidence, so a real initial + real grams is safe).
+     */
+    internal fun restoreLeadingDecimals(olines: List<OLine>): List<OLine> {
+        val out = olines.toMutableList()
+        val dropped = HashSet<Int>()
+
+        // Pattern 1 — collapse ". 23" → ".23" (the decimal point IS present, just spaced).
+        for (i in out.indices) {
+            val m = LEAD_DOT_SPACED.matchEntire(out[i].text)
+            if (m != null) out[i] = out[i].copy(text = "." + m.groupValues[1])
+        }
+
+        // Pattern 2 — a standalone decimal-point line immediately LEFT of a bare-number line on the
+        // same visual row (vertical overlap + small gap) → merge into ".NN", drop the dot line.
+        for (i in out.indices) {
+            if (i in dropped) continue
+            val numMatch = BARE_SMALL_INT.matchEntire(out[i].text) ?: continue
+            for (j in out.indices) {
+                if (j == i || j in dropped) continue
+                if (!DOT_GLYPH.matches(out[j].text)) continue
+                val dot = out[j].box
+                val num = out[i].box
+                val vOverlap = minOf(dot.bottom, num.bottom) - maxOf(dot.top, num.top) > 0
+                val leftAdjacent = dot.right <= num.left && (num.left - dot.right) <= maxOf(num.height, 24)
+                if (vOverlap && leftAdjacent) {
+                    out[i] = out[i].copy(text = "." + numMatch.groupValues[1])
+                    dropped.add(j)
+                    break
+                }
+            }
+        }
+
+        // Pattern 3 — a lone leading glyph fused onto a Title-cased NAME line, coupled with a dotless
+        // bare-integer value directly below it in the same block. Requires BOTH signals → safe.
+        for (i in out.indices) {
+            if (i in dropped) continue
+            val nm = NAME_LEAD_GLYPH.matchEntire(out[i].text) ?: continue
+            for (j in out.indices) {
+                if (j == i || j in dropped) continue
+                val vm = BARE_SMALL_INT.matchEntire(out[j].text) ?: continue
+                val name = out[i].box
+                val value = out[j].box
+                val below = value.top >= name.top && (value.top - name.bottom) <= name.height * 2
+                val hOverlap = minOf(name.right, value.right) - maxOf(name.left, value.left) > 0
+                if (below && hOverlap) {
+                    out[i] = out[i].copy(text = nm.groupValues[2].trim())
+                    out[j] = out[j].copy(text = "." + vm.groupValues[1])
+                    break
+                }
+            }
+        }
+
+        return out.filterIndexed { idx, _ -> idx !in dropped }
+    }
+
+    /**
      * PINNED-ONLY extraction (see class doc). `internal` so it is unit-testable.
      *
      * `minClaimTop` (FULL-SCREEN FALLBACK only): the ESTABLISHED pinned zone. A claim at/below it
@@ -341,8 +417,11 @@ object ScreenshotOcr {
      * two+ claims or any ambiguity → "needs review". Defaults to minClaimTop (NO recovery zone), so
      * the fast path is unchanged. Never a bottom-most guess in the recovery area.
      */
-    internal fun guessFrom(olines: List<OLine>, minClaimTop: Int = 0, recoveryFloor: Int = minClaimTop): OcrGuess {
-        val rawLines = olines.map { it.text }
+    internal fun guessFrom(olinesIn: List<OLine>, minClaimTop: Int = 0, recoveryFloor: Int = minClaimTop): OcrGuess {
+        val rawLines = olinesIn.map { it.text }
+        // Evidence-based leading-decimal restoration BEFORE any claim/name parsing (never a blind
+        // "23 → 0.23" — only when a real decimal point is structurally present, see the function).
+        val olines = restoreLeadingDecimals(olinesIn)
         val clean = olines.filterNot { isUiNoise(it.text) }
         if (clean.isEmpty()) return OcrGuess(null, null, null, rawLines)
 
