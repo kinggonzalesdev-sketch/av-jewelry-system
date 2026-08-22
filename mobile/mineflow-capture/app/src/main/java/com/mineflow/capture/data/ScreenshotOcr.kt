@@ -425,6 +425,22 @@ object ScreenshotOcr {
         return out.filterIndexed { idx, _ -> idx !in dropped }
     }
 
+    // A leading O / 0 / ° FUSED before a Capitalised name token ("ORoshelle") is a phantom UI/badge/
+    // icon glyph ML Kit misread next to the avatar — NOT part of the name. Positive structural
+    // evidence it is noise: a real name NEVER starts with two capitals fused (O + Capital + lowercase
+    // is not a name word). So this strips it safely; every legitimate O-name is left untouched because
+    // none matches: "Olivia"/"Oscar"/"Ocampo"/"Orlando" (O + lowercase), "O'Brien" (O + '), "O King"
+    // (O + space), "OJ"/"OG" (no trailing lowercase). Owner 2026-08-22 (Roshelle "ORoshelle" bug).
+    private val PHANTOM_LEADING_NAME_GLYPH = Regex("^[O0°]([A-Z][a-z].*)$")
+
+    /** Remove a phantom leading O/0/° fused onto a Capitalised name ("ORoshelle Akitan Gavino" →
+     *  "Roshelle Akitan Gavino"); leave every real name (incl. legitimate O-names) unchanged.
+     *  `internal` so it is unit-testable. */
+    internal fun sanitizeLeadingNameGlyph(name: String): String {
+        val t = name.trim()
+        return PHANTOM_LEADING_NAME_GLYPH.matchEntire(t)?.groupValues?.get(1)?.trim() ?: t
+    }
+
     /**
      * PINNED-ONLY extraction (see class doc). `internal` so it is unit-testable.
      *
@@ -515,7 +531,9 @@ object ScreenshotOcr {
         // itemQuery = the pinned value (the PC reinterprets grams vs fixed price); grams is set
         // only for ONE real weight — a fixed price OR 2+ ambiguous numbers leaves it null (review).
         return OcrGuess(
-            fbName = name,
+            // Strip a phantom leading O/0/° BEFORE the name leaves OCR, so the direct-local sticker,
+            // the stored name, and downstream Facebook matching all get the same clean canonical name.
+            fbName = sanitizeLeadingNameGlyph(name),
             itemQuery = claim.value,
             grams = claim.grams,
             rawLines = rawLines,

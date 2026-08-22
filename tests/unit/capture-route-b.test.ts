@@ -29,11 +29,19 @@ beforeAll(() => {
 });
 
 type Handlers = Record<string, (args: Record<string, unknown>) => unknown>;
-function mockSupabase(handlers: Handlers) {
+function mockSupabase(handlers: Handlers, pricePerGram = '7100') {
   const rpc = vi.fn((name: string, args: Record<string, unknown>) =>
     Promise.resolve({ data: handlers[name] ? handlers[name](args) : null, error: null }),
   );
-  return { supabase: { rpc } as unknown as SupabaseClient, rpc };
+  // The mode-aware AUTO TEXT reads the shared sticker rate for GRAMS captures.
+  const from = vi.fn(() => ({
+    select: () => ({
+      eq: () => ({
+        maybeSingle: () => Promise.resolve({ data: { price_per_gram: pricePerGram }, error: null }),
+      }),
+    }),
+  }));
+  return { supabase: { rpc, from } as unknown as SupabaseClient, rpc };
 }
 
 const CT = () => encryptShareToken('rawtok')!; // decryptable ciphertext → a real /m URL

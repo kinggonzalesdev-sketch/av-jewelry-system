@@ -4,6 +4,7 @@ import { recordAuditEvent } from '@/lib/audit/log';
 import { requirePermission } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 import { isConversationMediaEligible } from '@/lib/capture/media-window';
+import { sanitizeLeadingNameGlyph } from '@/lib/capture/name-sanitize';
 import { attemptSecureLinkPrivateReply } from '@/lib/capture/route-b';
 import {
   conversationBelongsToPage,
@@ -94,7 +95,8 @@ export async function sendPendingCaptureToMessenger(
     };
   }
 
-  const fbName = ocrStr(row.ocr, 'fbName', 'fb_name', 'name');
+  // Strip a phantom leading O/0/° so name-based conversation matching + Route B use the real name.
+  const fbName = sanitizeLeadingNameGlyph(ocrStr(row.ocr, 'fbName', 'fb_name', 'name')) || null;
 
   // Resolve the conversation: prefer a stored one — but ONLY if it lives on the active send page
   // (a link on another page is undeliverable). Otherwise resolve from the OCR'd Facebook name

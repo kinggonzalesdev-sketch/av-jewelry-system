@@ -11,6 +11,54 @@ import {
   shareLinkUrl,
 } from '@/lib/capture/share-link';
 import { getActivePancakePageId, sendPancakePrivateReply } from '@/lib/integrations/pancake';
+import {
+  classifyCaptureValue,
+  normalizeGrams,
+  parseFixedPrice,
+} from '@/lib/print/order-receipt';
+
+/**
+ * Build the AUTO TEXT from the FINALIZED Capture business data (Owner 2026-08-22). Messaging NEVER
+ * reclassifies: it reuses the SAME upstream classifier the sticker uses (classifyCaptureValue →
+ * grams via normalizeGrams / fixed via parseFixedPrice) + the ONE shared sticker rate
+ * (sticker_settings.price_per_gram, read via the caller's client so it works for the PC session AND
+ * the service-role router). Returns null when the business data is INCOMPLETE (unclassifiable value,
+ * missing grams/price, or grams with no rate) so the ONE Private Reply is NOT consumed — it stays
+ * retryable until the Capture is finalized.
+ */
+async function buildAutoTextMessage(
+  supabase: SupabaseClient,
+  fbName: string,
+  value: string | null,
+): Promise<string | null> {
+  const mode = classifyCaptureValue(value);
+  if (mode === 'fixed') {
+    const fixedPrice = parseFixedPrice(value);
+    if (!fixedPrice) return null;
+    return buildPrivateReplyMessage({ firstName: firstNameOf(fbName), mode: 'fixed', fixedPrice });
+  }
+  if (mode === 'grams') {
+    const grams = normalizeGrams(value);
+    if (!grams) return null;
+    const { data } = await supabase
+      .from('sticker_settings')
+      .select('price_per_gram')
+      .eq('id', 1)
+      .maybeSingle();
+    const pricePerGram =
+      typeof (data as { price_per_gram?: unknown } | null)?.price_per_gram === 'string'
+        ? ((data as { price_per_gram: string }).price_per_gram).trim()
+        : '';
+    if (!pricePerGram) return null; // grams needs a rate — else keep it reviewable, don't send.
+    return buildPrivateReplyMessage({
+      firstName: firstNameOf(fbName),
+      mode: 'grams',
+      grams,
+      pricePerGram,
+    });
+  }
+  return null; // unclassifiable value → incomplete → do not consume the Private Reply.
+}
 
 /**
  * PII-SAFE pipeline audit (Owner 2026-08-22): record WHERE the secure-link flow landed so an
@@ -166,6 +214,19 @@ export async function attemptSecureLinkPrivateReply(input: {
   if (link.revoked_at) return { ok: false, code: 'revoked', message: 'This link was revoked.' };
   if (link.private_reply_status === 'sent') return { ok: true, code: 'already_sent', url };
 
+  // Build the mode-aware AUTO TEXT from the FINALIZED Capture business data BEFORE claiming, so an
+  // incomplete Capture (unclassifiable value / missing grams-or-price / grams with no rate) never
+  // consumes the ONE Private Reply — it stays reviewable/retryable.
+  const message = await buildAutoTextMessage(supabase, fbName, input.value);
+  if (!message) {
+    await auditRouteB(captureRecordId, 'PRIVATE_REPLY_TEXT', 'failed', 'incomplete_business_data');
+    return {
+      ok: false,
+      code: 'incomplete_business_data',
+      message: 'Awaiting a finalized grams/price + rate — the Private Reply was not used.',
+    };
+  }
+
   // Atomic claim — only the worker that flips pending→sending sends the ONE Private Reply.
   const claim = (await supabase.rpc('claim_share_link_send', { p_id: link.id })).data as string;
   if (claim === 'already_sent') return { ok: true, code: 'already_sent', url };
@@ -173,7 +234,6 @@ export async function attemptSecureLinkPrivateReply(input: {
     return { ok: false, code: 'in_progress', message: 'Another Private Reply for this comment is in progress.' };
   }
 
-  const message = buildPrivateReplyMessage(firstNameOf(fbName), url ?? '');
   const pr = await sendPancakePrivateReply({
     postId: link.post_id ?? '',
     messageId: link.comment_id ?? '',

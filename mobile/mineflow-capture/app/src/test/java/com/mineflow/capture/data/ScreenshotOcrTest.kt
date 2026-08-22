@@ -969,4 +969,72 @@ class ScreenshotOcrTest {
         assertEquals("15000", g.itemQuery)
         assertNull(g.grams)
     }
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────
+    // OWNER 2026-08-22 — phantom leading "O" contamination. A FB avatar/badge/follower-icon next to
+    // the name is intermittently OCR'd as O/0/° and FUSED onto the name ("ORoshelle Akitan Gavino").
+    // Proven phantom (the same customer, same session, produced a clean "Roshelle Akitan Gavino" on
+    // another capture). Strip it — but NEVER a real O-name.
+    // ─────────────────────────────────────────────────────────────────────────────────────────
+
+    // THE BUG: phantom "O" fused onto the pinned name + Mine 2.05g → clean name + grams, direct-print.
+    @Test
+    fun owner_phantomLeadingO_strippedFromName() {
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                line("K Milestone follower", 800),
+                line("ORoshelle Akitan Gavino", 850),
+                line("Mine 2.05g", 900),
+            ),
+        )
+        assertEquals("Roshelle Akitan Gavino", g.fbName)
+        assertEquals("2.05", g.grams)
+    }
+
+    // The same customer's CLEAN capture is unchanged (no over-stripping).
+    @Test
+    fun owner_cleanRoshelle_unchanged() {
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                line("Milestone follower", 800),
+                line("Roshelle Akitan Gavino", 850),
+                line("Mine 2.05g", 900),
+            ),
+        )
+        assertEquals("Roshelle Akitan Gavino", g.fbName)
+        assertEquals("2.05", g.grams)
+    }
+
+    // Phantom variants O / 0 / ° all stripped when fused before a Capitalised name.
+    @Test
+    fun owner_sanitizeLeadingGlyph_phantomVariants() {
+        assertEquals(
+            "Roshelle Akitan Gavino",
+            ScreenshotOcr.sanitizeLeadingNameGlyph("ORoshelle Akitan Gavino"),
+        )
+        assertEquals(
+            "Roshelle Akitan Gavino",
+            ScreenshotOcr.sanitizeLeadingNameGlyph("0Roshelle Akitan Gavino"),
+        )
+        assertEquals(
+            "Roshelle Akitan Gavino",
+            ScreenshotOcr.sanitizeLeadingNameGlyph("°Roshelle Akitan Gavino"),
+        )
+    }
+
+    // CRITICAL — legitimate O-names must remain EXACTLY unchanged (never strip a real first letter).
+    @Test
+    fun owner_sanitizeLeadingGlyph_legitONamesPreserved() {
+        for (n in listOf(
+            "Olivia Santos",
+            "Oscar Reyes",
+            "Ocampo",
+            "Orlando Cruz",
+            "O'Brien",
+            "O King Gonzales",
+            "OJ Cruz",
+        )) {
+            assertEquals(n, ScreenshotOcr.sanitizeLeadingNameGlyph(n))
+        }
+    }
 }

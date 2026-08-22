@@ -1,30 +1,27 @@
 'use client';
 
-import { Button, buttonVariants } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
 
 /**
- * The per-row ACTION control in Incoming Captures (Owner 2026-08-22).
+ * The per-row ACTION control in Incoming Captures (Owner 2026-08-22). The layout stays consistent:
+ * Print | Send | Use | Dismiss — Send is ALWAYS visible; only its ENABLED state changes. Send NEVER
+ * disappears just because AUTO TEXT / AUTO SS succeeded or the customer is Photo-waiting.
  *
- * This is the right-side action area only: `Print | Send | Use | Dismiss`. It renders NO delivery
- * status — the "AUTO TEXT Sent to Messenger ✓" / "AUTO SS Sent to Messenger ✓" statuses live in a
- * DEDICATED area UNDER the Grams/Price (see incoming-captures-strip), and a status must NEVER occupy
- * or replace the Send button.
+ * Send ALWAYS means: send the ACTUAL screenshot PHOTO (never a Private Reply TEXT / secure link /
+ * Save / retry). It is ENABLED only when a valid screenshot exists AND the customer is Photo-ready
+ * AND the photo has not already been sent; otherwise it is VISIBLE-BUT-DISABLED:
+ *   • Photo ready + photo unsent + screenshot → ENABLED.
+ *   • Photo waiting / AUTO TEXT sent + waiting → disabled (auto-enables when eligibility flips).
+ *   • AUTO SS / photo already sent          → disabled (one photo per capture — the DB is authoritative).
+ *   • Screenshot missing / Test capture     → disabled.
  *
- *   📨 Send — shown ONLY when the customer is genuinely Photo-ready (media-eligible) AND the actual
- *             PHOTO has not been sent. Send ALWAYS means the actual screenshot PHOTO (never a secure
- *             link / Private Reply TEXT). A doomed photo send is never offered.
- *   💬 Open FB Chat — the human fallback while Photo-waiting (Route B TEXT runs automatically in the
- *             background; the operator never clicks to send it).
- *   💾 Save — appears ONLY when the operator has unsaved grams / Fixed-Price edits (`dirty`); it
- *             persists edits and NEVER sends anything.
- *   (photo already sent) — no Send (prevents a duplicate/misleading send); the AUTO SS status shows
- *             under Grams/Price.
- *   Test capture — a disabled Send marker (a test never messages a real customer).
+ * The AUTO TEXT/SS delivery STATUS lives in its dedicated area under Grams/Price — never here. 💾 Save
+ * appears ONLY when there are unsaved edits and never sends anything.
  */
 export function CaptureSendControl({
   captureRecordId,
   photoEligible,
-  fbUrl,
+  hasScreenshot,
   isTest,
   sending,
   saving,
@@ -35,7 +32,8 @@ export function CaptureSendControl({
 }: {
   captureRecordId: string;
   photoEligible: boolean;
-  fbUrl: string | null;
+  /** A valid screenshot exists for this capture (a photo can physically be sent). */
+  hasScreenshot: boolean;
   isTest: boolean;
   sending: boolean;
   saving: boolean;
@@ -46,25 +44,21 @@ export function CaptureSendControl({
   onSend: () => void;
   onSave: () => void;
 }) {
-  // Test capture: a disabled Send marker; nothing else (a test never messages, never needs Save).
-  if (isTest) {
-    return (
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        disabled
-        data-testid={`incoming-send-${captureRecordId}`}
-      >
-        📨 Send
-      </Button>
-    );
-  }
-
   const photoSent = (messageStatus ?? '') === 'sent';
+  // The ACTUAL photo can be sent only when eligible, unsent, with a screenshot, and not a test.
+  const canSend = !isTest && hasScreenshot && photoEligible && !photoSent;
 
-  // Save ONLY when there are unsaved edits — never a permanent action, never sends anything.
-  const saveButton = dirty ? (
+  const title = isTest
+    ? 'A test capture never messages a real customer.'
+    : !hasScreenshot
+      ? 'No screenshot on this capture — nothing to send.'
+      : photoSent
+        ? 'The actual screenshot photo was already sent (AUTO SS) — one photo per capture.'
+        : !photoEligible
+          ? 'Photo waiting — the customer has no open Inbox window yet, so a photo can’t be sent (a secure-link TEXT is sent automatically).'
+          : 'Send the ACTUAL screenshot photo now.';
+
+  const saveButton = dirty && !isTest ? (
     <Button
       type="button"
       size="sm"
@@ -78,42 +72,19 @@ export function CaptureSendControl({
     </Button>
   ) : null;
 
-  // The single ACTION element (never a status): Send when Photo-ready-and-unsent; the human fallback
-  // while Photo-waiting; nothing once the photo is sent (its AUTO SS status sits under Grams/Price).
-  let action: React.ReactNode = null;
-  if (photoEligible && !photoSent) {
-    action = (
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
       <Button
         type="button"
         size="sm"
         variant="outline"
-        disabled={sending}
+        disabled={!canSend || sending}
         onClick={onSend}
         data-testid={`incoming-send-${captureRecordId}`}
-        title="Send the ACTUAL screenshot photo now (the server also auto-sends it to eligible customers)."
+        title={title}
       >
         {sending ? 'Sending…' : '📨 Send'}
       </Button>
-    );
-  } else if (!photoSent && !photoEligible && fbUrl) {
-    action = (
-      <a
-        href={fbUrl}
-        target="_blank"
-        rel="noreferrer"
-        className={buttonVariants({ variant: 'outline', size: 'sm' })}
-        data-testid={`incoming-openfb-${captureRecordId}`}
-        title="Human fallback: open the chat and send it yourself (allowed up to 7 days)."
-      >
-        💬 Open FB Chat
-      </a>
-    );
-  }
-
-  if (!action && !saveButton) return null;
-  return (
-    <span className="inline-flex flex-wrap items-center gap-1">
-      {action}
       {saveButton}
     </span>
   );

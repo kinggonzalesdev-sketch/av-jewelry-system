@@ -4,20 +4,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { CaptureSendControl } from '@/components/capture/capture-send-control';
 
 /**
- * The per-row ACTION control (Owner 2026-08-22 — action area ONLY; delivery status lives under
- * Grams/Price, never here):
- *   Photo ready (unsent)   → 📨 Send (actual photo); SUPERSEDES any stale awaiting/failed state.
- *   Photo already sent     → NO Send here (prevents duplicate); the AUTO SS status shows under price.
- *   Photo waiting          → 💬 Open FB Chat only (Route B TEXT is automatic/background).
- *   💾 Save                → ONLY when dirty; never sends anything.
- * The control renders NO "AUTO TEXT/SS Sent ✓" chip — that moved to the dedicated status area.
+ * The ACTION control (Owner 2026-08-22 — Send is ALWAYS visible; only its enabled state changes).
+ * Send ALWAYS means the actual screenshot PHOTO. Status chips live under Grams/Price, never here.
  */
 const ID = 'cap-1';
-
 const base = {
   captureRecordId: ID,
   photoEligible: false,
-  fbUrl: null as string | null,
+  hasScreenshot: true,
   isTest: false,
   sending: false,
   saving: false,
@@ -26,49 +20,54 @@ const base = {
   onSend: vi.fn(),
   onSave: vi.fn(),
 };
+const send = () => screen.getByTestId(`incoming-send-${ID}`);
 
-describe('CaptureSendControl (action area only)', () => {
-  it('Photo ready (unsent) → 📨 Send; no status chip in the action area', () => {
+describe('CaptureSendControl — Send always visible, enabled by state', () => {
+  it('Photo ready + unsent + screenshot → Send visible + ENABLED; clicking sends the photo', () => {
     const onSend = vi.fn();
     render(<CaptureSendControl {...base} photoEligible onSend={onSend} onSave={vi.fn()} />);
-    const send = screen.getByTestId(`incoming-send-${ID}`);
-    expect(send).toHaveTextContent('Send');
-    fireEvent.click(send);
+    expect(send()).toBeInTheDocument();
+    expect(send()).not.toBeDisabled();
+    fireEvent.click(send());
     expect(onSend).toHaveBeenCalledTimes(1);
-    expect(screen.queryByTestId(`incoming-status-${ID}`)).toBeNull();
   });
 
-  it('Photo ready + stale message_status awaiting_inbox/failed → still 📨 Send, no technical text', () => {
-    const { rerender } = render(
-      <CaptureSendControl {...base} photoEligible messageStatus="awaiting_inbox" onSend={vi.fn()} onSave={vi.fn()} />,
-    );
-    expect(screen.getByTestId(`incoming-send-${ID}`)).toBeInTheDocument();
-    rerender(<CaptureSendControl {...base} photoEligible messageStatus="failed" onSend={vi.fn()} onSave={vi.fn()} />);
-    expect(screen.getByTestId(`incoming-send-${ID}`)).toBeInTheDocument();
-    expect(screen.queryByText(/pending|awaiting comment|sending|AUTO/i)).toBeNull();
+  it('Photo waiting → Send VISIBLE but DISABLED', () => {
+    render(<CaptureSendControl {...base} photoEligible={false} messageStatus="awaiting_inbox" onSend={vi.fn()} onSave={vi.fn()} />);
+    expect(send()).toBeDisabled();
   });
 
-  it('Photo already sent → NO Send in the action area (status lives under Grams/Price)', () => {
-    render(<CaptureSendControl {...base} messageStatus="sent" photoEligible onSend={vi.fn()} onSave={vi.fn()} />);
-    expect(screen.queryByTestId(`incoming-send-${ID}`)).toBeNull();
-    expect(screen.queryByText(/AUTO SS|AUTO TEXT/i)).toBeNull();
+  it('AUTO TEXT sent + Photo waiting → Send VISIBLE but DISABLED', () => {
+    render(<CaptureSendControl {...base} photoEligible={false} messageStatus="link_sent" onSend={vi.fn()} onSave={vi.fn()} />);
+    expect(send()).toBeInTheDocument();
+    expect(send()).toBeDisabled();
   });
 
-  it('TEXT sent, LATER Photo ready → 📨 Send (photo supersedes the TEXT status)', () => {
+  it('TEXT sent → LATER Photo ready → Send auto-ENABLES', () => {
     render(<CaptureSendControl {...base} messageStatus="link_sent" photoEligible onSend={vi.fn()} onSave={vi.fn()} />);
-    expect(screen.getByTestId(`incoming-send-${ID}`)).toBeInTheDocument();
+    expect(send()).not.toBeDisabled();
   });
 
-  it('Photo waiting (incl. link_sent, not eligible) → 💬 Open FB Chat only; no Send, no status chip', () => {
-    render(
-      <CaptureSendControl {...base} messageStatus="link_sent" fbUrl="https://m.me/x" onSend={vi.fn()} onSave={vi.fn()} />,
-    );
-    expect(screen.getByTestId(`incoming-openfb-${ID}`)).toHaveAttribute('href', 'https://m.me/x');
-    expect(screen.queryByTestId(`incoming-send-${ID}`)).toBeNull();
-    expect(screen.queryByText(/AUTO|pending|awaiting/i)).toBeNull();
+  it('AUTO SS already sent → Send VISIBLE but DISABLED (no duplicate photo)', () => {
+    const onSend = vi.fn();
+    render(<CaptureSendControl {...base} messageStatus="sent" photoEligible onSend={onSend} onSave={vi.fn()} />);
+    expect(send()).toBeInTheDocument();
+    expect(send()).toBeDisabled();
+    fireEvent.click(send());
+    expect(onSend).not.toHaveBeenCalled();
   });
 
-  it('💾 Save appears ONLY when dirty; clicking calls onSave, never onSend', () => {
+  it('Screenshot missing → Send VISIBLE but DISABLED', () => {
+    render(<CaptureSendControl {...base} photoEligible hasScreenshot={false} onSend={vi.fn()} onSave={vi.fn()} />);
+    expect(send()).toBeDisabled();
+  });
+
+  it('Test capture → Send visible but DISABLED', () => {
+    render(<CaptureSendControl {...base} isTest photoEligible onSend={vi.fn()} onSave={vi.fn()} />);
+    expect(send()).toBeDisabled();
+  });
+
+  it('💾 Save appears ONLY when dirty; clicking calls onSave, never onSend; Send stays visible', () => {
     const onSend = vi.fn();
     const onSave = vi.fn();
     const { rerender } = render(<CaptureSendControl {...base} photoEligible onSend={onSend} onSave={onSave} />);
@@ -77,18 +76,11 @@ describe('CaptureSendControl (action area only)', () => {
     fireEvent.click(screen.getByTestId(`incoming-save-${ID}`));
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(onSend).not.toHaveBeenCalled();
-    expect(screen.getByTestId(`incoming-send-${ID}`)).toBeInTheDocument(); // Send stays alongside Save
+    expect(send()).toBeInTheDocument();
   });
 
-  it('Photo already sent + dirty → Save only (no Send)', () => {
-    render(<CaptureSendControl {...base} messageStatus="sent" dirty onSend={vi.fn()} onSave={vi.fn()} />);
-    expect(screen.getByTestId(`incoming-save-${ID}`)).toBeInTheDocument();
-    expect(screen.queryByTestId(`incoming-send-${ID}`)).toBeNull();
-  });
-
-  it('Test capture → Send disabled, no Save even if dirty', () => {
-    render(<CaptureSendControl {...base} isTest photoEligible dirty onSend={vi.fn()} onSave={vi.fn()} />);
-    expect(screen.getByTestId(`incoming-send-${ID}`)).toBeDisabled();
-    expect(screen.queryByTestId(`incoming-save-${ID}`)).toBeNull();
+  it('never renders an AUTO SS / AUTO TEXT status chip in the action area', () => {
+    render(<CaptureSendControl {...base} messageStatus="sent" onSend={vi.fn()} onSave={vi.fn()} />);
+    expect(screen.queryByText(/AUTO (SS|TEXT)/i)).toBeNull();
   });
 });

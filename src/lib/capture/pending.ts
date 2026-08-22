@@ -3,6 +3,7 @@ import 'server-only';
 import { requirePermission } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 import { isConversationMediaEligible } from '@/lib/capture/media-window';
+import { sanitizeLeadingNameGlyph } from '@/lib/capture/name-sanitize';
 import { normalizeGrams } from '@/lib/print/order-receipt';
 import type { PendingCaptureRow } from '@/lib/capture/pending-types';
 
@@ -112,7 +113,9 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
       captureRecordId: r.id,
       capturedAt: r.captured_at,
       screenshotUrl: signed[i] ?? null,
-      fbName: ocrStr(r.ocr, 'fbName', 'fb_name', 'name'),
+      // Strip a phantom leading O/0/° (avatar/badge glyph fused onto the name during OCR) so the
+      // display, sticker, and matching all see the clean name — incl. captures from older phones.
+      fbName: sanitizeLeadingNameGlyph(ocrStr(r.ocr, 'fbName', 'fb_name', 'name')) || null,
       itemQuery: ocrStr(r.ocr, 'itemQuery', 'item_query', 'item'),
       // Prefer the dedicated grams field; fall back to the mined number (older builds
       // put the pinned weight in itemQuery). normalizeGrams also rejects non-weights.

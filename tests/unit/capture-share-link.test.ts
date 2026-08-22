@@ -63,20 +63,50 @@ describe('first name + Private Reply template', () => {
     expect(firstNameOf(null)).toBe('');
   });
 
-  it('exact Owner template (2026-08-22): blank line before the 🔗 URL, "about your order"', () => {
-    const msg = buildPrivateReplyMessage('King', 'https://x/m/TOK');
-    // Full-string equality locks the EXACT template the Owner approved.
+  it('GRAMS mode → Item Per Gram + Grams (exact Owner template); NO Fixed Price', () => {
+    const msg = buildPrivateReplyMessage({
+      firstName: 'Roshelle',
+      mode: 'grams',
+      grams: '3.55',
+      pricePerGram: '7100',
+    });
     expect(msg).toBe(
-      'Hi beshy King! 💛 Thank you for mining with A.V. Jewelry ✨\n\n' +
-        "Here's the screenshot of your mined item:\n\n🔗 https://x/m/TOK\n\n" +
-        'Please reply here if you have any questions or concerns about your order.\n\n' +
-        'Thank you, beshy!',
+      'Hi beshy Roshelle! 💛 Thank you for mining with A.V. Jewelry ✨\n\n' +
+        'Item Per Gram: ₱7,100/g\nGrams: 3.55g\n\n' +
+        'Kindly settle your deposit.\n\nThank you, beshy!',
     );
-    // The URL sits on its own line with a blank line above it (never glued to the label).
-    expect(msg).toContain('mined item:\n\n🔗 https://x/m/TOK');
+    expect(msg).not.toContain('Fixed Price');
+  });
+
+  it('GRAMS small value → "Grams: 0.55g" (normalized upstream)', () => {
+    const msg = buildPrivateReplyMessage({
+      firstName: 'Roshelle',
+      mode: 'grams',
+      grams: '0.55',
+      pricePerGram: '7100',
+    });
+    expect(msg).toContain('Grams: 0.55g');
+  });
+
+  it('FIXED mode → Fixed Price ONLY (exact Owner template); NO Item Per Gram / Grams / /g', () => {
+    const msg = buildPrivateReplyMessage({
+      firstName: 'Roshelle',
+      mode: 'fixed',
+      fixedPrice: '15000',
+    });
+    expect(msg).toBe(
+      'Hi beshy Roshelle! 💛 Thank you for mining with A.V. Jewelry ✨\n\n' +
+        'Fixed Price: ₱15,000\n\n' +
+        'Kindly settle your deposit.\n\nThank you, beshy!',
+    );
+    expect(msg).not.toContain('Item Per Gram');
+    expect(msg).not.toContain('Grams');
+    expect(msg).not.toContain('/g');
   });
 
   it('falls back to "Hi beshy!" without a first name', () => {
-    expect(buildPrivateReplyMessage('', 'u')).toContain('Hi beshy! 💛');
+    expect(
+      buildPrivateReplyMessage({ firstName: '', mode: 'fixed', fixedPrice: '15000' }),
+    ).toContain('Hi beshy! 💛');
   });
 });

@@ -23,6 +23,7 @@ import {
   type EffectiveCaptureLink,
 } from '@/components/capture/capture-link-panel';
 import { CaptureSendControl } from '@/components/capture/capture-send-control';
+import { sanitizeLeadingNameGlyph } from '@/lib/capture/name-sanitize';
 import {
   NewOrderModal,
   type CapturePrefill,
@@ -183,7 +184,10 @@ export function IncomingCapturesStrip({
           // Keep any already-signed thumbnail; a newly-attached screenshot is picked up
           // by the reconcile load() (a signed URL can't be minted on the client).
           screenshotUrl: prev?.screenshotUrl ?? null,
-          fbName: ocrStr(ocr, 'fbName', 'fb_name', 'name') ?? prev?.fbName ?? null,
+          fbName:
+            (sanitizeLeadingNameGlyph(ocrStr(ocr, 'fbName', 'fb_name', 'name')) || null) ??
+            prev?.fbName ??
+            null,
           itemQuery:
             ocrStr(ocr, 'itemQuery', 'item_query', 'item') ?? prev?.itemQuery ?? null,
           grams:
@@ -849,7 +853,7 @@ export function IncomingCapturesStrip({
                     <CaptureSendControl
                       captureRecordId={r.captureRecordId}
                       photoEligible={effectiveLink(r).photoEligible}
-                      fbUrl={effectiveLink(r).fbUrl}
+                      hasScreenshot={!!r.screenshotUrl}
                       isTest={r.isTest}
                       sending={sendingId === r.captureRecordId}
                       saving={savingId === r.captureRecordId}

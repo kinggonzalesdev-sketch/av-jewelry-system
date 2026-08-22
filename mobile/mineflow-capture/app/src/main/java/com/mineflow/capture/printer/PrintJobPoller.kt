@@ -3,6 +3,7 @@ package com.mineflow.capture.printer
 import android.content.Context
 import android.util.Log
 import com.mineflow.capture.data.ApiClient
+import com.mineflow.capture.data.ScreenshotOcr
 import com.mineflow.capture.data.SecureStore
 import kotlin.concurrent.thread
 
@@ -172,7 +173,8 @@ object PrintJobPoller {
             // Classify the RAW value: a FIXED PRICE ("15k"/"15000"/"₱15,000") prints "FIXED • ₱X";
             // a real weight prints "Xg • ₱rate/g". Matches the direct-local + PC classification.
             val sticker = StickerEncoder.fromCaptureAuto(
-                cap.optString("fb_name"),
+                // Strip a phantom leading O/0/° so a claimed OLD-capture sticker prints the clean name.
+                ScreenshotOcr.sanitizeLeadingNameGlyph(cap.optString("fb_name")),
                 cap.optString("grams").ifBlank { null },
                 cap.optString("value").ifBlank { null },
                 store.pricePerGram,

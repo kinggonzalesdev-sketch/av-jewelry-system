@@ -7,6 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { requirePermission } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 import { isConversationMediaEligible } from '@/lib/capture/media-window';
+import { sanitizeLeadingNameGlyph } from '@/lib/capture/name-sanitize';
 import { listPendingCaptures } from '@/lib/capture/pending';
 import {
   sendPendingCaptureToMessenger,
@@ -74,13 +75,14 @@ export async function sendCaptureToMessengerAction(
   return result;
 }
 
-/** OCR'd Facebook name off a capture's stored OCR JSON. */
+/** OCR'd Facebook name off a capture's stored OCR JSON, with a phantom leading O/0/° glyph stripped
+ *  (so name matching + the candidate picker use the same clean name as the display/sticker). */
 function ocrName(ocr: unknown): string {
   if (ocr && typeof ocr === 'object') {
     const o = ocr as Record<string, unknown>;
     for (const k of ['fbName', 'fb_name', 'name']) {
       const v = o[k];
-      if (typeof v === 'string' && v.trim()) return v.trim();
+      if (typeof v === 'string' && v.trim()) return sanitizeLeadingNameGlyph(v);
     }
   }
   return '';
@@ -315,7 +317,8 @@ export async function claimCaptureStickerAction(): Promise<CaptureStickerClaim> 
   return {
     claimed: true,
     captureRecordId: data.capture_record_id,
-    fbName: (data.fb_name ?? '').trim(),
+    // Strip a phantom leading O/0/° so the PC auto-print sticker shows the clean name too.
+    fbName: sanitizeLeadingNameGlyph((data.fb_name ?? '').trim()),
     grams: (data.grams ?? '').trim() || null,
     value: (data.value ?? '').trim() || null,
   };
