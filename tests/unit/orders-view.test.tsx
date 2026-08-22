@@ -193,6 +193,27 @@ describe('OrdersView — honest states + server-driven rendering', () => {
     expect(screen.getByText(/No orders match these filters/i)).toBeInTheDocument();
   });
 
+  it('BUG-1: typing a SPACE/Enter in the Admin delete-reason does NOT open the order (For Invoice) modal', async () => {
+    render(
+      <OrdersView
+        initialPage={page([row({ status: 'invoiced', customerDisplayName: 'Bug Test' })], 1)}
+        canManageOrders
+        isOwner={false}
+      />,
+    );
+    // Admin (non-owner) → the row Delete opens the REASON modal.
+    fireEvent.click(screen.getAllByTestId('delete-cancelled-order')[0]!);
+    const reason = await screen.findByTestId('delete-order-reason');
+    // Type a reason WITH a space, then fire the exact Space/Enter keydowns that used to bubble to the
+    // clickable <tr> and open its order details / For Invoice modal.
+    fireEvent.change(reason, { target: { value: 'wrong order' } });
+    fireEvent.keyDown(reason, { key: ' ', code: 'Space' });
+    fireEvent.keyDown(reason, { key: 'Enter', code: 'Enter' });
+    // The order details / For Invoice modal must NOT have opened; the reason modal is still the one up.
+    expect(screen.queryByTestId('order-modal-close')).not.toBeInTheDocument();
+    expect(screen.getByTestId('delete-order-reason')).toBeInTheDocument();
+  });
+
   it('offers exactly the status-card flows, defaulting to Total', () => {
     render(<OrdersView initialPage={page(sample, 5)} />);
     const select = screen.getByTestId<HTMLSelectElement>('orders-filter-flow');

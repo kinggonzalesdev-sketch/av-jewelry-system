@@ -191,7 +191,13 @@ function OrderRow({
       tabIndex={0}
       onClick={() => onOpen(order)}
       onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
+        // ONLY the row's OWN Enter/Space opens it. A keydown that BUBBLED up from a nested
+        // interactive element — e.g. typing a SPACE in the Admin "delete reason" / edit field of a
+        // modal this row renders — must NOT open the order (that was the "For Invoice popup during
+        // Delete" bug: React events bubble through the component tree, portal included, and the
+        // Modal intentionally does not stop keydown so Escape keeps working). currentTarget===target
+        // is true only when the <tr> itself is the focused element.
+        if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
           e.preventDefault();
           onOpen(order);
         }

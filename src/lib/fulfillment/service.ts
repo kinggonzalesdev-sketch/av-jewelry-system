@@ -601,18 +601,38 @@ export async function decideOwnerApproval(
     };
   }
 
+  const kind = String(data[0]?.action_kind ?? '');
+  // ORDERS one-step approval (Owner 2026-08-22): for an ORDER Edit/Delete, approving APPLIES the
+  // change in the SAME Super-Admin action — the Owner's required "Approve → order disappears / edit
+  // applies, no extra step". Every OTHER kind (inventory / layaway / scrap / attendance / customer)
+  // keeps the deliberate two-step decide→execute, so nothing outside Orders changes. This is safe:
+  // the decide UPDATE above is atomic (its `status='pending_owner_approval'` guard means only ONE
+  // concurrent/duplicate approve ever wins), and executeOwnerApproval is execute-once + re-validates
+  // state, so a chained apply can never run twice or on a stale target.
+  const ORDER_KINDS = new Set([
+    'official_order_delete',
+    'order_details_edit',
+    'order_add_item',
+    'order_remove_item',
+    'order_split_item',
+  ]);
+  const autoApply = decision === 'approved' && ORDER_KINDS.has(kind);
+
   await recordAuditEvent({
     action: 'owner_approval.decide',
     entityType: 'owner_approval_request',
     entityId: requestId,
     reason: note ?? null,
-    context: {
-      decision,
-      action_kind: data[0]?.action_kind,
-      // Deciding authorizes. It does not execute.
-      executed: false,
-    },
+    context: { decision, action_kind: kind, executed: autoApply },
   });
+
+  // Apply the approved order change now (execute-once inside). A failure here (e.g. the order gained
+  // linked records since the request) is surfaced to the Super Admin; the request stays approved and
+  // can be executed later once the blocker is cleared — nothing is left half-applied.
+  if (autoApply) {
+    const applied = await executeOwnerApproval(requestId);
+    if (!applied.ok) return applied;
+  }
 
   return { ok: true };
 }

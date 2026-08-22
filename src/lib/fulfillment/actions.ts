@@ -229,11 +229,13 @@ export async function decideApprovalAction(
   if (!result.ok) return { error: result.error, success: null };
 
   revalidatePath('/orders');
+  revalidatePath('/approvals');
   return {
     error: null,
     success:
       decision === 'approved'
-        ? 'Approved. Deciding is not executing — execute it separately when ready.'
+        ? // Order Edit/Delete now apply on approval; other kinds still execute separately.
+          'Approved. Order changes apply immediately; other approvals execute separately.'
         : 'Rejected. Nothing was executed.',
   };
 }

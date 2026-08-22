@@ -133,9 +133,25 @@ describe('server actions delegate authority', () => {
     expect(actions).not.toContain('roleKey');
   });
 
-  it('never claims a request executed anything', () => {
+  it('a request executes nothing on submit; order approvals apply, others execute separately', () => {
     expect(actions).toMatch(/Requesting executes nothing/);
-    expect(actions).toMatch(/Deciding is not executing/);
+    // Owner 2026-08-22: ORDER Edit/Delete now apply on approval (one Super-Admin step); every other
+    // kind still executes as a separate step. The old blanket "Deciding is not executing" is gone.
+    expect(actions).toMatch(/Order changes apply immediately/);
+    expect(actions).not.toMatch(/Deciding is not executing/);
+  });
+
+  it('applies an approved ORDER edit/delete inside the SAME decide step (one-step); other kinds do not', () => {
+    const service = read('src', 'lib', 'fulfillment', 'service.ts');
+    const decide = service.slice(
+      service.indexOf('export async function decideOwnerApproval'),
+      service.indexOf('export async function executeOwnerApproval'),
+    );
+    // Scoped to order kinds only — inventory/layaway/scrap/… keep the deliberate two-step.
+    expect(decide).toContain('ORDER_KINDS');
+    expect(decide).toContain('official_order_delete');
+    expect(decide).toContain('order_details_edit');
+    expect(decide).toContain('executeOwnerApproval(requestId)');
   });
 });
 
