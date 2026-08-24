@@ -280,6 +280,44 @@ export async function routePendingCapturesSystem(limit = 15): Promise<AutoRouteS
     outcomes[outcome] = (outcomes[outcome] ?? 0) + 1;
   }
 
+  // FALLBACK reactivation (Owner 2026-08-24, Case B): the webhook reactivates a customer's waiting
+  // captures the instant they reply, but as a DURABLE safety net the cron also re-checks recent
+  // 'link_sent' captures (AUTO TEXT sent, waiting for a reply) — so a missed/dropped reply webhook
+  // still turns the reply into an AUTO SS within a minute, with no browser open. Bounded to distinct
+  // recent conversations; each reactivation is a no-op unless the customer is now Photo-ready, and the
+  // atomic photo claim keeps it to one photo per capture even alongside the webhook path.
+  let reactivated = 0;
+  try {
+    const { data: waiting } = await admin
+      .from('capture_records')
+      .select('pancake_conversation_id')
+      .eq('source', 'floating')
+      .eq('is_test', false)
+      .is('official_order_id', null)
+      .is('confirmed', null)
+      .eq('message_status', 'link_sent')
+      .not('pancake_conversation_id', 'is', null)
+      .gt('created_at', new Date(Date.now() - 24 * 3600_000).toISOString())
+      .limit(30);
+    const convs = [
+      ...new Set(
+        ((waiting ?? []) as Array<{ pancake_conversation_id: string | null }>)
+          .map((w) => (w.pancake_conversation_id ?? '').trim())
+          .filter(Boolean),
+      ),
+    ];
+    for (const c of convs) {
+      try {
+        const r = await reactivatePhotoForConversationSystem(c);
+        reactivated += r.sent;
+      } catch {
+        /* best-effort per conversation */
+      }
+    }
+  } catch {
+    /* best-effort — never breaks the main sweep */
+  }
+
   const exhaustedRes = (await admin.rpc('mark_captures_route_exhausted')) as {
     data: number | null;
   };
@@ -288,7 +326,7 @@ export async function routePendingCapturesSystem(limit = 15): Promise<AutoRouteS
     ok: true,
     claimed: caps.length,
     exhausted: typeof exhausted === 'number' ? exhausted : 0,
-    outcomes,
+    outcomes: { ...outcomes, reactivated_photos: reactivated },
   };
 }
 
