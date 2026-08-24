@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
 
+import { routePendingCapturesSystem } from '@/lib/capture/auto-router';
 import {
   logLiveCommentReceipt,
   parsePancakeLiveComment,
@@ -99,6 +100,24 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   logLiveCommentReceipt({ isLive: true, live, stored: res.stored, http: 200 });
+
+  // IMMEDIATE routing (Owner 2026-08-24): a NEWLY-stored Live comment is exactly the context an
+  // awaiting Route-B capture was missing (the customer commented 2–5s after the capture). Run ONE
+  // durable routing sweep AFTER the 200 (never blocking Pancake's ack) so the AUTO TEXT fires within
+  // ~1s of the comment arriving — the every-minute cron becomes recovery-only, not the primary path.
+  // Only a genuinely NEW comment (res.stored) triggers it, so a duplicate/replayed webhook does not;
+  // idempotent + bounded at the DB layer (atomic claim_captures_to_route), so this, the mobile
+  // after() attempt, and the cron can never double-send.
+  if (res.stored) {
+    after(async () => {
+      try {
+        await routePendingCapturesSystem();
+      } catch {
+        /* best-effort — the every-minute cron is the durable recovery fallback */
+      }
+    });
+  }
+
   return NextResponse.json(
     { ok: true, live_comment: true, stored: res.stored },
     { status: 200 },

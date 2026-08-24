@@ -62,10 +62,18 @@ export type RouteOutcome =
   | 'photo_sent'
   | 'photo_failed'
   | 'text_sent'
+  | 'text_failed'
   | 'already_sent'
   | 'in_progress'
   | 'awaiting'
   | 'skipped';
+
+// Route B codes that are TERMINAL for this capture/comment — retrying cannot succeed, so the capture
+// is moved to a FINITE 'failed' immediately (finite "AUTO TEXT not sent") instead of looping the
+// bounded retry budget while the operator stares at "Preparing AUTO TEXT". A fresh capture/comment is
+// unaffected. 'reply_failed' = Pancake did not accept the reply (one-reply-per-comment); 'revoked' =
+// the link was revoked.
+const TERMINAL_ROUTE_B = new Set(['reply_failed', 'revoked']);
 
 /** Map a Route B result code to a FINITE, operator-safe reason (no tokens/PSIDs/ids). */
 function routeBReason(code: string): string {
@@ -79,6 +87,8 @@ function routeBReason(code: string): string {
       return 'AUTO TEXT pending · awaiting comment context';
     case 'in_progress':
       return 'AUTO TEXT sending…';
+    case 'reply_failed':
+      return 'AUTO TEXT not sent · Pancake did not accept the reply';
     case 'outside_window':
       return 'AUTO TEXT Failed · outside the 7-day reply window';
     case 'no_key':
@@ -210,11 +220,17 @@ async function routeOne(
     await setRouteReason(admin, id, 'AUTO TEXT Sent to Messenger ✓');
     return { outcome: rb.code === 'already_sent' ? 'already_sent' : 'text_sent', reason: rb.code };
   }
-  // Not sendable yet (comment webhook lag) OR a finite failure — keep 'awaiting_inbox' for the
-  // bounded retry; the DB moves it to 'failed' once the attempt budget/age is spent.
-  await admin.rpc('mark_capture_photo_state', { p_capture_id: id, p_status: 'awaiting_inbox' });
+  // A TERMINAL Route B failure → move the capture to a FINITE 'failed' now (finite "AUTO TEXT not
+  // sent"), never a "Preparing AUTO TEXT" loop against a dead comment. Otherwise it is not sendable
+  // YET (comment webhook lag) → keep 'awaiting_inbox' for the bounded retry; the DB moves it to
+  // 'failed' once the attempt budget/age is spent.
+  const finite = rb.code ? TERMINAL_ROUTE_B.has(rb.code) : false;
+  await admin.rpc('mark_capture_photo_state', {
+    p_capture_id: id,
+    p_status: finite ? 'failed' : 'awaiting_inbox',
+  });
   await setRouteReason(admin, id, routeBReason(rb.code));
-  return { outcome: 'awaiting', reason: rb.code };
+  return { outcome: finite ? 'text_failed' : 'awaiting', reason: rb.code };
 }
 
 export type AutoRouteSummary = {

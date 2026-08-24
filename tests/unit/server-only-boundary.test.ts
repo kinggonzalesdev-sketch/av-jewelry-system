@@ -86,12 +86,17 @@ describe('privileged Supabase client isolation', () => {
     //   - lib/capture/auto-router.ts — the DURABLE capture auto-router has no user session; its
     //     authority is the CRON_SECRET check in its only caller, /api/cron/capture-autosend. Every
     //     DB write goes through the SAME service_role-gated capture RPCs (atomic claim/finalize).
+    //   - lib/integrations/pancake.ts — resolvePancakeSenderUserId reads the (primary-super-admin
+    //     RLS-gated) Private Reply sender from pancake_integration_config with the service-role client
+    //     so an AUTOMATIC Private Reply (cron / mobile after() / durable router — no user session) can
+    //     resolve its sender. Read-only, a single non-sensitive id; no token ever leaves the server.
     const sanctioned = [
       /team-accounts\.ts$/,
       /pancake-system\.ts$/,
       /pancake-webhook\.ts$/,
       /share-link-resolve\.ts$/,
       /auto-router\.ts$/,
+      /[\\/]pancake\.ts$/,
     ];
 
     const sourceFiles = collectSourceFiles(srcDir).filter(

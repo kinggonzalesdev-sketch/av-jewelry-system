@@ -3,6 +3,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { AuthorizationError, requirePrimarySuperAdmin } from '@/lib/authz/guard';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { nameKey, normalizeName } from '@/lib/customers/matching';
 
@@ -2079,8 +2080,25 @@ export async function saveSelectedPancakeSender(input: {
  * no sender selected → no automatic private reply).
  */
 export async function resolvePancakeSenderUserId(): Promise<string | null> {
-  const sender = await getSelectedPancakeSender();
-  return sender?.userId ?? null;
+  // The AUTOMATIC send path runs server-side with NO primary-super-admin session — the durable
+  // router, the mobile after() immediate attempt, and the every-minute cron — yet
+  // pancake_integration_config is RLS-gated to the primary super admin (is_primary_super_admin).
+  // Reading it with the request session there returns null → 'sender_unset' → the AUTO TEXT never
+  // sends (it only worked when the primary Super Admin's own PC session happened to drive the send).
+  // Resolve the configured sender with the SERVICE-ROLE client so an automatic Private Reply can
+  // ALWAYS find its sender. Server-only read of a single non-sensitive integration id; fail-closed to
+  // null on any error (the caller then refuses to send — no sender, no reply).
+  try {
+    const admin = createAdminClient();
+    const { data } = await admin
+      .from('pancake_integration_config')
+      .select('sender_user_id')
+      .maybeSingle();
+    const id = ((data?.sender_user_id as string | null) ?? '').trim();
+    return id || null;
+  } catch {
+    return null;
+  }
 }
 
 export type PancakePrivateReplyResult = {

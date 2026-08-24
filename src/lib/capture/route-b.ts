@@ -235,6 +235,14 @@ export async function attemptSecureLinkPrivateReply(input: {
   const url = raw ? shareLinkUrl(raw) : null;
   if (link.revoked_at) return { ok: false, code: 'revoked', message: 'This link was revoked.' };
   if (link.private_reply_status === 'sent') return { ok: true, code: 'already_sent', url };
+  // TERMINAL (Owner 2026-08-24): a Private Reply was attempted for this exact comment and Pancake did
+  // not accept it. It must NOT be retried (one reply per comment — a retry risks a duplicate), so
+  // surface a FINITE failure. Without this the capture loops "AUTO TEXT sending…" against a dead link
+  // (claim_share_link_send returns 'in_progress' for a 'failed' row) and the UI shows a stuck
+  // "Preparing AUTO TEXT" for the whole retry budget. A FRESH capture/comment still sends normally.
+  if (link.private_reply_status === 'failed') {
+    return { ok: false, code: 'reply_failed', message: 'The Private Reply was not accepted — it cannot be retried for the same comment.' };
+  }
 
   // Build the mode-aware AUTO TEXT from the FINALIZED Capture business data BEFORE claiming, so an
   // incomplete Capture (unclassifiable value / missing grams-or-price / grams with no rate) never

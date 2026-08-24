@@ -137,6 +137,34 @@ describe('Route B — secure link Private Reply', () => {
     expect(vi.mocked(pancake.sendPancakePrivateReply)).not.toHaveBeenCalled();
   });
 
+  it('existing FAILED link → terminal reply_failed (never retries / re-sends the same comment)', async () => {
+    // Owner 2026-08-24: a Private Reply that Pancake did not accept is terminal for that comment
+    // (one reply per comment). Route B must surface a FINITE reply_failed, not loop the capture in
+    // "sending…" against the dead link.
+    const { supabase } = mockSupabase({
+      find_capture_share_link_for_capture: () => ({
+        found: true,
+        id: 'L1',
+        private_reply_status: 'failed',
+        token_ciphertext: CT(),
+        page_id: 'PAGE',
+        post_id: 'POST',
+        comment_id: 'C1',
+        facebook_psid: 'PSID',
+        conversation_id: 'PAGE_PSID',
+      }),
+    });
+    const r = await attemptSecureLinkPrivateReply({
+      supabase,
+      captureRecordId: 'cap1',
+      fbName: 'King',
+      value: '1.5',
+      screenshotPath: 'p.jpg',
+    });
+    expect(r).toMatchObject({ ok: false, code: 'reply_failed' });
+    expect(vi.mocked(pancake.sendPancakePrivateReply)).not.toHaveBeenCalled();
+  });
+
   it('no exact comment → Needs Review, no send', async () => {
     const { supabase } = mockSupabase({
       find_capture_share_link_for_capture: () => ({ found: false }),

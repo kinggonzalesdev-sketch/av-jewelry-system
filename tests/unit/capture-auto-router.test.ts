@@ -150,6 +150,20 @@ describe('durable auto-router — routing decisions', () => {
     expect(summary.outcomes.text_sent).toBe(1);
   });
 
+  it('TERMINAL Route B failure (reply_failed) → capture marked FAILED immediately, no "Preparing" loop', async () => {
+    claimedBatch = [cap()];
+    vi.mocked(mediaWindow.isConversationMediaEligible).mockResolvedValue(false);
+    vi.mocked(routeB.attemptSecureLinkPrivateReply).mockResolvedValue({
+      ok: false,
+      code: 'reply_failed',
+      message: 'not accepted',
+    });
+    const summary = await routePendingCapturesSystem();
+    expect(photoStateOf()).toBe('failed');
+    expect(reasonOf()).toContain('AUTO TEXT not sent');
+    expect(summary.outcomes.text_failed).toBe(1);
+  });
+
   it('always finalizes the sweep by moving budget-exhausted captures to a finite state', async () => {
     claimedBatch = [];
     const summary = await routePendingCapturesSystem();
