@@ -43,7 +43,7 @@ export function CaptureLinkPanel({
   link,
   onChanged,
   onRecheck,
-  linkSent = false,
+  messageStatus = null,
 }: {
   captureRecordId: string;
   link: EffectiveCaptureLink;
@@ -52,9 +52,10 @@ export function CaptureLinkPanel({
    *  Pancake and retries the match) — the fix for a commenter the realtime webhook was
    *  slow to deliver. Returns the fresh link. When omitted, no Re-check button shows. */
   onRecheck?: (captureRecordId: string) => Promise<CaptureLinkResult>;
-  /** Route B already sent a secure-link Private Reply (message_status 'link_sent') — shown in
-   *  place of "Photo waiting" so the operator sees the screenshot was delivered. */
-  linkSent?: boolean;
+  /** The capture's durable routing state (Owner 2026-08-24) — drives the bottom wording so
+   *  "Photo waiting" is never a dead-end: 'sent' → Photo sent ✓, 'link_sent' → Waiting for reply
+   *  to send screenshot, 'failed' → AUTO TEXT not sent, else → Preparing AUTO TEXT. */
+  messageStatus?: string | null;
 }) {
   const [picking, setPicking] = useState(false);
   const [candidates, setCandidates] = useState<CaptureCandidateOption[] | null>(null);
@@ -114,26 +115,45 @@ export function CaptureLinkPanel({
           eligibility. A comment-only customer is linked but the normal Inbox PHOTO route will be
           rejected by Facebook until they send a genuine Inbox DM — so show the photo state too. */}
       <span className="text-emerald-600">· Chat linked</span>{' '}
-      {link.photoEligible ? (
+      {/* The bottom wording is state-accurate, never a dead-end "Photo waiting" (Owner 2026-08-24):
+          photo already sent → done; photo-eligible now → Photo ready; AUTO TEXT delivered → waiting
+          for the reply that opens the photo window; finite failure → AUTO TEXT not sent; otherwise
+          the server router is still working → Preparing AUTO TEXT. "Waiting for reply to send
+          screenshot" appears ONLY after a confirmed AUTO TEXT success. */}
+      {messageStatus === 'sent' ? (
         <span
           className="text-emerald-600"
-          title="The customer has a recent Inbox message — a photo can be auto-sent now."
+          title="The actual screenshot photo was sent to the customer."
+        >
+          · Photo sent ✓
+        </span>
+      ) : link.photoEligible ? (
+        <span
+          className="text-emerald-600"
+          title="The customer has a recent Inbox message — a photo can be sent now."
         >
           · Photo ready
         </span>
-      ) : linkSent ? (
+      ) : messageStatus === 'link_sent' ? (
         <span
           className="text-sky-600"
-          title="A secure screenshot link was sent to the customer via a Pancake Private Reply — waiting for their reply."
+          title="The AUTO TEXT reached the customer via a Pancake Private Reply. When they reply, the Inbox window opens and the actual screenshot can be sent."
         >
-          · Link sent ✓ · waiting for reply
+          · Waiting for reply to send screenshot
+        </span>
+      ) : messageStatus === 'failed' ? (
+        <span
+          className="text-amber-700"
+          title="The AUTO TEXT could not be sent automatically (no privately-replyable comment / outside the window). Use Open chat to message the customer."
+        >
+          · AUTO TEXT not sent
         </span>
       ) : (
         <span
-          className="text-amber-700"
-          title="Waiting for the customer to send an Inbox message — a normal photo can't be auto-sent yet (a Live comment isn't enough)."
+          className="text-sky-600"
+          title="Sending the AUTO TEXT to the customer automatically…"
         >
-          · Photo waiting
+          · Preparing AUTO TEXT
         </span>
       )}
     </span>

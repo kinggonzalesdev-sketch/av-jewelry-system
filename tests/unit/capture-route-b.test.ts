@@ -172,6 +172,35 @@ describe('Route B — secure link Private Reply', () => {
     expect(vi.mocked(pancake.sendPancakePrivateReply)).not.toHaveBeenCalled();
   });
 
+  it('no encryption key → still sends the LINK-FREE AUTO TEXT (secure /m link decoupled)', async () => {
+    // Owner 2026-08-24: the AUTO TEXT carries business details, no /m link — a missing
+    // CAPTURE_LINK_ENC_KEY (null token ciphertext) must NOT block delivery. Idempotency (the
+    // share-link row) is still created; only the optional /m token is absent.
+    const prev = process.env.CAPTURE_LINK_ENC_KEY;
+    delete process.env.CAPTURE_LINK_ENC_KEY;
+    const { supabase } = mockSupabase({
+      find_capture_share_link_for_capture: () => ({ found: false }),
+      resolve_exact_live_comment: () => RESOLVED,
+      upsert_capture_share_link: () => ({
+        id: 'L1',
+        private_reply_status: 'pending',
+        token_ciphertext: null,
+      }),
+      claim_share_link_send: () => 'claimed',
+      finalize_share_link_send: () => null,
+    });
+    const r = await attemptSecureLinkPrivateReply({
+      supabase,
+      captureRecordId: 'cap1',
+      fbName: 'King Gonzales',
+      value: '1.5',
+      screenshotPath: 'p.jpg',
+    });
+    expect(r).toMatchObject({ ok: true, code: 'sent' });
+    expect(vi.mocked(pancake.sendPancakePrivateReply)).toHaveBeenCalledTimes(1);
+    process.env.CAPTURE_LINK_ENC_KEY = prev;
+  });
+
   it('no screenshot → no send', async () => {
     const { supabase } = mockSupabase({});
     const r = await attemptSecureLinkPrivateReply({

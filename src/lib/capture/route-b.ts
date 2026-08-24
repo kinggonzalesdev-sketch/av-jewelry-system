@@ -196,11 +196,12 @@ export async function attemptSecureLinkPrivateReply(input: {
         message: 'Outside the 7-day Private Reply window — Open FB Chat.',
       };
     }
+    // DECOUPLED from the secure /m/ link (Owner 2026-08-24): the new AUTO TEXT is link-free, so the
+    // AES token is OPTIONAL. We still create the share-link row purely as the idempotency ledger
+    // (UNIQUE page,post,comment → one Private Reply per comment) and always store the SHA-256 hash
+    // (needs no key). The ciphertext (only the historical /m/ link uses it) may be null when
+    // CAPTURE_LINK_ENC_KEY is absent — a missing key must NEVER block a link-free AUTO TEXT.
     const tok = newShareToken();
-    if (!tok.ciphertext) {
-      await auditRouteB(captureRecordId, 'SECURE_LINK', 'failed', 'no_key');
-      return { ok: false, code: 'no_key', message: 'Secure-link key not configured.' };
-    }
     const up = (
       await supabase.rpc('upsert_capture_share_link', {
         p_capture_id: captureRecordId,
