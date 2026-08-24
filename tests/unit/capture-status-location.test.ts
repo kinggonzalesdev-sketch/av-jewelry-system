@@ -36,6 +36,8 @@ describe('Incoming Captures — messaging status lives under Grams/Price, not in
 
   it('the control still owns the Send action (actual photo), separate from the status', () => {
     expect(control).toContain('incoming-send-');
-    expect(control).toContain('photoEligible && !photoSent');
+    // Manual Send is gated by a LINKED chat (a recipient), independent of the photo-eligibility /
+    // reply wait (Owner 2026-08-24, Issue 3).
+    expect(control).toContain('chatLinked && !photoSent');
   });
 });

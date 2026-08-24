@@ -257,11 +257,26 @@ export async function routePendingCapturesSystem(limit = 15): Promise<AutoRouteS
   const outcomes: Record<string, number> = {};
   for (const cap of caps) {
     let outcome: RouteOutcome = 'skipped';
+    let reason = 'exception';
     try {
-      ({ outcome } = await routeOne(admin, activePage, cap));
+      ({ outcome, reason } = await routeOne(admin, activePage, cap));
     } catch {
       outcome = 'skipped';
     }
+    // PII-SAFE dev log of the whole routing decision (Owner 2026-08-24): capture id + conversation
+    // TAIL only + the outcome/reason. NEVER a name, full PSID, token, or message body — the durable,
+    // stage-level trail lives in audit_events (action 'capture_secure_link'). Lets a dev see exactly
+    // which stage each capture stopped at (routed / awaiting / text_failed / …) without a refresh.
+    console.info(
+      '[capture-router]',
+      JSON.stringify({
+        capture: cap.id.slice(-6),
+        conv_tail: (cap.pancake_conversation_id ?? '').slice(-4) || null,
+        has_screenshot: !!cap.screenshot_path,
+        outcome,
+        reason,
+      }),
+    );
     outcomes[outcome] = (outcomes[outcome] ?? 0) + 1;
   }
 
@@ -275,4 +290,100 @@ export async function routePendingCapturesSystem(limit = 15): Promise<AutoRouteS
     exhausted: typeof exhausted === 'number' ? exhausted : 0,
     outcomes,
   };
+}
+
+/**
+ * REACTIVATE a customer's waiting captures the instant they genuinely reply (Owner 2026-08-24, Case
+ * B). A capture that already sent its AUTO TEXT is 'link_sent' and is NOT re-claimed by the durable
+ * router (that queue is for AUTO-TEXT-not-yet-sent rows) — so nothing re-checked Route A when the
+ * customer finally replied and their Inbox window opened. The Pancake webhook calls this the moment a
+ * genuine Inbox DM is stored: it re-checks media eligibility for that EXACT conversation and, if the
+ * customer is now Photo-ready, sends the actual screenshot PHOTO (AUTO SS) for their OWN waiting
+ * captures.
+ *
+ * EXACT IDENTITY only — matched by the conversation id (never a similar name). Excludes ordered /
+ * dismissed / already-photo-sent / old (>3 days) captures, so an unrelated or historical capture is
+ * never woken. Idempotent + bounded: `claim_capture_photo_send` guarantees one photo per capture even
+ * against the cron / a manual Send / a duplicate webhook. Server-side; needs no open browser / refresh.
+ */
+export async function reactivatePhotoForConversationSystem(
+  conversationId: string,
+): Promise<{ eligible: boolean; sent: number; considered: number }> {
+  const conv = (conversationId ?? '').trim();
+  if (!conv) return { eligible: false, sent: 0, considered: 0 };
+  const admin = createAdminClient();
+  const activePage = await getActivePancakePageId();
+  if (!conversationBelongsToPage(conv, activePage)) {
+    return { eligible: false, sent: 0, considered: 0 };
+  }
+  // Only send a photo when the customer NOW has an open Inbox window (their genuine reply opened it).
+  const eligible = await isConversationMediaEligible(admin, conv);
+  if (!eligible) return { eligible: false, sent: 0, considered: 0 };
+
+  // Match by EXACT identity — the same conversation id, or (robust to any page-prefix formatting) the
+  // same customer PSID. Never a display-name match, so a similarly-named customer is never woken.
+  const psid = psidFromConversationId(conv);
+  const { data } = await admin
+    .from('capture_records')
+    .select('id, screenshot_path, pancake_conversation_id')
+    .eq('source', 'floating')
+    .eq('is_test', false)
+    .is('official_order_id', null)
+    .is('confirmed', null)
+    .not('pancake_conversation_id', 'is', null)
+    .in('message_status', ['link_sent', 'awaiting_inbox', 'pending'])
+    .not('screenshot_path', 'is', null)
+    .gt('created_at', new Date(Date.now() - 3 * 86400_000).toISOString())
+    .order('captured_at', { ascending: false })
+    .limit(50);
+  const caps = ((data ?? []) as Array<{
+    id: string;
+    screenshot_path: string | null;
+    pancake_conversation_id: string | null;
+  }>)
+    .filter(
+      (c) =>
+        c.pancake_conversation_id === conv ||
+        (psid !== null && psidFromConversationId(c.pancake_conversation_id) === psid),
+    )
+    .slice(0, 10);
+
+  let sent = 0;
+  for (const cap of caps) {
+    const path = (cap.screenshot_path ?? '').trim();
+    if (!path) continue;
+    const signed = (await admin.storage
+      .from(CAPTURE_BUCKET)
+      .createSignedUrl(path, 600)) as { data: { signedUrl?: string } | null };
+    const url = signed.data?.signedUrl ?? null;
+    if (!url) continue;
+    // Atomic one-photo-per-capture claim (link_sent → sending); already_sent / in_progress → skip.
+    const claim = (
+      await admin.rpc('claim_capture_photo_send', { p_capture_id: cap.id, p_conversation_id: conv })
+    ).data as string;
+    if (claim !== 'claimed') continue;
+    const res = await sendPancakeConversationMessage({
+      conversationId: conv,
+      message: '',
+      attachmentUrl: url,
+    });
+    await admin.rpc('finalize_capture_photo_send', {
+      p_capture_id: cap.id,
+      p_ok: res.ok,
+      p_pancake_message_id: res.pancakeMessageId,
+      p_conversation_id: conv,
+    });
+    // The AUTO TEXT history stays in capture_share_links + audit_events; the row's live status now
+    // reflects the PHOTO. A failed photo leaves it reviewable and Send stays enabled as the fallback.
+    await admin.rpc('set_capture_route_reason', {
+      p_capture_id: cap.id,
+      p_reason: res.ok ? 'AUTO SS Sent to Messenger ✓' : `AUTO SS Failed · ${res.code}`,
+    });
+    if (res.ok) sent += 1;
+  }
+  console.info(
+    '[capture-reactivate]',
+    JSON.stringify({ conv_tail: conv.slice(-4), considered: caps.length, sent }),
+  );
+  return { eligible: true, sent, considered: caps.length };
 }

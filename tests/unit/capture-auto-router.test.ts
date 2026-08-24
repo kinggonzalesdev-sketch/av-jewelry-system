@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { routePendingCapturesSystem } from '@/lib/capture/auto-router';
+import {
+  reactivatePhotoForConversationSystem,
+  routePendingCapturesSystem,
+} from '@/lib/capture/auto-router';
 import * as mediaWindow from '@/lib/capture/media-window';
 import * as routeB from '@/lib/capture/route-b';
 import * as pancake from '@/lib/integrations/pancake';
@@ -8,6 +11,8 @@ import * as pancake from '@/lib/integrations/pancake';
 // The router builds an admin client + calls RPCs on it; capture the rpc calls to assert routing.
 const rpcCalls: Array<{ name: string; args: unknown }> = [];
 let claimedBatch: Array<Record<string, unknown>> = [];
+// Rows the .from('capture_records') query resolves to (used by the reactivation path).
+let captureRows: Array<Record<string, unknown>> = [];
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
@@ -17,6 +22,13 @@ vi.mock('@/lib/supabase/admin', () => ({
       if (name === 'mark_captures_route_exhausted') return Promise.resolve({ data: 0, error: null });
       if (name === 'claim_capture_photo_send') return Promise.resolve({ data: 'claimed', error: null });
       return Promise.resolve({ data: null, error: null });
+    },
+    // Chainable query builder whose terminal .limit() resolves to captureRows (reactivation path).
+    from: () => {
+      const b: Record<string, unknown> = {};
+      for (const m of ['select', 'eq', 'is', 'not', 'in', 'gt', 'order']) b[m] = () => b;
+      b.limit = () => Promise.resolve({ data: captureRows, error: null });
+      return b;
     },
     storage: {
       from: () => ({
@@ -66,6 +78,7 @@ describe('durable auto-router — routing decisions', () => {
   beforeEach(() => {
     rpcCalls.length = 0;
     claimedBatch = [];
+    captureRows = [];
     vi.mocked(pancake.sendPancakeConversationMessage).mockClear();
     vi.mocked(routeB.attemptSecureLinkPrivateReply).mockReset();
     vi.mocked(mediaWindow.isConversationMediaEligible).mockReset();
@@ -169,5 +182,49 @@ describe('durable auto-router — routing decisions', () => {
     const summary = await routePendingCapturesSystem();
     expect(rpcCalls.some((c) => c.name === 'mark_captures_route_exhausted')).toBe(true);
     expect(summary.claimed).toBe(0);
+  });
+});
+
+describe('reactivatePhotoForConversationSystem — genuine reply → AUTO SS (Case B)', () => {
+  beforeEach(() => {
+    rpcCalls.length = 0;
+    captureRows = [];
+    vi.mocked(pancake.sendPancakeConversationMessage).mockClear();
+    vi.mocked(mediaWindow.isConversationMediaEligible).mockReset();
+  });
+
+  it('customer now eligible + their waiting link_sent capture → sends the actual PHOTO', async () => {
+    vi.mocked(mediaWindow.isConversationMediaEligible).mockResolvedValue(true);
+    captureRows = [
+      { id: 'capX', screenshot_path: 'p.jpg', pancake_conversation_id: 'PAGE_777' },
+    ];
+    const r = await reactivatePhotoForConversationSystem('PAGE_777');
+    expect(vi.mocked(pancake.sendPancakeConversationMessage)).toHaveBeenCalledTimes(1);
+    expect(rpcCalls.some((c) => c.name === 'claim_capture_photo_send')).toBe(true);
+    expect(r.sent).toBe(1);
+  });
+
+  it('NOT eligible (a mere comment, window not open) → sends nothing', async () => {
+    vi.mocked(mediaWindow.isConversationMediaEligible).mockResolvedValue(false);
+    captureRows = [{ id: 'capX', screenshot_path: 'p.jpg', pancake_conversation_id: 'PAGE_777' }];
+    const r = await reactivatePhotoForConversationSystem('PAGE_777');
+    expect(vi.mocked(pancake.sendPancakeConversationMessage)).not.toHaveBeenCalled();
+    expect(r.eligible).toBe(false);
+    expect(r.sent).toBe(0);
+  });
+
+  it('exact identity only — a different-PSID capture is NOT woken', async () => {
+    vi.mocked(mediaWindow.isConversationMediaEligible).mockResolvedValue(true);
+    captureRows = [{ id: 'other', screenshot_path: 'p.jpg', pancake_conversation_id: 'PAGE_999' }];
+    const r = await reactivatePhotoForConversationSystem('PAGE_777');
+    expect(vi.mocked(pancake.sendPancakeConversationMessage)).not.toHaveBeenCalled();
+    expect(r.considered).toBe(0);
+  });
+
+  it('off-page conversation → no-op', async () => {
+    vi.mocked(mediaWindow.isConversationMediaEligible).mockResolvedValue(true);
+    const r = await reactivatePhotoForConversationSystem('OTHERPAGE_1');
+    expect(r.eligible).toBe(false);
+    expect(vi.mocked(pancake.sendPancakeConversationMessage)).not.toHaveBeenCalled();
   });
 });

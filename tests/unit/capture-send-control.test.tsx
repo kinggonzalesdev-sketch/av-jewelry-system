@@ -4,13 +4,16 @@ import { describe, expect, it, vi } from 'vitest';
 import { CaptureSendControl } from '@/components/capture/capture-send-control';
 
 /**
- * The ACTION control (Owner 2026-08-22 — Send is ALWAYS visible; only its enabled state changes).
- * Send ALWAYS means the actual screenshot PHOTO. Status chips live under Grams/Price, never here.
+ * The ACTION control (Owner 2026-08-24, Issue 3 — MANUAL SEND is INDEPENDENT of AUTO SCREENSHOT).
+ * Send is ALWAYS visible; it is ENABLED whenever the chat is LINKED (a recipient exists) + a
+ * screenshot exists + the photo hasn't already gone out + it isn't a test — it does NOT wait for a
+ * customer reply / photo-eligibility. Status chips live under Grams/Price, never here.
  */
 const ID = 'cap-1';
 const base = {
   captureRecordId: ID,
   photoEligible: false,
+  chatLinked: true,
   hasScreenshot: true,
   isTest: false,
   sending: false,
@@ -22,33 +25,35 @@ const base = {
 };
 const send = () => screen.getByTestId(`incoming-send-${ID}`);
 
-describe('CaptureSendControl — Send always visible, enabled by state', () => {
-  it('Photo ready + unsent + screenshot → Send visible + ENABLED; clicking sends the photo', () => {
+describe('CaptureSendControl — manual Send is independent of the reply wait', () => {
+  it('Linked + unsent + screenshot → ENABLED even while Photo waiting; clicking sends', () => {
     const onSend = vi.fn();
-    render(<CaptureSendControl {...base} photoEligible onSend={onSend} onSave={vi.fn()} />);
+    render(<CaptureSendControl {...base} photoEligible={false} onSend={onSend} onSave={vi.fn()} />);
     expect(send()).toBeInTheDocument();
     expect(send()).not.toBeDisabled();
     fireEvent.click(send());
     expect(onSend).toHaveBeenCalledTimes(1);
   });
 
-  it('Photo waiting → Send VISIBLE but DISABLED', () => {
-    render(<CaptureSendControl {...base} photoEligible={false} messageStatus="awaiting_inbox" onSend={vi.fn()} onSave={vi.fn()} />);
-    expect(send()).toBeDisabled();
+  it('Linked + Photo ready → ENABLED', () => {
+    render(<CaptureSendControl {...base} photoEligible onSend={vi.fn()} onSave={vi.fn()} />);
+    expect(send()).not.toBeDisabled();
   });
 
-  it('AUTO TEXT sent + Photo waiting → Send VISIBLE but DISABLED', () => {
-    render(<CaptureSendControl {...base} photoEligible={false} messageStatus="link_sent" onSend={vi.fn()} onSave={vi.fn()} />);
+  it('AUTO TEXT sent + waiting for reply (link_sent) → Send STILL ENABLED (the Issue-3 case)', () => {
+    render(
+      <CaptureSendControl {...base} messageStatus="link_sent" photoEligible={false} onSend={vi.fn()} onSave={vi.fn()} />,
+    );
+    expect(send()).not.toBeDisabled();
+  });
+
+  it('NOT linked → Send VISIBLE but DISABLED (no recipient)', () => {
+    render(<CaptureSendControl {...base} chatLinked={false} photoEligible onSend={vi.fn()} onSave={vi.fn()} />);
     expect(send()).toBeInTheDocument();
     expect(send()).toBeDisabled();
   });
 
-  it('TEXT sent → LATER Photo ready → Send auto-ENABLES', () => {
-    render(<CaptureSendControl {...base} messageStatus="link_sent" photoEligible onSend={vi.fn()} onSave={vi.fn()} />);
-    expect(send()).not.toBeDisabled();
-  });
-
-  it('AUTO SS already sent → Send VISIBLE but DISABLED (no duplicate photo)', () => {
+  it('AUTO SS already sent → Send VISIBLE but DISABLED (one photo per capture)', () => {
     const onSend = vi.fn();
     render(<CaptureSendControl {...base} messageStatus="sent" photoEligible onSend={onSend} onSave={vi.fn()} />);
     expect(send()).toBeInTheDocument();
@@ -58,7 +63,7 @@ describe('CaptureSendControl — Send always visible, enabled by state', () => {
   });
 
   it('Screenshot missing → Send VISIBLE but DISABLED', () => {
-    render(<CaptureSendControl {...base} photoEligible hasScreenshot={false} onSend={vi.fn()} onSave={vi.fn()} />);
+    render(<CaptureSendControl {...base} hasScreenshot={false} onSend={vi.fn()} onSave={vi.fn()} />);
     expect(send()).toBeDisabled();
   });
 
@@ -70,9 +75,9 @@ describe('CaptureSendControl — Send always visible, enabled by state', () => {
   it('💾 Save appears ONLY when dirty; clicking calls onSave, never onSend; Send stays visible', () => {
     const onSend = vi.fn();
     const onSave = vi.fn();
-    const { rerender } = render(<CaptureSendControl {...base} photoEligible onSend={onSend} onSave={onSave} />);
+    const { rerender } = render(<CaptureSendControl {...base} onSend={onSend} onSave={onSave} />);
     expect(screen.queryByTestId(`incoming-save-${ID}`)).toBeNull();
-    rerender(<CaptureSendControl {...base} photoEligible dirty onSend={onSend} onSave={onSave} />);
+    rerender(<CaptureSendControl {...base} dirty onSend={onSend} onSave={onSave} />);
     fireEvent.click(screen.getByTestId(`incoming-save-${ID}`));
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(onSend).not.toHaveBeenCalled();

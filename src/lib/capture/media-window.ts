@@ -43,19 +43,34 @@ function obj(v: unknown): Record<string, unknown> | null {
  *   - it carries a real message payload (a message id `mid`, `text`, or `attachments`) — an empty
  *     or unrecognized shape is ambiguous and therefore NOT eligible.
  */
+/**
+ * A real post / comment / reaction REFERENCE carries an id or a type. Pancake attaches an EMPTY
+ * `post: {}` (no id, no type) to a GENUINE Messenger INBOX reply, so an empty object must NOT
+ * disqualify it (Owner 2026-08-24 — King's real reply had `data.post = {}` and `message.type = INBOX`
+ * and was being wrongly rejected). Only a POPULATED reference means the event is post-linked.
+ */
+function isRealRef(v: unknown): boolean {
+  const o = obj(v);
+  if (!o) return false;
+  const id = typeof o.id === 'string' ? o.id.trim() : '';
+  const type = typeof o.type === 'string' ? o.type.trim() : '';
+  return id !== '' || type !== '';
+}
+
 export function isGenuineInboxDmEvent(raw: unknown, psid: string): boolean {
   if (!psid) return false;
   const data = obj(obj(raw)?.data);
   if (!data) return false;
-  // Post-linked / comment / reaction activity is NEVER an inbox DM — even when it carries a
-  // `message` block (a Facebook Live comment-with-photo does exactly this). This is the check
-  // that `post_type is null` alone missed: Bavelyn's comment events had post_type null but a
-  // populated `data.post`.
-  if (data.post != null || data.comment != null || data.reaction != null) return false;
+  // Post-linked / comment / reaction activity is NEVER an inbox DM (a Facebook Live comment-with-photo
+  // carries a `message` block too). But only a POPULATED reference counts — Bavelyn's comment events
+  // had a real `data.post`; a genuine INBOX reply can carry an EMPTY `data.post: {}` that must NOT
+  // disqualify it (the King false-negative).
+  if (isRealRef(data.post) || isRealRef(data.comment) || isRealRef(data.reaction)) return false;
   const message = obj(data.message);
   if (!message) return false;
-  // A comment-originated message can carry its comment/post id ON the message object itself.
-  if (message.comment_id != null || message.post_id != null || message.post != null) {
+  // A comment-originated message can carry its comment/post id ON the message object itself (again,
+  // only a POPULATED post reference disqualifies).
+  if (message.comment_id != null || message.post_id != null || isRealRef(message.post)) {
     return false;
   }
   // Never a Page echo (an outbound Page message mirrored back into the webhook stream).
@@ -63,14 +78,17 @@ export function isGenuineInboxDmEvent(raw: unknown, psid: string): boolean {
   // Direction: the sender must be EXACTLY the customer PSID (customer → Page).
   const fromId = obj(message.from)?.id;
   if (typeof fromId !== 'string' || fromId !== psid) return false;
-  // Positive proof of a real message payload; anything else is ambiguous → not eligible.
+  // Positive proof of a real inbox message: Pancake's explicit `type === 'INBOX'` (King's genuine
+  // reply had this with no mid captured), or a message id / text / attachments.
   const mid = message.mid;
   const text = message.text;
   const attachments = message.attachments;
+  const isInboxType =
+    typeof message.type === 'string' && message.type.trim().toUpperCase() === 'INBOX';
   const hasMid = typeof mid === 'string' && mid.trim() !== '';
   const hasText = typeof text === 'string' && text.trim() !== '';
   const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
-  return hasMid || hasText || hasAttachments;
+  return isInboxType || hasMid || hasText || hasAttachments;
 }
 
 /**

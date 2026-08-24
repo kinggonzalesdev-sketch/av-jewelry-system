@@ -66,6 +66,19 @@ const ambiguousNoFrom = () => ({ data: { message: { text: 'Hi' } } });
 const dataComment = (psid = PSID) => ({
   data: { comment: { id: 'c1' }, message: { from: { id: psid }, text: 'x' } },
 });
+/** King's REAL reply (Owner 2026-08-24): a genuine Messenger INBOX message that Pancake tagged with
+ *  an EMPTY `data.post: {}` (no id, no type) and no mid — must be TRUE (the false-negative fix). */
+const inboxReplyEmptyPost = (psid = PSID) => ({
+  data: {
+    post: {},
+    message: { type: 'INBOX', from: { id: psid } },
+    conversation: { id: `${PAGE}_${psid}` },
+  },
+});
+/** A POPULATED post ref on an INBOX-typed message — still post-linked → must stay FALSE (regression). */
+const inboxWithRealPost = (psid = PSID) => ({
+  data: { post: { id: 'p1' }, message: { type: 'INBOX', from: { id: psid }, text: 'hi' } },
+});
 
 describe('isGenuineInboxDmEvent (pure structure gate)', () => {
   it('TRUE for a genuine customer Inbox text DM (case 5)', () => {
@@ -97,6 +110,12 @@ describe('isGenuineInboxDmEvent (pure structure gate)', () => {
   });
   it('FALSE for a data.comment payload', () => {
     expect(isGenuineInboxDmEvent(dataComment(), PSID)).toBe(false);
+  });
+  it('TRUE for a genuine INBOX reply carrying an EMPTY data.post {} (King false-negative fix)', () => {
+    expect(isGenuineInboxDmEvent(inboxReplyEmptyPost(), PSID)).toBe(true);
+  });
+  it('FALSE for an INBOX-typed message with a POPULATED data.post (Bavelyn regression guard)', () => {
+    expect(isGenuineInboxDmEvent(inboxWithRealPost(), PSID)).toBe(false);
   });
   it('FALSE when the psid is empty (fail-safe)', () => {
     expect(isGenuineInboxDmEvent(dmText(), '')).toBe(false);
@@ -133,6 +152,15 @@ describe('isConversationMediaEligible — genuine-Inbox-DM gate', () => {
   it('TRUE: a genuine DM inside window even amid Live-comment noise (case 8)', async () => {
     const ok = await isConversationMediaEligible(
       supabaseReturning([ev(liveComment()), ev(dmText()), ev(reaction())]),
+      CONV,
+      { windowHours: 24 },
+    );
+    expect(ok).toBe(true);
+  });
+
+  it('TRUE: a genuine INBOX reply with an EMPTY data.post opens the window (King reactivation)', async () => {
+    const ok = await isConversationMediaEligible(
+      supabaseReturning([ev(inboxReplyEmptyPost())]),
       CONV,
       { windowHours: 24 },
     );

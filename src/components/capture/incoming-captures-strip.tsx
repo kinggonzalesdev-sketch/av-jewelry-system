@@ -9,6 +9,7 @@ import {
   markCaptureStickerPrintedAction,
   releaseCaptureStickerAction,
   resolveCaptureLinkAction,
+  retryCaptureAutoTextAction,
   saveCaptureEditsAction,
   sendCaptureToMessengerAction,
 } from '@/lib/capture/pending-actions';
@@ -95,6 +96,8 @@ export function IncomingCapturesStrip({
   const [sendingId, setSendingId] = useState<string | null>(null);
   // The capture whose operator edits (grams/note) are mid-save (per-row "Save" spinner).
   const [savingId, setSavingId] = useState<string | null>(null);
+  // The capture whose AUTO TEXT is being retried (per-row "Retry Auto Text" spinner).
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Operator's grams correction per capture (for the review case + manual reprint),
   // and a short per-row status note ("Printed ✓").
@@ -552,23 +555,42 @@ export function IncomingCapturesStrip({
         setError(res.error);
         return;
       }
-      // Success → the ACTUAL screenshot PHOTO went out. Reflect it immediately in the dedicated
-      // status area under Grams/Price (message_status 'sent' → "AUTO SS Sent to Messenger ✓"); the
-      // server revalidation confirms it. No separate note (the status line is the single source).
-      setRows((cur) =>
-        cur.map((x) =>
-          x.captureRecordId === r.captureRecordId ? { ...x, messageStatus: 'sent' } : x,
-        ),
-      );
-      setNotes((cur) => {
-        const next = { ...cur };
-        delete next[r.captureRecordId];
-        return next;
-      });
+      // HONEST feedback (Owner 2026-08-24): do NOT force a photo-'sent' status. The server set the
+      // TRUE message_status (a real photo → 'sent'; a Private Reply TEXT / already-sent → 'link_sent'),
+      // and the capture_records realtime UPDATE + reconcile reflect it. Optimistically forcing 'sent'
+      // here would fake an "AUTO SS Sent ✓" for a customer whose photo never actually went out. Show
+      // the action's own message as a transient note; the status line follows the DB.
+      setNotes((cur) => ({ ...cur, [r.captureRecordId]: res.message || 'Sent ✓' }));
     } catch {
       setError('Could not send to Messenger.');
     } finally {
       setSendingId(null);
+    }
+  };
+
+  // "Retry Auto Text" (Owner 2026-08-24, Issue 1) — re-attempt a FAILED AUTO TEXT, server-side and
+  // immediate. Idempotent: a real 'sent'/'link_sent' success is never reopened, so retry can't
+  // duplicate. Realtime + the reconcile reload reflect the true outcome.
+  const retryAutoText = async (r: PendingCaptureRow) => {
+    if (retryingId) return;
+    setRetryingId(r.captureRecordId);
+    setError(null);
+    try {
+      const res = await retryCaptureAutoTextAction(r.captureRecordId);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setRows((cur) =>
+        cur.map((x) =>
+          x.captureRecordId === r.captureRecordId ? { ...x, messageStatus: 'awaiting_inbox' } : x,
+        ),
+      );
+      setNotes((cur) => ({ ...cur, [r.captureRecordId]: res.message }));
+    } catch {
+      setError('Could not retry the AUTO TEXT.');
+    } finally {
+      setRetryingId(null);
     }
   };
 
@@ -818,8 +840,11 @@ export function IncomingCapturesStrip({
                           : r.messageStatus === 'link_sent'
                             ? 'AUTO TEXT Sent to Messenger ✓'
                             : null;
+                      // A FINITE failure shows a clear ⚠ state + a Retry action (Owner 2026-08-24,
+                      // Issue 1) — never a silent stall. Not for a Test capture (never messages).
+                      const autoFailed = r.messageStatus === 'failed' && !r.isTest;
                       const note = notes[r.captureRecordId] ?? null;
-                      if (!autoStatus && !note) return null;
+                      if (!autoStatus && !note && !autoFailed) return null;
                       return (
                         <div
                           className="mt-1 flex flex-col gap-0.5"
@@ -828,6 +853,20 @@ export function IncomingCapturesStrip({
                           {autoStatus ? (
                             <span className="text-[11px] font-semibold text-emerald-600">
                               {autoStatus}
+                            </span>
+                          ) : null}
+                          {autoFailed ? (
+                            <span className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-amber-700">
+                              ⚠ AUTO TEXT not sent
+                              <button
+                                type="button"
+                                onClick={() => void retryAutoText(r)}
+                                disabled={retryingId === r.captureRecordId}
+                                data-testid={`incoming-retry-${r.captureRecordId}`}
+                                className="rounded border border-border px-1.5 py-0.5 text-[10px] font-medium text-foreground hover:bg-accent"
+                              >
+                                {retryingId === r.captureRecordId ? 'Retrying…' : '🔄 Retry Auto Text'}
+                              </button>
                             </span>
                           ) : null}
                           {note ? (
@@ -853,6 +892,12 @@ export function IncomingCapturesStrip({
                     <CaptureSendControl
                       captureRecordId={r.captureRecordId}
                       photoEligible={effectiveLink(r).photoEligible}
+                      // Manual Send is enabled by a LINKED, messageable chat — independent of the
+                      // photo-eligibility (reply) wait (Owner 2026-08-24, Issue 3).
+                      chatLinked={
+                        effectiveLink(r).linkStatus === 'linked' &&
+                        effectiveLink(r).conversationAvailable
+                      }
                       hasScreenshot={!!r.screenshotUrl}
                       isTest={r.isTest}
                       sending={sendingId === r.captureRecordId}

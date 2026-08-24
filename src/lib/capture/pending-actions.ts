@@ -1,11 +1,13 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { after } from 'next/server';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { requirePermission } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
+import { routePendingCapturesSystem } from '@/lib/capture/auto-router';
 import { isConversationMediaEligible } from '@/lib/capture/media-window';
 import { sanitizeLeadingNameGlyph } from '@/lib/capture/name-sanitize';
 import { listPendingCaptures } from '@/lib/capture/pending';
@@ -73,6 +75,40 @@ export async function sendCaptureToMessengerAction(
   });
   if (result.ok) revalidatePath('/orders');
   return result;
+}
+
+/**
+ * Operator "Retry Auto Text" (Owner 2026-08-24, Issue 1) — for a capture whose AUTO TEXT failed.
+ * Resets the capture back into the routing queue and re-opens a FAILED Private Reply link (a failed
+ * reply never delivered, so re-attempting cannot duplicate), then fires an IMMEDIATE server-side
+ * routing sweep (the every-minute cron remains the recovery fallback). Idempotency preserved — a real
+ * 'sent'/'link_sent' success is never reopened, so Retry can never cause a duplicate message.
+ */
+export async function retryCaptureAutoTextAction(
+  captureRecordId: string,
+): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
+  await requirePermission('claim_capture');
+  const supabase = await createClient();
+  const { data, error } = (await supabase.rpc('reset_capture_for_retry', {
+    p_capture_id: captureRecordId,
+  })) as { data: unknown; error: { message: string } | null };
+  if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  if (data !== 'reset') {
+    return {
+      ok: false,
+      error: 'This capture can’t be retried (already sent, or not in a failed state).',
+    };
+  }
+  // Attempt the send NOW (server-side, idempotent) — don't wait for the cron.
+  after(async () => {
+    try {
+      await routePendingCapturesSystem();
+    } catch {
+      /* best-effort — the every-minute cron is the durable recovery fallback */
+    }
+  });
+  revalidatePath('/orders');
+  return { ok: true, message: 'Retrying AUTO TEXT…' };
 }
 
 /** OCR'd Facebook name off a capture's stored OCR JSON, with a phantom leading O/0/° glyph stripped

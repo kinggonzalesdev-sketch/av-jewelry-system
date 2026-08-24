@@ -1,6 +1,9 @@
 import { after, NextResponse } from 'next/server';
 
-import { routePendingCapturesSystem } from '@/lib/capture/auto-router';
+import {
+  reactivatePhotoForConversationSystem,
+  routePendingCapturesSystem,
+} from '@/lib/capture/auto-router';
 import {
   logLiveCommentReceipt,
   parsePancakeLiveComment,
@@ -111,7 +114,15 @@ export async function POST(request: Request): Promise<Response> {
   if (res.stored) {
     after(async () => {
       try {
+        // A new comment → Route B for AUTO-TEXT-not-yet-sent captures (existing behavior).
         await routePendingCapturesSystem();
+        // A genuine customer reply → REACTIVATE that exact conversation's waiting captures for Route A
+        // (the actual screenshot PHOTO). A capture that already sent its AUTO TEXT ('link_sent') is
+        // NOT in the router's queue, so this is what turns a customer's reply into an AUTO SS — the
+        // eligibility re-check inside makes it a no-op for a mere comment (window not open).
+        if (live.conversationId) {
+          await reactivatePhotoForConversationSystem(live.conversationId);
+        }
       } catch {
         /* best-effort — the every-minute cron is the durable recovery fallback */
       }

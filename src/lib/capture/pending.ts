@@ -109,13 +109,14 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
   return rows.map((r, i) => {
     const cust = Array.isArray(r.customers) ? r.customers[0] : r.customers;
     const linkStatus = (r.link_status ?? null) as PendingCaptureRow['linkStatus'];
+    // Strip a phantom leading O/0/° (avatar/badge glyph fused onto the name during OCR) so the
+    // display, sticker, and matching all see the clean name — incl. captures from older phones.
+    const fbName = sanitizeLeadingNameGlyph(ocrStr(r.ocr, 'fbName', 'fb_name', 'name')) || null;
     return {
       captureRecordId: r.id,
       capturedAt: r.captured_at,
       screenshotUrl: signed[i] ?? null,
-      // Strip a phantom leading O/0/° (avatar/badge glyph fused onto the name during OCR) so the
-      // display, sticker, and matching all see the clean name — incl. captures from older phones.
-      fbName: sanitizeLeadingNameGlyph(ocrStr(r.ocr, 'fbName', 'fb_name', 'name')) || null,
+      fbName,
       itemQuery: ocrStr(r.ocr, 'itemQuery', 'item_query', 'item'),
       // Prefer the dedicated grams field; fall back to the mined number (older builds
       // put the pinned weight in itemQuery). normalizeGrams also rejects non-weights.
@@ -126,7 +127,11 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
       isTest: r.is_test === true,
       linkStatus,
       linkedCustomerId: r.customer_id ?? null,
-      linkedCustomerName: (cust?.display_name ?? '').trim() || null,
+      // A capture can be LINKED to a real on-page conversation WITHOUT a saved customer RECORD (a Live
+      // commenter we message directly — Ericka). Fall back to the capture's own resolved Facebook name
+      // so the panel shows WHO it is, never a bare "Facebook customer" when the name is known
+      // (Owner 2026-08-24, Issue 2). Identity/messaging still key off the conversation id, not the name.
+      linkedCustomerName: (cust?.display_name ?? '').trim() || fbName,
       conversationAvailable: Boolean((r.pancake_conversation_id ?? '').trim()),
       photoEligible: eligible[i] === true,
       fbUrl: (cust?.facebook_conversation_url ?? '').trim() || null,

@@ -3,17 +3,17 @@
 import { Button } from '@/components/ui/button';
 
 /**
- * The per-row ACTION control in Incoming Captures (Owner 2026-08-22). The layout stays consistent:
- * Print | Send | Use | Dismiss — Send is ALWAYS visible; only its ENABLED state changes. Send NEVER
- * disappears just because AUTO TEXT / AUTO SS succeeded or the customer is Photo-waiting.
+ * The per-row ACTION control in Incoming Captures. The layout stays consistent: Print | Send | Use |
+ * Dismiss — Send is ALWAYS visible; only its ENABLED state changes.
  *
- * Send ALWAYS means: send the ACTUAL screenshot PHOTO (never a Private Reply TEXT / secure link /
- * Save / retry). It is ENABLED only when a valid screenshot exists AND the customer is Photo-ready
- * AND the photo has not already been sent; otherwise it is VISIBLE-BUT-DISABLED:
- *   • Photo ready + photo unsent + screenshot → ENABLED.
- *   • Photo waiting / AUTO TEXT sent + waiting → disabled (auto-enables when eligibility flips).
- *   • AUTO SS / photo already sent          → disabled (one photo per capture — the DB is authoritative).
- *   • Screenshot missing / Test capture     → disabled.
+ * MANUAL SEND vs AUTO SCREENSHOT are INDEPENDENT (Owner 2026-08-24, Issue 3). Send is ENABLED whenever
+ * the capture is LINKED to a valid conversation, has a screenshot, and the photo has not already been
+ * sent — it does NOT wait for a customer reply. The auto-screenshot "waiting for reply" display state
+ * never disables Send. The server still validates messaging at send time (a photo only goes when the
+ * Inbox window is open; otherwise the operator gets an honest note), so enabling the button is safe.
+ *   • Linked + photo unsent + screenshot → ENABLED (send now; photo if the window is open).
+ *   • Photo already sent                 → disabled (one photo per capture — the DB is authoritative).
+ *   • Not linked / no screenshot / Test  → disabled.
  *
  * The AUTO TEXT/SS delivery STATUS lives in its dedicated area under Grams/Price — never here. 💾 Save
  * appears ONLY when there are unsaved edits and never sends anything.
@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button';
 export function CaptureSendControl({
   captureRecordId,
   photoEligible,
+  chatLinked,
   hasScreenshot,
   isTest,
   sending,
@@ -31,7 +32,12 @@ export function CaptureSendControl({
   onSave,
 }: {
   captureRecordId: string;
+  /** The customer has an open Inbox window right now — a PHOTO can actually be delivered. Drives the
+   *  tooltip only; it no longer gates the button (manual Send is independent of the reply wait). */
   photoEligible: boolean;
+  /** The capture is linked to a valid, messageable conversation on the active page (a recipient
+   *  exists). This — not photoEligible — is what enables the manual Send button. */
+  chatLinked: boolean;
   /** A valid screenshot exists for this capture (a photo can physically be sent). */
   hasScreenshot: boolean;
   isTest: boolean;
@@ -45,8 +51,10 @@ export function CaptureSendControl({
   onSave: () => void;
 }) {
   const photoSent = (messageStatus ?? '') === 'sent';
-  // The ACTUAL photo can be sent only when eligible, unsent, with a screenshot, and not a test.
-  const canSend = !isTest && hasScreenshot && photoEligible && !photoSent;
+  // Manual Send is ENABLED when the chat is linked (a recipient exists), a screenshot exists, the
+  // photo hasn't already gone out, and it isn't a test — INDEPENDENT of the reply-wait. The send
+  // action validates the messaging window server-side.
+  const canSend = !isTest && hasScreenshot && chatLinked && !photoSent;
 
   const title = isTest
     ? 'A test capture never messages a real customer.'
@@ -54,9 +62,11 @@ export function CaptureSendControl({
       ? 'No screenshot on this capture — nothing to send.'
       : photoSent
         ? 'The actual screenshot photo was already sent (AUTO SS) — one photo per capture.'
-        : !photoEligible
-          ? 'Photo waiting — the customer has no open Inbox window yet, so a photo can’t be sent (a secure-link TEXT is sent automatically).'
-          : 'Send the ACTUAL screenshot photo now.';
+        : !chatLinked
+          ? 'Link the customer’s Messenger chat first (Change / Pick customer), then Send.'
+          : photoEligible
+            ? 'Send the screenshot photo now.'
+            : 'Send now. The customer has no open Inbox window yet, so the photo auto-sends once they reply; use Open FB Chat if you need to reach them now.';
 
   const saveButton = dirty && !isTest ? (
     <Button
