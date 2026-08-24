@@ -6,9 +6,10 @@ import { formatPeso } from '@/lib/payments/format';
 import { cn } from '@/lib/utils';
 
 /**
- * Price & Down Payment Calculator (Owner request 2026-08-01) — a STAFF UTILITY only.
- * It helps staff quickly compute a jewelry item's price (fixed or per-gram) and the
- * 10% / 20% / 30% down payment + remaining balance, updating live as they type.
+ * Price & Down Payment Calculator (Owner request 2026-08-01; simplified 2026-08-24) — a STAFF
+ * UTILITY only. It computes a jewelry item's price (fixed or per-gram) and, for live selling, ONE
+ * down payment at a time: a 20% / 30% toggle (default 20%) shows a single DP result. There is no
+ * Remaining Balance (Owner removed it) — it updates live as they type.
  *
  * It touches NOTHING else: no order, payment, inventory, or layaway record is read
  * or written here. It is a scratch calculator — numbers in, numbers out.
@@ -62,6 +63,8 @@ export function PriceDownPaymentCalculator() {
   const [grams, setGrams] = useState('');
   const [fixedPrice, setFixedPrice] = useState('');
   const [pricePerGram, setPricePerGram] = useState('');
+  // The single down-payment percentage shown at a time (Owner 2026-08-24). Default 20%.
+  const [dpPct, setDpPct] = useState<20 | 30>(20);
 
   const isFixed = pricingType === 'fixed';
   const itemCentavos = isFixed
@@ -69,10 +72,8 @@ export function PriceDownPaymentCalculator() {
     : perGramCentavos(grams, pricePerGram);
   const hasPrice = itemCentavos > 0n;
 
-  const tiers = ([20, 30] as const).map((pct) => {
-    const down = percentOf(itemCentavos, BigInt(pct));
-    return { pct, down, remaining: itemCentavos - down };
-  });
+  // Only the SELECTED percentage is computed/shown (no Remaining Balance).
+  const selectedDown = percentOf(itemCentavos, BigInt(dpPct));
 
   const onMoney = (setter: (v: string) => void) => (v: string) => {
     if (v === '' || PRICE_RE.test(v)) setter(v);
@@ -177,33 +178,47 @@ export function PriceDownPaymentCalculator() {
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
-          {tiers.map(({ pct, down, remaining }) => (
-            <div
-              key={pct}
-              className="rounded-xl border border-gold/40 bg-card/80 p-4 text-center"
-              data-testid={`calc-tier-${pct}`}
-            >
-              <div className="text-xs font-bold uppercase tracking-wide text-gold-strong">
+        <div className="space-y-4 p-4">
+          {/* 20% / 30% toggle — single-select, default 20%, green active state. */}
+          <div
+            className="flex gap-1 rounded-lg border border-border p-1"
+            role="group"
+            aria-label="Down payment percentage"
+          >
+            {([20, 30] as const).map((pct) => (
+              <button
+                key={pct}
+                type="button"
+                onClick={() => setDpPct(pct)}
+                aria-pressed={dpPct === pct}
+                data-testid={`calc-dp-toggle-${pct}`}
+                className={cn(
+                  'flex-1 rounded-md px-3 py-2 text-sm font-semibold transition-colors',
+                  dpPct === pct
+                    ? 'bg-emerald-600 text-white'
+                    : 'text-muted-foreground hover:bg-accent',
+                )}
+              >
                 {pct}% Down Payment
-              </div>
-              <div
-                className="mt-1 text-2xl font-extrabold tabular-nums"
-                data-testid={`calc-down-${pct}`}
-              >
-                {hasPrice ? formatPeso(toMoney(down)) : '₱0'}
-              </div>
-              <div className="mt-2 border-t border-border pt-2 text-[11px] uppercase tracking-wide text-muted-foreground">
-                Remaining Balance
-              </div>
-              <div
-                className="text-base font-semibold tabular-nums text-muted-foreground"
-                data-testid={`calc-remaining-${pct}`}
-              >
-                {hasPrice ? formatPeso(toMoney(remaining)) : '₱0'}
-              </div>
+              </button>
+            ))}
+          </div>
+
+          {/* ONE result card — the selected percentage only, no Remaining Balance. */}
+          <div
+            className="rounded-xl border border-gold/40 bg-card/80 p-5 text-center"
+            data-testid={`calc-tier-${dpPct}`}
+          >
+            <div className="text-xs font-bold uppercase tracking-wide text-gold-strong">
+              {dpPct}% Down Payment
             </div>
-          ))}
+            <div
+              className="mt-1 text-3xl font-extrabold tabular-nums"
+              data-testid={`calc-down-${dpPct}`}
+            >
+              {hasPrice ? formatPeso(toMoney(selectedDown)) : '₱0'}
+            </div>
+          </div>
         </div>
       </div>
     </div>
