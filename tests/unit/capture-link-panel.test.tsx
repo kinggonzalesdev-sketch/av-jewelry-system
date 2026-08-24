@@ -58,10 +58,11 @@ describe('CaptureLinkPanel — finite, state-accurate bottom wording', () => {
     expect(screen.queryByText(/Waiting for reply/)).toBeNull();
   });
 
-  it('still routing (awaiting/null) → "Preparing AUTO TEXT", NOT "Waiting for reply" and NOT "Photo waiting"', () => {
+  it('still routing (awaiting/null) → just "Chat linked" — NO "Preparing AUTO TEXT", NO "Waiting for reply", NO "Photo waiting"', () => {
     for (const messageStatus of ['awaiting_inbox', null]) {
       const { unmount } = renderPanel({ photoEligible: false, messageStatus });
-      expect(screen.getByText(/Preparing AUTO TEXT/)).toBeInTheDocument();
+      expect(screen.getByText(/Chat linked/)).toBeInTheDocument();
+      expect(screen.queryByText(/Preparing AUTO TEXT/)).toBeNull();
       expect(screen.queryByText(/Waiting for reply/)).toBeNull();
       expect(screen.queryByText(/Photo waiting/)).toBeNull();
       unmount();

@@ -148,14 +148,11 @@ export function CaptureLinkPanel({
         >
           · AUTO TEXT not sent
         </span>
-      ) : (
-        <span
-          className="text-sky-600"
-          title="Sending the AUTO TEXT to the customer automatically…"
-        >
-          · Preparing AUTO TEXT
-        </span>
-      )}
+      ) : null}
+      {/* While the server is still routing (awaiting context / the ~1s immediate send), the row shows
+          just "Chat linked" — no "Preparing AUTO TEXT" (Owner 2026-08-24: never a long-lived internal
+          processing label). It resolves to "AUTO TEXT Sent to Messenger ✓" on success or "AUTO TEXT
+          not sent" on a finite failure. The technical cause stays in route_reason / diagnostics. */}
     </span>
   ) : status === 'customer_no_chat' ? (
     <span>
