@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { captureDebugEnabled } from '@/lib/capture/debug-log';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 /**
@@ -205,6 +206,10 @@ export function logLiveCommentReceipt(args: {
   stored?: boolean;
   http: number;
 }): void {
+  // P0-B (Owner 2026-08-26): routine per-webhook receipt logging was the top Vercel "Observability
+  // Events" cost (~10k webhooks/day). Production default OFF — re-enable with CAPTURE_DEBUG_LOGS=1.
+  // Real store FAILURES are logged unconditionally by the webhook route; this is only the receipt trace.
+  if (!captureDebugEnabled()) return;
   if (!args.isLive || !args.live) {
     console.log(
       `Pancake webhook received\nEvent: messaging\nLive Comment: no\nHTTP: ${args.http}`,

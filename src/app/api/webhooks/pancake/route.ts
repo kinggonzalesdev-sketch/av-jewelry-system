@@ -4,6 +4,7 @@ import {
   reactivatePhotoForConversationSystem,
   routePendingCapturesSystem,
 } from '@/lib/capture/auto-router';
+import { isGenuineInboxDmEvent } from '@/lib/capture/media-window';
 import {
   logLiveCommentReceipt,
   parsePancakeLiveComment,
@@ -96,9 +97,9 @@ export async function POST(request: Request): Promise<Response> {
 
   const res = await storePancakeLiveComment(live, body);
   if (!res.ok) {
-    // A store failure returns non-200 so Pancake RETRIES; the (page_id, comment_id)
-    // unique key makes that retry idempotent (no duplicate row).
-    logLiveCommentReceipt({ isLive: true, live, stored: false, http: 500 });
+    // A store failure returns non-200 so Pancake RETRIES; the (page_id, comment_id) unique key makes
+    // that retry idempotent. A real failure → logged UNCONDITIONALLY (not debug-gated), no PII/secret.
+    console.error('[pancake-webhook] store_failed', JSON.stringify({ error: res.error }));
     return NextResponse.json({ ok: false, error: 'store_failed' }, { status: 500 });
   }
 
@@ -116,11 +117,13 @@ export async function POST(request: Request): Promise<Response> {
       try {
         // A new comment → Route B for AUTO-TEXT-not-yet-sent captures (existing behavior).
         await routePendingCapturesSystem();
-        // A genuine customer reply → REACTIVATE that exact conversation's waiting captures for Route A
-        // (the actual screenshot PHOTO). A capture that already sent its AUTO TEXT ('link_sent') is
-        // NOT in the router's queue, so this is what turns a customer's reply into an AUTO SS — the
-        // eligibility re-check inside makes it a no-op for a mere comment (window not open).
-        if (live.conversationId) {
+        // A genuine customer INBOX reply → REACTIVATE that exact conversation's waiting captures for
+        // Route A (the actual screenshot PHOTO). Gated on the genuine-inbox-DM predicate (Owner
+        // 2026-08-26, P0): only a real reply opens the media window, so a mere Live comment never needs
+        // this — skipping it there avoids a per-comment eligibility query. A genuine reply still
+        // reactivates IMMEDIATELY; a missed one is still recovered by the broad sweep's link_sent
+        // fallback + the cron. One PHOTO per capture stays guaranteed by the atomic photo claim.
+        if (live.conversationId && isGenuineInboxDmEvent(body, live.facebookPsid ?? '')) {
           await reactivatePhotoForConversationSystem(live.conversationId);
         }
       } catch {

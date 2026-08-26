@@ -2,6 +2,7 @@ import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { captureDebugLog } from '@/lib/capture/debug-log';
 import { isConversationMediaEligible, psidFromConversationId } from '@/lib/capture/media-window';
 import { sanitizeLeadingNameGlyph } from '@/lib/capture/name-sanitize';
 import { attemptSecureLinkPrivateReply } from '@/lib/capture/route-b';
@@ -248,6 +249,23 @@ export type AutoRouteSummary = {
  */
 export async function routePendingCapturesSystem(limit = 15): Promise<AutoRouteSummary> {
   const admin = createAdminClient();
+
+  // P0-A cheap short-circuit (Owner 2026-08-26): thousands of Live-comment webhooks/day trigger this
+  // sweep even when there is NO actionable Capture work. A single bounded EXISTS (has_capture_routing_work
+  // — the SAME canonical states the claim / exhaust / reactivation-fallback consume) skips the expensive
+  // claim + link_sent fallback loop + exhaust update when nothing is pending/awaiting and no recent
+  // link_sent needs recovery. When work DOES exist the guard passes and the sweep runs EXACTLY as before
+  // (no latency added to AUTO TEXT/AUTO SS). Fail-OPEN: any guard error falls through to the full sweep.
+  try {
+    const workRes = (await admin.rpc('has_capture_routing_work')) as { data: unknown };
+    if (workRes.data === false) {
+      captureDebugLog('[capture-router]', { skipped_no_work: true });
+      return { ok: true, claimed: 0, exhausted: 0, outcomes: { skipped_no_work: 1 } };
+    }
+  } catch {
+    /* fail-open — never skip real work because the guard errored */
+  }
+
   const activePage = await getActivePancakePageId();
   const claimRes = (await admin.rpc('claim_captures_to_route', { p_limit: limit })) as {
     data: RouterCapture[] | null;
@@ -263,20 +281,22 @@ export async function routePendingCapturesSystem(limit = 15): Promise<AutoRouteS
     } catch {
       outcome = 'skipped';
     }
-    // PII-SAFE dev log of the whole routing decision (Owner 2026-08-24): capture id + conversation
-    // TAIL only + the outcome/reason. NEVER a name, full PSID, token, or message body — the durable,
-    // stage-level trail lives in audit_events (action 'capture_secure_link'). Lets a dev see exactly
-    // which stage each capture stopped at (routed / awaiting / text_failed / …) without a refresh.
-    console.info(
-      '[capture-router]',
-      JSON.stringify({
-        capture: cap.id.slice(-6),
-        conv_tail: (cap.pancake_conversation_id ?? '').slice(-4) || null,
-        has_screenshot: !!cap.screenshot_path,
-        outcome,
-        reason,
-      }),
-    );
+    // PII-SAFE routing trace (Owner 2026-08-24): capture id + conversation TAIL only + outcome/reason —
+    // NEVER a name, full PSID, token, or message body. An actual send FAILURE stays a production WARN;
+    // the routine per-capture trace is gated behind CAPTURE_DEBUG_LOGS (Owner 2026-08-26, P0-B). The
+    // durable stage trail lives in capture_records.route_reason + audit_events ('capture_secure_link').
+    const entry = {
+      capture: cap.id.slice(-6),
+      conv_tail: (cap.pancake_conversation_id ?? '').slice(-4) || null,
+      has_screenshot: !!cap.screenshot_path,
+      outcome,
+      reason,
+    };
+    if (outcome === 'photo_failed' || outcome === 'text_failed') {
+      console.warn('[capture-router] send_failed', JSON.stringify(entry));
+    } else {
+      captureDebugLog('[capture-router]', entry);
+    }
     outcomes[outcome] = (outcomes[outcome] ?? 0) + 1;
   }
 
@@ -419,9 +439,13 @@ export async function reactivatePhotoForConversationSystem(
     });
     if (res.ok) sent += 1;
   }
-  console.info(
-    '[capture-reactivate]',
-    JSON.stringify({ conv_tail: conv.slice(-4), considered: caps.length, sent }),
-  );
+  // An actual AUTO SS send stays a production INFO (useful outcome); a no-op reactivation check (sent=0)
+  // is gated behind CAPTURE_DEBUG_LOGS (Owner 2026-08-26, P0-B).
+  const summary = { conv_tail: conv.slice(-4), considered: caps.length, sent };
+  if (sent > 0) {
+    console.info('[capture-reactivate] sent', JSON.stringify(summary));
+  } else {
+    captureDebugLog('[capture-reactivate]', summary);
+  }
   return { eligible: true, sent, considered: caps.length };
 }

@@ -13,11 +13,14 @@ const rpcCalls: Array<{ name: string; args: unknown }> = [];
 let claimedBatch: Array<Record<string, unknown>> = [];
 // Rows the .from('capture_records') query resolves to (used by the reactivation path).
 let captureRows: Array<Record<string, unknown>> = [];
+// The P0-A guard result (has_capture_routing_work). Default true = there IS work → sweep proceeds.
+let hasRoutingWork = true;
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
     rpc: (name: string, args: unknown) => {
       rpcCalls.push({ name, args });
+      if (name === 'has_capture_routing_work') return Promise.resolve({ data: hasRoutingWork, error: null });
       if (name === 'claim_captures_to_route') return Promise.resolve({ data: claimedBatch, error: null });
       if (name === 'mark_captures_route_exhausted') return Promise.resolve({ data: 0, error: null });
       if (name === 'claim_capture_photo_send') return Promise.resolve({ data: 'claimed', error: null });
@@ -79,6 +82,7 @@ describe('durable auto-router — routing decisions', () => {
     rpcCalls.length = 0;
     claimedBatch = [];
     captureRows = [];
+    hasRoutingWork = true;
     vi.mocked(pancake.sendPancakeConversationMessage).mockClear();
     vi.mocked(routeB.attemptSecureLinkPrivateReply).mockReset();
     vi.mocked(mediaWindow.isConversationMediaEligible).mockReset();
@@ -175,6 +179,30 @@ describe('durable auto-router — routing decisions', () => {
     expect(photoStateOf()).toBe('failed');
     expect(reasonOf()).toContain('AUTO TEXT not sent');
     expect(summary.outcomes.text_failed).toBe(1);
+  });
+
+  // P0-A (Owner 2026-08-26): thousands of no-work comment webhooks/day must NOT run the expensive sweep.
+  it('P0 SHORT-CIRCUIT — no actionable work → skips claim / exhaust / reactivation entirely', async () => {
+    hasRoutingWork = false;
+    claimedBatch = [cap()]; // even if a batch WOULD exist, the guard skips BEFORE claiming
+    const summary = await routePendingCapturesSystem();
+    expect(rpcCalls.some((c) => c.name === 'has_capture_routing_work')).toBe(true);
+    expect(rpcCalls.some((c) => c.name === 'claim_captures_to_route')).toBe(false);
+    expect(rpcCalls.some((c) => c.name === 'mark_captures_route_exhausted')).toBe(false);
+    expect(vi.mocked(pancake.sendPancakeConversationMessage)).not.toHaveBeenCalled();
+    expect(vi.mocked(routeB.attemptSecureLinkPrivateReply)).not.toHaveBeenCalled();
+    expect(summary.outcomes.skipped_no_work).toBe(1);
+    expect(summary.claimed).toBe(0);
+  });
+
+  it('guard passes (work exists) → the full sweep still runs exactly as before', async () => {
+    hasRoutingWork = true;
+    claimedBatch = [cap()];
+    vi.mocked(mediaWindow.isConversationMediaEligible).mockResolvedValue(true);
+    const summary = await routePendingCapturesSystem();
+    expect(rpcCalls.some((c) => c.name === 'claim_captures_to_route')).toBe(true);
+    expect(vi.mocked(pancake.sendPancakeConversationMessage)).toHaveBeenCalledTimes(1);
+    expect(summary.outcomes.photo_sent).toBe(1);
   });
 
   it('always finalizes the sweep by moving budget-exhausted captures to a finite state', async () => {
