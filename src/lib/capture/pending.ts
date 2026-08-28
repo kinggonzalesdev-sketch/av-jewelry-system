@@ -53,7 +53,7 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
   const { data, error } = await supabase
     .from('capture_records')
     .select(
-      'id, captured_at, screenshot_path, ocr, is_test, link_status, customer_id, pancake_conversation_id, message_status, route_reason, customers ( display_name, facebook_conversation_url )',
+      'id, captured_at, screenshot_path, ocr, is_test, link_status, customer_id, pancake_conversation_id, message_status, route_reason, canonical_grams, customers ( display_name, facebook_conversation_url )',
     )
     .eq('source', 'floating')
     .is('official_order_id', null)
@@ -78,6 +78,7 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
     pancake_conversation_id: string | null;
     message_status: string | null;
     route_reason: string | null;
+    canonical_grams: string | null;
     customers: CustJoin | CustJoin[] | null;
   }>;
 
@@ -130,6 +131,11 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
         ocrStr(r.ocr, 'grams', 'weight') ??
           ocrStr(r.ocr, 'itemQuery', 'item_query', 'item'),
       ),
+      // Canonical grams proven by the EXACT Pancake comment (leading-decimal correction), if any.
+      // Raw OCR grams above is preserved; the UI shows effectiveGrams = canonicalGrams ?? grams.
+      canonicalGrams: (r.canonical_grams ?? '').trim()
+        ? normalizeGrams(r.canonical_grams)
+        : null,
       isTest: r.is_test === true,
       linkStatus,
       linkedCustomerId: r.customer_id ?? null,

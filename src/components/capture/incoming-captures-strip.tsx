@@ -203,6 +203,14 @@ export function IncomingCapturesStrip({
             ) ??
             prev?.grams ??
             null,
+          // Canonical grams is computed server-side after the exact-comment match; the optimistic
+          // realtime row keeps any prior value (the reconcile load() picks up a new one).
+          canonicalGrams:
+            (typeof raw.canonical_grams === 'string' && raw.canonical_grams.trim()
+              ? normalizeGrams(raw.canonical_grams)
+              : null) ??
+            prev?.canonicalGrams ??
+            null,
           isTest: raw.is_test === true,
           linkStatus:
             (raw.link_status as PendingCaptureRow['linkStatus']) ??
@@ -383,14 +391,19 @@ export function IncomingCapturesStrip({
   // AUTO-DETECTED from the OCR'd claim value (".45"/"1.5" → Grams; "15k"/"15000"/"₱15,000" → Fixed).
   // The operator can always flip it — this only sets the initial/default selection.
   const modeOf = (r: PendingCaptureRow): 'grams' | 'fixed' =>
-    priceMode[r.captureRecordId] ?? classifyCaptureValue(r.itemQuery ?? r.grams) ?? 'grams';
+    priceMode[r.captureRecordId] ??
+    // A canonical (leading-decimal) correction is always Grams; otherwise auto-detect from the OCR value.
+    (r.canonicalGrams ? 'grams' : classifyCaptureValue(r.itemQuery ?? r.grams)) ??
+    'grams';
 
   const stickerFor = (
     r: PendingCaptureRow,
     valueOverride?: string,
     mode: 'grams' | 'fixed' = 'grams',
   ): OrderReceiptData => {
-    const raw = valueOverride ?? r.grams ?? '';
+    // A manual reprint uses effectiveGrams: an explicit reprint value wins, else the canonical
+    // (comment-proven) grams, else the raw OCR grams. The raw OCR is never mutated.
+    const raw = valueOverride ?? r.canonicalGrams ?? r.grams ?? '';
     const base = {
       customerName: (r.fbName ?? '').trim() || '—',
       itemName: '',
@@ -509,7 +522,7 @@ export function IncomingCapturesStrip({
       return;
     }
     const mode = modeOf(r);
-    const raw = gramsEdits[r.captureRecordId] ?? r.grams ?? '';
+    const raw = gramsEdits[r.captureRecordId] ?? r.canonicalGrams ?? r.grams ?? '';
     if (mode === 'grams' && normalizeGrams(raw) === null) {
       setError('Enter the weight in grams before printing.');
       return;
@@ -605,7 +618,7 @@ export function IncomingCapturesStrip({
     setSavingId(r.captureRecordId);
     setError(null);
     try {
-      const grams = gramsEdits[r.captureRecordId] ?? r.grams ?? '';
+      const grams = gramsEdits[r.captureRecordId] ?? r.canonicalGrams ?? r.grams ?? '';
       const note = notes[r.captureRecordId] ?? '';
       const res = await saveCaptureEditsAction(r.captureRecordId, grams, note);
       if (!res.ok) {
@@ -673,7 +686,7 @@ export function IncomingCapturesStrip({
     // is ALWAYS chosen by hand: the pinned comment never names one, so it is never
     // pre-filled.
     const hasClaim =
-      normalizeGrams(gramsEdits[r.captureRecordId] ?? r.grams ?? '') !== null;
+      normalizeGrams(gramsEdits[r.captureRecordId] ?? r.canonicalGrams ?? r.grams ?? '') !== null;
     return {
       customerName: hasClaim ? (r.fbName ?? undefined) : undefined,
       captureRecordId: r.captureRecordId,
@@ -787,7 +800,7 @@ export function IncomingCapturesStrip({
                         <input
                           type="text"
                           inputMode="decimal"
-                          value={gramsEdits[r.captureRecordId] ?? r.grams ?? ''}
+                          value={gramsEdits[r.captureRecordId] ?? r.canonicalGrams ?? r.grams ?? ''}
                           placeholder={
                             modeOf(r) === 'fixed'
                               ? 'e.g. 12.5 → ₱12,500'
@@ -803,10 +816,23 @@ export function IncomingCapturesStrip({
                           data-testid={`incoming-grams-${r.captureRecordId}`}
                         />
                       </label>
+                      {/* Leading-decimal value proven by the EXACT Pancake comment (the raw OCR is
+                          preserved). Subtle badge; no auto-reprint. Hidden once the operator edits. */}
+                      {r.canonicalGrams &&
+                      r.canonicalGrams.trim() !== (r.grams ?? '').trim() &&
+                      gramsEdits[r.captureRecordId] === undefined ? (
+                        <span
+                          className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-emerald-600"
+                          title={`OCR read "${r.grams ?? '—'}"; the exact Facebook comment proved "${r.canonicalGrams}"`}
+                          data-testid={`incoming-corrected-${r.captureRecordId}`}
+                        >
+                          Corrected ✓
+                        </span>
+                      ) : null}
                       {modeOf(r) === 'fixed'
                         ? (() => {
                             const fp = parseFixedPrice(
-                              gramsEdits[r.captureRecordId] ?? r.grams ?? '',
+                              gramsEdits[r.captureRecordId] ?? r.canonicalGrams ?? r.grams ?? '',
                             );
                             return fp ? (
                               <span
@@ -822,7 +848,7 @@ export function IncomingCapturesStrip({
                             );
                           })()
                         : normalizeGrams(
-                              gramsEdits[r.captureRecordId] ?? r.grams ?? '',
+                              gramsEdits[r.captureRecordId] ?? r.canonicalGrams ?? r.grams ?? '',
                             ) === null
                           ? (
                               <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-amber-700">

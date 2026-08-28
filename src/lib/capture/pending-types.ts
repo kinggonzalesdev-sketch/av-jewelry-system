@@ -73,6 +73,10 @@ export type PendingCaptureRow = {
    *  as grams), normalized ("11.50" → "11.5"). Null when no confident number was read
    *  — a "needs review" capture the operator confirms before printing/auto-print. */
   grams: string | null;
+  /** Canonical grams proven by the EXACT matched Pancake comment (leading-decimal safety net) — e.g.
+   *  OCR read "33" but the comment said ".33" → "0.33". Null when no canonical correction applies.
+   *  The raw OCR `grams` above is always preserved; the UI shows effectiveGrams = canonicalGrams ?? grams. */
+  canonicalGrams: string | null;
   /** True when captured during a Test Mode session. */
   isTest: boolean;
   // --- Capture-time customer link (resolved from fbName) ----------------------

@@ -11,6 +11,7 @@ import {
   renderAutoText,
 } from '@/lib/messaging/auto-text';
 import { getActivePancakePageId, sendPancakePrivateReply } from '@/lib/integrations/pancake';
+import { canonicalLeadingDecimalGrams } from '@/lib/capture/canonical-value';
 import { classifyCaptureValue, normalizeGrams, parseFixedPrice } from '@/lib/print/order-receipt';
 
 /** Read the Owner-editable AUTO TEXT template body via the caller's client (works for the PC staff
@@ -116,6 +117,8 @@ type ResolvedComment = {
   facebook_psid?: string | null;
   conversation_id?: string | null;
   event_timestamp?: string | null;
+  /** 1 on the PSID-exact single match; the value-only canonical safety net requires this. */
+  matchCount?: number;
 };
 
 type ShareLinkRow = {
@@ -161,6 +164,8 @@ export async function attemptSecureLinkPrivateReply(input: {
   if (!input.screenshotPath) {
     return { ok: false, code: 'no_screenshot', message: 'No screenshot to link.' };
   }
+  // Value-only canonical safety net: the leading-decimal grams the exact comment proved, if any.
+  let canonicalGrams: string | null = null;
 
   // Reuse a link already made for THIS capture (persisted identity — never re-match by name).
   const existingRes = await supabase.rpc('find_capture_share_link_for_capture', {
@@ -195,6 +200,26 @@ export async function attemptSecureLinkPrivateReply(input: {
         code: 'outside_window',
         message: 'Outside the 7-day Private Reply window — Open FB Chat.',
       };
+    }
+    // VALUE-ONLY canonical safety net (Owner 2026-08-28). ONLY on the PSID-exact single match: when the
+    // EXACT comment text proves a leading decimal Android OCR dropped ("mine .33" read as "33"),
+    // canonicalize grams to "0.33" (digit-agreement required; whole numbers + mismatches are never
+    // touched). Reads the already-resolved comment's STORED text (no new Pancake search); NEVER the
+    // resolver's name-fallback (gated on input.psid). Persisted set-once; raw OCR is preserved.
+    if ((input.psid ?? '').trim() && rc.matchCount === 1) {
+      const commentText = (
+        await supabase.rpc('resolve_capture_comment_text', { p_comment_id: rc.comment_id })
+      ).data as string | null;
+      const canon = canonicalLeadingDecimalGrams(input.value, commentText);
+      if (canon && canon !== (input.value ?? '').trim()) {
+        canonicalGrams = canon;
+        await supabase.rpc('set_capture_canonical_grams', {
+          p_capture_id: captureRecordId,
+          p_grams: canon,
+          p_source: 'pancake_exact_comment',
+          p_comment_id: rc.comment_id,
+        });
+      }
     }
     // DECOUPLED from the secure /m/ link (Owner 2026-08-24): the new AUTO TEXT is link-free, so the
     // AES token is OPTIONAL. We still create the share-link row purely as the idempotency ledger
@@ -244,10 +269,24 @@ export async function attemptSecureLinkPrivateReply(input: {
     return { ok: false, code: 'reply_failed', message: 'The Private Reply was not accepted — it cannot be retried for the same comment.' };
   }
 
+  // On a REUSE/retry (the link already existed, so this call did not re-resolve) pick up any canonical
+  // grams a PRIOR resolution persisted — the AUTO TEXT total must use the corrected value either way.
+  if (!canonicalGrams && existing?.found) {
+    const { data: capRow } = await supabase
+      .from('capture_records')
+      .select('canonical_grams')
+      .eq('id', captureRecordId)
+      .maybeSingle();
+    const persisted = (capRow as { canonical_grams?: unknown } | null)?.canonical_grams;
+    canonicalGrams = typeof persisted === 'string' && persisted.trim() ? persisted.trim() : null;
+  }
+  // effectiveGrams = canonicalGrams ?? rawCaptureGrams — the ONE consistent value the AUTO TEXT uses.
+  const effectiveValue = canonicalGrams ?? input.value;
+
   // Build the mode-aware AUTO TEXT from the FINALIZED Capture business data BEFORE claiming, so an
   // incomplete Capture (unclassifiable value / missing grams-or-price / grams with no rate) never
   // consumes the ONE Private Reply — it stays reviewable/retryable.
-  const message = await buildAutoTextMessage(supabase, fbName, input.value);
+  const message = await buildAutoTextMessage(supabase, fbName, effectiveValue);
   if (!message) {
     await auditRouteB(captureRecordId, 'PRIVATE_REPLY_TEXT', 'failed', 'incomplete_business_data');
     return {
