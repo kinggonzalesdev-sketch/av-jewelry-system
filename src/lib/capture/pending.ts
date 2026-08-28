@@ -3,7 +3,7 @@ import 'server-only';
 import { requirePermission } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 import { isConversationMediaEligible } from '@/lib/capture/media-window';
-import { sanitizeLeadingNameGlyph } from '@/lib/capture/name-sanitize';
+import { sanitizeCaptureName } from '@/lib/capture/name-sanitize';
 import { normalizeGrams } from '@/lib/print/order-receipt';
 import type { PendingCaptureRow } from '@/lib/capture/pending-types';
 
@@ -109,9 +109,15 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
   return rows.map((r, i) => {
     const cust = Array.isArray(r.customers) ? r.customers[0] : r.customers;
     const linkStatus = (r.link_status ?? null) as PendingCaptureRow['linkStatus'];
-    // Strip a phantom leading O/0/° (avatar/badge glyph fused onto the name during OCR) so the
-    // display, sticker, and matching all see the clean name — incl. captures from older phones.
-    const fbName = sanitizeLeadingNameGlyph(ocrStr(r.ocr, 'fbName', 'fb_name', 'name')) || null;
+    // Clean the OCR'd name for display/matching (incl. captures already stored by older phones):
+    // a phantom leading O/0/° glyph, AND a DETACHED leading letter ("Y Katy Seacombe" → "Katy
+    // Seacombe") when the SAME capture's rawLines carry the clean twin (positive evidence it is
+    // avatar/UI contamination, never a blind strip of a real Y-name).
+    const fbName =
+      sanitizeCaptureName(
+        ocrStr(r.ocr, 'fbName', 'fb_name', 'name'),
+        (r.ocr as { rawLines?: unknown } | null)?.rawLines,
+      ) || null;
     return {
       captureRecordId: r.id,
       capturedAt: r.captured_at,

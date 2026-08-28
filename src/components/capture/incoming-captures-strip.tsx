@@ -24,7 +24,7 @@ import {
   type EffectiveCaptureLink,
 } from '@/components/capture/capture-link-panel';
 import { CaptureSendControl } from '@/components/capture/capture-send-control';
-import { sanitizeLeadingNameGlyph } from '@/lib/capture/name-sanitize';
+import { sanitizeCaptureName } from '@/lib/capture/name-sanitize';
 import {
   NewOrderModal,
   type CapturePrefill,
@@ -188,7 +188,10 @@ export function IncomingCapturesStrip({
           // by the reconcile load() (a signed URL can't be minted on the client).
           screenshotUrl: prev?.screenshotUrl ?? null,
           fbName:
-            (sanitizeLeadingNameGlyph(ocrStr(ocr, 'fbName', 'fb_name', 'name')) || null) ??
+            (sanitizeCaptureName(
+              ocrStr(ocr, 'fbName', 'fb_name', 'name'),
+              (ocr as { rawLines?: unknown } | null)?.rawLines,
+            ) || null) ??
             prev?.fbName ??
             null,
           itemQuery:

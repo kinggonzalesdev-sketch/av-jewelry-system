@@ -4,7 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { captureDebugLog } from '@/lib/capture/debug-log';
 import { isConversationMediaEligible, psidFromConversationId } from '@/lib/capture/media-window';
-import { sanitizeLeadingNameGlyph } from '@/lib/capture/name-sanitize';
+import { sanitizeCaptureName } from '@/lib/capture/name-sanitize';
 import { attemptSecureLinkPrivateReply } from '@/lib/capture/route-b';
 import {
   conversationBelongsToPage,
@@ -122,7 +122,10 @@ async function routeOne(
   const id = cap.id;
   const conversationId = (cap.pancake_conversation_id ?? '').trim();
   const path = (cap.screenshot_path ?? '').trim();
-  const fbName = sanitizeLeadingNameGlyph(ocrStr(cap.ocr, 'fbName', 'fb_name', 'name'));
+  const fbName = sanitizeCaptureName(
+    ocrStr(cap.ocr, 'fbName', 'fb_name', 'name'),
+    (cap.ocr as { rawLines?: unknown } | null)?.rawLines,
+  );
   const value = ocrStr(cap.ocr, 'itemQuery', 'grams', 'weight');
 
   if (!path) {

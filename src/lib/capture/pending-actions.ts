@@ -9,7 +9,7 @@ import { requirePermission } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 import { routePendingCapturesSystem } from '@/lib/capture/auto-router';
 import { isConversationMediaEligible } from '@/lib/capture/media-window';
-import { sanitizeLeadingNameGlyph } from '@/lib/capture/name-sanitize';
+import { sanitizeCaptureName, sanitizeLeadingNameGlyph } from '@/lib/capture/name-sanitize';
 import { listPendingCaptures } from '@/lib/capture/pending';
 import {
   sendPendingCaptureToMessenger,
@@ -111,14 +111,15 @@ export async function retryCaptureAutoTextAction(
   return { ok: true, message: 'Retrying AUTO TEXT…' };
 }
 
-/** OCR'd Facebook name off a capture's stored OCR JSON, with a phantom leading O/0/° glyph stripped
- *  (so name matching + the candidate picker use the same clean name as the display/sticker). */
+/** OCR'd Facebook name off a capture's stored OCR JSON, cleaned (phantom leading O/0/° glyph + a
+ *  detached leading letter proven by a clean twin in rawLines) so name matching + the candidate
+ *  picker use the same clean name as the display/sticker. */
 function ocrName(ocr: unknown): string {
   if (ocr && typeof ocr === 'object') {
     const o = ocr as Record<string, unknown>;
     for (const k of ['fbName', 'fb_name', 'name']) {
       const v = o[k];
-      if (typeof v === 'string' && v.trim()) return sanitizeLeadingNameGlyph(v);
+      if (typeof v === 'string' && v.trim()) return sanitizeCaptureName(v, o.rawLines);
     }
   }
   return '';
