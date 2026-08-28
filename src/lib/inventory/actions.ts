@@ -28,6 +28,10 @@ import {
 } from '@/lib/inventory/completed';
 import { createInventoryEntry } from '@/lib/inventory/create';
 import {
+  getInventoryGramsTotals,
+  type InventoryGramsTotals,
+} from '@/lib/inventory/grams-totals';
+import {
   importInventoryItems,
   type ImportItemInput,
   type ImportResult,
@@ -84,6 +88,13 @@ export async function loadInventoryActivePageAction(opts: {
  *  full reader so the export still contains EVERY filtered row, not just the page. */
 export async function loadInventoryForExportAction(): Promise<InventoryListResult> {
   return listInventory();
+}
+
+/** Re-read the two GLOBAL Total Grams totals after a mutation (New Entry / Edit / Delete
+ *  bump the client reload token). Role-gated in the reader — a Staff session gets null and
+ *  the cards never render for them. One cheap SQL aggregate; no polling, no realtime. */
+export async function loadInventoryGramsTotalsAction(): Promise<InventoryGramsTotals | null> {
+  return getInventoryGramsTotals();
 }
 
 /** Lazy-load Completed Items ON DEMAND — it is 900+ rows with order/customer/fulfillment

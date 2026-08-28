@@ -9,12 +9,15 @@ import {
   loadCompletedInventoryPageAction,
   loadInventoryActivePageAction,
   loadInventoryForExportAction,
+  loadInventoryGramsTotalsAction,
   returnCompletedItemAction,
   returnCompletedItemToInventoryAction,
 } from '@/lib/inventory/actions';
 import type { InventoryActionState } from '@/lib/inventory/action-state';
 import { EMPTY_INVENTORY_STATE } from '@/lib/inventory/action-state';
 import type { InventoryPageResult, InventoryRow } from '@/lib/inventory/service';
+import type { InventoryGramsTotals } from '@/lib/inventory/grams-totals';
+import { formatGrams } from '@/lib/inventory/grams-format';
 import type { CompletedInventoryRow } from '@/lib/inventory/completed';
 import { parseInventoryCode } from '@/lib/inventory/code-parser';
 import { inventoryGroup } from '@/lib/inventory/group';
@@ -31,6 +34,7 @@ import { MoneyInput } from '@/components/ui/money-input';
 import { Money } from '@/components/shell/privacy';
 import { Label } from '@/components/ui/label';
 import { Modal, ModalFieldFull, ModalFormGrid } from '@/components/ui/modal';
+import { Card, CardContent } from '@/components/ui/card';
 
 /**
  * Inventory Ops, Returned-to-Stock, Customers & Migration (Bible §19, §10).
@@ -97,8 +101,10 @@ function todayISO(): string {
   ).padStart(2, '0')}`;
 }
 
+
 export function InventoryWorkspace({
   initialPage,
+  initialGramsTotals,
   canMonitor,
   canCreate = false,
   canEdit = false,
@@ -110,6 +116,9 @@ export function InventoryWorkspace({
   canImportExport = false,
 }: {
   initialPage: InventoryPageResult;
+  /** Total Grams cards (Super Admin + Admin only). `undefined` hides them entirely (Staff);
+   *  an object shows the values; `null` means the read failed (the cards show "—"). */
+  initialGramsTotals?: InventoryGramsTotals | null | undefined;
   canMonitor: boolean;
   /** Super Admin (owner) — per-row Edit/Delete execute directly; an Admin only requests. */
   isOwner?: boolean;
@@ -140,6 +149,54 @@ export function InventoryWorkspace({
   // the RSC — would otherwise leave a just-deleted row on screen until a full reload.
   const [reloadToken, setReloadToken] = useState(0);
   const reloadActive = useCallback(() => setReloadToken((t) => t + 1), []);
+
+  // ── Total Grams summary cards (Super Admin + Admin) ────────────────────────────────
+  // GLOBAL, database-backed totals. `undefined` prop = Staff → hide the cards entirely.
+  // Two update paths, NO new polling / realtime:
+  //   1) prop re-sync — every inventory mutation revalidates /orders/inventory, re-running
+  //      the server page with fresh totals (covers CSV import + Completed↔Active returns,
+  //      which refresh via the RSC, not the reload token).
+  //   2) reloadToken  — New Entry / Edit / Delete also bump the client reload token; refetch
+  //      the totals via the same server action the table uses, so they update instantly.
+  const canViewTotals = initialGramsTotals !== undefined;
+  const [gramsTotals, setGramsTotals] = useState<InventoryGramsTotals | null>(
+    initialGramsTotals ?? null,
+  );
+  // Adopt a fresher SERVER total when the RSC re-renders with new props — CSV import and
+  // Completed↔Active returns refresh via router.refresh/revalidate, not the reload token.
+  // React's "adjust state when a prop changes" pattern, done in RENDER (guarded by a seed
+  // signature so it runs once per change and never loops) — not an effect, so no lag frame.
+  const seedActiveGrams = initialGramsTotals?.activeGrams ?? null;
+  const seedCompletedGrams = initialGramsTotals?.completedGrams ?? null;
+  const seedSig = canViewTotals ? `${seedActiveGrams}|${seedCompletedGrams}` : 'off';
+  const [lastSeedSig, setLastSeedSig] = useState(seedSig);
+  if (seedSig !== lastSeedSig) {
+    setLastSeedSig(seedSig);
+    // Skip a failed read (both null) so a transient error never blanks a good total.
+    if (canViewTotals && (seedActiveGrams !== null || seedCompletedGrams !== null)) {
+      setGramsTotals({
+        activeGrams: seedActiveGrams ?? 0,
+        completedGrams: seedCompletedGrams ?? 0,
+      });
+    }
+  }
+  const firstTotals = useRef(true);
+  useEffect(() => {
+    if (!canViewTotals) return;
+    if (firstTotals.current) {
+      // The server-seeded totals are already fresh on first render — no wasted round-trip.
+      firstTotals.current = false;
+      return;
+    }
+    let alive = true;
+    void loadInventoryGramsTotalsAction().then((res) => {
+      if (alive && res) setGramsTotals(res);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [reloadToken, canViewTotals]);
+
   const [tab, setTab] = useState<Tab>('Active Inventory');
   // Completed Items is SERVER-PAGINATED (Owner request — the view must scale past 1,000 with
   // an EXACT total, never a "999 of 999" cap). It stays off the initial load so Inventory
@@ -451,6 +508,61 @@ export function InventoryWorkspace({
           </span>
         ) : null}
       </div>
+
+      {/* Total Grams summary cards (Super Admin + Admin only) — GLOBAL, database-backed
+          totals of the grams shown in each tab's Grams column. Independent of the current
+          search / filter / page. Below the action buttons, above the search + filters.
+          Side-by-side on desktop, stacked on mobile. */}
+      {canViewTotals ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" data-testid="inventory-grams-cards">
+          <Card>
+            <CardContent className="flex items-center gap-3 p-4">
+              <span
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg"
+                style={{ backgroundColor: '#16A34A22', color: '#16A34A' }}
+                aria-hidden
+              >
+                ⚖️
+              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Active Inventory Total Grams
+                </p>
+                <p
+                  className="truncate text-xl font-bold tabular-nums"
+                  style={{ color: '#16A34A' }}
+                  data-testid="active-total-grams"
+                >
+                  {formatGrams(gramsTotals?.activeGrams)}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="flex items-center gap-3 p-4">
+              <span
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg"
+                style={{ backgroundColor: '#D4AF6722', color: '#D4AF67' }}
+                aria-hidden
+              >
+                ⚖️
+              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Completed Items Total Grams
+                </p>
+                <p
+                  className="truncate text-xl font-bold tabular-nums"
+                  style={{ color: '#D4AF67' }}
+                  data-testid="completed-total-grams"
+                >
+                  {formatGrams(gramsTotals?.completedGrams)}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
 
       {/* New Entry — create an inventory item in the standard modal. Permission is
           enforced server-side (post_live_item_entry) + RLS. */}

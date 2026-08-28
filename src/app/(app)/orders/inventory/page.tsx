@@ -8,6 +8,7 @@ import {
   getGrantedPermissions,
 } from '@/lib/authz/guard';
 import { listInventoryActivePage } from '@/lib/inventory/service';
+import { getInventoryGramsTotals } from '@/lib/inventory/grams-totals';
 
 export const metadata: Metadata = {};
 
@@ -48,6 +49,12 @@ export default async function InventoryPage() {
   const canInitiate = isOwner || profile.roleKey === 'selected_admin';
   const canDeleteAll = isOwner;
 
+  // Total Grams summary cards — Super Admin (owner) + Admin (selected_admin) only (Owner
+  // 2026-08-28). Fetched ONLY for those roles (a Staff session never runs the aggregate and
+  // never sees the cards); `undefined` = feature off for this viewer. One cheap DB aggregate.
+  const canViewTotals = isOwner || profile.roleKey === 'selected_admin';
+  const gramsTotals = canViewTotals ? await getInventoryGramsTotals() : undefined;
+
   return (
     <div className="space-y-4">
       <header className="space-y-1">
@@ -56,6 +63,8 @@ export default async function InventoryPage() {
 
       <InventoryWorkspace
         initialPage={initialPage}
+        // Super Admin + Admin only. `undefined` hides the cards entirely (Staff).
+        initialGramsTotals={gramsTotals}
         canMonitor={permissions.has('inventory_monitoring')}
         // Each per-row action follows its OWN permission (the Owner holds all
         // implicitly); the server re-checks the same key on every write.
