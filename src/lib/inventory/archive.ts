@@ -6,6 +6,7 @@ import {
   requireOwner,
   requirePermission,
 } from '@/lib/authz/guard';
+import { detectInventoryCodeIssues } from '@/lib/inventory/code-parser';
 import { createClient } from '@/lib/supabase/server';
 
 /**
@@ -468,6 +469,11 @@ export async function editInventoryItemDetails(input: {
   size: string | null;
   supplierName: string | null;
   facebookName: string | null;
+  /** Super-Admin item_code CORRECTION (optional). item_code has no other update path, so a mistyped
+   *  code was previously unfixable in the app. Only applied when it actually changes. */
+  itemCode?: string | null;
+  /** Acknowledge the save-time corruption warnings (the "Save anyway" override). */
+  acknowledgeWarnings?: boolean;
 }): Promise<InventoryMutationResult> {
   const itemName = (input.itemName ?? '').trim();
   if (itemName.length === 0) return { ok: false, error: 'Enter an item name.' };
@@ -517,15 +523,56 @@ export async function editInventoryItemDetails(input: {
   }
 
   const supabase = await createClient();
+
+  const updates: Record<string, unknown> = {
+    item_name: itemName,
+    grams_per_piece: grams,
+    size,
+    supplier_name: supplierName,
+    facebook_name: facebookName,
+  };
+
+  // Super-Admin item_code CORRECTION (this function is owner-gated). item_code has no other update
+  // path, so a mistyped code was previously unfixable in the app. Applies the SAME save-time
+  // corruption guard as New Entry + a case-insensitive uniqueness check — and ONLY when the code
+  // actually changes (so editing other fields never disturbs a code the operator left alone).
+  const newCode = (input.itemCode ?? '').trim();
+  let codeChange: { from: string; to: string } | null = null;
+  if (newCode !== '') {
+    if (newCode.length > 80) {
+      return { ok: false, error: 'Item code must be 80 characters or fewer.' };
+    }
+    const { data: cur } = await supabase
+      .from('inventory_items')
+      .select('item_code')
+      .eq('id', input.inventoryItemId)
+      .single();
+    const currentCode = ((cur?.item_code as string | null) ?? '').trim();
+    if (newCode !== currentCode) {
+      if (!input.acknowledgeWarnings) {
+        const issues = detectInventoryCodeIssues(newCode);
+        if (issues.length > 0) {
+          return { ok: false, error: `Please check the code — ${issues.join(' ')}` };
+        }
+      }
+      const pattern = newCode.replace(/[%_\\]/g, (c) => `\\${c}`);
+      const { data: dup } = await supabase
+        .from('inventory_items')
+        .select('id')
+        .ilike('item_code', pattern)
+        .neq('id', input.inventoryItemId)
+        .limit(1);
+      if (dup && dup.length > 0) {
+        return { ok: false, error: `The code “${newCode}” is already used by another item.` };
+      }
+      updates.item_code = newCode;
+      codeChange = { from: currentCode, to: newCode };
+    }
+  }
+
   const { error } = await supabase
     .from('inventory_items')
-    .update({
-      item_name: itemName,
-      grams_per_piece: grams,
-      size,
-      supplier_name: supplierName,
-      facebook_name: facebookName,
-    })
+    .update(updates)
     .eq('id', input.inventoryItemId)
     .eq('is_archived', false);
 
@@ -537,6 +584,10 @@ export async function editInventoryItemDetails(input: {
       outcome: 'failed',
       reason: error.message,
     });
+    // Uniqueness backstop even if the visible check missed a race.
+    if (error.code === '23505' || /duplicate key|unique/i.test(error.message)) {
+      return { ok: false, error: 'That item code is already used by another item.' };
+    }
     return { ok: false, error: 'The correction could not be saved.' };
   }
 
@@ -544,7 +595,12 @@ export async function editInventoryItemDetails(input: {
     action: 'inventory_item.correct_details',
     entityType: 'inventory_item',
     entityId: input.inventoryItemId,
-    context: { item_name: itemName, price_unchanged: true },
+    context: {
+      item_name: itemName,
+      price_unchanged: true,
+      // Traceable when the unique code itself was corrected.
+      code_corrected: codeChange ?? undefined,
+    },
   });
 
   return { ok: true };

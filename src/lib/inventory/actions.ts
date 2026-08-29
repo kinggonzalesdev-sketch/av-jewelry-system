@@ -478,6 +478,9 @@ export async function editInventoryItemAction(
     size: text(formData, 'size'),
     supplierName: text(formData, 'supplierName'),
     facebookName: text(formData, 'facebookName'),
+    // Super-Admin code correction (owner-gated in the domain). Absent for the Admin request path.
+    itemCode: text(formData, 'itemCode'),
+    acknowledgeWarnings: text(formData, 'acknowledgeWarning') === '1',
   });
   if (!result.ok) return { error: result.error, success: null };
 

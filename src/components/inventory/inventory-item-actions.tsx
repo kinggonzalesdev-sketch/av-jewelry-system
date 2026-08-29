@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useActionState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useActionState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 
 import {
@@ -15,7 +15,7 @@ import {
   type InventoryActionState,
 } from '@/lib/inventory/action-state';
 import type { InventoryRow } from '@/lib/inventory/service';
-import { parseInventoryCode } from '@/lib/inventory/code-parser';
+import { detectInventoryCodeIssues, parseInventoryCode } from '@/lib/inventory/code-parser';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -94,6 +94,14 @@ export function InventoryItemActions({
       onMutated?.();
     }
   }, [editState.success, router, onMutated]);
+
+  // Super-Admin item_code CORRECTION — controlled so the save-time corruption guard warns live.
+  // Reset to the current code each time the edit modal opens.
+  const [codeVal, setCodeVal] = useState(row.itemCode);
+  const codeIssues = useMemo(() => detectInventoryCodeIssues(codeVal), [codeVal]);
+  useEffect(() => {
+    if (edit) setCodeVal(row.itemCode);
+  }, [edit, row.itemCode]);
 
   // --- Owner DIRECT delete ---------------------------------------------------
   const [delState, delAction, deleting] = useActionState<InventoryActionState, FormData>(
@@ -277,7 +285,9 @@ export function InventoryItemActions({
                 {isOwner
                   ? editing
                     ? 'Saving…'
-                    : 'Save corrections'
+                    : codeIssues.length > 0
+                      ? 'Save anyway'
+                      : 'Save corrections'
                   : requesting
                     ? 'Submitting…'
                     : 'Submit for Approval'}
@@ -303,10 +313,47 @@ export function InventoryItemActions({
           className="space-y-3"
         >
           <input type="hidden" name="inventoryItemId" value={row.inventoryItemId} />
-          <p className="text-xs text-muted-foreground">
-            Code <span className="font-mono">{row.itemCode}</span>
-            {isOwner ? null : ' · your change is submitted to a Super Admin for approval.'}
-          </p>
+          {isOwner ? (
+            <div>
+              <Label htmlFor={`ed-code-${row.inventoryItemId}`} className="text-xs">
+                Item Code
+              </Label>
+              <Input
+                id={`ed-code-${row.inventoryItemId}`}
+                name="itemCode"
+                required
+                value={codeVal}
+                onChange={(e) => setCodeVal(e.target.value)}
+                className="mt-1 h-9 font-mono"
+                autoComplete="off"
+              />
+              {/* Same save-time corruption guard as New Entry — warns LIVE about likely typos; the
+                  operator can still "Save anyway". Only enforced server-side when the code changes. */}
+              {codeIssues.length > 0 ? (
+                <div
+                  role="alert"
+                  className="mt-1 rounded-md border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200"
+                >
+                  <p className="font-medium">Double-check this code:</p>
+                  <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                    {codeIssues.map((msg) => (
+                      <li key={msg}>{msg}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              <input
+                type="hidden"
+                name="acknowledgeWarning"
+                value={codeIssues.length > 0 ? '1' : ''}
+              />
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Code <span className="font-mono">{row.itemCode}</span>
+              {' · your change is submitted to a Super Admin for approval.'}
+            </p>
+          )}
           <ModalFormGrid>
             <ModalFieldFull>
               <Label htmlFor={`ed-name-${row.inventoryItemId}`} className="text-xs">
