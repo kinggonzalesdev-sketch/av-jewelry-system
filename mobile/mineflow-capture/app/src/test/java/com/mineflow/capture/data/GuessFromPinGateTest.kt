@@ -70,12 +70,14 @@ class GuessFromPinGateTest {
         assertEquals("8", g.itemQuery)
     }
 
-    // 6 — gate ON, only the TOP block (A) is pinned while B is the positional pick → NO fallback to the
-    //     unpinned B → null (the pin is authoritative; an unpinned bottom comment must not print).
+    // 6 — gate ON, only the TOP block (A) is pinned while B (bottom) is unpinned → the PIN is
+    //     authoritative, so the TOP block wins regardless of position; the unpinned bottom is out of
+    //     scope. (This is the core of the King fix: position never overrides the pin.)
     @Test
-    fun gateOn_topPinnedBottomUnpinned_null() {
+    fun gateOn_topPinned_selectsTopNotBottom() {
         val g = ScreenshotOcr.guessFrom(two) { listOf(pinOnBlock(100, 179)) }
-        assertNull(g.fbName)
+        assertEquals("Aaron Cruz", g.fbName)
+        assertEquals("5", g.itemQuery)
     }
 
     // 7 — gate ON, BOTH blocks pinned → Needs Review → null (never auto-pick one of two).

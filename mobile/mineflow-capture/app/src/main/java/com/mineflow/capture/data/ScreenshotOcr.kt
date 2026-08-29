@@ -511,6 +511,39 @@ object ScreenshotOcr {
     }
 
     /**
+     * PIN-LOCKED selection (Owner 2026-08-29). The on-screen visual pin is the SOLE authority: find the
+     * single pinned comment block and return ITS name + own claim. Unpinned comments never participate
+     * — no positional fallback, no competing-comment review (so a stack of unpinned same-customer
+     * comments cannot contest the pinned one). No confident pin → WaitingForPin → null; a pin on two+
+     * blocks / ambiguous → NeedsReview → null. Pure + JVM-testable: pins come from the injected detector,
+     * geometry from the already-classified name/claim line boxes. Name is taken from the pinned block's
+     * OWN name line (never chrome, never a broad crop); the claim is that block's OWN line, never borrowed.
+     */
+    private fun pinLockedGuess(
+        clean: List<OLine>,
+        admissible: List<Pair<OLine, Claim>>,
+        rawLines: List<String>,
+        pinDetect: (List<Box>) -> List<PinMarker>,
+    ): OcrGuess {
+        val claimLines = admissible.map { it.first }
+        val nameLines = claimLines.mapNotNull { nameLineForClaim(clean, it) }.distinct()
+        val pins = pinDetect(nameLines.map { it.box })
+        val sel = PinnedCommentSelector.select(nameLines, claimLines, pins)
+        if (sel !is PinnedSelection.Selected) return OcrGuess(null, null, null, rawLines) // Waiting / Needs Review
+
+        val name = sel.name.text.takeIf { looksLikeName(it) && !isChrome(it) }
+            ?: return OcrGuess(null, null, null, rawLines)
+        val claim = admissible.firstOrNull { it.first === sel.claim }?.second
+            ?: return OcrGuess(null, null, null, rawLines) // a pinned name with no readable claim → review
+        return OcrGuess(
+            fbName = sanitizeLeadingNameGlyph(name),
+            itemQuery = claim.value,
+            grams = claim.grams,
+            rawLines = rawLines,
+        )
+    }
+
+    /**
      * PINNED-ONLY extraction (see class doc). `internal` so it is unit-testable.
      *
      * `minClaimTop` (FULL-SCREEN FALLBACK only): the ESTABLISHED pinned zone. A claim at/below it
@@ -546,6 +579,18 @@ object ScreenshotOcr {
             .mapNotNull { ol -> parseClaim(ol.text)?.let { ol to it } }
             .filter { it.first.box.top >= recoveryFloor }
         if (admissible.isEmpty()) return OcrGuess(null, null, null, rawLines)
+
+        // VISUAL PIN GATE (Owner 2026-08-29). When a pin detector is supplied (the AUTOMATIC live
+        // path), the on-screen pin is the SOLE authority — decided FIRST, before positional selection
+        // and the competing-comment guard. Lock the single visually-pinned comment block and take ITS
+        // name + claim; every UNPINNED comment is OUT OF SCOPE (it does not drive selection and does
+        // NOT trigger competing-comment review). This is what lets a stack of unpinned same-customer
+        // comments (.66/.77/.88/.99) never contest the pinned .4.
+        //   no confident pin       → WaitingForPin → null (NEVER the bottom-most comment)
+        //   pin on 2+ / ambiguous  → NeedsReview   → null
+        // Inert when pinDetect is null: every existing caller/test falls through to the positional
+        // path below, byte-for-byte unchanged.
+        if (pinDetect != null) return pinLockedGuess(clean, admissible, rawLines, pinDetect)
 
         // Two-tier selection (Owner 2026-08-21):
         //  • ESTABLISHED zone (top >= minClaimTop): the proven pinned band. If ANY claim is here,
@@ -614,23 +659,6 @@ object ScreenshotOcr {
         // instead of a guess. This is the structural guarantee (grams tied to the name/comment
         // block) that a phrase blacklist alone cannot give.
         if (name == null) return OcrGuess(null, null, null, rawLines)
-
-        // VISUAL PIN GATE (Owner 2026-08-29). When a pin detector is supplied (the live path), the
-        // selected block may print ONLY if it carries a confidently detected on-screen pin badge AND
-        // is the UNIQUE pinned block. No pin → WaitingForPin; a pin on a DIFFERENT block, or two pins →
-        // NeedsReview. Either way we drop to a null guess (PC "needs review"/"waiting"): NEVER a
-        // fallback to this positional pick. Gate is inert when pinDetect is null (all existing callers).
-        if (pinDetect != null) {
-            val claimLines = admissible.map { it.first }
-            val pinnedNameLine = nameLineForClaim(clean, pinnedLine) ?: pinnedLine
-            val nameLines = (claimLines.mapNotNull { nameLineForClaim(clean, it) } + pinnedNameLine).distinct()
-            val pins = pinDetect(nameLines.map { it.box })
-            val sel = PinnedCommentSelector.select(nameLines, claimLines, pins)
-            val onOurBlock = sel is PinnedSelection.Selected && sel.name === pinnedNameLine
-            // No confident pin on the selected block (WaitingForPin / pin elsewhere / two pins) → drop
-            // to a null guess. guessFrom stays log-free + pure (JVM-unit-testable); the live path logs.
-            if (!onOurBlock) return OcrGuess(null, null, null, rawLines)
-        }
 
         // itemQuery = the pinned value (the PC reinterprets grams vs fixed price); grams is set
         // only for ONE real weight — a fixed price OR 2+ ambiguous numbers leaves it null (review).
