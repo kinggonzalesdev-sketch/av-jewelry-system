@@ -1037,4 +1037,98 @@ class ScreenshotOcrTest {
             assertEquals(n, ScreenshotOcr.sanitizeLeadingNameGlyph(n))
         }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────
+    // OWNER 2026-08-29 — SCENE-NOISE COMPETITOR DEFECT. A nameless scene/video/SKU number ("220",
+    // "SBA", "Zll-g-yRS") could enter the competing-comment guard and suppress a VALID named comment
+    // into a false Needs Review. The fix narrows COMPETITOR QUALIFICATION only: a number competes ONLY
+    // when it has a same-block customer NAME (the same nameForClaim association the pinned claim uses).
+    // Named competition, parseClaim, and the leading-decimal policy are all UNCHANGED.
+    // ─────────────────────────────────────────────────────────────────────────────────────────
+
+    // A — Marivic-type scene noise: valid "Marivic Bantigue / Mine 0.97" pinned at the bottom, plus
+    // nameless scene fragments "220"/"SBA"/"Zll-g-yRS". "220" sits close enough that the OLD number-only
+    // guard would have competed it (→ Needs Review), but it has NO same-block name → excluded → Marivic
+    // prints. (Under the old code this returned null/null.)
+    @Test
+    fun sceneNoise_A_marivic_220_notNeedsReview() {
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                OLine("Zll-g-yRS", Box(40, 780, 180, 820)),        // scene code (not above 220)
+                OLine("220", Box(220, 815, 300, 855)),             // nameless scene number, offset right
+                OLine("SBA", Box(310, 815, 380, 855)),             // scene code
+                OLine("Marivic Bantigue", Box(40, 860, 400, 900)), // pinned NAME
+                OLine("Mine 0.97", Box(40, 905, 400, 945)),        // pinned CLAIM (bottom-most)
+            ),
+        )
+        assertEquals("Marivic Bantigue", g.fbName)
+        assertEquals("0.97", g.grams)
+    }
+
+    // B — a nameless "220" NEAR a valid named 0.97 does not force Needs Review (isolated proof of the
+    // competitor-qualification narrowing).
+    @Test
+    fun sceneNoise_B_nameless220_doesNotForceReview() {
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                OLine("220", Box(40, 820, 200, 858)),              // nameless (nothing above it)
+                OLine("Buyer Name", Box(40, 860, 400, 900)),
+                OLine("Mine 0.97", Box(40, 905, 400, 945)),
+            ),
+        )
+        assertEquals("Buyer Name", g.fbName)
+        assertEquals("0.97", g.grams)
+    }
+
+    // C — TWO legitimate NAMED comments with DIFFERENT values still → Needs Review (unchanged, preserved).
+    @Test
+    fun sceneNoise_C_twoNamedCompetitors_stillNeedsReview() {
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                OLine("Customer A", Box(40, 800, 400, 840)),
+                OLine("Mine .44", Box(40, 845, 400, 885)),
+                OLine("Customer B", Box(40, 890, 400, 930)),
+                OLine("Mine .99", Box(40, 935, 400, 975)),
+            ),
+        )
+        assertNull(g.fbName)
+        assertNull(g.grams)
+    }
+
+    // D — a nameless standalone "220" never prints as a customer claim (structural safety; unchanged).
+    @Test
+    fun sceneNoise_D_namelessStandalone220_noClaim() {
+        val g = ScreenshotOcr.guessFrom(listOf(line("220", 900)))
+        assertNull(g.fbName)
+        assertNull(g.grams)
+    }
+
+    // E — RESIDUAL TRADE-OFF: an older comment whose NAME was OCR-dropped (only ".99" survived) is no
+    // longer promoted to a competitor, so the valid NAMED current comment ("King Gonzales / .4") prints
+    // instead of a false Needs Review. The dropped-name ".99" still cannot print by itself (no name).
+    // Documented trade-off: a real competitor with a lost identity no longer forces review.
+    @Test
+    fun sceneNoise_E_droppedNameFragment_notACompetitor() {
+        val g = ScreenshotOcr.guessFrom(
+            listOf(
+                OLine(".99", Box(40, 800, 200, 838)),              // older comment, NAME OCR-dropped
+                OLine("King Gonzales", Box(40, 890, 400, 930)),    // current NAMED comment
+                OLine(".4", Box(40, 935, 200, 975)),
+            ),
+        )
+        assertEquals("King Gonzales", g.fbName)
+        assertEquals("0.4", g.grams)
+    }
+
+    // F — leading-decimal policy UNCHANGED: a bare "33" with no dot evidence stays 33g (never 0.33).
+    @Test
+    fun sceneNoise_F_bare33_staysGrams() {
+        assertEquals("33", pinnedGrams("33"))
+    }
+
+    // G — leading-decimal policy UNCHANGED: a clean ".33" restores to 0.33g.
+    @Test
+    fun sceneNoise_G_cleanLeadingDot33_isPoint33() {
+        assertEquals("0.33", pinnedGrams(".33"))
+    }
 }

@@ -501,7 +501,20 @@ object ScreenshotOcr {
         // older 2-digit .99 won.) A single isolated pinned comment still prints; SAME-value
         // duplicates never compete; a claim scrolling FAR above (> 3 line-heights) is not a
         // competitor.
-        val numbered = olines.filter { it.box.top >= minClaimTop && carriesNumber(it.text) != null }
+        // COMPETITOR QUALIFICATION (Owner 2026-08-29): only a number that belongs to a real CUSTOMER
+        // comment may compete — i.e. it has a same-block customer NAME, decided by the SAME
+        // nameForClaim association the pinned claim uses. A nameless scene/video/SKU number ("220",
+        // "SBA", a QR/code fragment) is NOT another customer, so it can no longer suppress a valid
+        // named comment into a false Needs Review (proven Marivic-type scene-noise defect). This
+        // narrows COMPETITOR QUALIFICATION ONLY — candidate extraction (parseClaim) is unchanged, and
+        // two DIFFERENT-valued NAMED comments still go to Needs Review exactly as before. Residual
+        // trade-off: a genuine older comment whose NAME was OCR-dropped (only its number survived) is
+        // no longer promoted to a competitor — it has no identity to act on and cannot print alone.
+        val numbered = olines.filter {
+            it.box.top >= minClaimTop &&
+                carriesNumber(it.text) != null &&
+                nameForClaim(clean, it) != null
+        }
         val lowestNum = numbered.maxByOrNull { it.box.top }
         if (lowestNum != null) {
             val lowVal = normNum(carriesNumber(lowestNum.text)!!)
