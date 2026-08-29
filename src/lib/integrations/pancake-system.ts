@@ -78,3 +78,30 @@ export async function syncPancakeConversationsSystem(): Promise<PancakeSyncResul
     totalCustomers,
   };
 }
+
+export type WebhookPruneResult = { ok: boolean; deleted: number; message: string };
+
+/**
+ * SYSTEM webhook-events retention prune — the daily cron path. `pancake_webhook_events` grows
+ * ~8.8k rows / ~17MB per day with no retention, so this deletes events older than the window
+ * (default 30 days) via the service-role-only `prune_pancake_webhook_events` RPC (which itself
+ * enforces a 7-day safety floor). SAFE: only RECENT events are read functionally (media-eligibility
+ * window, conversation resolution) and the (page_id, comment_id) dedup only matters for near-term FB
+ * re-deliveries. Authority comes from the CALLER: the cron route must verify CRON_SECRET first.
+ */
+export async function pruneWebhookEventsSystem(retentionDays = 30): Promise<WebhookPruneResult> {
+  const admin = createAdminClient();
+  const { data, error } = (await admin.rpc('prune_pancake_webhook_events', {
+    retention_days: retentionDays,
+  })) as { data: number | null; error: { message: string } | null };
+
+  if (error) {
+    return { ok: false, deleted: 0, message: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+  const deleted = Number(data ?? 0);
+  return {
+    ok: true,
+    deleted,
+    message: `Pruned ${deleted} webhook event(s) older than ${retentionDays} days.`,
+  };
+}
