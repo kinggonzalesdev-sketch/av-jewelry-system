@@ -17,6 +17,8 @@ import org.junit.Test
 class PinPixelDetectorTest {
 
     private val tpl = PinFixtures.load("facebook_pin_badge.png")
+    private val kingTpl = PinFixtures.load("facebook_pin_badge_king.png")
+    private val tpls = listOf(tpl, kingTpl) // multi-template match (best score across both)
     private val glaiza by lazy { PinFixtures.load("glaiza_pinned_live.png") }      // 945×2048 broadcaster
     private val rubyNez by lazy { PinFixtures.load("ruby_nez_pinned_live.png") }   // 720×1600 viewer
 
@@ -36,7 +38,7 @@ class PinPixelDetectorTest {
     // A — broadcaster view, Glaiza's real pin → Selected(Glaiza / Mine 8.9).
     @Test
     fun A_glaizaRealPin_selected() {
-        val pins = PinPixelDetector.detectPins(glaiza, tpl, boxesOf(glaizaName))
+        val pins = PinPixelDetector.detectPins(glaiza, tpls, boxesOf(glaizaName))
         assertEquals("exactly one pin on Glaiza's avatar", 1, pins.size)
         val r = PinnedCommentSelector.select(listOf(glaizaName), listOf(glaizaClaim), pins)
         assertTrue("expected Selected", r is PinnedSelection.Selected)
@@ -48,7 +50,7 @@ class PinPixelDetectorTest {
     // B — viewer view: Ruby (no pin) vs Nez (pin). Only Nez detected; Ruby never selected though 1.72==1.72.
     @Test
     fun B_rubyNoPin_nezRealPin_selectsNez() {
-        val pins = PinPixelDetector.detectPins(rubyNez, tpl, boxesOf(danName, rubyName, nezName))
+        val pins = PinPixelDetector.detectPins(rubyNez, tpls, boxesOf(danName, rubyName, nezName))
         assertEquals("only Nez's avatar carries a pin", 1, pins.size)
         val r = PinnedCommentSelector.select(
             listOf(danName, rubyName, nezName), listOf(danClaim, rubyClaim, nezClaim), pins,
@@ -63,7 +65,7 @@ class PinPixelDetectorTest {
     @Test
     fun C_maskedPin_waiting() {
         val masked = PinFixtures.maskBox(rubyNez, Box(28, 1256, 96, 1300))
-        val pins = PinPixelDetector.detectPins(masked, tpl, boxesOf(danName, rubyName, nezName))
+        val pins = PinPixelDetector.detectPins(masked, tpls, boxesOf(danName, rubyName, nezName))
         assertEquals("no pin after masking", 0, pins.size)
         val r = PinnedCommentSelector.select(
             listOf(danName, rubyName, nezName), listOf(danClaim, rubyClaim, nezClaim), pins,
@@ -74,7 +76,7 @@ class PinPixelDetectorTest {
     // D — perfectly readable comments but (Dan + Ruby only) NO pin → WaitingForPin, never auto-picked.
     @Test
     fun D_readableCommentsNoPin_waiting() {
-        val pins = PinPixelDetector.detectPins(rubyNez, tpl, boxesOf(danName, rubyName))
+        val pins = PinPixelDetector.detectPins(rubyNez, tpls, boxesOf(danName, rubyName))
         assertEquals(0, pins.size)
         val r = PinnedCommentSelector.select(
             listOf(danName, rubyName), listOf(danClaim, rubyClaim), pins,
@@ -88,7 +90,7 @@ class PinPixelDetectorTest {
     fun E_starAndReactionIcons_notDetected() {
         val starRoiName = Box(78, 1360, 200, 1390)   // ROI reaches left to the "Send 200 Stars" star
         val heartRoiName = Box(712, 1452, 720, 1482) // ROI reaches left to the ❤️ reaction button
-        val pins = PinPixelDetector.detectPins(rubyNez, tpl, listOf(starRoiName, heartRoiName))
+        val pins = PinPixelDetector.detectPins(rubyNez, tpls, listOf(starRoiName, heartRoiName))
         assertEquals("stars/reaction glyphs are not accepted as pins", 0, pins.size)
     }
 
@@ -101,7 +103,7 @@ class PinPixelDetectorTest {
                 (nezName.box.left * f).toInt(), (nezName.box.top * f).toInt(),
                 (nezName.box.right * f).toInt(), (nezName.box.bottom * f).toInt(),
             )
-            val pins = PinPixelDetector.detectPins(img, tpl, listOf(nb))
+            val pins = PinPixelDetector.detectPins(img, tpls, listOf(nb))
             assertTrue("pin must survive ${f}× rescale", pins.isNotEmpty())
         }
     }
@@ -110,7 +112,7 @@ class PinPixelDetectorTest {
     @Test
     fun G_compressionSoftening_stillDetects() {
         val soft = PinFixtures.softBlur(rubyNez)
-        val pins = PinPixelDetector.detectPins(soft, tpl, boxesOf(nezName))
+        val pins = PinPixelDetector.detectPins(soft, tpls, boxesOf(nezName))
         assertTrue("pin must survive mild softening", pins.isNotEmpty())
     }
 
@@ -118,7 +120,7 @@ class PinPixelDetectorTest {
     @Test
     fun H_twoRealPins_needsReview() {
         val twoPins = PinFixtures.pasteRegion(rubyNez, rubyNez, Box(40, 1250, 90, 1295), 40, 1150)
-        val pins = PinPixelDetector.detectPins(twoPins, tpl, boxesOf(rubyName, nezName))
+        val pins = PinPixelDetector.detectPins(twoPins, tpls, boxesOf(rubyName, nezName))
         assertEquals("both avatars now carry a pin", 2, pins.size)
         val r = PinnedCommentSelector.select(
             listOf(rubyName, nezName), listOf(rubyClaim, nezClaim), pins,
@@ -129,9 +131,9 @@ class PinPixelDetectorTest {
     // H2 — the LIVE path samples every 2nd pixel (stride=2) for speed; the pins must still be found.
     @Test
     fun H2_liveStride2_stillDetects() {
-        val g = PinPixelDetector.detectPins(glaiza, tpl, boxesOf(glaizaName), stride = 2)
+        val g = PinPixelDetector.detectPins(glaiza, tpls, boxesOf(glaizaName), stride = 2)
         assertEquals("Glaiza pin at stride=2", 1, g.size)
-        val rn = PinPixelDetector.detectPins(rubyNez, tpl, boxesOf(danName, rubyName, nezName), stride = 2)
+        val rn = PinPixelDetector.detectPins(rubyNez, tpls, boxesOf(danName, rubyName, nezName), stride = 2)
         assertEquals("only Nez pin at stride=2", 1, rn.size)
     }
 
@@ -144,13 +146,13 @@ class PinPixelDetectorTest {
         }
         // warm up the JIT so the reported numbers reflect steady state
         repeat(3) {
-            PinPixelDetector.detectPins(glaiza, tpl, boxesOf(glaizaName))
-            PinPixelDetector.detectPins(rubyNez, tpl, boxesOf(danName, rubyName, nezName), stride = 2)
+            PinPixelDetector.detectPins(glaiza, tpls, boxesOf(glaizaName))
+            PinPixelDetector.detectPins(rubyNez, tpls, boxesOf(danName, rubyName, nezName), stride = 2)
         }
-        val g1 = timeMs { PinPixelDetector.detectPins(glaiza, tpl, boxesOf(glaizaName)) }
-        val r1 = timeMs { PinPixelDetector.detectPins(rubyNez, tpl, boxesOf(danName, rubyName, nezName)) }
-        val g2 = timeMs { PinPixelDetector.detectPins(glaiza, tpl, boxesOf(glaizaName), stride = 2) }
-        val r2 = timeMs { PinPixelDetector.detectPins(rubyNez, tpl, boxesOf(danName, rubyName, nezName), stride = 2) }
+        val g1 = timeMs { PinPixelDetector.detectPins(glaiza, tpls, boxesOf(glaizaName)) }
+        val r1 = timeMs { PinPixelDetector.detectPins(rubyNez, tpls, boxesOf(danName, rubyName, nezName)) }
+        val g2 = timeMs { PinPixelDetector.detectPins(glaiza, tpls, boxesOf(glaizaName), stride = 2) }
+        val r2 = timeMs { PinPixelDetector.detectPins(rubyNez, tpls, boxesOf(danName, rubyName, nezName), stride = 2) }
         println(
             "PIN-DETECT-MS stride1 glaiza=%.1f ruby_nez=%.1f | LIVE stride2 glaiza=%.1f ruby_nez=%.1f"
                 .format(g1, r1, g2, r2),

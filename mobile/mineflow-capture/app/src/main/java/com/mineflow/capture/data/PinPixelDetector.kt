@@ -30,13 +30,15 @@ internal val Box.width: Int get() = right - left
 
 internal object PinPixelDetector {
 
-    /** ZNCC acceptance floor. Calibrated on the real fixtures: within an avatar ROI the true pins
-     *  score ~0.70 (Glaiza) / ~0.82 (Nez) while pin-less avatars top out ~0.60 (Ruby) / ~0.56 (Dan). */
-    const val DEFAULT_THRESHOLD = 0.66
+    /** ZNCC acceptance floor. Calibrated on ALL real fixtures with the MULTI-TEMPLATE match (best of
+     *  the original badge + a real King-pin crop): true pins score 0.95 (Glaiza) / 0.98 (Nez) / ~1.0
+     *  (King) while every non-pin — Ruby/Dan, the four unpinned King avatars of the SAME person, and
+     *  the blue verified badges — tops out at 0.74. 0.85 sits in the 0.21 gap between. */
+    const val DEFAULT_THRESHOLD = 0.85
 
-    /** Template scales searched — the supplied 18×13 crop is a downscaled pin, so it must be UPSCALED
-     *  (~2.2× viewer / ~2.6× broadcaster) to match on-screen; a spread of scales covers device density. */
-    val DEFAULT_SCALES = doubleArrayOf(0.85, 1.0, 1.25, 1.5, 1.8, 2.1, 2.4, 2.8)
+    /** Template scales searched — must cover BOTH the 18×13 original (upscaled ~2.1–2.8× on screen)
+     *  and the ~actual-size 18×17 King crop (~0.8–1.5×), across device density. */
+    val DEFAULT_SCALES = doubleArrayOf(0.7, 0.85, 1.0, 1.2, 1.5, 1.8, 2.1, 2.5, 2.8)
 
     /** Only template pixels this opaque are compared (the pin shape; transparent border ignored). */
     private const val ALPHA_MIN = 128
@@ -135,20 +137,24 @@ internal object PinPixelDetector {
         return Box(left, top, right, bottom)
     }
 
-    /** A match's badge size must be a plausible fraction of the avatar diameter (rejects giant/tiny). */
+    /** A match's badge size must be a plausible fraction of the avatar diameter (rejects giant/tiny).
+     *  Wide band because two templates of different sizes (18×13 upscaled, 18×17 near-actual) both feed
+     *  in — the similarity threshold does the real discrimination. */
     private fun plausibleSize(match: PinMatch, name: Box): Boolean {
         val ratio = match.box.width.toDouble() / avatarDiameter(name).toDouble()
-        return ratio in 0.35..1.25
+        return ratio in 0.15..1.4
     }
 
     /**
      * Detect confident pin badges. For each candidate NAME box, look ONLY in its avatar/lower-right ROI
-     * (never the whole screen); accept a match that clears BOTH the similarity threshold AND the size
-     * gate. Returns one PinMarker per pinned comment (the strongest match in that ROI). Bounded + fast.
+     * (never the whole screen); a candidate must clear BOTH the similarity threshold (best score across
+     * ALL templates) AND the size gate. MULTI-TEMPLATE: the FB pin renders slightly differently across
+     * captures, so matching the max of several real pin templates generalizes without lowering the
+     * threshold into false-positive range. Returns one PinMarker per pinned comment. Bounded + fast.
      */
     fun detectPins(
         img: ArgbImage,
-        tpl: ArgbImage,
+        templates: List<ArgbImage>,
         nameBoxes: List<Box>,
         threshold: Double = DEFAULT_THRESHOLD,
         scales: DoubleArray = DEFAULT_SCALES,
@@ -157,7 +163,9 @@ internal object PinPixelDetector {
         val markers = ArrayList<PinMarker>()
         for (name in nameBoxes) {
             val roi = pinRoiFor(name)
-            val best = bestMatchIn(img, tpl, roi, scales, stride) ?: continue
+            val best = templates
+                .mapNotNull { bestMatchIn(img, it, roi, scales, stride) }
+                .maxByOrNull { it.score } ?: continue
             if (best.score >= threshold && plausibleSize(best, name)) {
                 markers.add(PinMarker(best.box, best.score))
             }

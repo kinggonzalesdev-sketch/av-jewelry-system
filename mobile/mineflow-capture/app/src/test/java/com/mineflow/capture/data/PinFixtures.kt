@@ -109,6 +109,16 @@ internal object PinFixtures {
         return ArgbImage(out, img.width, img.height)
     }
 
+    /** Crop `box` out of `img` into a new image (clamped to bounds). */
+    fun crop(img: ArgbImage, box: Box): ArgbImage {
+        val l = box.left.coerceIn(0, img.width); val t = box.top.coerceIn(0, img.height)
+        val r = box.right.coerceIn(l, img.width); val b = box.bottom.coerceIn(t, img.height)
+        val w = r - l; val h = b - t
+        val out = IntArray(w * h)
+        for (y in 0 until h) for (x in 0 until w) out[y * w + x] = img.pixels[(t + y) * img.width + (l + x)]
+        return ArgbImage(out, w, h)
+    }
+
     /** Nearest-neighbour rescale by `factor` (device-density / scale tolerance). */
     fun rescale(img: ArgbImage, factor: Double): ArgbImage {
         val w = maxOf(1, Math.round(img.width * factor).toInt())

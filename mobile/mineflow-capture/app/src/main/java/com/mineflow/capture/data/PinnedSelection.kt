@@ -53,7 +53,11 @@ internal object PinnedCommentSelector {
     fun avatarRegionFor(name: OLine, claim: OLine?): Box {
         val top = name.box.top
         val bottom = maxOf(claim?.box?.bottom ?: name.box.bottom, name.box.bottom)
-        val size = maxOf(bottom - top, name.box.height)
+        // At least ~1.6× the name height: the real avatar is taller than the text, and the pin sits at
+        // its LOWER-right (below the name baseline). Without this floor, a name with no associated claim
+        // (e.g. a verified-badge-indented pinned name) would get a name-height-only box that misses the
+        // pin. The claim-based case is unchanged (bottom−top dominates when a claim is present).
+        val size = maxOf(bottom - top, Math.round(name.box.height * 1.6).toInt())
         val right = name.box.left
         val left = maxOf(0, right - size)
         return Box(left, top, right, top + size)

@@ -3,7 +3,6 @@ package com.mineflow.capture.data
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 /**
@@ -78,21 +77,69 @@ class KingStackedPinTest {
         assertEquals(".4", g.itemQuery)
     }
 
-    // REAL-BITMAP regression — auto-skips until the Owner adds king_pinned_was_live.png. Proves a real
-    // visible pin badge exists + is detectable on the King `.4` block of the actual "Was live" screen,
-    // scanning the bottom-left comment column (no exact name boxes needed).
+    // ================= REAL KING BITMAP (king_pinned_was_live.png, 720×1600) =================
+    // Measured geometry of the five King comments on the actual "Was live" screen. The pin is found
+    // purely from the real pixels via the multi-template detector — no PinMarker injection.
+    private val kingImg by lazy { PinFixtures.load("king_pinned_was_live.png") }
+    private val realTpls by lazy {
+        listOf(PinFixtures.load("facebook_pin_badge.png"), PinFixtures.load("facebook_pin_badge_king.png"))
+    }
+    private val rk1 = OLine("King Gonzales", Box(88, 943, 250, 977)); private val rc1 = OLine(".66", Box(88, 980, 118, 1010))
+    private val rk2 = OLine("King Gonzales", Box(88, 1036, 250, 1070)); private val rc2 = OLine(".77", Box(88, 1072, 118, 1102))
+    private val rk3 = OLine("King Gonzales", Box(88, 1128, 250, 1162)); private val rc3 = OLine(".88", Box(88, 1164, 118, 1194))
+    private val rk4 = OLine("King Gonzales", Box(88, 1220, 250, 1254)); private val rc4 = OLine(".99", Box(88, 1256, 118, 1286))
+    private val rk5 = OLine("King Gonzales", Box(112, 1323, 272, 1357)); private val rc5 = OLine(".4", Box(88, 1358, 112, 1388))
+    private val realScene = listOf(rk1, rc1, rk2, rc2, rk3, rc3, rk4, rc4, rk5, rc5)
+    private val realNameBoxes = listOf(rk1, rk2, rk3, rk4, rk5).map { it.box }
+
+    // REAL 1 — the detector finds EXACTLY ONE pin, on the bottom (.4) King avatar.
     @Test
-    fun realKingBitmap_hasDetectablePin() {
-        val present = javaClass.getResource("/pin-fixtures/king_pinned_was_live.png") != null
-        assumeTrue("king_pinned_was_live.png not in fixtures yet — real-bitmap regression skipped", present)
-        val img = PinFixtures.load("king_pinned_was_live.png")
-        val tpl = PinFixtures.load("facebook_pin_badge.png")
-        // Bottom-left comment column, bottom ~30% of the screen, where the avatars/pins sit.
-        val roi = Box(0, (img.height * 0.7).toInt(), (img.width * 0.18).toInt(), img.height)
-        val m = PinPixelDetector.bestMatchIn(img, tpl, roi, PinPixelDetector.DEFAULT_SCALES, stride = 1)
-        assertTrue(
-            "expected a confident pin in the bottom-left comment column (got ${m?.score})",
-            (m?.score ?: -1.0) >= PinPixelDetector.DEFAULT_THRESHOLD,
-        )
+    fun realKing_detectsExactlyOnePin_onBottomAvatar() {
+        assertTrue("fixture must be present", javaClass.getResource("/pin-fixtures/king_pinned_was_live.png") != null)
+        val pins = PinPixelDetector.detectPins(kingImg, realTpls, realNameBoxes)
+        assertEquals("exactly one visible pin (the .4 block)", 1, pins.size)
+        assertTrue("pin sits on the BOTTOM King avatar (y≈1357+)", pins[0].box.top >= 1340)
+    }
+
+    // REAL 2 — full pipeline over the real bitmap: guessFrom + real detector → King Gonzales / .4 / 0.4.
+    @Test
+    fun realKing_pipeline_selectsKingDotFour() {
+        val g = ScreenshotOcr.guessFrom(realScene) { boxes ->
+            PinPixelDetector.detectPins(kingImg, realTpls, boxes)
+        }
+        assertEquals("King Gonzales", g.fbName) // NOT "Name not read"
+        assertEquals(".4", g.itemQuery)
+        assertEquals("0.4", g.grams)
+    }
+
+    // REAL 3 — same at the LIVE stride (=2): still exactly one pin, still selects .4.
+    @Test
+    fun realKing_liveStride2_selectsKingDotFour() {
+        val g = ScreenshotOcr.guessFrom(realScene) { boxes ->
+            PinPixelDetector.detectPins(kingImg, realTpls, boxes, stride = 2)
+        }
+        assertEquals("King Gonzales", g.fbName)
+        assertEquals(".4", g.itemQuery)
+    }
+
+    // REAL 4 — NO-PIN derived: mask ONLY the real pin badge, keep King Gonzales / .4 readable →
+    //          WaitingForPin. Proves bottom position alone no longer authorizes Capture.
+    @Test
+    fun realKing_pinMasked_waiting() {
+        val masked = PinFixtures.maskBox(kingImg, Box(52, 1352, 78, 1376)) // paint over the pin badge only
+        val pins = PinPixelDetector.detectPins(masked, realTpls, realNameBoxes)
+        assertEquals("no pin after masking", 0, pins.size)
+        val g = ScreenshotOcr.guessFrom(realScene) { boxes ->
+            PinPixelDetector.detectPins(masked, realTpls, boxes)
+        }
+        assertNull("Waiting for Pinned Comment (no auto-select)", g.fbName)
+    }
+
+    // REAL 5 — the four UNPINNED King comments never register a pin (same person, no badge) and the
+    //          blue verified badges are not pins either.
+    @Test
+    fun realKing_unpinnedAndVerified_notPins() {
+        val unpinnedOnly = PinPixelDetector.detectPins(kingImg, realTpls, listOf(rk1.box, rk2.box, rk3.box, rk4.box))
+        assertEquals("no pins on the four unpinned King comments", 0, unpinnedOnly.size)
     }
 }
