@@ -577,9 +577,7 @@ export function summarizeUploadResponse(args: {
  * `{ success: true, id: "<content_id>", type: "PHOTO" }`. The image is read server-side
  * from its short-lived signed URL. Never logs the token.
  */
-export async function uploadPancakeImageContent(
-  imageUrl: string,
-): Promise<
+export async function uploadPancakeImageContent(imageUrl: string): Promise<
   | { ok: true; contentId: string; diag: PancakeUploadDiagnostics }
   | {
       ok: false;
@@ -622,8 +620,7 @@ export async function uploadPancakeImageContent(
   }
 
   const base = resolvePancakeApiBase();
-  const template =
-    process.env.PANCAKE_UPLOAD_PATH || '/pages/{page_id}/upload_contents';
+  const template = process.env.PANCAKE_UPLOAD_PATH || '/pages/{page_id}/upload_contents';
   const path = template.replace('{page_id}', encodeURIComponent(pageId.trim()));
   const endpoint = `${base}${path}${path.includes('?') ? '&' : '?'}${tokenParam}=${encodeURIComponent(token.trim())}`;
 
@@ -1590,8 +1587,7 @@ function extractCommenters(body: unknown): Array<{ psid: string; name: string }>
         ? (mm.from as Record<string, unknown>)
         : null;
     const psid = asText(from?.id) || asText(mm.from_id) || asText(mm.sender_id);
-    const name =
-      asText(from?.name) || asText(mm.from_name) || asText(mm.sender_name);
+    const name = asText(from?.name) || asText(mm.from_name) || asText(mm.sender_name);
     if (psid) out.push({ psid, name });
   }
   return out;
@@ -1759,7 +1755,7 @@ export type ResolvedConversation = {
 export async function resolveConversationForName(
   supabase: SupabaseClient,
   rawName: string,
-  opts?: { sinceDays?: number; maxPages?: number },
+  opts?: { sinceDays?: number; maxPages?: number; system?: boolean },
 ): Promise<ResolvedConversation> {
   const name = (rawName ?? '').trim();
   if (name.length < 2) return { conversationId: null, matchCount: 0, source: 'none' };
@@ -1822,12 +1818,22 @@ export async function resolveConversationForName(
   // conversations API). Builds the messageable inbox conversation {page_id}_{psid}; unique
   // name only (never guesses a shared name); a wrong-page/blank id is ignored so tier 2
   // still runs. This is what makes "tap the pinned comment → Send now" work during a live.
-  const wh = await resolveConversationFromWebhook(supabase, name, activePage);
-  if (wh.conversationId) {
-    return { conversationId: wh.conversationId, matchCount: 1, source: 'pancake_live' };
-  }
-  if (wh.matchCount > 1) {
-    return { conversationId: null, matchCount: wh.matchCount, source: 'none' };
+  //
+  // SKIPPED in the service-role `system` path (the durable/webhook auto-router). This tier calls
+  // webhook_resolve_conversation_by_name — a SECURITY DEFINER RPC gated on app_private.is_active_staff();
+  // a service-role client has no auth.uid(), so the call can ONLY raise "Not authorized." (a Postgres
+  // 42501 logged on every Live-comment sweep — the source of the Aug-28 error spike). It is redundant
+  // there anyway: tier 1 (customers) and tier 2 (live lookup) both run under the admin client and
+  // already cover the system path, so skipping it drops a guaranteed-failing call with NO behaviour
+  // change. Every AUTHENTICATED caller (mobile / PC / owner resolve) still uses this fast tier.
+  if (!opts?.system) {
+    const wh = await resolveConversationFromWebhook(supabase, name, activePage);
+    if (wh.conversationId) {
+      return { conversationId: wh.conversationId, matchCount: 1, source: 'pancake_live' };
+    }
+    if (wh.matchCount > 1) {
+      return { conversationId: null, matchCount: wh.matchCount, source: 'none' };
+    }
   }
 
   // Tier 2 — LIVE lookup (returns a single unambiguous conversation, else null).
@@ -1975,7 +1981,12 @@ export async function getPancakePageUsers(): Promise<PancakePageUsersResult> {
     (pageToken ? 'page_access_token' : 'access_token');
   const pageId = await getActivePancakePageId();
   if (!token || !token.trim())
-    return { ok: false, code: 'token_missing', message: 'Access token missing.', users: [] };
+    return {
+      ok: false,
+      code: 'token_missing',
+      message: 'Access token missing.',
+      users: [],
+    };
   if (!pageId)
     return { ok: false, code: 'token_missing', message: 'No Page selected.', users: [] };
 
@@ -2003,16 +2014,50 @@ export async function getPancakePageUsers(): Promise<PancakePageUsersResult> {
   }
   const debug = `HTTP ${res.status} · GET ${base}${path} · ${rawText.slice(0, 300)}`;
   if (res.status === 401)
-    return { ok: false, code: 'token_invalid', message: 'Invalid or expired token.', users: [], debug };
+    return {
+      ok: false,
+      code: 'token_invalid',
+      message: 'Invalid or expired token.',
+      users: [],
+      debug,
+    };
   if (res.status === 403)
-    return { ok: false, code: 'permission_denied', message: 'Permission denied for users.', users: [], debug };
+    return {
+      ok: false,
+      code: 'permission_denied',
+      message: 'Permission denied for users.',
+      users: [],
+      debug,
+    };
   if (!res.ok)
-    return { ok: false, code: 'unavailable', message: `Pancake responded ${res.status}.`, users: [], debug };
-  if (bodyU && typeof bodyU === 'object' && (bodyU as { success?: boolean }).success === false)
-    return { ok: false, code: 'token_invalid', message: 'Pancake rejected the token.', users: [], debug };
+    return {
+      ok: false,
+      code: 'unavailable',
+      message: `Pancake responded ${res.status}.`,
+      users: [],
+      debug,
+    };
+  if (
+    bodyU &&
+    typeof bodyU === 'object' &&
+    (bodyU as { success?: boolean }).success === false
+  )
+    return {
+      ok: false,
+      code: 'token_invalid',
+      message: 'Pancake rejected the token.',
+      users: [],
+      debug,
+    };
   const users = extractPageUsers(bodyU);
   if (users.length === 0)
-    return { ok: false, code: 'none_found', message: 'No active Pancake users found for this Page.', users: [], debug };
+    return {
+      ok: false,
+      code: 'none_found',
+      message: 'No active Pancake users found for this Page.',
+      users: [],
+      debug,
+    };
   return {
     ok: true,
     code: 'loaded',
@@ -2036,7 +2081,8 @@ export async function getSelectedPancakeSender(): Promise<SelectedPancakeSender 
   return { userId: id, userName: (data?.sender_user_name as string | null) ?? null };
 }
 
-export type SaveSenderResult = { ok: true; userId: string } | { ok: false; error: string };
+export type SaveSenderResult =
+  { ok: true; userId: string } | { ok: false; error: string };
 
 /**
  * Persist the explicitly-chosen Private Reply sender. Primary Super Admin only. The
@@ -2070,7 +2116,8 @@ export async function saveSelectedPancakeSender(input: {
     p_user_id: userId,
     p_user_name: input.userName ?? match.name ?? null,
   });
-  if (error) return { ok: false, error: 'The sender could not be saved. Please try again.' };
+  if (error)
+    return { ok: false, error: 'The sender could not be saved. Please try again.' };
   return { ok: true, userId };
 }
 
@@ -2256,7 +2303,10 @@ export async function sendPancakePrivateReply(input: {
     '/pages/{page_id}/conversations/{conversation_id}/messages';
   const path = template
     .replace('{page_id}', encodeURIComponent(pageId.trim()))
-    .replace('{conversation_id}', encodeURIComponent((input.commentConversationId ?? '').trim()));
+    .replace(
+      '{conversation_id}',
+      encodeURIComponent((input.commentConversationId ?? '').trim()),
+    );
 
   let res: Response;
   try {

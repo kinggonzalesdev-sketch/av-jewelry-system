@@ -3,7 +3,10 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { captureDebugLog } from '@/lib/capture/debug-log';
-import { isConversationMediaEligible, psidFromConversationId } from '@/lib/capture/media-window';
+import {
+  isConversationMediaEligible,
+  psidFromConversationId,
+} from '@/lib/capture/media-window';
 import { sanitizeCaptureName } from '@/lib/capture/name-sanitize';
 import { attemptSecureLinkPrivateReply } from '@/lib/capture/route-b';
 import {
@@ -129,14 +132,19 @@ async function routeOne(
   const value = ocrStr(cap.ocr, 'itemQuery', 'grams', 'weight');
 
   if (!path) {
-    await admin.rpc('mark_capture_photo_state', { p_capture_id: id, p_status: 'awaiting_inbox' });
+    await admin.rpc('mark_capture_photo_state', {
+      p_capture_id: id,
+      p_status: 'awaiting_inbox',
+    });
     await setRouteReason(admin, id, 'AUTO not sent · no screenshot');
     return { outcome: 'awaiting', reason: 'no_screenshot' };
   }
 
   // A real on-page inbox conversation stored on the capture.
   const onPageConv =
-    conversationId && conversationBelongsToPage(conversationId, activePage) ? conversationId : null;
+    conversationId && conversationBelongsToPage(conversationId, activePage)
+      ? conversationId
+      : null;
 
   // SCREENSHOT HAS PRIORITY (Owner 2026-08-22). The actual PHOTO must win whenever the EXACT customer
   // has a genuine media-eligible Inbox conversation — even when THIS capture has no stored
@@ -150,8 +158,15 @@ async function routeOne(
     const resolved = await resolveConversationForName(admin, fbName, {
       sinceDays: 14,
       maxPages: 8,
+      // Service-role sweep: skip the staff-gated webhook fast-match RPC (it can only 42501 under the
+      // admin client, and tiers 1+2 already cover the system path) — see resolveConversationForName.
+      // Removes the per-Live-comment "Not authorized." Postgres error with no behaviour change.
+      system: true,
     });
-    if (resolved.conversationId && conversationBelongsToPage(resolved.conversationId, activePage)) {
+    if (
+      resolved.conversationId &&
+      conversationBelongsToPage(resolved.conversationId, activePage)
+    ) {
       convForPhoto = resolved.conversationId;
     }
   }
@@ -165,7 +180,10 @@ async function routeOne(
         .createSignedUrl(path, 600)) as { data: { signedUrl?: string } | null };
       const attachmentUrl = signed.data?.signedUrl ?? null;
       if (!attachmentUrl) {
-        await admin.rpc('mark_capture_photo_state', { p_capture_id: id, p_status: 'awaiting_inbox' });
+        await admin.rpc('mark_capture_photo_state', {
+          p_capture_id: id,
+          p_status: 'awaiting_inbox',
+        });
         await setRouteReason(admin, id, 'AUTO SS pending · screenshot URL unavailable');
         return { outcome: 'awaiting', reason: 'no_signed_url' };
       }
@@ -179,7 +197,8 @@ async function routeOne(
         await setRouteReason(admin, id, 'AUTO SS Sent to Messenger ✓');
         return { outcome: 'already_sent', reason: 'already_sent' };
       }
-      if (claim !== 'claimed') return { outcome: 'in_progress', reason: 'photo_in_progress' };
+      if (claim !== 'claimed')
+        return { outcome: 'in_progress', reason: 'photo_in_progress' };
 
       const res = await sendPancakeConversationMessage({
         conversationId: convForPhoto,
@@ -207,7 +226,10 @@ async function routeOne(
   // Needs Review) — so a capture the PC never opened still auto-sends, fully server-side.
   const psid = convForPhoto ? psidFromConversationId(convForPhoto) : null;
   if (!psid && !fbName) {
-    await admin.rpc('mark_capture_photo_state', { p_capture_id: id, p_status: 'awaiting_inbox' });
+    await admin.rpc('mark_capture_photo_state', {
+      p_capture_id: id,
+      p_status: 'awaiting_inbox',
+    });
     await setRouteReason(admin, id, 'AUTO TEXT pending · awaiting comment context');
     return { outcome: 'awaiting', reason: 'no_identity' };
   }
@@ -220,9 +242,15 @@ async function routeOne(
     psid,
   });
   if (rb.ok) {
-    await admin.rpc('mark_capture_photo_state', { p_capture_id: id, p_status: 'link_sent' });
+    await admin.rpc('mark_capture_photo_state', {
+      p_capture_id: id,
+      p_status: 'link_sent',
+    });
     await setRouteReason(admin, id, 'AUTO TEXT Sent to Messenger ✓');
-    return { outcome: rb.code === 'already_sent' ? 'already_sent' : 'text_sent', reason: rb.code };
+    return {
+      outcome: rb.code === 'already_sent' ? 'already_sent' : 'text_sent',
+      reason: rb.code,
+    };
   }
   // A TERMINAL Route B failure → move the capture to a FINITE 'failed' now (finite "AUTO TEXT not
   // sent"), never a "Preparing AUTO TEXT" loop against a dead comment. Otherwise it is not sendable
@@ -397,11 +425,13 @@ export async function reactivatePhotoForConversationSystem(
     .gt('created_at', new Date(Date.now() - 3 * 86400_000).toISOString())
     .order('captured_at', { ascending: false })
     .limit(50);
-  const caps = ((data ?? []) as Array<{
-    id: string;
-    screenshot_path: string | null;
-    pancake_conversation_id: string | null;
-  }>)
+  const caps = (
+    (data ?? []) as Array<{
+      id: string;
+      screenshot_path: string | null;
+      pancake_conversation_id: string | null;
+    }>
+  )
     .filter(
       (c) =>
         c.pancake_conversation_id === conv ||
@@ -420,7 +450,10 @@ export async function reactivatePhotoForConversationSystem(
     if (!url) continue;
     // Atomic one-photo-per-capture claim (link_sent → sending); already_sent / in_progress → skip.
     const claim = (
-      await admin.rpc('claim_capture_photo_send', { p_capture_id: cap.id, p_conversation_id: conv })
+      await admin.rpc('claim_capture_photo_send', {
+        p_capture_id: cap.id,
+        p_conversation_id: conv,
+      })
     ).data as string;
     if (claim !== 'claimed') continue;
     const res = await sendPancakeConversationMessage({
