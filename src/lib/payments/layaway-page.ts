@@ -81,7 +81,27 @@ const EMPTY_SUMMARY: LayawaySummary = {
   balance: '0.00',
 };
 
-export async function listLayawayPage(opts: LayawayPageOpts = {}): Promise<LayawayPageResult> {
+/**
+ * Global count of ACTIVE Layaway accounts that are NEAR OVERDUE — the canonical overdue date
+ * (date purchased + 3 calendar months, Owner rule) is 1..30 calendar days ahead of today in the
+ * business timezone (Asia/Manila). DB-aggregated over the WHOLE active dataset (never a page and
+ * never the current filter), so it drives the "Near Overdue (30 Days)" summary card. Excludes
+ * completed / forfeited / cancelled, fully-paid, and already-overdue rows. A read failure returns
+ * 0 — the card shows 0, never an error (no new polling; one query on page load).
+ */
+export async function layawayNearOverdueCount(): Promise<number> {
+  const supabase = await createClient();
+  const { data, error } = (await supabase.rpc('layaway_near_overdue_count')) as {
+    data: number | string | null;
+    error: { message: string } | null;
+  };
+  if (error || data === null) return 0;
+  return typeof data === 'number' ? data : Number(data) || 0;
+}
+
+export async function listLayawayPage(
+  opts: LayawayPageOpts = {},
+): Promise<LayawayPageResult> {
   const page = Math.max(1, opts.page ?? 1);
   const size = Math.min(100, Math.max(1, opts.size ?? 25));
   const supabase = await createClient();
@@ -124,7 +144,9 @@ export async function listLayawayPage(opts: LayawayPageOpts = {}): Promise<Layaw
   ]);
 
   const byLedger = new Map(ledgerRows.map((r) => [r.id, fromLedger(r)]));
-  const byArrangement = new Map(arrangementRows.map((r) => [r.layawayId, fromDerived(r)]));
+  const byArrangement = new Map(
+    arrangementRows.map((r) => [r.layawayId, fromDerived(r)]),
+  );
 
   // Restore the RPC's page order (created_at desc, id desc) across the two sources. A row that
   // the RPC returned but the by-id read dropped (deleted between calls) is skipped, never a gap.

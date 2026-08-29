@@ -10,7 +10,7 @@ import {
 import { getAdminNameContext } from '@/lib/authz/admin-name';
 import { listFinancers } from '@/lib/payments/financer';
 import { layawayLedgerStatusCounts } from '@/lib/payments/layaway-ledger';
-import { listLayawayPage } from '@/lib/payments/layaway-page';
+import { layawayNearOverdueCount, listLayawayPage } from '@/lib/payments/layaway-page';
 import {
   listLayaways,
   listPayableOrders,
@@ -81,6 +81,7 @@ export default async function PaymentsPage({
     ledgerCounts,
     staff,
     admins,
+    nearOverdueCount,
   ] = await Promise.all([
     overviewCards(bounds),
     paymentVerificationQueue(),
@@ -93,6 +94,9 @@ export default async function PaymentsPage({
     layawayLedgerStatusCounts(),
     requireActiveStaff(),
     getAdminNameContext(),
+    // Global count for the "Near Overdue (30 Days)" card — one DB aggregation, whole active
+    // dataset (never the page). Monitoring only; the overdue business rule is unchanged.
+    layawayNearOverdueCount(),
   ]);
 
   // Imported ledger accounts count toward the Active / Completed cards so an import updates the
@@ -126,6 +130,7 @@ export default async function PaymentsPage({
       <PaymentsWorkspace
         title="Layaway"
         cards={mergedCards}
+        nearOverdueCount={nearOverdueCount}
         initialSection={initialSection}
         queue={queue.ok ? queue.rows : []}
         queueUnavailable={queue.ok ? null : queue.reason}

@@ -18,6 +18,13 @@ import type { PaymentActionState } from '@/lib/payments/action-state';
 import { EMPTY_PAYMENT_STATE } from '@/lib/payments/action-state';
 import { RANGE_LABEL, type DateRangeKey } from '@/lib/payments/format';
 import { formatDate } from '@/lib/format/date';
+import {
+  countdownBadgeLabel,
+  layawayOverdueDate,
+  layawayRowCountdown,
+  overdueColumnLabel,
+} from '@/lib/payments/layaway-overdue';
+import { cn } from '@/lib/utils';
 import { usePrivacyMoney } from '@/components/shell/privacy';
 import type {
   EvidenceQueueRow,
@@ -135,29 +142,19 @@ function OrderNumberButton({
 // ONE shape in the browser and the DB). LayawaySection is imported from
 // '@/lib/payments/layaway-page'.
 
-/** Sum peso strings as EXACT integer centavos — never through a JS float. */
-function sumPesoCentavos(values: Array<string | null>): bigint {
-  let cents = 0n;
-  for (const v of values) {
-    if (!v) continue;
-    const negative = v.trim().startsWith('-');
-    const clean = v.replace(/[^\d.]/g, '');
-    const [whole = '0', fraction = ''] = clean.split('.');
-    const c = BigInt(whole || '0') * 100n + BigInt(`${fraction}00`.slice(0, 2) || '0');
-    cents += negative ? -c : c;
-  }
-  return cents;
-}
-
 /**
- * Today in the USER'S LOCAL date. `toISOString()` yields the UTC date, which in the
- * Philippines (UTC+8) flips a day early and would mark accounts overdue too soon.
+ * Today as 'YYYY-MM-DD' in the business timezone (Asia/Manila, UTC+8, no DST). The Layaway row
+ * countdown here AND the DB-backed "Near Overdue (30 Days)" count both use this SAME business
+ * date, so a row's "Due today" / days-left and the card can never disagree by a day because of the
+ * server's UTC clock or a viewer's timezone (the DB uses `now() at time zone 'Asia/Manila'`).
  */
-function todayLocalISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-    d.getDate(),
-  ).padStart(2, '0')}`;
+function todayManilaISO(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
 }
 
 /**
@@ -175,25 +172,6 @@ function isCompletedStatus(status: string): boolean {
 
 /** Statuses where an account is closed — never active and never overdue. */
 const TERMINAL_STATUSES = new Set(['completed', 'forfeited', 'cancelled']);
-/** Order-derived statuses the database already computed as past due. */
-const DERIVED_OVERDUE_STATUSES = new Set([
-  'overdue',
-  'grace_period',
-  'forfeiture_eligible',
-]);
-
-/**
- * Overdue = a live account whose Next Due Date has passed and that still owes money.
- * Completed / forfeited / cancelled are never overdue, so paying an account off,
- * moving its due date, completing, forfeiting, or cancelling it removes it from
- * Overdue automatically on the next render — no stored flag to go stale.
- */
-function isOverdueRow(r: LayawayAccountRow, today: string): boolean {
-  if (TERMINAL_STATUSES.has(normStatus(r.status))) return false;
-  if (sumPesoCentavos([r.balance]) <= 0n) return false;
-  if (DERIVED_OVERDUE_STATUSES.has(normStatus(r.status))) return true;
-  return r.nextDueDate !== null && r.nextDueDate < today;
-}
 
 /** Sentinel dropdown values (a real financer name can never collide with these). */
 const FINANCER_ALL = '__all__';
@@ -220,9 +198,14 @@ export function PaymentsWorkspace({
   admins,
   canCreateLayaway,
   initialSection,
+  nearOverdueCount,
   title,
 }: {
   cards: OverviewCards;
+  /** Global count of ACTIVE accounts whose canonical overdue date (date purchased + 3 calendar
+   *  months) is 1–30 days away — drives the amber "Near Overdue (30 Days)" card. DB-aggregated
+   *  over the whole active dataset (never a page), monitoring only. */
+  nearOverdueCount: number;
   /** Page title rendered inside the sticky top section (so it pins with the
    *  financial summary + date filters). When set, the page omits its own header. */
   title?: string;
@@ -296,7 +279,7 @@ export function PaymentsWorkspace({
   // so sections, the financer filter, and the summary all classify them identically.
   // Rows flagged Needs Review (imported ERROR rows) are dropped up front: they are
   // never listed, filtered, or summed anywhere.
-  const today = todayLocalISO();
+  const today = todayManilaISO();
   // ── Server-side pagination (Owner request 2026-08-18, P1-B) ──────────────────────
   // The Layaway table no longer loads the whole ledger. The layaway_page RPC does the section
   // + search + financer filter, the EXACT total, the section counts and the financial summary
@@ -413,7 +396,7 @@ export function PaymentsWorkspace({
         {/* Financial summary for the selected section + date range (Owner request
           2026-07-27). Totals are computed from the rows currently shown. */}
         <div
-          className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"
+          className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6"
           data-testid="layaway-financial-summary"
         >
           {(
@@ -432,6 +415,21 @@ export function PaymentsWorkspace({
               </p>
             </div>
           ))}
+          {/* Near Overdue (30 Days) — GLOBAL count of ACTIVE accounts whose canonical overdue
+            date (date purchased + 3 calendar months) is 1–30 days away. DB-aggregated over the
+            whole active dataset (never the current page/filter); amber to match the row warnings.
+            Not a money figure, so it never masks under Privacy Mode. */}
+          <div
+            className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 pt-5"
+            data-testid="layaway-near-overdue-card"
+          >
+            <p className="text-[11px] leading-tight text-amber-700 dark:text-amber-400">
+              Near Overdue (30 Days)
+            </p>
+            <p className="mt-1 text-xl font-bold tabular-nums text-amber-700 dark:text-amber-400">
+              {nearOverdueCount}
+            </p>
+          </div>
         </div>
 
         {/* Date filters — the range is resolved server-side. */}
@@ -680,10 +678,7 @@ export function PaymentsWorkspace({
                 layaway from an existing paid order, which the manual encoder now
                 covers end to end, and two identically-labelled buttons side by
                 side were indistinguishable. */}
-            <LayawayNewEntry
-              admins={admins}
-              canCreate={canCreateLayaway}
-            />
+            <LayawayNewEntry admins={admins} canCreate={canCreateLayaway} />
 
             {(
               [
@@ -1070,13 +1065,6 @@ function LayawayTable({
 }) {
   const money = usePrivacyMoney();
   const cash = (v: string | null) => (v ? money(v) : '—');
-  // Overdue uses the one shared rule, so the badge and the Overdue section can
-  // never disagree. Closed accounts and accounts with no due date show '—'.
-  const overdueLabel = (r: LayawayAccountRow): string => {
-    if (TERMINAL_STATUSES.has(normStatus(r.status))) return '—';
-    if (!r.nextDueDate && !DERIVED_OVERDUE_STATUSES.has(normStatus(r.status))) return '—';
-    return isOverdueRow(r, today) ? 'Yes' : 'No';
-  };
 
   // Server-paginated: `rows` IS the current page (the DB already windowed it), so the browser
   // never holds more than one page even at 50k accounts. The page count comes from the DB total.
@@ -1086,21 +1074,22 @@ function LayawayTable({
     <div>
       <div className="table-scroll rounded-xl border border-border bg-card">
         <table
-          className="data-table data-roomy lay-table w-full min-w-[1000px] text-left text-xs"
+          className="data-table data-roomy lay-table w-full min-w-[1120px] text-left text-xs"
           data-testid="layaway-table"
         >
           {/* Owner width spec: Unique Code + Customer Name are the two widest; Code and
             Overdue stay compact; Actions pinned right. Width HINTS (no table-fixed), so
             a column can still grow to fit its content and nothing is clipped. */}
           <colgroup>
-            <col style={{ width: '17%' }} />
-            <col style={{ width: '18%' }} />
+            <col style={{ width: '15%' }} />
+            <col style={{ width: '19%' }} />
+            <col style={{ width: '6%' }} />
+            <col style={{ width: '11%' }} />
+            <col style={{ width: '10%' }} />
+            <col style={{ width: '10%' }} />
+            <col style={{ width: '11%' }} />
             <col style={{ width: '8%' }} />
-            <col style={{ width: '13%' }} />
-            <col style={{ width: '12%' }} />
-            <col style={{ width: '12%' }} />
-            <col style={{ width: '8%' }} />
-            <col style={{ width: '12%' }} />
+            <col style={{ width: '10%' }} />
           </colgroup>
           <thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
             <tr>
@@ -1110,6 +1099,7 @@ function LayawayTable({
               <th className="col-center px-3 py-2">Remarks / Financer</th>
               <th className="col-center px-3 py-2">Total Amount</th>
               <th className="col-center px-3 py-2">Date Purchased</th>
+              <th className="col-center px-3 py-2">Overdue Date</th>
               <th className="col-center px-3 py-2">Overdue</th>
               <th className="col-actions px-3 py-2">Actions</th>
             </tr>
@@ -1117,79 +1107,125 @@ function LayawayTable({
           <tbody className="divide-y">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-2.5 py-6 text-center text-muted-foreground">
+                <td colSpan={9} className="px-2.5 py-6 text-center text-muted-foreground">
                   {loading ? 'Loading…' : 'No layaway accounts found.'}
                 </td>
               </tr>
             ) : (
-              rows.map((r) => (
-                <tr key={r.key} className="hover:bg-accent/40">
-                  <td
-                    className="truncate px-3 py-2 text-center font-mono text-[11px]"
-                    title={`Unique Code${r.uniqueCode ? `: ${r.uniqueCode}` : ' — not linked'} · Order/Account No. ${r.accountNo}`}
-                  >
-                    {r.officialOrderId ? (
-                      <OrderNumberButton
-                        orderId={r.officialOrderId}
-                        label={uniqueCodeLabel(r)}
-                        onOpen={onOpenOrder}
-                      />
-                    ) : r.uniqueCode ? (
-                      uniqueCodeLabel(r)
-                    ) : (
-                      <span className="text-muted-foreground">{uniqueCodeLabel(r)}</span>
+              rows.map((r) => {
+                // Canonical countdown from the Owner's rule (date purchased + 3 calendar months).
+                // null for a closed / fully-paid / no-purchase-date row → no badge, no highlight.
+                const cd = layawayRowCountdown(r, today);
+                const overdueDate = TERMINAL_STATUSES.has(normStatus(r.status))
+                  ? null
+                  : layawayOverdueDate(r.datePurchased);
+                return (
+                  <tr
+                    key={r.key}
+                    className={cn(
+                      'hover:bg-accent/40',
+                      cd?.state === 'near' && 'bg-amber-500/[0.07]',
+                      cd?.state === 'due_today' && 'bg-amber-500/10',
+                      cd?.state === 'overdue' && 'bg-destructive/[0.07]',
                     )}
-                  </td>
-                  <td className="truncate px-3 py-2 font-medium" title={r.customerName}>
-                    {r.customerName}
-                  </td>
-                  <td className="col-center truncate px-3 py-2 font-mono font-semibold">
-                    {r.code ?? '—'}
-                  </td>
-                  <td
-                    className="col-clip truncate px-3 py-2 text-center text-muted-foreground"
-                    title={
-                      [r.financer, r.remarks].filter(Boolean).join(' · ') || undefined
-                    }
                   >
-                    {[r.financer, r.remarks].filter(Boolean).join(' · ') || '—'}
-                  </td>
-                  {/* A Completed account is fully paid, so its Total Amount shows
-                    nothing (Owner request). Full money detail stays in View. */}
-                  <td className="col-center px-3 py-2 tabular-nums">
-                    {isCompletedStatus(r.status) ? '—' : cash(r.item)}
-                  </td>
-                  <td className="col-center whitespace-nowrap px-3 py-2">
-                    {r.datePurchased ? formatDate(r.datePurchased) : '—'}
-                  </td>
-                  <td className="col-center px-3 py-2">
-                    {(() => {
-                      const o = overdueLabel(r);
-                      return o === 'Yes' ? (
-                        <span className="font-medium text-destructive">Yes</span>
+                    <td
+                      className="truncate px-3 py-2 text-center font-mono text-[11px]"
+                      title={`Unique Code${r.uniqueCode ? `: ${r.uniqueCode}` : ' — not linked'} · Order/Account No. ${r.accountNo}`}
+                    >
+                      {r.officialOrderId ? (
+                        <OrderNumberButton
+                          orderId={r.officialOrderId}
+                          label={uniqueCodeLabel(r)}
+                          onOpen={onOpenOrder}
+                        />
+                      ) : r.uniqueCode ? (
+                        uniqueCodeLabel(r)
                       ) : (
-                        <span className="text-muted-foreground">{o}</span>
-                      );
-                    })()}
-                  </td>
-                  <td className="col-actions px-3 py-2">
-                    {r.officialOrderId && r.layawayRow ? (
-                      <div className="flex flex-wrap justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => onOpenOrder(r.officialOrderId as string)}
-                          data-testid={`layaway-view-${r.layawayRow.layawayId}`}
-                          className="rounded-md border border-border px-1.5 py-0.5 text-[11px] hover:bg-accent"
-                        >
-                          View
-                        </button>
-                        {canManage ? (
-                          <LayawayDetailsModal row={r.layawayRow} financers={financers} />
+                        <span className="text-muted-foreground">
+                          {uniqueCodeLabel(r)}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 font-medium" title={r.customerName}>
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="truncate">{r.customerName}</span>
+                        {cd && cd.state !== 'normal' ? (
+                          <span
+                            data-testid="layaway-days-badge"
+                            className={cn(
+                              'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                              cd.state === 'overdue'
+                                ? 'bg-destructive/15 text-destructive'
+                                : 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+                            )}
+                          >
+                            {countdownBadgeLabel(cd)}
+                          </span>
                         ) : null}
-                      </div>
-                    ) : r.ledgerId ? (
-                      <div className="flex flex-nowrap items-center justify-end gap-2">
-                        {/* Actions are View · Edit · Delete only, on ONE line. "Add
+                      </span>
+                    </td>
+                    <td className="col-center truncate px-3 py-2 font-mono font-semibold">
+                      {r.code ?? '—'}
+                    </td>
+                    <td
+                      className="col-clip truncate px-3 py-2 text-center text-muted-foreground"
+                      title={
+                        [r.financer, r.remarks].filter(Boolean).join(' · ') || undefined
+                      }
+                    >
+                      {[r.financer, r.remarks].filter(Boolean).join(' · ') || '—'}
+                    </td>
+                    {/* A Completed account is fully paid, so its Total Amount shows
+                    nothing (Owner request). Full money detail stays in View. */}
+                    <td className="col-center px-3 py-2 tabular-nums">
+                      {isCompletedStatus(r.status) ? '—' : cash(r.item)}
+                    </td>
+                    <td className="col-center whitespace-nowrap px-3 py-2">
+                      {r.datePurchased ? formatDate(r.datePurchased) : '—'}
+                    </td>
+                    {/* OVERDUE DATE — canonical = date purchased + 3 calendar months (Owner rule),
+                    same long format as the rest of the app. Blank on a closed account. */}
+                    <td className="col-center whitespace-nowrap px-3 py-2 text-muted-foreground">
+                      {overdueDate ? formatDate(overdueDate) : '—'}
+                    </td>
+                    {/* OVERDUE — No / Near Overdue / Due Today / Overdue, compact rounded badge. */}
+                    <td className="col-center px-3 py-2">
+                      {!cd || cd.state === 'normal' ? (
+                        <span className="text-muted-foreground">
+                          {overdueColumnLabel(cd)}
+                        </span>
+                      ) : cd.state === 'overdue' ? (
+                        <span className="inline-block rounded-full bg-destructive/15 px-2 py-0.5 text-[11px] font-semibold text-destructive">
+                          Overdue
+                        </span>
+                      ) : (
+                        <span className="inline-block rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                          {overdueColumnLabel(cd)}
+                        </span>
+                      )}
+                    </td>
+                    <td className="col-actions px-3 py-2">
+                      {r.officialOrderId && r.layawayRow ? (
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => onOpenOrder(r.officialOrderId as string)}
+                            data-testid={`layaway-view-${r.layawayRow.layawayId}`}
+                            className="rounded-md border border-border px-1.5 py-0.5 text-[11px] hover:bg-accent"
+                          >
+                            View
+                          </button>
+                          {canManage ? (
+                            <LayawayDetailsModal
+                              row={r.layawayRow}
+                              financers={financers}
+                            />
+                          ) : null}
+                        </div>
+                      ) : r.ledgerId ? (
+                        <div className="flex flex-nowrap items-center justify-end gap-2">
+                          {/* Actions are View · Edit · Delete only, on ONE line. "Add
                           Payment" and "Cancel Order" live INSIDE the View modal. They
                           now show for EVERY active account — Owner, Admin, and Staff
                           (Owner request: all Admin/Staff need them on a layaway
@@ -1197,29 +1233,30 @@ function LayawayTable({
                           destination stays manager-only (canDeleteLedger). Edit and
                           Delete are each gated by their own Manage Access permission
                           (the Owner holds both implicitly). */}
-                        <LayawayLedgerViewModal
-                          ledgerId={r.ledgerId}
-                          canAddPayment={!TERMINAL_STATUSES.has(normStatus(r.status))}
-                          canTransfer={canDeleteLedger}
-                        />
-                        {canEditLayaway ? (
-                          <LedgerEditAccount id={r.ledgerId} accountNo={r.accountNo} />
-                        ) : null}
-                        {canDeleteLayaway ? (
-                          <LedgerRowDelete
-                            isSuperAdmin={isSuperAdmin}
-                            id={r.ledgerId}
-                            accountNo={r.accountNo}
-                            customerName={r.customerName}
+                          <LayawayLedgerViewModal
+                            ledgerId={r.ledgerId}
+                            canAddPayment={!TERMINAL_STATUSES.has(normStatus(r.status))}
+                            canTransfer={canDeleteLedger}
                           />
-                        ) : null}
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </td>
-                </tr>
-              ))
+                          {canEditLayaway ? (
+                            <LedgerEditAccount id={r.ledgerId} accountNo={r.accountNo} />
+                          ) : null}
+                          {canDeleteLayaway ? (
+                            <LedgerRowDelete
+                              isSuperAdmin={isSuperAdmin}
+                              id={r.ledgerId}
+                              accountNo={r.accountNo}
+                              customerName={r.customerName}
+                            />
+                          ) : null}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
@@ -1277,98 +1314,103 @@ function CompletedLayawayTable({
   return (
     <div>
       <div className="table-scroll rounded-xl border border-border bg-card">
-      <table
-        className="data-table lay-table w-full min-w-[1000px] text-left text-xs"
-        data-testid="layaway-completed-table"
-      >
-        <thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
-          <tr>
-            <th className="col-center px-3 py-2">Code</th>
-            <th className="px-3 py-2">Customer Name</th>
-            <th className="px-3 py-2">Remarks / Financer</th>
-            <th className="px-3 py-2">Date Purchased</th>
-            <th className="px-3 py-2 text-right">Item</th>
-            <th className="px-3 py-2 text-right">Total Interest</th>
-            <th className="px-3 py-2 text-right">Grand Total</th>
-            <th className="px-3 py-2 text-right">Total Payment</th>
-            <th className="px-3 py-2">Completion Date</th>
-            <th className="px-3 py-2">Order / Account No.</th>
-            <th className="col-actions px-3 py-2">Actions</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {rows.length === 0 ? (
+        <table
+          className="data-table lay-table w-full min-w-[1000px] text-left text-xs"
+          data-testid="layaway-completed-table"
+        >
+          <thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
             <tr>
-              <td colSpan={11} className="px-2.5 py-6 text-center text-muted-foreground">
-                {loading ? 'Loading…' : 'No completed layaway accounts found.'}
-              </td>
+              <th className="col-center px-3 py-2">Code</th>
+              <th className="px-3 py-2">Customer Name</th>
+              <th className="px-3 py-2">Remarks / Financer</th>
+              <th className="px-3 py-2">Date Purchased</th>
+              <th className="px-3 py-2 text-right">Item</th>
+              <th className="px-3 py-2 text-right">Total Interest</th>
+              <th className="px-3 py-2 text-right">Grand Total</th>
+              <th className="px-3 py-2 text-right">Total Payment</th>
+              <th className="px-3 py-2">Completion Date</th>
+              <th className="px-3 py-2">Order / Account No.</th>
+              <th className="col-actions px-3 py-2">Actions</th>
             </tr>
-          ) : (
-            rows.map((r) => (
-              <tr key={r.key} className="hover:bg-accent/40">
-                <td className="col-center px-3 py-2 font-mono font-semibold">
-                  {r.code ?? '—'}
-                </td>
-                <td className="px-3 py-2 font-medium">{r.customerName}</td>
-                <td className="px-3 py-2 text-muted-foreground">
-                  {[r.financer, r.remarks].filter(Boolean).join(' · ') || '—'}
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap">
-                  {r.datePurchased ? formatDate(r.datePurchased) : '—'}
-                </td>
-                {/* Completed = fully paid: money columns are intentionally blank
-                    (Owner request). */}
-                <td className="px-3 py-2 text-right tabular-nums">—</td>
-                <td className="px-3 py-2 text-right tabular-nums">—</td>
-                <td className="px-3 py-2 text-right tabular-nums">—</td>
-                <td className="px-3 py-2 text-right font-semibold tabular-nums">—</td>
-                <td className="px-3 py-2 whitespace-nowrap">{r.completionDate ?? '—'}</td>
+          </thead>
+          <tbody className="divide-y">
+            {rows.length === 0 ? (
+              <tr>
                 <td
-                  className="px-3 py-2 font-mono text-[11px]"
-                  title={`Unique Code${r.uniqueCode ? `: ${r.uniqueCode}` : ' — not linked'} · Order/Account No. ${r.accountNo}`}
+                  colSpan={11}
+                  className="px-2.5 py-6 text-center text-muted-foreground"
                 >
-                  {r.officialOrderId ? (
-                    <OrderNumberButton
-                      orderId={r.officialOrderId}
-                      label={uniqueCodeLabel(r)}
-                      onOpen={onOpenOrder}
-                    />
-                  ) : r.uniqueCode ? (
-                    uniqueCodeLabel(r)
-                  ) : (
-                    <span className="text-muted-foreground">{uniqueCodeLabel(r)}</span>
-                  )}
-                </td>
-                <td className="col-actions px-3 py-2">
-                  {r.officialOrderId ? (
-                    <button
-                      type="button"
-                      onClick={() => onOpenOrder(r.officialOrderId as string)}
-                      className="rounded-md border border-border px-1.5 py-0.5 text-[11px] hover:bg-accent"
-                    >
-                      View
-                    </button>
-                  ) : r.ledgerId ? (
-                    <div className="flex flex-wrap justify-end gap-1">
-                      <LayawayLedgerViewModal ledgerId={r.ledgerId} />
-                      {canDeleteLayaway ? (
-                        <LedgerRowDelete
-                          isSuperAdmin={isSuperAdmin}
-                          id={r.ledgerId}
-                          accountNo={r.accountNo}
-                          customerName={r.customerName}
-                        />
-                      ) : null}
-                    </div>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
+                  {loading ? 'Loading…' : 'No completed layaway accounts found.'}
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              rows.map((r) => (
+                <tr key={r.key} className="hover:bg-accent/40">
+                  <td className="col-center px-3 py-2 font-mono font-semibold">
+                    {r.code ?? '—'}
+                  </td>
+                  <td className="px-3 py-2 font-medium">{r.customerName}</td>
+                  <td className="px-3 py-2 text-muted-foreground">
+                    {[r.financer, r.remarks].filter(Boolean).join(' · ') || '—'}
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {r.datePurchased ? formatDate(r.datePurchased) : '—'}
+                  </td>
+                  {/* Completed = fully paid: money columns are intentionally blank
+                    (Owner request). */}
+                  <td className="px-3 py-2 text-right tabular-nums">—</td>
+                  <td className="px-3 py-2 text-right tabular-nums">—</td>
+                  <td className="px-3 py-2 text-right tabular-nums">—</td>
+                  <td className="px-3 py-2 text-right font-semibold tabular-nums">—</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {r.completionDate ?? '—'}
+                  </td>
+                  <td
+                    className="px-3 py-2 font-mono text-[11px]"
+                    title={`Unique Code${r.uniqueCode ? `: ${r.uniqueCode}` : ' — not linked'} · Order/Account No. ${r.accountNo}`}
+                  >
+                    {r.officialOrderId ? (
+                      <OrderNumberButton
+                        orderId={r.officialOrderId}
+                        label={uniqueCodeLabel(r)}
+                        onOpen={onOpenOrder}
+                      />
+                    ) : r.uniqueCode ? (
+                      uniqueCodeLabel(r)
+                    ) : (
+                      <span className="text-muted-foreground">{uniqueCodeLabel(r)}</span>
+                    )}
+                  </td>
+                  <td className="col-actions px-3 py-2">
+                    {r.officialOrderId ? (
+                      <button
+                        type="button"
+                        onClick={() => onOpenOrder(r.officialOrderId as string)}
+                        className="rounded-md border border-border px-1.5 py-0.5 text-[11px] hover:bg-accent"
+                      >
+                        View
+                      </button>
+                    ) : r.ledgerId ? (
+                      <div className="flex flex-wrap justify-end gap-1">
+                        <LayawayLedgerViewModal ledgerId={r.ledgerId} />
+                        {canDeleteLayaway ? (
+                          <LedgerRowDelete
+                            isSuperAdmin={isSuperAdmin}
+                            id={r.ledgerId}
+                            accountNo={r.accountNo}
+                            customerName={r.customerName}
+                          />
+                        ) : null}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
       {total > 0 ? (
         <Pagination
