@@ -95,8 +95,9 @@ class OverlayCaptureService : Service() {
         // the Bluetooth printer even while the operator is in the Facebook app (idempotent;
         // only acts once a printer is selected + signed in).
         com.mineflow.capture.printer.PrintJobPoller.start(this)
-        // Warm the OCR model so the first real capture doesn't pay the one-time load.
-        com.mineflow.capture.data.ScreenshotOcr.warmUp()
+        // Warm the OCR model so the first real capture doesn't pay the one-time load. Passing the
+        // context ALSO loads the visual pin-badge template that gates automatic Capture.
+        com.mineflow.capture.data.ScreenshotOcr.warmUp(this)
     }
 
     /**
@@ -584,7 +585,9 @@ class OverlayCaptureService : Service() {
     private fun ocrBlocking(bmp: Bitmap): com.mineflow.capture.data.OcrGuess? {
         val latch = java.util.concurrent.CountDownLatch(1)
         var result: com.mineflow.capture.data.OcrGuess? = null
-        ScreenshotOcr.analyze(bmp) { g -> result = g; latch.countDown() }
+        // applyPinGate = true: this is the AUTOMATIC print path — only a visually pinned comment may
+        // auto-select/print. No pin → null guess → PC "needs review"/"waiting for pinned comment".
+        ScreenshotOcr.analyze(bmp, applyPinGate = true) { g -> result = g; latch.countDown() }
         runCatching { latch.await(5, java.util.concurrent.TimeUnit.SECONDS) }
         return result
     }

@@ -1,7 +1,10 @@
 package com.mineflow.capture.data
 
+import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.util.Log
+import com.mineflow.capture.R
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
@@ -72,8 +75,9 @@ object ScreenshotOcr {
     // prevention over automation. The fast path and the established >=0.60 zone are untouched.
     private const val FALLBACK_MIN_CLAIM_TOP_FRACTION = 0.45
 
-    /** Prime the ML Kit model (and download if needed) so the first real capture is fast. */
-    fun warmUp() {
+    /** Prime the ML Kit model (and download if needed) so the first real capture is fast. Pass a
+     *  Context to ALSO load the visual pin-badge template (res/raw) that gates automatic Capture. */
+    fun warmUp(context: Context? = null) {
         try {
             val bmp = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
             recognizer.process(InputImage.fromBitmap(bmp, 0))
@@ -81,6 +85,58 @@ object ScreenshotOcr {
         } catch (_: Exception) {
             /* best-effort warm-up — never fatal */
         }
+        if (context != null) {
+            if (appContext == null) appContext = context.applicationContext
+            ensurePinTemplate()
+        }
+    }
+
+    // ---- VISUAL PIN GATE (Owner 2026-08-29) ----------------------------------------------------
+    // Automatic Capture is authorised ONLY when a real on-screen pin badge is confidently detected on
+    // the selected comment's avatar. The template is the FB pin badge (res/raw/facebook_pin_badge.png);
+    // detection + the decision rule live in PinPixelDetector + PinnedCommentSelector. If the template
+    // cannot be loaded, the gate is INERT (capture behaves as before) and the failure is logged loudly
+    // — an operational fail-safe, never a silent total outage. Physical validation still required.
+    private var appContext: Context? = null
+    @Volatile private var pinTemplate: ArgbImage? = null
+    @Volatile private var pinTemplateTried = false
+
+    /** Decode the pin-badge template ONCE into a pure ArgbImage (exact pixels, no density scaling). */
+    private fun ensurePinTemplate() {
+        if (pinTemplate != null || pinTemplateTried) return
+        pinTemplateTried = true
+        val ctx = appContext ?: return
+        try {
+            val opts = BitmapFactory.Options().apply { inScaled = false }
+            val bmp = ctx.resources.openRawResource(R.raw.facebook_pin_badge).use {
+                BitmapFactory.decodeStream(it, null, opts)
+            }
+            if (bmp == null) {
+                Log.e(TAG, "PIN GATE DISABLED: pin-badge template decoded to null")
+                return
+            }
+            pinTemplate = bitmapToArgb(bmp)
+            runCatching { bmp.recycle() }
+            Log.i(TAG, "PIN GATE: template loaded ${pinTemplate?.width}x${pinTemplate?.height}")
+        } catch (e: Exception) {
+            Log.e(TAG, "PIN GATE DISABLED: failed to load pin-badge template", e)
+        }
+    }
+
+    /** Full copy of a Bitmap's pixels into the pure ARGB image the detector consumes. */
+    private fun bitmapToArgb(bmp: Bitmap): ArgbImage {
+        val w = bmp.width
+        val h = bmp.height
+        val px = IntArray(w * h)
+        bmp.getPixels(px, 0, w, 0, 0, w, h)
+        return ArgbImage(px, w, h)
+    }
+
+    /** A pin-detect callback bound to one bitmap's pixels (already converted). stride=2 for speed —
+     *  the on-screen badge is ~30–50 px, so every-other-pixel sampling still lands on the ZNCC peak. */
+    private fun pinDetectorFor(argb: ArgbImage): ((List<Box>) -> List<PinMarker>)? {
+        val tpl = pinTemplate ?: return null
+        return { boxes -> PinPixelDetector.detectPins(argb, tpl, boxes, stride = 2) }
     }
 
     private val UI_NOISE = Regex(
@@ -164,12 +220,16 @@ object ScreenshotOcr {
     // Title-cased buyer name, e.g. "O King Gonzales". Only stripped WITH the dotless-value coupling.
     private val NAME_LEAD_GLYPH = Regex("^([O0°.·•])\\s+([A-Za-zÀ-ÿ].{1,48})$")
 
-    fun analyze(bitmap: Bitmap, onResult: (OcrGuess) -> Unit) {
+    fun analyze(bitmap: Bitmap, applyPinGate: Boolean = false, onResult: (OcrGuess) -> Unit) {
         val h = bitmap.height
         val w = bitmap.width
         val roiTop = (h * PINNED_ROI_TOP_FRACTION).toInt().coerceIn(0, maxOf(0, h - 1))
         // Fallback-only recovery floor (bottom 55%); never above 0 or below the established zone.
         val recoveryTop = (h * FALLBACK_MIN_CLAIM_TOP_FRACTION).toInt().coerceIn(0, roiTop)
+        // Visual pin gate applies to the AUTOMATIC capture path only (OverlayCaptureService); manual
+        // review screens keep the ungated OCR so the operator still sees + edits the read.
+        val gate = applyPinGate
+        if (gate) ensurePinTemplate() // no-op once loaded
         val roi = if (h - roiTop >= 8 && w >= 8) {
             runCatching { Bitmap.createBitmap(bitmap, 0, roiTop, w, h - roiTop) }.getOrNull()
         } else {
@@ -181,7 +241,8 @@ object ScreenshotOcr {
             val t0 = android.os.SystemClock.elapsedRealtime()
             ocr(bitmap) {
                 Log.i(TAG, "timing: roi=none fullOcr=${android.os.SystemClock.elapsedRealtime() - t0}ms lines=${it.size}")
-                onResult(guessFrom(it, minClaimTop = roiTop, recoveryFloor = recoveryTop))
+                val pd = if (gate && pinTemplate != null) pinDetectorFor(bitmapToArgb(bitmap)) else null
+                onResult(guessFrom(it, minClaimTop = roiTop, recoveryFloor = recoveryTop, pinDetect = pd))
             }
             return
         }
@@ -192,9 +253,12 @@ object ScreenshotOcr {
         // a "needs review" capture. Never a guessed non-pinned name/number.
         val tRoi = android.os.SystemClock.elapsedRealtime()
         ocr(roi) { roiLines ->
+            // Snapshot the ROI pixels for the pin gate BEFORE the ROI bitmap is recycled. roiLines and
+            // roiArgb share the SAME (ROI-relative) coordinate space, so pin geometry lines up exactly.
+            val roiArgb = if (gate && pinTemplate != null) bitmapToArgb(roi) else null
             runCatching { roi.recycle() }
             val roiMs = android.os.SystemClock.elapsedRealtime() - tRoi
-            val g = guessFrom(roiLines)
+            val g = guessFrom(roiLines, pinDetect = roiArgb?.let { pinDetectorFor(it) })
             if (g.fbName != null && g.itemQuery != null) {
                 Log.i(TAG, "timing: roiOcr=${roiMs}ms fastPath=HIT lines=${roiLines.size} (no fallback)")
                 onResult(g)
@@ -206,7 +270,8 @@ object ScreenshotOcr {
                         "timing: roiOcr=${roiMs}ms fastPath=MISS fullOcr=" +
                             "${android.os.SystemClock.elapsedRealtime() - tFull}ms (fallback ran → ~2x OCR)",
                     )
-                    onResult(guessFrom(full, minClaimTop = roiTop, recoveryFloor = recoveryTop))
+                    val pd = if (gate && pinTemplate != null) pinDetectorFor(bitmapToArgb(bitmap)) else null
+                    onResult(guessFrom(full, minClaimTop = roiTop, recoveryFloor = recoveryTop, pinDetect = pd))
                 }
             }
         }
@@ -345,7 +410,12 @@ object ScreenshotOcr {
      * line-heights), horizontally overlapping it — i.e. the SAME comment block. A name from a
      * different comment / column / far away is never used. Null when none qualifies.
      */
-    private fun nameForClaim(clean: List<OLine>, claim: OLine): String? {
+    private fun nameForClaim(clean: List<OLine>, claim: OLine): String? =
+        nameLineForClaim(clean, claim)?.text
+
+    /** As [nameForClaim] but returns the whole name OLine (box included) — the pin gate needs the
+     *  name's rectangle to locate its avatar. Behaviour-identical to the text form. */
+    private fun nameLineForClaim(clean: List<OLine>, claim: OLine): OLine? {
         val maxGap = maxOf(claim.box.height * 2, 24)
         return clean
             .filter { ol ->
@@ -358,7 +428,6 @@ object ScreenshotOcr {
                     horizontalOverlap(ol.box, claim.box)
             }
             .maxByOrNull { it.box.bottom }
-            ?.text
     }
 
     /**
@@ -457,7 +526,12 @@ object ScreenshotOcr {
      * two+ claims or any ambiguity → "needs review". Defaults to minClaimTop (NO recovery zone), so
      * the fast path is unchanged. Never a bottom-most guess in the recovery area.
      */
-    internal fun guessFrom(olinesIn: List<OLine>, minClaimTop: Int = 0, recoveryFloor: Int = minClaimTop): OcrGuess {
+    internal fun guessFrom(
+        olinesIn: List<OLine>,
+        minClaimTop: Int = 0,
+        recoveryFloor: Int = minClaimTop,
+        pinDetect: ((List<Box>) -> List<PinMarker>)? = null,
+    ): OcrGuess {
         val rawLines = olinesIn.map { it.text }
         // Evidence-based leading-decimal restoration BEFORE any claim/name parsing (never a blind
         // "23 → 0.23" — only when a real decimal point is structurally present, see the function).
@@ -540,6 +614,23 @@ object ScreenshotOcr {
         // instead of a guess. This is the structural guarantee (grams tied to the name/comment
         // block) that a phrase blacklist alone cannot give.
         if (name == null) return OcrGuess(null, null, null, rawLines)
+
+        // VISUAL PIN GATE (Owner 2026-08-29). When a pin detector is supplied (the live path), the
+        // selected block may print ONLY if it carries a confidently detected on-screen pin badge AND
+        // is the UNIQUE pinned block. No pin → WaitingForPin; a pin on a DIFFERENT block, or two pins →
+        // NeedsReview. Either way we drop to a null guess (PC "needs review"/"waiting"): NEVER a
+        // fallback to this positional pick. Gate is inert when pinDetect is null (all existing callers).
+        if (pinDetect != null) {
+            val claimLines = admissible.map { it.first }
+            val pinnedNameLine = nameLineForClaim(clean, pinnedLine) ?: pinnedLine
+            val nameLines = (claimLines.mapNotNull { nameLineForClaim(clean, it) } + pinnedNameLine).distinct()
+            val pins = pinDetect(nameLines.map { it.box })
+            val sel = PinnedCommentSelector.select(nameLines, claimLines, pins)
+            val onOurBlock = sel is PinnedSelection.Selected && sel.name === pinnedNameLine
+            // No confident pin on the selected block (WaitingForPin / pin elsewhere / two pins) → drop
+            // to a null guess. guessFrom stays log-free + pure (JVM-unit-testable); the live path logs.
+            if (!onOurBlock) return OcrGuess(null, null, null, rawLines)
+        }
 
         // itemQuery = the pinned value (the PC reinterprets grams vs fixed price); grams is set
         // only for ONE real weight — a fixed price OR 2+ ambiguous numbers leaves it null (review).
