@@ -104,8 +104,8 @@ export default async function OrdersPage({
           // Compact "Capture Pending" pill beside + New Order — only for capture
           // holders (the strip is theirs), 0 otherwise so it never shows.
           pendingCaptureCount={permissions.has('claim_capture') ? pendingCaptureCount : 0}
-          // Passed as a slot so Send All Invoices can sit beside it: the active-card
-          // state that decides when to show that button lives inside OrdersView.
+          // Passed as a slot so + New Order renders inside OrdersView's sticky top
+          // action row (beside the Capture Pending pill), where its state lives.
           newOrderAction={
             <NewOrderWorkflow canCreate={permissions.has('claim_capture')} />
           }

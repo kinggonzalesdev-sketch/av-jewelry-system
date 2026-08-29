@@ -4,17 +4,12 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { OrderDetailsModal } from '@/components/orders/order-details-modal';
-import { SendAllInvoices } from '@/components/orders/send-all-invoices';
 import { OrderDelete } from '@/components/orders/cancelled-order-delete';
 import { OrderEdit } from '@/components/orders/order-edit';
 import { LayawayLedgerViewModal } from '@/components/payments/layaway-ledger-view-modal';
 
 import { loadOrdersPageAction } from '@/lib/orders/actions';
-import type {
-  OrderListRow,
-  OrdersPageResult,
-  PaymentStatus,
-} from '@/lib/orders/service';
+import type { OrderListRow, OrdersPageResult, PaymentStatus } from '@/lib/orders/service';
 import {
   CAPTURE_COUNT_EVENT,
   TOGGLE_INCOMING_CAPTURES_EVENT,
@@ -567,7 +562,16 @@ export function OrdersView({
     return () => {
       alive = false;
     };
-  }, [card, debouncedQuery, dateFrom, dateTo, ordPage, ordPageSize, reloadToken, initialCard]);
+  }, [
+    card,
+    debouncedQuery,
+    dateFrom,
+    dateTo,
+    ordPage,
+    ordPageSize,
+    reloadToken,
+    initialCard,
+  ]);
 
   // Realtime: a router.refresh() (the shell's DashboardSync, or an in-modal mutation) bumps
   // syncNonce — refetch ONLY the current page, never the whole table. Skips the first mount.
@@ -607,9 +611,9 @@ export function OrdersView({
           small screen; on desktop it pins as before. */}
       <div className="space-y-3 sm:sticky sm:top-0 sm:z-20 sm:-mx-5 sm:border-b sm:border-border sm:bg-background sm:px-5 sm:py-3">
         {title ? <PageHeader title={title} /> : null}
-        {/* Top action row: + New Order, then Send All Invoices while For Invoice is
-          the active card. Hidden otherwise, with no leftover gap. */}
-        {newOrderAction || card === 'for_invoice' || liveCaptureCount > 0 ? (
+        {/* Top action row: + New Order (and the Capture Pending pill when captures are
+          waiting). Hidden with no leftover gap when there is nothing to show. */}
+        {newOrderAction || liveCaptureCount > 0 ? (
           <div className="flex flex-wrap items-center gap-2">
             {newOrderAction}
             {/* Compact "Capture Pending" pill — amber, only when captures are waiting.
@@ -633,7 +637,6 @@ export function OrdersView({
                 </span>
               </button>
             ) : null}
-            {card === 'for_invoice' ? <SendAllInvoices /> : null}
           </div>
         ) : null}
 
