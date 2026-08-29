@@ -162,3 +162,62 @@ export function parseInventoryCode(
 export function normalizeInventoryCode(raw: string): string | null {
   return parseInventoryCode(raw).inventoryCode;
 }
+
+/**
+ * Save-time corruption guard (Owner 2026-08-29). Flags LIKELY data-entry typos in an inventory
+ * code BEFORE it is stored — a sequence fused with the grams, a broken decimal, a stray "g", a
+ * price sitting inside the code, or a duplicated code — the exact shapes found inflating the
+ * Inventory Grams totals. Returns staff-facing warning messages. PURE, so it runs identically in
+ * the New Entry form (live, as you type) and in the server create guard (authoritative backstop).
+ * These are WARNINGS the operator can consciously override — never a hard block.
+ */
+export function detectInventoryCodeIssues(raw: string): string[] {
+  const text = (raw ?? '').replace(/\s+/g, ' ').trim();
+  if (text === '') return [];
+  const issues: string[] = [];
+
+  // Grams implausibly high — almost always the sequence number fused with the grams.
+  const gm = GRAMS_RE.exec(text);
+  if (gm) {
+    const grams = Number(gm[1]);
+    if (Number.isFinite(grams) && grams > 150) {
+      issues.push(
+        `Grams looks unusually high (${gm[1]}g). The sequence may be stuck to the grams — e.g. "SBA-B-6281 4.13g".`,
+      );
+    }
+  }
+
+  // Sequence with 5+ digits (canonical is 4) — a fused or mistyped sequence.
+  const cm = CODE_RE.exec(text);
+  const seq = cm?.[4] ?? '';
+  if (seq.length >= 5) {
+    issues.push(`The sequence has ${seq.length} digits (${seq}). Codes are usually 4 — check for a fused number.`);
+  }
+
+  // Broken decimal: a space between two digit runs right before "g" (e.g. "0 87g" → "0.87g").
+  if (/\d+\s\d+\s*g\b/i.test(text)) {
+    issues.push('The grams has a space inside it (e.g. "0 87g"). It may be a lost decimal point — e.g. "0.87g".');
+  }
+
+  // Stray "g" welded to the sequence number (e.g. "BNA-P-2544g").
+  if (/-\d+g\b/i.test(text)) {
+    issues.push('A "g" is stuck to the sequence number (e.g. "2544g"). Remove it if that is not the grams.');
+  }
+
+  // Two grams tokens — only one can be the weight.
+  if ((text.match(/\d\s*g\b/gi) ?? []).length >= 2) {
+    issues.push('There are two "…g" values. Only one is the weight — which is correct?');
+  }
+
+  // A comma number (a price) sitting inside the code.
+  if (/\d,\d/.test(text)) {
+    issues.push('There is a comma number (e.g. "1,100") inside the code. If it is a price, put it in the Price field.');
+  }
+
+  // The whole code appears more than once (copy-paste duplication).
+  if ((text.match(/[A-Za-z]{2}[A-Za-z][\s-]+[A-Za-z]+[\s-]+\d+/g) ?? []).length >= 2) {
+    issues.push('The whole code appears more than once — it looks duplicated. Keep a single copy.');
+  }
+
+  return issues;
+}

@@ -127,6 +127,7 @@ export async function createInventoryItemAction(
     text(formData, 'itemCode') ?? '',
     text(formData, 'unitPrice'),
     text(formData, 'dateEncoded'),
+    text(formData, 'acknowledgeWarning') === '1',
   );
   if (!result.ok) return { error: result.error, success: null };
 

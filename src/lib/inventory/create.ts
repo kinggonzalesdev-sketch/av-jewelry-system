@@ -2,6 +2,7 @@ import 'server-only';
 
 import { recordAuditEvent } from '@/lib/audit/log';
 import { AuthorizationError, requirePermission } from '@/lib/authz/guard';
+import { detectInventoryCodeIssues } from '@/lib/inventory/code-parser';
 import { createClient } from '@/lib/supabase/server';
 
 /**
@@ -148,11 +149,23 @@ export async function createInventoryEntry(
   rawItemCode: string,
   rawPrice: string | null,
   rawDateEncoded: string | null,
+  acknowledgeWarnings = false,
 ): Promise<CreateManualItemResult> {
   const itemCode = (rawItemCode ?? '').trim();
   if (itemCode.length === 0) return { ok: false, error: 'Enter an item code.' };
   if (itemCode.length > 80) {
     return { ok: false, error: 'Item code must be 80 characters or fewer.' };
+  }
+
+  // Save-time corruption guard (Owner 2026-08-29): flag likely data-entry typos — a fused
+  // sequence+grams, a broken decimal, a stray "g", a price inside the code, or a duplicated code —
+  // BEFORE they are stored and silently inflate the Grams totals. The New Entry form surfaces these
+  // live and sends `acknowledgeWarnings` when the operator deliberately chooses "Save anyway"; this
+  // is the authoritative backstop for a non-JS / direct submit. When overridden, the warnings are
+  // recorded in the audit trail so a forced save is traceable.
+  const codeIssues = detectInventoryCodeIssues(itemCode);
+  if (codeIssues.length > 0 && !acknowledgeWarnings) {
+    return { ok: false, error: `Please check the code — ${codeIssues.join(' ')}` };
   }
 
   const normalized = normalizePrice(rawPrice);
@@ -247,6 +260,8 @@ export async function createInventoryEntry(
       item_code: itemCode,
       unit_price: normalized.price,
       source: 'inventory_new_entry',
+      // Traceable when a flagged code was saved anyway (empty for a clean code).
+      code_warnings_overridden: codeIssues.length > 0 ? codeIssues : undefined,
     },
   });
 

@@ -19,7 +19,7 @@ import type { InventoryPageResult, InventoryRow } from '@/lib/inventory/service'
 import type { InventoryGramsTotals } from '@/lib/inventory/grams-totals';
 import { formatGrams } from '@/lib/inventory/grams-format';
 import type { CompletedInventoryRow } from '@/lib/inventory/completed';
-import { parseInventoryCode } from '@/lib/inventory/code-parser';
+import { detectInventoryCodeIssues, parseInventoryCode } from '@/lib/inventory/code-parser';
 import { inventoryGroup } from '@/lib/inventory/group';
 import { downloadCsv } from '@/lib/export/csv';
 import { InventoryImportButton } from '@/components/inventory/inventory-import-modal';
@@ -222,6 +222,9 @@ export function InventoryWorkspace({
     setCompletedActive(true);
   };
   const [showNewEntry, setShowNewEntry] = useState(false);
+  // New Entry item-code, controlled so the save-time corruption guard can warn live as you type.
+  const [neCode, setNeCode] = useState('');
+  const neCodeIssues = useMemo(() => detectInventoryCodeIssues(neCode), [neCode]);
   // Completed Items: search + completion-type filter (§12) + read-only detail (§5).
   const [compSearch, setCompSearch] = useState('');
   const [compType, setCompType] = useState('all');
@@ -250,6 +253,7 @@ export function InventoryWorkspace({
     if (createState.success && createState.success !== lastCreate.current) {
       lastCreate.current = createState.success;
       setShowNewEntry(false);
+      setNeCode('');
       reloadActive();
     }
   }, [createState.success, reloadActive]);
@@ -472,7 +476,10 @@ export function InventoryWorkspace({
             type="button"
             size="sm"
             variant="outline"
-            onClick={() => setShowNewEntry(true)}
+            onClick={() => {
+              setNeCode('');
+              setShowNewEntry(true);
+            }}
             data-testid="inventory-new-entry"
           >
             ＋ New Entry
@@ -582,7 +589,7 @@ export function InventoryWorkspace({
               Cancel
             </Button>
             <Button type="submit" form="inventory-new-entry-form" disabled={creating}>
-              {creating ? 'Adding…' : 'Add item'}
+              {creating ? 'Adding…' : neCodeIssues.length > 0 ? 'Save anyway' : 'Add item'}
             </Button>
           </>
         }
@@ -597,8 +604,11 @@ export function InventoryWorkspace({
                 id="ne-code"
                 name="itemCode"
                 required
-                placeholder="e.g. SBA-N-3017"
+                value={neCode}
+                onChange={(e) => setNeCode(e.target.value)}
+                placeholder="e.g. SBA-N-3017 1.80g 16&quot;"
                 className="mt-1 h-9"
+                autoComplete="off"
               />
             </ModalFieldFull>
             <div>
@@ -629,6 +639,30 @@ export function InventoryWorkspace({
             Item Code is required and must be unique. Date Encoded defaults to today and
             can be changed.
           </p>
+          {/* Save-time corruption guard — warns LIVE about likely typos (fused sequence+grams,
+              broken decimal, stray "g", price-in-code, duplicated code) that would inflate the
+              Grams totals. Not a hard block: the operator can still "Save anyway". */}
+          {neCodeIssues.length > 0 ? (
+            <div
+              role="alert"
+              className="rounded-md border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200"
+            >
+              <p className="font-medium">Please double-check this code:</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                {neCodeIssues.map((msg) => (
+                  <li key={msg}>{msg}</li>
+                ))}
+              </ul>
+              <p className="mt-1">If it is correct, press “Save anyway”.</p>
+            </div>
+          ) : null}
+          {/* When the code is flagged, "Save anyway" sends this so the server accepts the override
+              (and records it in the audit trail). Empty for a clean code → the server guard applies. */}
+          <input
+            type="hidden"
+            name="acknowledgeWarning"
+            value={neCodeIssues.length > 0 ? '1' : ''}
+          />
           {createState.error ? (
             <p role="alert" className="text-sm text-destructive">
               {createState.error}

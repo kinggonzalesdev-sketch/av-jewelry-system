@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { normalizeInventoryCode, parseInventoryCode } from '@/lib/inventory/code-parser';
+import {
+  detectInventoryCodeIssues,
+  normalizeInventoryCode,
+  parseInventoryCode,
+} from '@/lib/inventory/code-parser';
 
 /**
  * Inventory code parser (UI/UX spec §4–§8). Every example from the spec is pinned
@@ -163,5 +167,58 @@ describe('normalizeInventoryCode', () => {
   it('returns the normalized code for matching, or null', () => {
     expect(normalizeInventoryCode('sba-n-2683 1.80g 16"')).toBe('SBA-N-2683');
     expect(normalizeInventoryCode('not a code')).toBeNull();
+  });
+});
+
+/**
+ * Save-time corruption guard (Owner 2026-08-29) — flags the real data-entry typo shapes found
+ * inflating the Inventory Grams totals, and stays quiet on well-formed codes.
+ */
+describe('detectInventoryCodeIssues — save-time corruption guard', () => {
+  it('passes clean codes with NO warnings', () => {
+    for (const code of [
+      'SBA-N-2683 1.80g 16"',
+      'SBA-N-5409 98.72g 20" K18 JAPAN', // heavy but real (< 150g)
+      'SBA-E-5517 0.06g',
+      'SBA-P-2367 0.55g',
+      'BNA-R-2297 0.98g "6" EF',
+    ]) {
+      expect(detectInventoryCodeIssues(code), code).toEqual([]);
+    }
+  });
+
+  it('flags a sequence fused with the grams (implausible grams)', () => {
+    expect(detectInventoryCodeIssues('SBA-B-62814.13g 7.5"').length).toBeGreaterThan(0);
+    expect(detectInventoryCodeIssues('ASB-P-21751.80g').join(' ')).toMatch(/high|digits/i);
+  });
+
+  it('flags a stray "g" welded to the sequence number', () => {
+    expect(detectInventoryCodeIssues('BNA-P-2544g 0.51g EF').join(' ')).toMatch(/stuck|two|high/i);
+  });
+
+  it('flags a broken decimal (space inside the grams)', () => {
+    expect(detectInventoryCodeIssues('SBA-E-7721 0 87g').join(' ')).toMatch(/space|decimal/i);
+    expect(detectInventoryCodeIssues('SBA-N-2672 25 99g 24"').length).toBeGreaterThan(0);
+  });
+
+  it('flags a duplicated whole code', () => {
+    expect(
+      detectInventoryCodeIssues("SBA-P-7646 1.33g' SBA-P-7646 1.33g'").join(' '),
+    ).toMatch(/more than once|duplicated/i);
+  });
+
+  it('flags a comma price sitting inside the code', () => {
+    expect(detectInventoryCodeIssues('BNA-P-949g 1,100 EF').join(' ')).toMatch(/comma|price/i);
+  });
+
+  it('flags a 5-digit sequence even when the grams parses fine', () => {
+    const issues = detectInventoryCodeIssues('SBA-E-59780 0.30g');
+    expect(issues.length).toBeGreaterThan(0);
+    expect(issues.join(' ')).toMatch(/digits/i);
+  });
+
+  it('returns nothing for an empty code', () => {
+    expect(detectInventoryCodeIssues('')).toEqual([]);
+    expect(detectInventoryCodeIssues('   ')).toEqual([]);
   });
 });
