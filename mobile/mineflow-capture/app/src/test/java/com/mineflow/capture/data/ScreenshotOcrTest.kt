@@ -156,6 +156,32 @@ class ScreenshotOcrTest {
         assertEquals("Buyer Name", g("Mine 12000").fbName)
     }
 
+    // Physical case (Jeric Tamondong Gabertan, 2026-08-30): a Mine-marker with the decimal point FUSED
+    // to it — "M. 64" = 0.64g. The DOT is the decisive evidence. A marker WITHOUT a dot ("M 64" /
+    // "Mine 64") and a bare integer ("64") MUST stay whole numbers (never divided by 100).
+    @Test
+    fun markerDotLead_restoresLeadingDecimal_only_when_the_dot_is_present() {
+        // dot fused to / spaced from the marker → leading decimal (0.64g)
+        assertEquals("0.64", pinnedGrams("M. 64"))
+        assertEquals("0.64", pinnedGrams("M . 64")) // OCR spacing
+        assertEquals("0.64", pinnedGrams("M.64"))
+        assertEquals("0.64", pinnedGrams("Mine. 64"))
+        assertEquals("0.64", pinnedGrams("Mine .64"))
+        assertEquals("0.64", pinnedGrams("Mine 0.64"))
+        assertEquals("0.64", pinnedGrams(".64"))
+        assertEquals("0.64", pinnedGrams("0.64"))
+        // NO dot → whole number, NOT 0.64
+        assertEquals("64", pinnedGrams("M 64"))
+        assertEquals("64", pinnedGrams("Mine 64"))
+        assertEquals("64", pinnedGrams("64"))
+        // other legitimate whole-number grams unaffected
+        assertEquals("18", pinnedGrams("18"))
+        assertEquals("33", pinnedGrams("33"))
+        assertEquals("55", pinnedGrams("55"))
+        // a marker+dot with a REAL decimal after is untouched (5.5g, not 0.5)
+        assertEquals("5.5", pinnedGrams("M. 5.5"))
+    }
+
     // Owner acceptance grams matrix (2026-08-18): leading decimals normalized, keyword BEFORE
     // and AFTER the number, case-insensitive, numeric-only, "g" suffix — all from the pinned block.
     @Test

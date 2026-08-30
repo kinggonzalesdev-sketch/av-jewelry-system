@@ -226,6 +226,11 @@ object ScreenshotOcr {
     private val LEAD_DOT_SPACED = Regex("^[.·•]\\s+(\\d{1,2})$")   // Pattern 1: ". 23" → ".23"
     private val DOT_GLYPH = Regex("^[.·•]$")                        // a standalone decimal-point line
     private val BARE_SMALL_INT = Regex("^(\\d{1,2})$")             // a dotless .xx candidate (no dot)
+    // Pattern 4: a Mine-family MARKER with a decimal point FUSED to it, then a spaced small integer —
+    // "M. 64" / "M.64" / "M . 64" / "Mine. 64". Both pieces already exist in the grammar (M = marker,
+    // ". NN" = leading decimal); the DOT straddling them is what breaks parsing. REQUIRES the dot — a
+    // marker without one ("M 64" / "Mine 64") is NOT matched and stays a whole number.
+    private val MARKER_DOT_LEAD = Regex("^(mine|m|akin|sakin)\\s*[.·•]\\s*(\\d{1,2})$", RegexOption.IGNORE_CASE)
     // Pattern 3: a lone leading glyph OCR often makes of a decimal point (incl. O/0/°) fused onto the
     // Title-cased buyer name, e.g. "O King Gonzales". Only stripped WITH the dotless-value coupling.
     private val NAME_LEAD_GLYPH = Regex("^([O0°.·•])\\s+([A-Za-zÀ-ÿ].{1,48})$")
@@ -459,6 +464,17 @@ object ScreenshotOcr {
         for (i in out.indices) {
             val m = LEAD_DOT_SPACED.matchEntire(out[i].text)
             if (m != null) out[i] = out[i].copy(text = "." + m.groupValues[1])
+        }
+
+        // Pattern 4 (Owner 2026-08-30) — a Mine-family MARKER with a decimal point FUSED to it, then a
+        // spaced small integer: "M. 64" → ".64" (0.64g). The customer wrote "Mine .64" and OCR/rendering
+        // shoved the dot onto the marker with a space before the digits, so neither the marker-token nor
+        // the ". NN" leading-decimal rule fired and it parsed as 64. The DOT is the decisive evidence:
+        // "M 64" / "Mine 64" / bare "64" have NO dot and stay whole numbers. Physical case: Jeric
+        // "M. 64" = 0.64g. This only reunites two pieces the grammar already has (M marker + ". NN").
+        for (i in out.indices) {
+            val m4 = MARKER_DOT_LEAD.matchEntire(out[i].text)
+            if (m4 != null) out[i] = out[i].copy(text = "." + m4.groupValues[2])
         }
 
         // Pattern 2 — a standalone decimal-point line immediately LEFT of a bare-number line on the
