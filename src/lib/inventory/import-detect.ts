@@ -1,4 +1,8 @@
-import { parseInventoryCode, normalizeInventoryCode } from '@/lib/inventory/code-parser';
+import {
+  detectInventoryCodeIssues,
+  normalizeInventoryCode,
+  parseInventoryCode,
+} from '@/lib/inventory/code-parser';
 
 /**
  * Inventory import DETECTION engine (pure, deterministic, no I/O) — so it runs
@@ -316,6 +320,17 @@ function buildCandidate(
     !blank(get(row, block.cols.fixed_price))
   ) {
     issues.push('Fixed Price invalid');
+  }
+
+  // Save-time corruption guard (Owner 2026-08-29): flag likely code typos — a sequence fused with the
+  // grams, a broken decimal, a stray "g", a duplicated code — in the import preview too (the bulk
+  // code-entry point), so they land in "needs review" instead of silently importing and inflating the
+  // Grams totals. NON-HK only: HK items legitimately carry a comma price inside the code.
+  if (!hk) {
+    const codeText = (source || '').trim();
+    if (codeText) {
+      for (const w of detectInventoryCodeIssues(codeText)) issues.push(w);
+    }
   }
 
   let validation: ImportValidation;

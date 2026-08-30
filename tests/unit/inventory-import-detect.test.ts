@@ -75,6 +75,36 @@ describe('detectInventory — headers, blocks, HK, duplicates', () => {
     expect(hk?.issues.join(' ')).toContain('Fixed Price could not be identified');
   });
 
+  it('flags a corrupt code (fused sequence+grams / broken decimal) as needs-review; clean stays valid', () => {
+    const sheets = [
+      sheet('CORRUPT', [
+        ['CODE', 'GRAMS', 'DESCRIPTION'],
+        ['SBA-B-62814.13g', '', 'SBA-B-62814.13g 7.5"'], // sequence fused with the grams
+        ['SBA-E-7721 0 87g', '', 'SBA-E-7721 0 87g'], // broken decimal (space for dot)
+        ['SBA-N-1630 6.81g', '', 'SBA-N-1630 6.81g 24"'], // clean → valid
+      ]),
+    ];
+    const { candidates } = detectInventory(sheets, []);
+    const merged = candidates.find((c) => c.inventoryCode === 'SBA-B-62814');
+    expect(merged?.validation).toBe('needs_review');
+    expect(merged?.issues.join(' ')).toMatch(/high|digits/i);
+
+    const broken = candidates.find((c) => c.inventoryCode === 'SBA-E-7721');
+    expect(broken?.validation).toBe('needs_review');
+    expect(broken?.issues.join(' ')).toMatch(/space|decimal/i);
+
+    const clean = candidates.find((c) => c.inventoryCode === 'SBA-N-1630');
+    expect(clean?.validation).toBe('valid');
+    expect(clean?.issues).toEqual([]);
+  });
+
+  it('does NOT flag an HK item for the comma price inside its code (guard is non-HK only)', () => {
+    const sheets = [sheet('HK', [['CODE'], ['BNA-B-2533 K18 HK ITEM 37,500 "7"']])];
+    const { candidates } = detectInventory(sheets, []);
+    const hk = candidates.find((c) => c.isHkItem);
+    expect(hk?.validation).toBe('valid'); // comma is a legit HK price, not a code corruption
+  });
+
   it('flags EVERY occurrence of a repeated code across sheets (not just the 2nd)', () => {
     const sheets = [
       sheet('APRIL', [
