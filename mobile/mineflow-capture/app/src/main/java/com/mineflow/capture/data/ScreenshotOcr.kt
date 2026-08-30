@@ -9,15 +9,28 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 
+/** The pin-gate outcome on the AUTOMATIC (live) capture path — the SOLE authority for auto-Capture.
+ *  `null` only on the ungated manual/legacy path (positional selection). On the gated path it is
+ *  ALWAYS set, so a gated capture can never silently look like a plain "name not read":
+ *   • SELECTED     — a single confident on-screen pin authorised this read (name+claim below).
+ *   • WAITING      — NO confident pin, OR the detector could not operate (templates missing / pixel
+ *                    snapshot failed / detector threw) → FAIL CLOSED. The capture is withheld on the
+ *                    phone; it must NEVER become a "Name not read / No Facebook match" row on the PC.
+ *   • NEEDS_REVIEW — a pin exists but is ambiguous (2+ pinned blocks) or its name/claim can't be read
+ *                    → a manual-review capture, no auto-send / no auto-print. */
+enum class PinGate { SELECTED, WAITING, NEEDS_REVIEW }
+
 /** A best-effort read of the PINNED comment in a capture: the customer's Facebook name,
  *  the mined-item text, the weight in grams, plus every recognised line so the operator
  *  can correct. `fbName`/`grams` are null when the pinned comment could not be read
- *  confidently (a "needs review" capture the PC won't auto-print). */
+ *  confidently (a "needs review" capture the PC won't auto-print). `pinGate` records the
+ *  visual-pin decision on the automatic path (null on the ungated manual path). */
 data class OcrGuess(
     val fbName: String?,
     val itemQuery: String?,
     val grams: String?,
     val rawLines: List<String>,
+    val pinGate: PinGate? = null,
 )
 
 /** A recognised line's screen rectangle — a plain value type (not android.graphics.Rect) so
@@ -149,6 +162,13 @@ object ScreenshotOcr {
         return { boxes -> PinPixelDetector.detectPins(argb, tpls, boxes, stride = 2) }
     }
 
+    /** A pin-detect callback bound to `bmp`'s pixels, or null when the gate CANNOT operate — no
+     *  templates loaded, or the pixel snapshot failed. Snapshots the pixels NOW (bitmapToArgb copies),
+     *  so the caller may recycle `bmp` immediately after. A null return on the gated path makes
+     *  guessFrom FAIL CLOSED (Waiting) — it must NEVER silently revert to positional selection. */
+    private fun safePinDetector(bmp: Bitmap): ((List<Box>) -> List<PinMarker>)? =
+        runCatching { if (pinTemplates.isNotEmpty()) pinDetectorFor(bitmapToArgb(bmp)) else null }.getOrNull()
+
     private val UI_NOISE = Regex(
         "^(like|reply|comment|share|pinned|top fan|author|follow|message|" +
             "see (more|translation)|view( \\d+)?( more)? repl(y|ies)|hide|edited|·|" +
@@ -256,8 +276,8 @@ object ScreenshotOcr {
             val t0 = android.os.SystemClock.elapsedRealtime()
             ocr(bitmap) {
                 Log.i(TAG, "timing: roi=none fullOcr=${android.os.SystemClock.elapsedRealtime() - t0}ms lines=${it.size}")
-                val pd = if (gate && pinTemplates.isNotEmpty()) pinDetectorFor(bitmapToArgb(bitmap)) else null
-                onResult(guessFrom(it, minClaimTop = roiTop, recoveryFloor = recoveryTop, pinDetect = pd))
+                val pd = if (gate) safePinDetector(bitmap) else null
+                onResult(guessFrom(it, minClaimTop = roiTop, recoveryFloor = recoveryTop, gateRequested = gate, pinDetect = pd))
             }
             return
         }
@@ -268,12 +288,14 @@ object ScreenshotOcr {
         // a "needs review" capture. Never a guessed non-pinned name/number.
         val tRoi = android.os.SystemClock.elapsedRealtime()
         ocr(roi) { roiLines ->
-            // Snapshot the ROI pixels for the pin gate BEFORE the ROI bitmap is recycled. roiLines and
-            // roiArgb share the SAME (ROI-relative) coordinate space, so pin geometry lines up exactly.
-            val roiArgb = if (gate && pinTemplates.isNotEmpty()) bitmapToArgb(roi) else null
+            // Snapshot the ROI pixels for the pin gate BEFORE the ROI bitmap is recycled. The detector
+            // and roiLines share the SAME (ROI-relative) coordinate space, so pin geometry lines up.
+            // safePinDetector copies the pixels now, so recycling roi immediately after is safe; a null
+            // result (no templates / snapshot failed) makes the gated read FAIL CLOSED (Waiting).
+            val roiPd = if (gate) safePinDetector(roi) else null
             runCatching { roi.recycle() }
             val roiMs = android.os.SystemClock.elapsedRealtime() - tRoi
-            val g = guessFrom(roiLines, pinDetect = roiArgb?.let { pinDetectorFor(it) })
+            val g = guessFrom(roiLines, gateRequested = gate, pinDetect = roiPd)
             if (g.fbName != null && g.itemQuery != null) {
                 Log.i(TAG, "timing: roiOcr=${roiMs}ms fastPath=HIT lines=${roiLines.size} (no fallback)")
                 onResult(g)
@@ -285,8 +307,8 @@ object ScreenshotOcr {
                         "timing: roiOcr=${roiMs}ms fastPath=MISS fullOcr=" +
                             "${android.os.SystemClock.elapsedRealtime() - tFull}ms (fallback ran → ~2x OCR)",
                     )
-                    val pd = if (gate && pinTemplates.isNotEmpty()) pinDetectorFor(bitmapToArgb(bitmap)) else null
-                    onResult(guessFrom(full, minClaimTop = roiTop, recoveryFloor = recoveryTop, pinDetect = pd))
+                    val pd = if (gate) safePinDetector(bitmap) else null
+                    onResult(guessFrom(full, minClaimTop = roiTop, recoveryFloor = recoveryTop, gateRequested = gate, pinDetect = pd))
                 }
             }
         }
@@ -545,6 +567,9 @@ object ScreenshotOcr {
      * geometry from the already-classified name/claim line boxes. Name is taken from the pinned block's
      * OWN name line (never chrome, never a broad crop); the claim is that block's OWN line, never borrowed.
      */
+    private fun waiting(rawLines: List<String>) = OcrGuess(null, null, null, rawLines, PinGate.WAITING)
+    private fun needsReview(rawLines: List<String>) = OcrGuess(null, null, null, rawLines, PinGate.NEEDS_REVIEW)
+
     private fun pinLockedGuess(
         clean: List<OLine>,
         admissible: List<Pair<OLine, Claim>>,
@@ -559,34 +584,44 @@ object ScreenshotOcr {
         val nameLines = clean.filter {
             looksLikeName(it.text) && !isChrome(it.text) && !MINE.containsMatchIn(it.text) && parseClaim(it.text) == null
         }
-        if (nameLines.isEmpty()) return OcrGuess(null, null, null, rawLines)
-        val pins = pinDetect(nameLines.map { it.box })
-        val sel = PinnedCommentSelector.select(nameLines, claimLines, pins)
-        if (sel !is PinnedSelection.Selected) return OcrGuess(null, null, null, rawLines) // Waiting / Needs Review
-
-        val name = sel.name.text.takeIf { looksLikeName(it) && !isChrome(it) }
-            ?: return OcrGuess(null, null, null, rawLines)
-        // The pinned block's claim = the nearest admissible claim DIRECTLY BELOW the pinned name (small
-        // vertical gap, same column-ish). Because the block is UNIQUELY pin-identified we do not require
-        // strict horizontal overlap here — that is what handles the indented-name / left-margin-claim
-        // geometry — but we still keep it to the name's own column so a different comment can't leak in.
-        val nb = sel.name.box
-        val maxGap = maxOf(nb.height * 2, 30)
-        val claim = admissible
-            .filter { (c, _) ->
-                c.box.top >= nb.bottom - 4 &&
-                    (c.box.top - nb.bottom) <= maxGap &&
-                    c.box.left <= nb.right &&
-                    c.box.right >= nb.left - nb.height * 2
+        if (nameLines.isEmpty()) return waiting(rawLines) // no comment to pin → Waiting (never positional)
+        // FAIL CLOSED: a detector that THROWS on-device must NOT fall through to positional selection —
+        // treat it as "cannot confirm a pin" → Waiting. (Templates-missing is already handled upstream.)
+        val pins = try { pinDetect(nameLines.map { it.box }) } catch (_: Throwable) { return waiting(rawLines) }
+        // Explicit, DISTINCT terminal states — Waiting (zero pin) is NOT the same as a plain null read:
+        //   WaitingForPin → Waiting  (the phone withholds the capture; no PC row, no match, no send)
+        //   NeedsReview   → NeedsReview (a pin exists but is ambiguous / unreadable → manual review)
+        //   Selected      → read this block's OWN name + claim
+        when (val sel = PinnedCommentSelector.select(nameLines, claimLines, pins)) {
+            PinnedSelection.WaitingForPin -> return waiting(rawLines)
+            PinnedSelection.NeedsReview -> return needsReview(rawLines)
+            is PinnedSelection.Selected -> {
+                val name = sel.name.text.takeIf { looksLikeName(it) && !isChrome(it) }
+                    ?: return needsReview(rawLines) // a pin, but its name isn't usable → review (a pin WAS found)
+                // The pinned block's claim = the nearest admissible claim DIRECTLY BELOW the pinned name
+                // (small vertical gap, same column-ish). Because the block is UNIQUELY pin-identified we
+                // do not require strict horizontal overlap — that handles the indented-name / left-margin
+                // claim geometry — but we keep it to the name's own column so a different comment can't leak.
+                val nb = sel.name.box
+                val maxGap = maxOf(nb.height * 2, 30)
+                val claim = admissible
+                    .filter { (c, _) ->
+                        c.box.top >= nb.bottom - 4 &&
+                            (c.box.top - nb.bottom) <= maxGap &&
+                            c.box.left <= nb.right &&
+                            c.box.right >= nb.left - nb.height * 2
+                    }
+                    .minByOrNull { it.first.box.top }?.second
+                    ?: return needsReview(rawLines) // a pinned name with no readable claim → review
+                return OcrGuess(
+                    fbName = sanitizeLeadingNameGlyph(name),
+                    itemQuery = claim.value,
+                    grams = claim.grams,
+                    rawLines = rawLines,
+                    pinGate = PinGate.SELECTED,
+                )
             }
-            .minByOrNull { it.first.box.top }?.second
-            ?: return OcrGuess(null, null, null, rawLines) // a pinned name with no readable claim → review
-        return OcrGuess(
-            fbName = sanitizeLeadingNameGlyph(name),
-            itemQuery = claim.value,
-            grams = claim.grams,
-            rawLines = rawLines,
-        )
+        }
     }
 
     /**
@@ -609,6 +644,7 @@ object ScreenshotOcr {
         olinesIn: List<OLine>,
         minClaimTop: Int = 0,
         recoveryFloor: Int = minClaimTop,
+        gateRequested: Boolean = false,
         pinDetect: ((List<Box>) -> List<PinMarker>)? = null,
     ): OcrGuess {
         val rawLines = olinesIn.map { it.text }
@@ -616,6 +652,26 @@ object ScreenshotOcr {
         // "23 → 0.23" — only when a real decimal point is structurally present, see the function).
         val olines = restoreLeadingDecimals(olinesIn)
         val clean = olines.filterNot { isUiNoise(it.text) }
+
+        // VISUAL PIN GATE (Owner 2026-08-29/30) — the AUTOMATIC live path. The on-screen pin is the
+        // SOLE authority; a gated capture NEVER falls back to positional/bottom-most selection.
+        //   • detector supplied (or a pin unit-test) → pinLockedGuess (Selected / Waiting / NeedsReview),
+        //     decided FIRST, before positional selection and the competing-comment guard. Every UNPINNED
+        //     comment is out of scope (a stack of unpinned .66/.77/.88/.99 never contests the pinned .4).
+        //   • gate REQUESTED but no detector (templates missing / pixel snapshot failed) → FAIL CLOSED →
+        //     Waiting. This is the removed fail-OPEN: a requested gate can no longer silently revert to
+        //     the old bottom-comment pick.
+        // Inert when neither is set (manual review screens / legacy tests): the positional path below runs
+        // byte-for-byte unchanged, with pinGate left null.
+        if (pinDetect != null) {
+            val admissible = clean
+                .mapNotNull { ol -> parseClaim(ol.text)?.let { ol to it } }
+                .filter { it.first.box.top >= recoveryFloor }
+            return pinLockedGuess(clean, admissible, rawLines, pinDetect)
+        }
+        if (gateRequested) return waiting(rawLines)
+
+        // ---- UNGATED POSITIONAL PATH (manual review / legacy) — unchanged, pinGate stays null ----
         if (clean.isEmpty()) return OcrGuess(null, null, null, rawLines)
 
         // Every parsed claim at/below the RECOVERY floor (top >= recoveryFloor). Claims ABOVE the
@@ -625,18 +681,6 @@ object ScreenshotOcr {
             .mapNotNull { ol -> parseClaim(ol.text)?.let { ol to it } }
             .filter { it.first.box.top >= recoveryFloor }
         if (admissible.isEmpty()) return OcrGuess(null, null, null, rawLines)
-
-        // VISUAL PIN GATE (Owner 2026-08-29). When a pin detector is supplied (the AUTOMATIC live
-        // path), the on-screen pin is the SOLE authority — decided FIRST, before positional selection
-        // and the competing-comment guard. Lock the single visually-pinned comment block and take ITS
-        // name + claim; every UNPINNED comment is OUT OF SCOPE (it does not drive selection and does
-        // NOT trigger competing-comment review). This is what lets a stack of unpinned same-customer
-        // comments (.66/.77/.88/.99) never contest the pinned .4.
-        //   no confident pin       → WaitingForPin → null (NEVER the bottom-most comment)
-        //   pin on 2+ / ambiguous  → NeedsReview   → null
-        // Inert when pinDetect is null: every existing caller/test falls through to the positional
-        // path below, byte-for-byte unchanged.
-        if (pinDetect != null) return pinLockedGuess(clean, admissible, rawLines, pinDetect)
 
         // Two-tier selection (Owner 2026-08-21):
         //  • ESTABLISHED zone (top >= minClaimTop): the proven pinned band. If ANY claim is here,

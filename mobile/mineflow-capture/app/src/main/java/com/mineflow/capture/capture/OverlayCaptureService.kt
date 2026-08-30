@@ -437,6 +437,21 @@ class OverlayCaptureService : Service() {
             val tOcrStart = android.os.SystemClock.elapsedRealtime()
             val guess = ocrBlocking(bmp)
             val tOcrEnd = android.os.SystemClock.elapsedRealtime()
+
+            // PIN GATE (Owner 2026-08-30). WAITING = no confident on-screen pin, OR the visual detector
+            // could not operate (templates missing / pixel snapshot failed / detector threw → FAIL
+            // CLOSED). Withhold the capture ENTIRELY on the phone: no local print, no PC row, no
+            // Facebook match, no AUTO send. A zero-pin capture must NEVER fall through into name/OCR
+            // matching and surface as "Name not read / No Facebook match" on the PC. Because no row is
+            // created, there is nothing for the PC to match or send — the decision stays fully on-device.
+            // The operator pins the customer's real comment and taps again.
+            if (guess?.pinGate == com.mineflow.capture.data.PinGate.WAITING) {
+                Log.i(TAG, "PIN GATE: WaitingForPin — no confident pin; capture withheld (no print, no row, no send).")
+                toastMain("Waiting for Pinned Comment — pin the customer's comment, then capture again.")
+                bmp.recycle()
+                return@thread
+            }
+
             val name = guess?.fbName?.trim().orEmpty()
             // ALWAYS attach the OCR result — including the RAW recognised lines — whenever OCR
             // ran, even on a blank/low-confidence read. `fbName`/`itemQuery`/`grams` stay set only
@@ -586,7 +601,9 @@ class OverlayCaptureService : Service() {
         val latch = java.util.concurrent.CountDownLatch(1)
         var result: com.mineflow.capture.data.OcrGuess? = null
         // applyPinGate = true: this is the AUTOMATIC print path — only a visually pinned comment may
-        // auto-select/print. No pin → null guess → PC "needs review"/"waiting for pinned comment".
+        // auto-select/print. No confident pin (or the detector can't operate) → pinGate=WAITING, and
+        // onCaptured withholds the capture entirely (no print, no PC row, no send). A single pin →
+        // SELECTED (reads name+claim); 2+/ambiguous → NEEDS_REVIEW (a manual-review row, no auto-send).
         ScreenshotOcr.analyze(bmp, applyPinGate = true) { g -> result = g; latch.countDown() }
         runCatching { latch.await(5, java.util.concurrent.TimeUnit.SECONDS) }
         return result
