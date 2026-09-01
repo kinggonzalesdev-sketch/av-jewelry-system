@@ -233,8 +233,9 @@ class SetupActivity : AppCompatActivity() {
             TextView(this).apply { text = title; textSize = 12f; setTextColor(white); gravity = Gravity.CENTER; setPadding(0, dp(8), 0, dp(10)) },
         )
         val btn = Button(this).apply {
-            isAllCaps = false; textSize = 12f; minHeight = 0; minimumHeight = 0
-            setPadding(dp(6), dp(7), dp(6), dp(7))
+            isAllCaps = false; textSize = 12f
+            minHeight = dp(44); minimumHeight = dp(44) // ~48dp touch target
+            setPadding(dp(6), dp(8), dp(6), dp(8))
         }
         c.addView(btn, wide())
         return c to btn
@@ -695,6 +696,7 @@ class SetupActivity : AppCompatActivity() {
 
     private fun goldButton(label: String, onClick: () -> Unit) = Button(this).apply {
         text = label; isAllCaps = false; textSize = 14f
+        minHeight = dp(46); minimumHeight = dp(46) // ~48dp touch target
         setTextColor(Color.parseColor("#111111"))
         background = rounded(gold, dp(10), gold, 0)
         setPadding(dp(18), dp(10), dp(18), dp(10))
@@ -703,6 +705,7 @@ class SetupActivity : AppCompatActivity() {
 
     private fun ghostButton(label: String, onClick: () -> Unit) = Button(this).apply {
         text = label; isAllCaps = false; textSize = 13f; minWidth = 0; minimumWidth = 0
+        minHeight = dp(46); minimumHeight = dp(46) // ~48dp touch target
         setTextColor(white)
         background = rounded(Color.TRANSPARENT, dp(10), cardBorder, dp(1))
         setPadding(dp(6), dp(9), dp(6), dp(9))
