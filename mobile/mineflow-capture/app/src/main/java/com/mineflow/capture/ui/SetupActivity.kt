@@ -111,7 +111,6 @@ class SetupActivity : AppCompatActivity() {
             ).show()
         }
         val printerBtn = outlineButton("Bluetooth Printer") { BluetoothPrinterActivity.open(this) }
-        val historyBtn = outlineButton("Capture History") { CaptureHistoryActivity.open(this) }
         val stopBtn = outlineButton("Stop capture service") {
             OverlayCaptureService.stop(this); refreshStatus()
         }
@@ -122,7 +121,7 @@ class SetupActivity : AppCompatActivity() {
             finish()
         }
 
-        listOf(overlayBtn, notifyBtn, startBtn, showBtn, printerBtn, historyBtn, stopBtn, logoutBtn)
+        listOf(overlayBtn, notifyBtn, startBtn, showBtn, printerBtn, stopBtn, logoutBtn)
             .forEach { root.addView(it, wide().apply { topMargin = dp(8) }) }
         setContentView(root)
     }

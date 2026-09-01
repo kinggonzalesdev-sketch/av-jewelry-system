@@ -52,10 +52,8 @@
         <activity android:name=".ui.SetupActivity" android:exported="false" />
         <activity android:name=".ui.BluetoothPrinterActivity" android:exported="false" />
 
-        <!-- Phase 1 capture: screenshot preview (Retake / Save Draft / Discard) and
-             the local Capture History of drafts. -->
+        <!-- Phase 1 capture: screenshot preview (Retake / Save Draft / Discard). -->
         <activity android:name=".ui.PreviewActivity" android:exported="false" />
-        <activity android:name=".ui.CaptureHistoryActivity" android:exported="false" />
 
         <!-- Reserved for a later phase (order creation + send); not in the capture
              flow yet. Kept registered so it still builds. -->
