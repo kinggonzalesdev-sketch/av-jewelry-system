@@ -387,8 +387,18 @@ export async function sendOrderInvoice(
   message?: string | null,
 ): Promise<{ ok: true; pancake: PancakeDelivery } | { ok: false; error: string }> {
   let body = (message ?? '').trim();
+  // Render the invoice from the order's own data (a) to seed the body when none was
+  // passed, and (b) to VALIDATE completeness. Owner 2026-09-01: a grams-based invoice
+  // must never go out with a blank Grams / Price Per Gram — block it with a clear message
+  // (a genuine Fixed-Price order resolves no grams, so `missing` is empty and it sends).
+  const rendered = await renderOrderMessage(orderId, 'invoice');
+  if (rendered.ok && rendered.missing.length > 0) {
+    return {
+      ok: false,
+      error: 'Please complete Grams and Price Per Gram before sending the invoice.',
+    };
+  }
   if (!body) {
-    const rendered = await renderOrderMessage(orderId, 'invoice');
     if (!rendered.ok) return { ok: false, error: rendered.error };
     body = rendered.message;
   }

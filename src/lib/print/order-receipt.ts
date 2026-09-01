@@ -241,7 +241,6 @@ export function slipDateTime(now: Date = new Date()): string {
 export function slipLines(d: OrderSlipData): string[] {
   const lines: string[] = [
     'A.V. JEWELRY',
-    `Order ${d.orderNumber || '—'}`,
     d.customerName || '—',
     '------------------------------',
   ];
@@ -439,7 +438,6 @@ function slipHtml(d: OrderSlipData): string {
   return `
     <div class="slip">
       <div class="hd">A.V. JEWELRY</div>
-      <div class="sub">Order ${escapeHtml(d.orderNumber || '—')}</div>
       <div class="row"><span>Customer</span><span>${escapeHtml(d.customerName || '—')}</span></div>
       <div class="rule"></div>
       ${items}
@@ -472,7 +470,7 @@ export function printOrderSlip(data: OrderSlipData): void {
   doc.open();
   doc.write(
     `<!doctype html><html><head><title>${escapeHtml(
-      data.orderNumber || data.customerName,
+      data.customerName || 'Order slip',
     )}</title><style>${SLIP_STYLE}</style></head><body>${slipHtml(data)}</body></html>`,
   );
   doc.close();

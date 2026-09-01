@@ -30,7 +30,6 @@ import { Modal } from '@/components/ui/modal';
  */
 export function OrderCancelAction({
   orderId,
-  orderNumber,
   customerName,
   status,
   isOwner,
@@ -232,7 +231,8 @@ export function OrderCancelAction({
         {finalized ? (
           <div className="space-y-2" data-testid="order-cancel-done">
             <p className="text-sm">
-              Order <strong>{orderNumber}</strong> is now <strong>Cancelled</strong>.
+              Order for <strong>{customerName}</strong> is now{' '}
+              <strong>Cancelled</strong>.
             </p>
             <p className="text-xs text-muted-foreground">
               {finalized.returned} item(s) returned to Active Inventory
@@ -245,10 +245,6 @@ export function OrderCancelAction({
           <div className="space-y-3">
             <div className="rounded-lg border border-border p-3 text-sm">
               <div className="flex justify-between gap-3">
-                <span className="text-muted-foreground">Order Number</span>
-                <span className="font-mono font-medium">{orderNumber}</span>
-              </div>
-              <div className="mt-1 flex justify-between gap-3">
                 <span className="text-muted-foreground">Customer</span>
                 <span className="font-medium">{customerName}</span>
               </div>

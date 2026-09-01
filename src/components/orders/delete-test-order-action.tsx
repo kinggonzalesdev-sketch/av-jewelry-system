@@ -92,10 +92,6 @@ export function DeleteTestOrderAction({
         <div className="space-y-3 text-sm">
           <dl className="space-y-1.5">
             <SummaryRow label="Customer" value={detail.customer.displayName} />
-            <SummaryRow
-              label="Order number"
-              value={<span className="font-mono">{detail.orderNumber}</span>}
-            />
             <div className="border-b border-border py-1.5">
               <span className="text-muted-foreground">Item(s) to be returned</span>
               <ul className="mt-1 space-y-0.5">

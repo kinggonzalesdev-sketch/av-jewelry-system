@@ -182,7 +182,6 @@ export function DailyCashView({
         'SALES WALK-INS',
         toCsv<WalkInRow>(
           [
-            { header: 'Order', value: (r) => r.orderNumber },
             { header: 'Name', value: (r) => r.name },
             { header: 'Purchased Amount', value: (r) => r.purchased },
             { header: 'Depo/Bank/CC', value: (r) => r.nonCash },
@@ -197,7 +196,6 @@ export function DailyCashView({
         toCsv<CashPaymentRow>(
           [
             { header: 'Name', value: (r) => r.name },
-            { header: 'Order', value: (r) => r.orderNumber },
             { header: 'Amount', value: (r) => r.amount },
             { header: 'Date / Time', value: (r) => r.at },
             { header: 'Reference', value: (r) => r.reference ?? '' },
@@ -210,7 +208,6 @@ export function DailyCashView({
         toCsv<TradeDeductionRow>(
           [
             { header: 'Name', value: (r) => r.name },
-            { header: 'Order', value: (r) => r.orderNumber },
             { header: 'Label', value: (r) => r.label },
             { header: 'Amount', value: (r) => r.amount },
             { header: 'Date / Time', value: (r) => r.at },
@@ -948,7 +945,6 @@ function WalkInsTable({
                         title: `Walk-in — ${row.name}`,
                         fields: [
                           { label: 'Name', value: row.name },
-                          { label: 'Order', value: row.orderNumber },
                           { label: 'Purchased Amount', value: money(row.purchased) },
                           { label: 'Depo / Bank / CC', value: money(row.nonCash) },
                           {
@@ -1002,12 +998,11 @@ function CashPaymentsTable({
   const money = usePrivacyMoney();
   if (loading) return <DetailLoading />;
   return (
-    <DataTable minWidth="720px" columns={['5%', '27%', '17%', '17%', '20%', '14%']}>
+    <DataTable minWidth="600px" columns={['6%', '34%', '20%', '25%', '15%']}>
       <Thead>
         <Tr plain>
           <Th kind="center">#</Th>
           <Th>Name</Th>
-          <Th>Order</Th>
           <Th kind="num">Amount</Th>
           <Th kind="center">Date / Time</Th>
           <Th kind="center">Action</Th>
@@ -1015,16 +1010,13 @@ function CashPaymentsTable({
       </Thead>
       <tbody>
         {rows.length === 0 ? (
-          <EmptyRow colSpan={6}>No cash payments for this date.</EmptyRow>
+          <EmptyRow colSpan={5}>No cash payments for this date.</EmptyRow>
         ) : (
           rows.map((row, i) => (
             <Tr key={row.id}>
               <Td kind="center">{i + 1}</Td>
               <Td clip title={row.name}>
                 {row.name}
-              </Td>
-              <Td clip title={row.orderNumber}>
-                {row.orderNumber}
               </Td>
               <Td kind="num">{money(row.amount)}</Td>
               <Td kind="center" className="text-muted-foreground">
@@ -1037,7 +1029,6 @@ function CashPaymentsTable({
                       title: `Cash Payment — ${row.name}`,
                       fields: [
                         { label: 'Name', value: row.name },
-                        { label: 'Order', value: row.orderNumber },
                         { label: 'Amount', value: money(row.amount) },
                         { label: 'Reference', value: row.reference ?? '—' },
                         { label: 'Date / Time', value: fmt(row.at) },
@@ -1067,12 +1058,11 @@ function TradeDeductionsTable({
   const money = usePrivacyMoney();
   if (loading) return <DetailLoading />;
   return (
-    <DataTable minWidth="760px" columns={['5%', '24%', '15%', '20%', '13%', '13%', '10%']}>
+    <DataTable minWidth="660px" columns={['5%', '30%', '24%', '13%', '18%', '10%']}>
       <Thead>
         <Tr plain>
           <Th kind="center">#</Th>
           <Th>Name</Th>
-          <Th>Order</Th>
           <Th>Label</Th>
           <Th kind="num">Amount</Th>
           <Th kind="center">Date / Time</Th>
@@ -1081,16 +1071,13 @@ function TradeDeductionsTable({
       </Thead>
       <tbody>
         {rows.length === 0 ? (
-          <EmptyRow colSpan={7}>No trade deductions for this date.</EmptyRow>
+          <EmptyRow colSpan={6}>No trade deductions for this date.</EmptyRow>
         ) : (
           rows.map((row, i) => (
             <Tr key={row.id}>
               <Td kind="center">{i + 1}</Td>
               <Td clip title={row.name}>
                 {row.name}
-              </Td>
-              <Td clip title={row.orderNumber}>
-                {row.orderNumber}
               </Td>
               <Td clip title={row.label} className="text-muted-foreground">
                 {row.label}
@@ -1106,7 +1093,6 @@ function TradeDeductionsTable({
                       title: `Trade Deduction — ${row.name}`,
                       fields: [
                         { label: 'Name', value: row.name },
-                        { label: 'Order', value: row.orderNumber },
                         { label: 'Label', value: row.label },
                         { label: 'Amount', value: money(row.amount) },
                         { label: 'Date / Time', value: fmt(row.at) },

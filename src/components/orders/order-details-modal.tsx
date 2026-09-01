@@ -14,6 +14,7 @@ import {
 import { renderOrderMessageAction } from '@/lib/messaging/actions';
 import { CopyButton } from '@/components/ui/copy-button';
 import { parseInventoryCode } from '@/lib/inventory/code-parser';
+import { computeOrderGramsPricing, formatTotalGrams } from '@/lib/orders/grams-pricing';
 import type { OrderDetail, OrderDetailResult } from '@/lib/orders/detail-types';
 import type { CustomerMatchInfo } from '@/lib/orders/customer-match-types';
 import type { PaymentStatus } from '@/lib/orders/service';
@@ -459,14 +460,12 @@ function ForInvoiceView({
   const canManage = detail.permissions.canPrepareInvoice;
   const a = detail.amounts;
 
-  // Total grams = Σ (per-piece grams × quantity). Weight, never money.
-  const gramsTotal = detail.items.reduce(
-    (sum, it) => sum + (Number(it.gramsPerPiece) || 0) * (it.quantity || 0),
-    0,
-  );
-  const gramsText = detail.items.some((it) => it.gramsPerPiece)
-    ? `${Math.round(gramsTotal * 1000) / 1000}g`
-    : '—';
+  // Grams + price/g from the SHARED invoice derivation (item_code grams + per-line
+  // total ÷ grams) — the SAME source Send Invoice uses, so the summary and the customer
+  // message can never disagree. Not reverse-engineered from the order total; a fixed-price
+  // order resolves no grams and shows "—".
+  const gp = computeOrderGramsPricing(detail.items);
+  const gramsText = formatTotalGrams(gp);
 
   // Deadline shown in the invoice summary — the layaway final due date, if this is a
   // layaway order (a full-payment order has none). Formatted in the viewer's locale.
@@ -483,18 +482,14 @@ function ForInvoiceView({
         });
   })();
 
-  // Price per gram = Total Price ÷ Total Grams (display only). Money stays exact
-  // in centavos; grams (a weight, not money) scales the divisor.
-  const gramsMilli = Math.round(gramsTotal * 1000);
-  const pricePerGram = ((): string | null => {
-    if (a.unavailable || gramsMilli <= 0) return null;
-    const clean = a.totalAmountPayable.replace(/[^\d.]/g, '');
-    const [w = '0', f = ''] = clean.split('.');
-    const totalCentavos = BigInt(w || '0') * 100n + BigInt(`${f}00`.slice(0, 2) || '0');
-    const perGram =
-      (totalCentavos * 1000n + BigInt(gramsMilli) / 2n) / BigInt(gramsMilli);
-    return `${perGram / 100n}.${String(perGram % 100n).padStart(2, '0')}`;
-  })();
+  // Price per gram = the invoice's own per-line rate (total ÷ grams), shown only when the
+  // lines agree on ONE rate; different rates show "Mixed Rates" (never a fabricated single
+  // number), and a fixed-price order (no grams) shows "—".
+  const pricePerGramNode: React.ReactNode = gp.mixedRates
+    ? 'Mixed Rates'
+    : gp.pricePerGram != null
+      ? <Money amount={String(gp.pricePerGram)} />
+      : '—';
 
   // Open FB Chat — opens the saved Messenger link in a new tab, or reports it is
   // not available. Never mutates the order.
@@ -665,32 +660,6 @@ function ForInvoiceView({
           testId="for-invoice-fields"
           rows={[
             {
-              icon: '▤',
-              label: 'Order Number',
-              value: <span className="font-mono">{detail.orderNumber}</span>,
-            },
-            // Waybill Number moved here from the Orders table (Owner 2026-08-10). Shown
-            // ONLY when the order has one (shipping orders); hidden otherwise, no clutter.
-            // Still stored + searchable in the Orders search regardless of visibility.
-            ...(detail.waybillNumber
-              ? [
-                  {
-                    icon: '✈',
-                    label: 'Waybill Number',
-                    value: <span className="font-mono">{detail.waybillNumber}</span>,
-                  },
-                ]
-              : []),
-            {
-              icon: '◔',
-              label: 'Status',
-              value: headerStageLabel(
-                section,
-                detail.status,
-                detail.fulfillmentDestination,
-              ),
-            },
-            {
               icon: '☺',
               label: 'Customer Name',
               value: (
@@ -707,7 +676,15 @@ function ForInvoiceView({
                 </span>
               ),
             },
-            { icon: '🗓', label: 'Date Created', value: fmtDateTime(detail.createdAt) },
+            {
+              icon: '◔',
+              label: 'Status',
+              value: headerStageLabel(
+                section,
+                detail.status,
+                detail.fulfillmentDestination,
+              ),
+            },
             {
               icon: '₱',
               label: 'Total Price',
@@ -717,12 +694,24 @@ function ForInvoiceView({
                 <Money amount={detail.amounts.totalAmountPayable} />
               ),
             },
+            { icon: '🗓', label: 'Date Created', value: fmtDateTime(detail.createdAt) },
             { icon: '⚖', label: 'Total Grams', value: gramsText },
             {
               icon: '▦',
               label: 'Price per Gram',
-              value: pricePerGram === null ? '—' : <Money amount={pricePerGram} />,
+              value: pricePerGramNode,
             },
+            // Waybill Number (shipping orders only) — the courier tracking number, NOT the
+            // order number; shown only when present. Still searchable in the Orders search.
+            ...(detail.waybillNumber
+              ? [
+                  {
+                    icon: '✈',
+                    label: 'Waybill Number',
+                    value: <span className="font-mono">{detail.waybillNumber}</span>,
+                  },
+                ]
+              : []),
           ]}
         />
 
@@ -1149,11 +1138,6 @@ function KeepView({
                 </span>
               ),
             },
-            {
-              icon: '▤',
-              label: 'Order Number',
-              value: <span className="font-mono">{detail.orderNumber}</span>,
-            },
             // Waybill Number moved here from the Orders table (Owner 2026-08-10). Shown
             // ONLY when the order has one (shipping orders); hidden otherwise, no clutter.
             // Still stored + searchable in the Orders search regardless of visibility.
@@ -1323,11 +1307,6 @@ function DetailBody({
                   />
                 </span>
               ),
-            },
-            {
-              icon: '▤',
-              label: 'Order Number',
-              value: <span className="font-mono">{detail.orderNumber}</span>,
             },
             // Waybill Number moved here from the Orders table (Owner 2026-08-10). Shown
             // ONLY when the order has one (shipping orders); hidden otherwise, no clutter.

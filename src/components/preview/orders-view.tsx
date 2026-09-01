@@ -131,7 +131,6 @@ export function OrdersView() {
       if (!q) return true;
       // Search spans every field the Owner asked for.
       return [
-        o.orderNumber,
         o.invoiceNumber ?? '',
         o.claimNumber,
         o.customer,
@@ -257,7 +256,7 @@ export function OrdersView() {
               setQuery(e.target.value);
               setPage(1);
             }}
-            placeholder="Search order no., invoice no., claim no., customer, Facebook name, item code, tracking no., amount"
+            placeholder="Search invoice no., claim no., customer, Facebook name, item code, tracking no., amount"
             className={inputClass}
             aria-label="Global search"
           />
@@ -350,7 +349,6 @@ export function OrdersView() {
                 </th>
                 <th className="px-3 py-2.5 font-semibold">Status</th>
                 <th className="px-3 py-2.5 font-semibold">Shop / Page</th>
-                <th className="px-3 py-2.5 font-semibold">Order No.</th>
                 <th className="px-3 py-2.5 font-semibold">Invoice No.</th>
                 <th className="px-3 py-2.5 font-semibold">Customer</th>
                 <th className="px-3 py-2.5 text-right font-semibold">Qty</th>
@@ -369,7 +367,7 @@ export function OrdersView() {
                       type="checkbox"
                       checked={selected.has(o.id)}
                       onChange={() => toggle(o.id)}
-                      aria-label={`Select ${o.orderNumber}`}
+                      aria-label={`Select ${o.customer}`}
                       className="h-4 w-4 rounded border-slate-300 night:border-slate-600 text-emerald-600 focus:ring-emerald-500"
                     />
                   </td>
@@ -381,9 +379,6 @@ export function OrdersView() {
                   </td>
                   <td className="px-3 py-2.5 text-xs text-slate-600 night:text-slate-300">
                     {o.shop}
-                  </td>
-                  <td className="px-3 py-2.5 font-mono text-xs text-slate-900 night:text-slate-100">
-                    {o.orderNumber}
                   </td>
                   <td className="px-3 py-2.5 font-mono text-xs text-slate-500 night:text-slate-400">
                     {o.invoiceNumber ?? '—'}
@@ -425,7 +420,7 @@ export function OrdersView() {
               {pageRows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={12}
+                    colSpan={11}
                     className="px-3 py-10 text-center text-sm text-slate-500 night:text-slate-400"
                   >
                     No sample records match these filters.
@@ -445,9 +440,6 @@ export function OrdersView() {
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-slate-900 night:text-slate-100">
                   {o.customer}
-                </p>
-                <p className="truncate font-mono text-[11px] text-slate-500 night:text-slate-400">
-                  {o.orderNumber}
                 </p>
               </div>
               <StatusBadge

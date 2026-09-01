@@ -42,7 +42,8 @@ describe('NewLayawayForm', () => {
     render(<NewLayawayForm payableOrders={orders} verifiedPayments={verifiedPayments} />);
     fireEvent.click(screen.getByTestId('new-layaway-entry'));
 
-    expect(screen.getByRole('option', { name: /ORD-1/ })).toBeInTheDocument();
+    // Owner 2026-09-01: the picker option is labelled by customer (+ amount), not order number.
+    expect(screen.getByRole('option', { name: /Ana Cruz/ })).toBeInTheDocument();
     expect(screen.getByLabelText(/Months/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Final due date/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Activate Layaway/i })).toBeInTheDocument();

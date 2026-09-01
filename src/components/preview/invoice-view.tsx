@@ -130,7 +130,7 @@ function InvoiceAllPanel({ autoOpen }: { autoOpen: boolean }) {
                     </div>
                   </div>
                   <p className="mt-1 font-mono text-[10px] text-slate-500 night:text-slate-400">
-                    {g.orders.map((o) => o.orderNumber).join(' · ')}
+                    {g.orders.map((o) => o.claimNumber).join(' · ')}
                   </p>
                 </div>
               ))}
@@ -152,8 +152,8 @@ function InvoiceAllPanel({ autoOpen }: { autoOpen: boolean }) {
                   key={e.order.id}
                   className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 night:border-amber-800 bg-amber-50 night:bg-amber-950 px-2.5 py-1.5"
                 >
-                  <span className="font-mono text-[10px] text-slate-700 night:text-slate-300">
-                    {e.order.orderNumber}
+                  <span className="text-[11px] font-medium text-slate-700 night:text-slate-300">
+                    {e.order.customer}
                   </span>
                   <span className="text-[11px] text-amber-900 night:text-amber-200">
                     {e.reason}
@@ -175,7 +175,7 @@ function InvoiceAllPanel({ autoOpen }: { autoOpen: boolean }) {
                 <span>
                   I have reviewed {groups.length} draft(s) covering {eligible.length}{' '}
                   record(s). This creates one Official Order per draft, each with one
-                  order number and one invoice number.
+                  invoice number.
                 </span>
               </label>
               <PreviewButton
@@ -311,9 +311,6 @@ export function InvoiceView({ autoPrepare = false }: { autoPrepare?: boolean }) 
                   <p className="truncate text-xs font-semibold text-slate-900 night:text-slate-100">
                     {o.customer}
                   </p>
-                  <p className="truncate font-mono text-[10px] text-slate-500 night:text-slate-400">
-                    {o.orderNumber}
-                  </p>
                 </button>
               </li>
             ))}
@@ -378,7 +375,6 @@ export function InvoiceView({ autoPrepare = false }: { autoPrepare?: boolean }) 
 
               <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[11px] sm:grid-cols-3">
                 {[
-                  ['Order number', current.orderNumber],
                   ['Invoice number', current.invoiceNumber ?? 'Not yet issued'],
                   ['Total amount', peso(current.amount)],
                   [
@@ -430,8 +426,8 @@ export function InvoiceView({ autoPrepare = false }: { autoPrepare?: boolean }) 
                   <strong>
                     Approve &amp; Send Invoice is the Official Order trigger.
                   </strong>{' '}
-                  One successful send creates exactly one Official Order, one order
-                  number, and one invoice number. A retry never creates a second.
+                  One successful send creates exactly one Official Order and one
+                  invoice number. A retry never creates a second.
                 </RuleNote>
                 <RuleNote>
                   <strong>Copy ≠ Sent.</strong> <strong>Mark as Sent ≠ Delivered.</strong>{' '}

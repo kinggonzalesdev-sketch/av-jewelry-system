@@ -13,19 +13,22 @@ import {
 
 describe('message template variables', () => {
   it('supports exactly the eleven documented variables', () => {
+    // Owner 2026-09-01: {order_number} retired (order number no longer customer-facing);
+    // {price_per_gram} added for the grams-based invoice. Still eleven variables.
     expect(SUPPORTED_TOKENS).toEqual([
       '{customer_name}',
-      '{order_number}',
       '{invoice_number}',
       '{total_amount}',
       '{balance}',
       '{due_date}',
       '{item_name}',
       '{grams}',
+      '{price_per_gram}',
       '{payment_status}',
       '{shop_name}',
       '{contact_number}',
     ]);
+    expect(SUPPORTED_TOKENS).not.toContain('{order_number}');
   });
 
   it('covers invoice, the single reminder, and the AUTO TEXT template', () => {

@@ -293,7 +293,7 @@ export function LayawayEditItems({
         setRowError(res.error);
         return;
       }
-      setNote(`Split into new order ${res.orderNumber}.`);
+      setNote(`Split into a new order.`);
     }
     setTarget(null);
     onRefresh();

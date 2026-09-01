@@ -558,7 +558,7 @@ export function PaymentsWorkspace({
                         <p className="truncate font-mono text-xs text-muted-foreground">
                           <OrderNumberButton
                             orderId={p.officialOrderId}
-                            label={p.orderNumber}
+                            label={p.customerDisplayName}
                             onOpen={setDetailOrderId}
                           />{' '}
                           · {p.invoiceNumber} · {money(p.amount)} ·{' '}
@@ -820,7 +820,7 @@ export function PaymentsWorkspace({
                     <p className="font-mono text-xs text-muted-foreground">
                       <OrderNumberButton
                         orderId={l.officialOrderId}
-                        label={l.orderNumber}
+                        label={l.customerDisplayName}
                         onOpen={setDetailOrderId}
                       />
                     </p>
@@ -884,7 +884,7 @@ export function PaymentsWorkspace({
                     <p className="font-mono text-xs text-muted-foreground">
                       <OrderNumberButton
                         orderId={l.officialOrderId}
-                        label={l.orderNumber}
+                        label={l.customerDisplayName}
                         onOpen={setDetailOrderId}
                       />{' '}
                       · outstanding {money(l.outstandingBalance)}
@@ -959,7 +959,7 @@ export function PaymentsWorkspace({
                     <td className="px-3 py-2 font-mono">
                       <OrderNumberButton
                         orderId={h.officialOrderId}
-                        label={h.orderNumber}
+                        label={h.customerDisplayName}
                         onOpen={setDetailOrderId}
                       />
                     </td>
@@ -1684,7 +1684,7 @@ function LayawayList({
                   <p className="truncate font-mono text-xs text-muted-foreground">
                     <OrderNumberButton
                       orderId={l.officialOrderId}
-                      label={l.orderNumber}
+                      label={l.customerDisplayName}
                       onOpen={onOpenOrder}
                     />{' '}
                     · {l.invoiceNumber}

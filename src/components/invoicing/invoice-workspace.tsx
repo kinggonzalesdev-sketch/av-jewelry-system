@@ -62,7 +62,7 @@ function DraftCard({
             </p>
             {draft.orderNumber ? (
               <p className="truncate font-mono text-xs">
-                {draft.orderNumber} · {draft.invoiceNumber}
+                {draft.invoiceNumber}
                 {draft.holdExpiresAt
                   ? ` · hold until ${new Date(draft.holdExpiresAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`
                   : ''}
@@ -295,7 +295,7 @@ export function InvoiceWorkspace({
               Official Order created — message sending failed
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Order {approveState.order.orderNumber} (invoice{' '}
+              Order (invoice{' '}
               {approveState.order.invoiceNumber}) exists and its stock is committed. Only
               the message failed: {approveState.messageProblem}
             </p>

@@ -137,8 +137,10 @@ export function OrderDelete({
         ) : (
           <div className="space-y-3 text-sm">
             <p>
-              Delete order <span className="font-mono font-semibold">{orderLabel}</span> for{' '}
-              <span className="font-medium">{customerName}</span>
+              {/* Owner 2026-09-01: the order number is no longer shown to users. The
+                  customer name identifies the order here; `orderLabel` is still passed
+                  through as the internal audit reference on the delete request. */}
+              Delete the order for <span className="font-medium">{customerName}</span>
               {orderStatus ? (
                 <>
                   {' '}

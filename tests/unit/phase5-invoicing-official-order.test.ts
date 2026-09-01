@@ -28,9 +28,10 @@ describe('invoice message template', () => {
   };
   const body = renderInvoiceMessage(input);
 
-  it('names both references without conflating them', () => {
-    expect(body).toContain('ORD-2026-000101');
+  it('shows the invoice number and no longer exposes the order number', () => {
+    // Owner 2026-09-01: the order number is no longer a customer-facing identifier.
     expect(body).toContain('INV-2026-000088');
+    expect(body).not.toContain('ORD-2026-000101');
   });
 
   it('states the total and the hold deadline', () => {

@@ -245,7 +245,7 @@ describe('Record Payment records evidence and never verifies (§16, approved §3
 
   it('renders the order facts a payment decision needs', () => {
     for (const field of [
-      'orderNumber',
+      // Owner 2026-09-01: orderNumber is no longer shown on the payment form.
       'invoiceNumber',
       'customerDisplayName',
       'totalAmountPayable',

@@ -41,7 +41,6 @@ function fmtDate(iso: string | null): string {
 
 export function OrderVerifyPayment({
   customerName,
-  orderNumber,
   unverified,
   canVerify,
   onRefresh,
@@ -177,9 +176,6 @@ export function OrderVerifyPayment({
               data-testid="order-verify-fields"
             >
               <Field label="Customer Name">{customerName}</Field>
-              <Field label="Order Number">
-                <span className="font-mono">{orderNumber}</span>
-              </Field>
               <Field label="Pending Amount">
                 <span className="font-semibold">{formatPeso(selected.amount)}</span>
               </Field>

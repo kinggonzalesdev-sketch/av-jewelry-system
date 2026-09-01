@@ -67,11 +67,10 @@ export async function listLiveErrors(): Promise<LiveErrorReport> {
     const cid = typeof r.customer_id === 'string' ? r.customer_id : null;
     const oid = typeof r.official_order_id === 'string' ? r.official_order_id : null;
     const who = (cid && names.get(cid)) || 'Customer';
-    const ord = oid && orderNos.get(oid) ? ` · ${orderNos.get(oid)}` : '';
     messages.push({
       id: r.id as string,
       kind: 'message',
-      title: `${who}${ord}`,
+      title: who,
       detail: null,
       occurredAt: (r.updated_at as string | null) ?? null,
       orderId: oid,

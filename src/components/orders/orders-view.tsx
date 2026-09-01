@@ -691,14 +691,14 @@ export function OrdersView({
         </div>
 
         {/* Search + filters — operate on the loaded set (client-side), honestly
-          labelled. Search spans order no., invoice no., and customer name. Part of
+          labelled. Search spans invoice no. and customer name. Part of
           the sticky top section (Owner request) so it pins with the cards. */}
         <div className="rounded-xl border border-border bg-card p-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search waybill, order no., invoice no., or customer"
+              placeholder="Search waybill, invoice no., or customer"
               aria-label="Search orders"
               data-testid="orders-search"
               className="h-9 flex-1 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold"

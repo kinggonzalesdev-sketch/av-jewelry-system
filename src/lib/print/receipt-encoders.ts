@@ -273,7 +273,6 @@ export function encodeSlipEscPos(d: OrderSlipData): Uint8Array {
   out.push(ESC, 0x45, 0x01); // bold on
   line('A.V. JEWELRY');
   out.push(ESC, 0x45, 0x00); // bold off
-  line(`Order ${d.orderNumber || '-'}`);
   out.push(ESC, 0x61, 0x00); // left
   line(`Customer: ${d.customerName || '-'}`);
   line('------------------------------');
@@ -307,9 +306,8 @@ export function encodeSlipTspl(d: OrderSlipData): Uint8Array {
     'DIRECTION 1',
     'CLS',
     `TEXT 12,12,"2",0,1,1,"${t(d.customerName || '-')}"`,
-    `TEXT 12,48,"1",0,1,1,"${t(`Order ${d.orderNumber || '-'}`)}"`,
-    `TEXT 12,76,"1",0,1,1,"${t(`${d.items.length} item(s)`)}"`,
-    `TEXT 12,104,"1",0,1,1,"${t(`TOTAL ${formatStickerPeso(d.grandTotal)}`)}"`,
+    `TEXT 12,48,"1",0,1,1,"${t(`${d.items.length} item(s)`)}"`,
+    `TEXT 12,76,"1",0,1,1,"${t(`TOTAL ${formatStickerPeso(d.grandTotal)}`)}"`,
     'PRINT 1,1',
     '',
   ].join('\r\n');

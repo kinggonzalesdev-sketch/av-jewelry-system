@@ -121,11 +121,7 @@ export function RecordPaymentForm({
             value={lockedOrder.officialOrderId}
           />
           <p className="rounded-md border border-input bg-muted/40 px-3 py-2 text-sm">
-            <span className="font-mono">{lockedOrder.orderNumber}</span>
-            <span className="text-muted-foreground">
-              {' '}
-              — {lockedOrder.customerDisplayName}
-            </span>
+            {lockedOrder.customerDisplayName}
           </p>
         </div>
       ) : (
@@ -142,7 +138,7 @@ export function RecordPaymentForm({
             <option value="">Select an Official Order…</option>
             {orders.map((o) => (
               <option key={o.officialOrderId} value={o.officialOrderId}>
-                {o.orderNumber} — {o.customerDisplayName}
+                {o.customerDisplayName}
               </option>
             ))}
           </select>
@@ -162,8 +158,8 @@ export function RecordPaymentForm({
         >
           <p className="font-semibold text-destructive">Balance unavailable</p>
           <p className="mt-1 text-muted-foreground">
-            The authoritative balance for {selected.orderNumber} could not be read, so it
-            is not shown. This is <strong>not</strong> a zero balance.
+            The authoritative balance for {selected.customerDisplayName} could not be
+            read, so it is not shown. This is <strong>not</strong> a zero balance.
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             {selected.balanceUnavailable}
@@ -180,9 +176,6 @@ export function RecordPaymentForm({
           className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-md border p-3 text-sm"
           data-testid="order-summary"
         >
-          <dt className="text-muted-foreground">Order</dt>
-          <dd className="font-medium">{selected.orderNumber}</dd>
-
           <dt className="text-muted-foreground">Invoice</dt>
           <dd className="font-medium">{selected.invoiceNumber}</dd>
 

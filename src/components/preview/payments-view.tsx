@@ -164,7 +164,7 @@ function AccountRow({
             {account.customer}
           </p>
           <p className="truncate font-mono text-[10px] text-slate-500 night:text-slate-400">
-            {account.officialOrderNumber} · {account.invoiceNumber}
+            {account.invoiceNumber}
           </p>
         </div>
         <StatusBadge label={account.status} tone={LAYAWAY_STATUS_TONE[account.status]} />
@@ -216,15 +216,14 @@ function AccountDetail({ account }: { account: LayawayAccount }) {
 
         <RuleNote>
           This Layaway{' '}
-          <strong>belongs to Official Order {account.officialOrderNumber}</strong>. It is
-          not a separate order.
+          <strong>belongs to an Official Order</strong>. It is not a separate
+          order.
         </RuleNote>
 
         <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 text-[11px] sm:grid-cols-3 lg:grid-cols-4">
           {(
             [
               ['Customer', account.customer],
-              ['Official Order Number', account.officialOrderNumber],
               ['Invoice Number', account.invoiceNumber],
               ['Item summary', account.itemSummary],
               ['Total Order Amount', peso(account.totalOrderAmount)],
@@ -636,15 +635,14 @@ function CompletedDetail({ account }: { account: CompletedLayaway }) {
 
         <RuleNote>
           This Layaway{' '}
-          <strong>belongs to Official Order {account.officialOrderNumber}</strong>. It is
-          not a separate order.
+          <strong>belongs to an Official Order</strong>. It is not a separate
+          order.
         </RuleNote>
 
         <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 text-[11px] sm:grid-cols-3 lg:grid-cols-4">
           {(
             [
               ['Customer', account.customer],
-              ['Official Order Number', account.officialOrderNumber],
               ['Invoice Number', account.invoiceNumber],
               ['Item Summary', account.itemSummary],
               ['Total Order Amount', peso(account.totalOrderAmount)],
@@ -817,7 +815,7 @@ function CompletedLayawaysTab({
     if (shop !== 'all' && c.shop !== shop) return false;
     if (financer !== 'all' && c.financer !== financer) return false;
     if (!q.trim()) return true;
-    return [c.customer, c.officialOrderNumber, c.invoiceNumber, c.completionDate]
+    return [c.customer, c.invoiceNumber, c.completionDate]
       .join(' ')
       .toLowerCase()
       .includes(q.trim().toLowerCase());
@@ -842,7 +840,7 @@ function CompletedLayawaysTab({
             value={q}
             onChange={(e) => setQ(e.target.value)}
             className={inputClass}
-            placeholder="Customer, order no., invoice no., completion date…"
+            placeholder="Customer, invoice no., completion date…"
             aria-label="Search completed layaways"
           />
           <select
@@ -878,7 +876,6 @@ function CompletedLayawaysTab({
             <thead className="border-b border-slate-200 night:border-slate-700 bg-slate-50 night:bg-slate-800 text-[10px] uppercase text-slate-500 night:text-slate-400">
               <tr>
                 <th className="px-3 py-2">Customer</th>
-                <th className="px-3 py-2">Order No.</th>
                 <th className="px-3 py-2">Invoice No.</th>
                 <th className="px-3 py-2">Item Summary</th>
                 <th className="px-3 py-2 text-right">Total Order</th>
@@ -897,9 +894,6 @@ function CompletedLayawaysTab({
                 <tr key={c.id} className="hover:bg-slate-50 night:hover:bg-slate-800">
                   <td className="px-3 py-2 font-medium text-slate-900 night:text-slate-100">
                     {c.customer}
-                  </td>
-                  <td className="px-3 py-2 font-mono text-[10px]">
-                    {c.officialOrderNumber}
                   </td>
                   <td className="px-3 py-2 font-mono text-[10px]">{c.invoiceNumber}</td>
                   <td className="px-3 py-2 text-slate-600 night:text-slate-300">
@@ -951,9 +945,6 @@ function CompletedLayawaysTab({
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-slate-900 night:text-slate-100">
                   {c.customer}
-                </p>
-                <p className="truncate font-mono text-[10px] text-slate-500 night:text-slate-400">
-                  {c.officialOrderNumber}
                 </p>
               </div>
               <StatusBadge label="Completed" tone="green" />
@@ -1098,7 +1089,7 @@ export function PaymentsView() {
                         {o.customer}
                       </p>
                       <p className="truncate font-mono text-[10px] text-slate-500 night:text-slate-400">
-                        {o.orderNumber} · {peso(o.amount)}
+                        {peso(o.amount)}
                       </p>
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -1143,7 +1134,7 @@ export function PaymentsView() {
               <Card className="p-3">
                 <input
                   className={inputClass}
-                  placeholder="Search customer, order number, invoice number…"
+                  placeholder="Search customer, invoice number…"
                   aria-label="Search layaway accounts"
                 />
               </Card>
@@ -1171,7 +1162,6 @@ export function PaymentsView() {
               <thead className="border-b border-slate-200 night:border-slate-700 bg-slate-50 night:bg-slate-800 text-[10px] uppercase text-slate-500 night:text-slate-400">
                 <tr>
                   <th className="px-3 py-2">Customer</th>
-                  <th className="px-3 py-2">Order</th>
                   <th className="px-3 py-2">#</th>
                   <th className="px-3 py-2">Due</th>
                   <th className="px-3 py-2 text-right">Amount</th>
@@ -1184,9 +1174,6 @@ export function PaymentsView() {
                   <tr key={`${account.id}-${inst.number}`}>
                     <td className="px-3 py-2 font-medium text-slate-900 night:text-slate-100">
                       {account.customer}
-                    </td>
-                    <td className="px-3 py-2 font-mono text-[10px] text-slate-500 night:text-slate-400">
-                      {account.officialOrderNumber}
                     </td>
                     <td className="px-3 py-2">{inst.number}</td>
                     <td className="px-3 py-2 text-slate-700 night:text-slate-300">
@@ -1267,7 +1254,7 @@ export function PaymentsView() {
                         {l.customer}
                       </p>
                       <p className="truncate font-mono text-[10px] text-slate-500 night:text-slate-400">
-                        {l.officialOrderNumber} · grace ended {l.gracePeriodEnd}
+                        grace ended {l.gracePeriodEnd}
                       </p>
                     </div>
                     <StatusBadge label="Forfeiture-Eligible" tone="red" />
@@ -1319,7 +1306,7 @@ export function PaymentsView() {
                     {account.customer}
                   </span>
                   <span className="font-mono text-[10px] text-slate-500 night:text-slate-400">
-                    {account.officialOrderNumber} · #{inst.number}
+                    #{inst.number}
                   </span>
                   <span className="text-slate-600 night:text-slate-300">
                     {inst.paidDate}

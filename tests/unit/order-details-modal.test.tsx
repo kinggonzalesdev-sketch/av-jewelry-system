@@ -168,11 +168,13 @@ describe('OrderDetailsModal', () => {
     render(<OrderDetailsModal orderId="o1" onClose={vi.fn()} />);
 
     // Only the six approved facts show — no financial/fulfillment summary, no tabs.
+    // Owner 2026-09-01: Order Number removed; Price per Gram added.
     const fields = await screen.findByTestId('for-invoice-fields');
-    expect(fields).toHaveTextContent('Order Number');
+    expect(fields).not.toHaveTextContent('Order Number');
     expect(fields).toHaveTextContent('Customer Name');
     expect(fields).toHaveTextContent('Total Price');
     expect(fields).toHaveTextContent('Total Grams');
+    expect(fields).toHaveTextContent('Price per Gram');
     expect(fields).toHaveTextContent('Date Created');
     // Total grams = 5g × 2 = 10g.
     expect(fields).toHaveTextContent('10g');
@@ -335,8 +337,9 @@ describe('OrderDetailsModal', () => {
     expect(screen.getByText(/Loading order details/i)).toBeInTheDocument();
 
     expect(await screen.findByText('Gold Ring')).toBeInTheDocument();
-    // Order + invoice numbers, remaining balance, and the paid figure all show.
-    expect(screen.getAllByText('ORD-2026-000101').length).toBeGreaterThan(0);
+    // Owner 2026-09-01: no order number shown; the customer + item + balance identify it.
+    expect(screen.getAllByText('Maria Santos').length).toBeGreaterThan(0);
+    expect(screen.queryByText('ORD-2026-000101')).not.toBeInTheDocument();
     expect(screen.getByText(/Remaining balance/i)).toBeInTheDocument();
   });
 

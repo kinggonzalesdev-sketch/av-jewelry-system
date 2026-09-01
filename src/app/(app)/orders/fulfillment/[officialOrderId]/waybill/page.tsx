@@ -69,12 +69,6 @@ export default async function WaybillPage({
             <div className="text-lg font-semibold tracking-tight">A.V. Jewelry</div>
             <div className="text-xs text-muted-foreground">Dispatch Waybill</div>
           </div>
-          <div className="text-right">
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-              Order
-            </div>
-            <div className="font-mono text-sm font-semibold">{w.orderNumber}</div>
-          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3 py-3">

@@ -242,7 +242,6 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
       data: Array<Record<string, unknown>> | null;
     };
     const sales = (salesRes.data ?? []).map((r) => ({
-      order: (r.order_number as string) ?? '—',
       customer: (r.customer_name as string) ?? '—',
       source: r.order_source === 'walk_in' ? 'Walk-in' : 'Online',
       item: (r.item as string) ?? '—',
@@ -259,7 +258,6 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
         wb,
         'All Sales',
         [
-          { header: 'Order Number', key: 'order', width: 18 },
           { header: 'Customer Name', key: 'customer', width: 24 },
           { header: 'Order Source', key: 'source', width: 12 },
           { header: 'Item', key: 'item', width: 24 },
@@ -279,7 +277,6 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
         wb,
         'Orders',
         [
-          { header: 'Order Number', key: 'order', width: 18 },
           { header: 'Customer Name', key: 'customer', width: 24 },
           { header: 'Order Source', key: 'source', width: 12 },
           { header: 'Order Status', key: 'status', width: 18 },
@@ -308,7 +305,6 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
       const order = one<{ order_number: string; customers: unknown }>(r.official_orders);
       const customer = one<{ display_name: string }>(order?.customers);
       return {
-        order: order?.order_number ?? '—',
         customer: customer?.display_name ?? '—',
         amount: num(r.amount),
         method: humanize(r.payment_method as string) || '—',
@@ -321,7 +317,6 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
       wb,
       'Payments',
       [
-        { header: 'Order Number', key: 'order', width: 18 },
         { header: 'Customer Name', key: 'customer', width: 24 },
         { header: 'Amount', key: 'amount', width: 14, type: 'money' },
         { header: 'Payment Method', key: 'method', width: 16 },

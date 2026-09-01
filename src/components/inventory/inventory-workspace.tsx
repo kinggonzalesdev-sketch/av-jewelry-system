@@ -1029,7 +1029,6 @@ export function InventoryWorkspace({
                   ['Grams', parseInventoryCode(compView.itemCode).grams ?? '—'],
                   ['Size', parseInventoryCode(compView.itemCode).size ?? '—'],
                   ['Customer', compView.customerName ?? '—'],
-                  ['Order Number', compView.orderNumber ?? '—'],
                   ['Invoice Number', compView.invoiceNumber ?? '—'],
                   ['Current Stage', compView.currentStage],
                   ['Completion Type', compView.completionType],
@@ -1173,9 +1172,8 @@ function CompletedItemReturn({ row }: { row: CompletedInventoryRow }) {
           <p className="text-xs text-muted-foreground">
             {row.orderNumber ? (
               <>
-                If <span className="font-mono">{row.orderNumber}</span> has no other
-                items, the whole order is removed too; otherwise only this item’s line is
-                removed.{' '}
+                If this order has no other items, the whole order is removed too;
+                otherwise only this item’s line is removed.{' '}
               </>
             ) : null}
             An order with recorded payment(s), or an item in a layaway account, is{' '}

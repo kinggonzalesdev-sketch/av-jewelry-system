@@ -1034,7 +1034,7 @@ export function NewOrderModal({
       }
       if (transferErr) {
         setError(
-          `Saved as ${res.orderNumber}, but moving it to ${destLabel} failed: ${transferErr}. You can move it from the Orders list.`,
+          `Saved, but moving it to ${destLabel} failed: ${transferErr}. You can move it from the Orders list.`,
         );
       }
 
@@ -1100,7 +1100,7 @@ export function NewOrderModal({
                 : 'Order saved to For Invoice'}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Order <strong>{saved.orderNumber}</strong> · {saved.itemCount} item
+              {saved.itemCount} item
               {saved.itemCount === 1 ? '' : 's'} · Total{' '}
               <strong>{formatPeso(saved.total)}</strong>
               {saved.walkIn ? (

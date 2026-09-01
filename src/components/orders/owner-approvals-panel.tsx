@@ -102,17 +102,16 @@ export function OwnerApprovalsPanel({
                   </p>
                   {/* WHAT is being approved: the order + customer, so the Owner decides
                       with full context instead of a bare action name. */}
-                  {a.orderNumber || a.invoiceNumber || a.customerName ? (
+                  {a.invoiceNumber || a.customerName ? (
                     <p className="break-words text-xs font-medium text-foreground">
                       {[
-                        a.orderNumber,
                         a.invoiceNumber && a.invoiceNumber !== '—'
                           ? a.invoiceNumber
                           : null,
+                        a.customerName || null,
                       ]
                         .filter(Boolean)
-                        .join(' · ')}
-                      {a.customerName ? ` — ${a.customerName}` : ''}
+                        .join(' — ')}
                     </p>
                   ) : null}
                   {a.reason ? (

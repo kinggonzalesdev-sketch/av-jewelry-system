@@ -93,7 +93,6 @@ function invoiceHtml(d: InvoiceDocData): string {
         <div class="brand">A.V. Jewelry<small>INVOICE</small></div>
         <div class="meta">
           <div class="no">${escapeHtml(d.invoiceNumber ?? 'DRAFT (not yet approved)')}</div>
-          ${d.orderNumber ? `<div>Order ${escapeHtml(d.orderNumber)}</div>` : ''}
           <div>${escapeHtml(d.date)}</div>
           <div class="status">${escapeHtml(d.status.replace(/_/g, ' '))}</div>
         </div>

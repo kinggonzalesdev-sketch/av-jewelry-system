@@ -64,12 +64,13 @@ describe('Cancel Order — where it appears', () => {
 });
 
 describe('Cancel Order — the confirmation', () => {
-  it('shows the order number and customer, and needs a reason AND the word CANCEL', () => {
+  it('shows the customer, and needs a reason AND the word CANCEL', () => {
     requestCancel.mockClear();
     renderAction('for_preparation');
     fireEvent.click(screen.getByTestId('order-cancel'));
 
-    expect(screen.getByText('ORD-2026-000010')).toBeInTheDocument();
+    // Owner 2026-09-01: the order number is no longer shown; the customer identifies it.
+    expect(screen.queryByText('ORD-2026-000010')).not.toBeInTheDocument();
     expect(screen.getByText('Ana Cruz')).toBeInTheDocument();
 
     const confirmBtn = screen.getByTestId('order-cancel-confirm');

@@ -58,7 +58,7 @@ export function renderInvoiceMessage(input: {
     ...input.itemLines.map((line) => `• ${line}`),
     '',
     `Total: PHP ${input.totalAmount.toFixed(2)}`,
-    `Order: ${input.orderNumber} · Invoice: ${input.invoiceNumber}`,
+    `Invoice: ${input.invoiceNumber}`,
     '',
     'For your downpayment:',
     input.paymentDetails,

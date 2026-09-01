@@ -5,7 +5,9 @@ import { AuthorizationError, requireOwner } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 import {
   EDITABLE_TEMPLATE_KEYS,
+  INVOICE_OPTIONAL_TOKENS,
   renderTemplate,
+  renderWithOptionalLines,
   SUPPORTED_TOKENS,
   tokensUsed,
   unsupportedTokens,
@@ -13,6 +15,7 @@ import {
 } from '@/lib/messaging/template-vars';
 import { AUTO_TEXT_KEY, AUTO_TEXT_TOKENS } from '@/lib/messaging/auto-text';
 import { getOrderDetail } from '@/lib/orders/detail';
+import { computeOrderGramsPricing, gramsTokenValue } from '@/lib/orders/grams-pricing';
 import { formatPeso } from '@/lib/payments/format';
 
 /** The shop name used by {shop_name}. */
@@ -239,27 +242,46 @@ export async function renderOrderMessage(
   const d = detail.detail;
   const a = d.amounts;
   const items = d.items.map((i) => i.itemName ?? i.itemCode).filter(Boolean);
-  const gramsTotal = d.items.reduce(
-    (sum, i) => sum + (Number(i.gramsPerPiece) || 0) * (i.quantity || 0),
-    0,
-  );
+
+  // Grams + price/g from the SAME shared derivation the Order Summary uses (invoice line
+  // items → item_code grams + per-line total ÷ grams). Never message text, never a blind
+  // Total÷Grams. A fixed-price order has no resolvable grams ⇒ these stay '' and their
+  // lines are suppressed below.
+  const gp = computeOrderGramsPricing(d.items);
+  const gramsValue = gramsTokenValue(gp);
+  const rateValue = gp.mixedRates
+    ? 'Mixed Rates'
+    : gp.pricePerGram != null
+      ? formatPeso(String(gp.pricePerGram))
+      : '';
 
   const values: Record<string, string> = {
     '{customer_name}': d.customer.displayName,
-    '{order_number}': d.orderNumber,
     '{invoice_number}': d.invoiceNumber,
     '{total_amount}': a.unavailable ? '' : formatPeso(a.totalAmountPayable),
     '{balance}': a.unavailable ? '' : formatPeso(a.outstandingBalance),
     '{due_date}': d.layaway?.finalDueDate ?? '',
     '{item_name}': items.join(', '),
-    '{grams}': gramsTotal > 0 ? String(Math.round(gramsTotal * 1000) / 1000) : '',
+    '{grams}': gramsValue,
+    '{price_per_gram}': rateValue,
     '{payment_status}': PAYMENT_STATUS_WORD[d.paymentStatus] ?? '',
     '{shop_name}': SHOP_NAME,
     '{contact_number}': d.customer.contactNumber ?? '',
   };
 
-  // Tokens the template asks for but this order cannot fill.
-  const missing = tokensUsed(body).filter((t) => !values[t]);
+  // Suppress the grams/rate lines when empty (fixed-price → clean, no blank labels).
+  const message = renderWithOptionalLines(body, values, INVOICE_OPTIONAL_TOKENS);
 
-  return { ok: true, message: renderTemplate(body, values), missing };
+  // BLOCK signal (Owner 2026-09-01): a GRAMS-BASED invoice must not be sent with a blank
+  // grams or rate. Only these two count as "missing" — every other optional token (a
+  // full-payment order has no {due_date}, etc.) renders/suppresses without blocking.
+  // A fixed-price order (no grams) requires neither, so nothing blocks it.
+  const missing: string[] = [];
+  if (key === 'invoice' && gp.hasGrams) {
+    const used = tokensUsed(body);
+    if (used.includes('{grams}') && !gramsValue) missing.push('{grams}');
+    if (used.includes('{price_per_gram}') && !rateValue) missing.push('{price_per_gram}');
+  }
+
+  return { ok: true, message, missing };
 }

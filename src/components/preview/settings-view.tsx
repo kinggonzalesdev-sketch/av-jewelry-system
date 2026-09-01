@@ -607,7 +607,7 @@ export function SettingsView() {
                     '2026-07-13 09:05',
                     'Owner',
                     'order.cancel.approved',
-                    'ORD-2026-000109',
+                    'INV-2026-000095',
                   ],
                 ].map(([when, who, action, entity]) => (
                   <li key={String(when)} className="grid grid-cols-4 gap-2 py-2">

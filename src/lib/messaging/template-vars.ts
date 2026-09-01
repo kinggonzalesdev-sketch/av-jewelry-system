@@ -29,7 +29,8 @@ export const TEMPLATE_VARIABLES: ReadonlyArray<{
   sample: string;
 }> = [
   { token: '{customer_name}', description: "The customer's name", sample: 'Ana Cruz' },
-  { token: '{order_number}', description: 'Order number', sample: 'ORD-2026-000013' },
+  // Owner 2026-09-01: {order_number} retired — the order number is no longer a
+  // customer-facing identifier, so it is no longer an insertable message variable.
   { token: '{invoice_number}', description: 'Invoice number', sample: 'INV-2026-000013' },
   { token: '{total_amount}', description: 'Total amount payable', sample: '₱34,660' },
   { token: '{balance}', description: 'Remaining balance', sample: '₱29,660' },
@@ -40,6 +41,10 @@ export const TEMPLATE_VARIABLES: ReadonlyArray<{
     sample: 'Bangle, Ring',
   },
   { token: '{grams}', description: 'Total grams', sample: '12.5' },
+  // Owner 2026-09-01: price-per-gram on the customer invoice. Derived from the invoice
+  // line items (single rate) or "Mixed Rates" when they differ. An optional line —
+  // a Fixed-Price order drops the grams/rate lines rather than sending them blank.
+  { token: '{price_per_gram}', description: 'Price per gram', sample: '₱7,300' },
   { token: '{payment_status}', description: 'Payment status', sample: 'Partially paid' },
   { token: '{shop_name}', description: 'Your shop name', sample: 'A.V. Jewelry' },
   {
@@ -64,6 +69,32 @@ export const SAMPLE_VALUES: Record<string, string> = Object.fromEntries(
  */
 export function renderTemplate(body: string, values: Record<string, string>): string {
   return body.replace(/\{[a-z_]+\}/g, (token) => values[token] ?? '');
+}
+
+/**
+ * Invoice OPTIONAL tokens (Owner 2026-09-01): a line whose only dynamic content is one of
+ * these is DROPPED when the value is empty — so a genuine Fixed-Price invoice omits the
+ * grams/rate lines instead of sending "Price Per Gram:" / "Grams: g" blank. Mirrors the
+ * proven auto_text suppression. `{total_amount}`/`{balance}` are NEVER drop-triggers.
+ */
+export const INVOICE_OPTIONAL_TOKENS = ['{price_per_gram}', '{grams}'] as const;
+
+/**
+ * Substitute tokens, but first drop any line whose ONLY optional-token values are empty —
+ * a line with no optional token is always kept, and a line keeps if any of its optional
+ * tokens has a value. Non-optional empty tokens still collapse to '' via renderTemplate.
+ */
+export function renderWithOptionalLines(
+  body: string,
+  values: Record<string, string>,
+  optionalTokens: readonly string[] = INVOICE_OPTIONAL_TOKENS,
+): string {
+  const kept = body.split('\n').filter((line) => {
+    const present = optionalTokens.filter((t) => line.includes(t));
+    if (present.length === 0) return true;
+    return present.some((t) => (values[t] ?? '').trim() !== '');
+  });
+  return renderTemplate(kept.join('\n'), values);
 }
 
 /**

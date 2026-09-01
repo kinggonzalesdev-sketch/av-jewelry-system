@@ -149,7 +149,7 @@ export function NewLayawayForm({
                 </option>
                 {payableOrders.map((o) => (
                   <option key={o.officialOrderId} value={o.officialOrderId}>
-                    {o.orderNumber} · {o.customerDisplayName} ·{' '}
+                    {o.customerDisplayName} ·{' '}
                     {formatPeso(o.totalAmountPayable)}
                   </option>
                 ))}

@@ -86,11 +86,7 @@ function matchesTab(a: ApprovalRow, tab: TabKey): boolean {
 }
 
 function reference(a: ApprovalRow): string {
-  return (
-    [a.orderNumber, a.invoiceNumber && a.invoiceNumber !== '—' ? a.invoiceNumber : null]
-      .filter(Boolean)
-      .join(' · ') || '—'
-  );
+  return a.invoiceNumber && a.invoiceNumber !== '—' ? a.invoiceNumber : '—';
 }
 
 export function ApprovalsView({
