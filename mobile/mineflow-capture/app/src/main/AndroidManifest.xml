@@ -50,7 +50,6 @@
 
         <activity android:name=".ui.LoginActivity" android:exported="false" />
         <activity android:name=".ui.SetupActivity" android:exported="false" />
-        <activity android:name=".ui.BluetoothPrinterActivity" android:exported="false" />
 
         <!-- Phase 1 capture: screenshot preview (Retake / Save Draft / Discard). -->
         <activity android:name=".ui.PreviewActivity" android:exported="false" />

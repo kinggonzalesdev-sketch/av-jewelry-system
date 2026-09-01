@@ -27,7 +27,7 @@ import kotlin.concurrent.withLock
  *
  * Singleton: it holds ONE live socket so print jobs reuse the connection (auto-
  * reconnect when it drops). All Bluetooth calls are permission-guarded by the caller
- * (BluetoothPrinterActivity requests CONNECT/SCAN) and defensively try/catch here.
+ * (SetupActivity requests CONNECT/SCAN) and defensively try/catch here.
  */
 object BluetoothPrinterManager {
 
