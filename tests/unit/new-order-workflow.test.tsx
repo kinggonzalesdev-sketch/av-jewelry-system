@@ -17,6 +17,12 @@ vi.mock('@/lib/orders/actions', () => ({
   recordOrderPrintAction: vi.fn(),
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+// Stub the camera control so the Item Photos section is inspectable without real camera APIs.
+vi.mock('@/components/attachments/photo-capture', () => ({
+  PhotoCapture: ({ label }: { label?: string }) => (
+    <div data-testid="photo-capture">{label}</div>
+  ),
+}));
 
 const customers = [
   { id: 'c1', displayName: 'Ana Cruz' },
@@ -322,6 +328,66 @@ describe('NewOrderWorkflow — multi-item form', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /close/i }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  // Owner 2026-09-02 — the New Walk-In Sale has NO Item Photos step (payment follows totals).
+  it('Walk In: shows NO Item Photos section, even after an item is added', () => {
+    renderWalkIn();
+    fireEvent.change(
+      within(screen.getByTestId('order-item-row-0')).getByPlaceholderText(
+        /search active inventory/i,
+      ),
+      { target: { value: 'BNA-B-2536 K18 HK ITEM 9,600 "16"' } },
+    );
+    expect(screen.queryByTestId('order-item-photos')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Item Photos/i)).not.toBeInTheDocument();
+    // Payment section is present (immediately follows the totals).
+    expect(screen.getByTestId('walkin-payments')).toBeInTheDocument();
+  });
+
+  // Regression: the regular New Order flow KEEPS Item Photos (only Walk-In dropped it).
+  it('New Order: still shows Item Photos after an item is picked', () => {
+    renderWorkflow();
+    openForm();
+    fireEvent.change(
+      within(screen.getByTestId('order-item-row-0')).getByPlaceholderText(
+        /search active inventory/i,
+      ),
+      { target: { value: 'UAT-M01 — Bangle' } },
+    );
+    expect(screen.getByTestId('order-item-photos')).toBeInTheDocument();
+  });
+
+  // Owner 2026-09-02 — cash may exceed the balance; the excess shows as Change, balance floors at 0.
+  it('Walk In: cash above the total shows Change and a ₱0 balance (₱9,600 total, ₱10,000 cash)', () => {
+    renderWalkIn();
+    fireEvent.change(
+      within(screen.getByTestId('order-item-row-0')).getByPlaceholderText(
+        /search active inventory/i,
+      ),
+      { target: { value: 'BNA-B-2536 K18 HK ITEM 9,600 "16"' } },
+    );
+    const amount = within(screen.getByTestId('walkin-payment-0')).getByPlaceholderText('0.00');
+    fireEvent.change(amount, { target: { value: '10000' } }); // Cash is the default method
+
+    expect(screen.getByTestId('walkin-total-paid')).toHaveTextContent('₱10,000');
+    expect(screen.getByTestId('walkin-change')).toHaveTextContent('₱400');
+    expect(screen.getByTestId('walkin-balance')).toHaveTextContent('₱0');
+  });
+
+  it('Walk In: partial cash shows NO Change row and the remaining balance', () => {
+    renderWalkIn();
+    fireEvent.change(
+      within(screen.getByTestId('order-item-row-0')).getByPlaceholderText(
+        /search active inventory/i,
+      ),
+      { target: { value: 'BNA-B-2536 K18 HK ITEM 9,600 "16"' } },
+    );
+    const amount = within(screen.getByTestId('walkin-payment-0')).getByPlaceholderText('0.00');
+    fireEvent.change(amount, { target: { value: '6000' } });
+
+    expect(screen.queryByTestId('walkin-change')).not.toBeInTheDocument();
+    expect(screen.getByTestId('walkin-balance')).toHaveTextContent('₱3,600');
   });
 });
 

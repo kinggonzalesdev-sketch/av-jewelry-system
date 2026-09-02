@@ -14,6 +14,7 @@ import {
 import { parseInventoryCode } from '@/lib/inventory/code-parser';
 import { hkFixedPrice, isHKItem } from '@/lib/inventory/hk-item';
 import { DEFAULT_PAYMENT_METHOD, PAYMENT_METHOD_OPTIONS } from '@/lib/payments/methods';
+import { walkInCashSplit } from '@/lib/orders/walkin-cash';
 import type { AdminNameContext } from '@/lib/authz/admin-name';
 import { AdminNameField } from '@/components/orders/admin-name-field';
 import {
@@ -749,6 +750,15 @@ export function NewOrderModal({
     mode === 'walkin' ? pays.reduce((c, p) => c + priceCentavos(p.amount), 0n) : 0n;
   const balanceCentavos = totalCentavos - paidCentavos;
 
+  // Walk-In CASH CHANGE (Owner 2026-09-02): cash may be tendered above the balance; the excess is
+  // change returned to the customer — never revenue. `applied` (cash capped at the balance) is what
+  // gets saved; `change` is display-only. Only cash may exceed — non-cash overpay stays blocked.
+  const cashSplit = walkInCashSplit(
+    pays.map((p) => ({ method: p.method, amountCentavos: priceCentavos(p.amount) })),
+    totalCentavos,
+  );
+  const changeCentavos = mode === 'walkin' ? cashSplit.changeCentavos : 0n;
+
   const patchPay = (key: string, next: Partial<PayRow>) =>
     setPays((ps) => ps.map((p) => (p.key === key ? { ...p, ...next } : p)));
 
@@ -818,8 +828,10 @@ export function NewOrderModal({
           }
         }
       }
-      if (paidCentavos > totalCentavos) {
-        return 'Total payments cannot exceed the order total.';
+      // Owner 2026-09-02: CASH may exceed the total (the extra is returned to the customer as
+      // change). Only NON-CASH overpayment is blocked — GCash/Bank/Card/etc. cannot exceed.
+      if (cashSplit.nonCashOverpays) {
+        return 'Only Cash may exceed the total (returned as change). Reduce the non-cash payment.';
       }
     } else if (!matchedCustomer && !customerInput.trim()) {
       return 'Choose a customer, or type a new name.';
@@ -990,10 +1002,15 @@ export function NewOrderModal({
           quantity: 1,
         })),
         payments: pays
-          .filter((p) => p.amount.trim() !== '')
-          .map((p) => ({
+          // Persist the amount ACTUALLY APPLIED to the sale (cash capped at the balance) — never
+          // the till cash. The change is returned to the customer, so reports count only revenue;
+          // this also keeps the within-balance DB guard satisfied without any schema change.
+          .map((p, i) => ({ p, applied: cashSplit.applied[i] ?? 0n }))
+          // A row applying ₱0 (empty, or a pure cash-change row) is not a payment — drop it.
+          .filter(({ applied }) => applied > 0n)
+          .map(({ p, applied }) => ({
             method: p.method,
-            amount: p.amount.trim(),
+            amount: centavosToStr(applied),
             reference: p.reference.trim() || null,
             date: saleDate || null,
             // Scrap detail rides along ONLY for a Scrap payment; the DB reads it solely
@@ -1297,6 +1314,14 @@ export function NewOrderModal({
                 {formatPeso(centavosToStr(paidCentavos < 0n ? 0n : paidCentavos))}
               </span>
             </div>
+            {changeCentavos > 0n ? (
+              <div className="mt-1 flex justify-between text-sm">
+                <span className="text-muted-foreground">Change</span>
+                <span className="tabular-nums" data-testid="walkin-review-change">
+                  {formatPeso(centavosToStr(changeCentavos))}
+                </span>
+              </div>
+            ) : null}
             <div className="mt-1 flex justify-between text-sm">
               <span className="font-semibold">Remaining Balance</span>
               <span className="font-bold tabular-nums">
@@ -1480,12 +1505,18 @@ export function NewOrderModal({
 
         <OrderSummary total={totalCentavos} count={rows.length} />
 
-        {/* Photos sit AFTER the total (Owner request), one per selected item. */}
-        <ItemPhotos
-          items={resolvedRows()
-            .map(({ item }) => item)
-            .filter((i): i is PickItem => i !== null)}
-        />
+        {/* Photos sit AFTER the total (Owner request), one per selected item. Owner
+            2026-09-02: the New Walk-In Sale has NO photo step — the section is shown only
+            in the New Order flow (mode 'order'), so a walk-in goes straight from the total
+            to Payment. PhotoCapture uploads on capture, so hiding it removes the only
+            walk-in photo path; nothing uploads for a walk-in save. */}
+        {mode === 'order' ? (
+          <ItemPhotos
+            items={resolvedRows()
+              .map(({ item }) => item)
+              .filter((i): i is PickItem => i !== null)}
+          />
+        ) : null}
 
         {mode === 'walkin' ? (
           <div className="space-y-2" data-testid="walkin-payments">
@@ -1635,6 +1666,14 @@ export function NewOrderModal({
                   {formatPeso(centavosToStr(paidCentavos < 0n ? 0n : paidCentavos))}
                 </span>
               </div>
+              {changeCentavos > 0n ? (
+                <div className="mt-1 flex items-center justify-between">
+                  <span className="text-muted-foreground">Change</span>
+                  <span className="tabular-nums" data-testid="walkin-change">
+                    {formatPeso(centavosToStr(changeCentavos))}
+                  </span>
+                </div>
+              ) : null}
               <div className="mt-1 flex items-center justify-between border-t border-border pt-1">
                 <span className="font-semibold">Remaining Balance</span>
                 <span className="font-bold tabular-nums" data-testid="walkin-balance">
