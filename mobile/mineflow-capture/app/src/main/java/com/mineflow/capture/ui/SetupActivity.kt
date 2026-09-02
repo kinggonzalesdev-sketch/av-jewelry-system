@@ -88,6 +88,10 @@ class SetupActivity : AppCompatActivity() {
     private lateinit var notifyAction: Button
     private lateinit var captureAction: Button
 
+    // ---- Capture Area (Box Capture v1) ---------------------------------------
+    private lateinit var captureAreaStatus: TextView
+    private lateinit var controlsToggleBtn: Button
+
     // ---- Printer section (moved verbatim from BluetoothPrinterActivity) ------
     private lateinit var printerNameTv: TextView
     private lateinit var printerConnTv: TextView
@@ -125,6 +129,8 @@ class SetupActivity : AppCompatActivity() {
         col.addView(buildStatusCard(), wide().apply { topMargin = dp(16) })
         col.addView(heading("Quick actions"))
         col.addView(buildQuickActions())
+        col.addView(heading("Capture area"))
+        col.addView(buildCaptureAreaCard())
         col.addView(heading("Printer"))
         col.addView(buildPrinterCard())
         col.addView(heading("Sticker price per gram"))
@@ -256,6 +262,62 @@ class SetupActivity : AppCompatActivity() {
         }
     }
 
+    // 3.5) CAPTURE AREA (Box Capture v1) — Owner 2026-09-02.
+    private fun buildCaptureAreaCard(): View {
+        val card = card()
+        captureAreaStatus = TextView(this).apply { textSize = 12f; typeface = Typeface.DEFAULT_BOLD }
+        card.addView(captureAreaStatus)
+        card.addView(
+            TextView(this).apply {
+                text = "Capture reads ONLY inside the locked box. Position it over one comment, then lock it."
+                textSize = 11f; setTextColor(gray); setPadding(0, dp(4), 0, dp(10))
+            },
+            wide(),
+        )
+        val lp = { LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
+        val row1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        row1.addView(ghostButton("Set / Edit Box") { onEditBox() }, lp().apply { rightMargin = dp(5) })
+        row1.addView(
+            ghostButton("Lock Box") { OverlayCaptureService.lockBox(this); refreshCaptureArea() },
+            lp().apply { leftMargin = dp(5) },
+        )
+        card.addView(row1, wide())
+        val row2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        row2.addView(
+            ghostButton("Reset Box") { OverlayCaptureService.resetBox(this); refreshCaptureArea() },
+            lp().apply { rightMargin = dp(5) },
+        )
+        controlsToggleBtn = ghostButton("Hide Controls") { onToggleControls() }
+        row2.addView(controlsToggleBtn, lp().apply { leftMargin = dp(5) })
+        card.addView(row2, wide().apply { topMargin = dp(8) })
+        return card
+    }
+
+    private fun onEditBox() {
+        if (!Settings.canDrawOverlays(this)) { toast("Grant overlay permission first (Overlay → Grant Now)."); return }
+        if (!OverlayCaptureService.isRunning) OverlayCaptureService.start(this)
+        OverlayCaptureService.editBox(this)
+        toast("Drag the box over one comment; drag the corner to resize; then Lock Box.")
+        refreshCaptureArea()
+    }
+
+    private fun onToggleControls() {
+        if (store.controlsHidden) OverlayCaptureService.showControls(this) else OverlayCaptureService.hideControls(this)
+        refreshCaptureArea()
+    }
+
+    private fun refreshCaptureArea() {
+        val roi = store.captureRoi
+        val (text, color) = when {
+            roi == null -> "Capture Area: Not Set" to amber
+            roi.locked -> "Capture Area: Locked" to green
+            else -> "Capture Area: Editing (unlocked)" to amber
+        }
+        captureAreaStatus.text = text
+        captureAreaStatus.setTextColor(color)
+        controlsToggleBtn.text = if (store.controlsHidden) "Show Controls" else "Hide Controls"
+    }
+
     // 4) PRINTER CARD.
     private fun buildPrinterCard(): View {
         val card = card()
@@ -385,6 +447,7 @@ class SetupActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refreshCaptureStatus()
+        refreshCaptureArea()
         // Heartbeat: tell the backend this capture device is active (System Check "Ready").
         thread { ApiClient(this).pingSession() }
         // Keep the warm connection + print pump running when the printer is ON.
