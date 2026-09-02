@@ -77,3 +77,20 @@ export const totpCodeSchema = z.object({
     .trim()
     .regex(/^\d{6}$/, 'Enter the 6-digit code from your authenticator app'),
 });
+
+/**
+ * Password-reset OTP verification: the recovery email + the 6-digit code Supabase Auth
+ * emailed. The code is EXACTLY six digits (Supabase `mailer_otp_length = 6`); it is
+ * validated server-side with the same /^\d{6}$/ shape the input enforces client-side.
+ */
+export const passwordResetVerifySchema = z.object({
+  email: z
+    .string()
+    .min(1, 'Email is required')
+    .email('Enter a valid email address')
+    .transform((value) => value.trim().toLowerCase()),
+  code: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, 'Enter the 6-digit code from your email'),
+});

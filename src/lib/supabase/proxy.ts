@@ -29,7 +29,7 @@ import { createRetryingFetch } from '@/lib/supabase/retry-fetch';
 // '/' is the public landing page (marketing). Because isPublicRoute matches
 // `pathname === route`, only the EXACT root is public — every other path stays
 // protected and unauthenticated visitors are still sent to sign-in.
-const PUBLIC_ROUTES = ['/', '/sign-in', '/account-disabled'];
+const PUBLIC_ROUTES = ['/', '/sign-in', '/account-disabled', '/reset-password'];
 
 function isPublicRoute(pathname: string): boolean {
   return PUBLIC_ROUTES.some(

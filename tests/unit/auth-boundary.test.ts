@@ -116,15 +116,18 @@ describe('protected route boundary (ADR §7, Invariant #3)', () => {
     // added deliberately as the PUBLIC MARKETING LANDING page — it exposes no
     // data, reads no database, and makes no authorization decision; and because
     // isPublicRoute matches `pathname === route`, only the EXACT root is public,
-    // so every other path stays protected. Any OTHER addition here would widen
-    // the unauthenticated surface and must be deliberate.
+    // so every other path stays protected. /reset-password (Owner 2026-09-02) is
+    // the unauthenticated forgot-password flow — a user who cannot sign in must
+    // reach it; it makes no authorization decision and uses Supabase Auth's own
+    // OTP recovery. Any OTHER addition here would widen the unauthenticated
+    // surface and must be deliberate.
     const middleware = readFileSync(
       join(projectRoot, 'src', 'lib', 'supabase', 'proxy.ts'),
       'utf8',
     );
 
     expect(middleware).toMatch(
-      /PUBLIC_ROUTES\s*=\s*\['\/',\s*'\/sign-in',\s*'\/account-disabled'\]/,
+      /PUBLIC_ROUTES\s*=\s*\['\/',\s*'\/sign-in',\s*'\/account-disabled',\s*'\/reset-password'\]/,
     );
   });
 });

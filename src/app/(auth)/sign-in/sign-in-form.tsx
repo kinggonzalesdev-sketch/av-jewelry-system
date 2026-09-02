@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
 
@@ -72,6 +73,16 @@ export function SignInForm() {
       ) : null}
 
       <SubmitButton />
+
+      <p className="text-center text-sm">
+        <Link
+          href="/reset-password"
+          className="text-muted-foreground underline-offset-2 hover:underline"
+          data-testid="forgot-password-link"
+        >
+          Forgot password?
+        </Link>
+      </p>
     </form>
   );
 }
