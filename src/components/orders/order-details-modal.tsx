@@ -14,6 +14,7 @@ import {
 import { renderOrderMessageAction } from '@/lib/messaging/actions';
 import { CopyButton } from '@/components/ui/copy-button';
 import { parseInventoryCode } from '@/lib/inventory/code-parser';
+import { isHKItem } from '@/lib/inventory/hk-item';
 import { computeOrderGramsPricing, formatTotalGrams } from '@/lib/orders/grams-pricing';
 import type { OrderDetail, OrderDetailResult } from '@/lib/orders/detail-types';
 import type { CustomerMatchInfo } from '@/lib/orders/customer-match-types';
@@ -1509,7 +1510,7 @@ function DetailBody({
                           <td className="px-3 py-1.5 font-mono">{it.itemCode ?? '—'}</td>
                           <td className="px-3 py-1.5">{it.itemName ?? '—'}</td>
                           <td className="px-3 py-1.5 text-right tabular-nums">
-                            {it.gramsPerPiece
+                            {!isHKItem({ code: it.itemCode }) && it.gramsPerPiece
                               ? totalGrams(it.gramsPerPiece, it.quantity)
                               : '—'}
                           </td>

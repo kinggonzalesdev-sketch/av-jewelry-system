@@ -16,6 +16,8 @@ import {
 } from '@/lib/inventory/action-state';
 import type { InventoryRow } from '@/lib/inventory/service';
 import { detectInventoryCodeIssues, parseInventoryCode } from '@/lib/inventory/code-parser';
+import { rowGramsDisplay } from '@/lib/inventory/grams-display';
+import { isHKItem } from '@/lib/inventory/hk-item';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -99,6 +101,9 @@ export function InventoryItemActions({
   // Reset to the current code each time the edit modal opens.
   const [codeVal, setCodeVal] = useState(row.itemCode);
   const codeIssues = useMemo(() => detectInventoryCodeIssues(codeVal), [codeVal]);
+  // HK ITEM = fixed price, no grams (Owner 2026-09-02 BR2). Reactive to the code being edited so the
+  // grams field auto-locks the moment the code becomes (or stops being) an HK ITEM.
+  const isHk = isHKItem({ code: codeVal || row.itemCode || '', name: row.itemName });
   useEffect(() => {
     if (edit) setCodeVal(row.itemCode);
   }, [edit, row.itemCode]);
@@ -248,7 +253,7 @@ export function InventoryItemActions({
             value={<span className="font-mono">{row.itemCode}</span>}
           />
           <DetailRow label="Status" value={humanizeStatus(row.availabilityStatus)} />
-          <DetailRow label="Grams" value={row.gramsPerPiece ?? parsed.grams ?? '—'} />
+          <DetailRow label="Grams" value={rowGramsDisplay(row.itemCode, row.gramsPerPiece, row.itemName)} />
           <DetailRow label="Date Encoded" value={dateEncoded} />
         </dl>
       </Modal>
@@ -372,13 +377,24 @@ export function InventoryItemActions({
               <Label htmlFor={`ed-grams-${row.inventoryItemId}`} className="text-xs">
                 Grams
               </Label>
-              <Input
-                id={`ed-grams-${row.inventoryItemId}`}
-                name="grams"
-                inputMode="decimal"
-                defaultValue={row.gramsPerPiece ?? ''}
-                className="mt-1 h-9"
-              />
+              {isHk ? (
+                // BR2: an HK ITEM is Fixed Price — grams do not apply. The input is replaced by a
+                // locked indicator and a hidden empty value, so saving keeps grams NULL (never a number).
+                <>
+                  <div className="mt-1 flex h-9 items-center rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground">
+                    Fixed Price — no grams
+                  </div>
+                  <input type="hidden" name="grams" value="" />
+                </>
+              ) : (
+                <Input
+                  id={`ed-grams-${row.inventoryItemId}`}
+                  name="grams"
+                  inputMode="decimal"
+                  defaultValue={row.gramsPerPiece ?? ''}
+                  className="mt-1 h-9"
+                />
+              )}
             </div>
             <div>
               <Label htmlFor={`ed-size-${row.inventoryItemId}`} className="text-xs">

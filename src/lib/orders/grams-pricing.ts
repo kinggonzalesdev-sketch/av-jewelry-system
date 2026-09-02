@@ -1,4 +1,5 @@
 import { parseInventoryCode } from '@/lib/inventory/code-parser';
+import { isHKItem } from '@/lib/inventory/hk-item';
 
 /**
  * Grams + price-per-gram for an order, derived from its LINE ITEMS — one shared source
@@ -37,6 +38,11 @@ export type OrderGramsPricing = {
  *  `item_code` text (grams_per_piece is NULL for ~all historical items). 0 when neither
  *  yields a positive weight — which is how a genuine Fixed-Price line reads here. */
 export function lineGramsPerPiece(line: OrderLineForPricing): number {
+  // HK ITEM is fixed-price — grams NEVER apply (Owner 2026-09-02 BR2), even if a stray "…g" token
+  // sits in the code text or a legacy grams_per_piece is populated. Returning 0 here makes the Order
+  // Summary and the Send-Invoice message suppress BOTH "Grams" and "Price Per Gram" for it (no
+  // fabricated Total÷Grams rate) through the same single chokepoint.
+  if (isHKItem({ code: line.itemCode ?? '' })) return 0;
   const direct = Number(line.gramsPerPiece);
   if (Number.isFinite(direct) && direct > 0) return direct;
   const parsed = line.itemCode ? Number(parseInventoryCode(line.itemCode).grams) : NaN;

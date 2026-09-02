@@ -30,6 +30,36 @@ describe('lineGramsPerPiece — grams source of truth', () => {
   });
 });
 
+// Owner 2026-09-02 BR2: an HK ITEM is ALWAYS fixed-price — grams never apply, even if a stray "…g"
+// token sits in the code or a legacy grams_per_piece is populated. So the Order Summary + Send-Invoice
+// suppress Grams + Price-Per-Gram for it (no fabricated Total÷Grams rate).
+describe('HK ITEM grams suppression', () => {
+  it('a stray grams token in an HK ITEM code still yields 0 grams', () => {
+    expect(lineGramsPerPiece(line({ itemCode: 'BNA-N-5556 HK ITEM 9,600 5.5g' }))).toBe(0);
+  });
+  it('a legacy stored grams_per_piece on an HK ITEM still yields 0 grams', () => {
+    expect(lineGramsPerPiece(line({ gramsPerPiece: '5.5', itemCode: 'BNA-E-2500 K18 HK ITEM' }))).toBe(0);
+  });
+  it('an HK order line contributes no grams and no rate', () => {
+    const p = computeOrderGramsPricing([
+      line({ itemCode: 'BNA-N-5556 HK ITEM 9,600 5.5g', unitPrice: '9600.00' }),
+    ]);
+    expect(p.hasGrams).toBe(false);
+    expect(p.pricePerGram).toBeNull();
+    expect(formatTotalGrams(p)).toBe('—');
+    expect(gramsTokenValue(p)).toBe('');
+  });
+  it('a non-HK grams line in the SAME order is unaffected (only the HK line is dropped)', () => {
+    const p = computeOrderGramsPricing([
+      line({ itemCode: 'BNA-N-5556 HK ITEM 9,600 5.5g', unitPrice: '9600.00' }),
+      line({ itemCode: 'SBA-N-1234 1.07g', unitPrice: '7811.00' }),
+    ]);
+    expect(p.hasGrams).toBe(true);
+    expect(p.totalGrams).toBe(1.07);
+    expect(p.pricePerGram).toBe(7300);
+  });
+});
+
 describe('computeOrderGramsPricing', () => {
   // TEST 1 — standard grams invoice: 1.07g @ ₱7,300 ⇒ total 7811.
   it('single grams line derives exact rate (Glaiza: 1.07g → ₱7,300)', () => {

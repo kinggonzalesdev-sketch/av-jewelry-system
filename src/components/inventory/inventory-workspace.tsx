@@ -20,6 +20,8 @@ import type { InventoryGramsTotals } from '@/lib/inventory/grams-totals';
 import { formatGrams } from '@/lib/inventory/grams-format';
 import type { CompletedInventoryRow } from '@/lib/inventory/completed';
 import { detectInventoryCodeIssues, parseInventoryCode } from '@/lib/inventory/code-parser';
+import { rowGramsDisplay } from '@/lib/inventory/grams-display';
+import { isHKItem } from '@/lib/inventory/hk-item';
 import { inventoryGroup } from '@/lib/inventory/group';
 import { downloadCsv } from '@/lib/export/csv';
 import { InventoryImportButton } from '@/components/inventory/inventory-import-modal';
@@ -440,7 +442,11 @@ export function InventoryWorkspace({
           header: 'Item Type',
           value: (i) => parseInventoryCode(i.itemCode).itemType ?? '',
         },
-        { header: 'Grams', value: (i) => parseInventoryCode(i.itemCode).grams ?? '' },
+        {
+          header: 'Grams',
+          value: (i) =>
+            isHKItem({ code: i.itemCode }) ? 'Fixed Price' : (parseInventoryCode(i.itemCode).grams ?? ''),
+        },
         { header: 'Size', value: (i) => parseInventoryCode(i.itemCode).size ?? '' },
         { header: 'Status', value: (i) => i.availabilityStatus.replace(/_/g, ' ') },
         { header: 'Total', value: (i) => i.quantityTotal },
@@ -611,6 +617,13 @@ export function InventoryWorkspace({
                 autoComplete="off"
               />
             </ModalFieldFull>
+            {isHKItem({ code: neCode }) && (
+              <ModalFieldFull>
+                <p className="text-xs text-emerald-600">
+                  HK ITEM detected — this is a Fixed Price item. Enter the price below; grams don&apos;t apply.
+                </p>
+              </ModalFieldFull>
+            )}
             <div>
               <Label htmlFor="ne-price" className="text-xs">
                 Price
@@ -786,7 +799,7 @@ export function InventoryWorkspace({
                           />
                         </td>
                         <td className="col-num px-3 py-2.5">
-                          {i.gramsPerPiece ?? parseInventoryCode(i.itemCode).grams ?? '—'}
+                          {rowGramsDisplay(i.itemCode, i.gramsPerPiece)}
                         </td>
                         <td className="whitespace-nowrap px-3 py-2.5 text-center">
                           {fmtEncoded(i.createdAt)}
@@ -934,7 +947,7 @@ export function InventoryWorkspace({
                         <td className="truncate px-3 py-2.5 text-center text-muted-foreground">
                           {parsed.itemType ?? '—'}
                         </td>
-                        <td className="col-num px-3 py-2.5">{parsed.grams ?? '—'}</td>
+                        <td className="col-num px-3 py-2.5">{rowGramsDisplay(c.itemCode)}</td>
                         <td
                           className="truncate px-3 py-2.5"
                           title={c.customerName ?? undefined}
@@ -1026,7 +1039,7 @@ export function InventoryWorkspace({
                   ['Item', compView.itemName ?? '—'],
                   ['Condition', parseInventoryCode(compView.itemCode).condition ?? '—'],
                   ['Item Type', parseInventoryCode(compView.itemCode).itemType ?? '—'],
-                  ['Grams', parseInventoryCode(compView.itemCode).grams ?? '—'],
+                  ['Grams', rowGramsDisplay(compView.itemCode)],
                   ['Size', parseInventoryCode(compView.itemCode).size ?? '—'],
                   ['Customer', compView.customerName ?? '—'],
                   ['Invoice Number', compView.invoiceNumber ?? '—'],
