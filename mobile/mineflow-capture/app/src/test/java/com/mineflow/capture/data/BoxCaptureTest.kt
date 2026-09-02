@@ -12,6 +12,8 @@ import org.junit.Test
 class BoxCaptureTest {
 
     private fun line(text: String, top: Int) = OLine(text, Box(40, top, 400, top + 40))
+    private fun lineAt(text: String, left: Int, top: Int, right: Int, bottom: Int) =
+        OLine(text, Box(left, top, right, bottom))
 
     // ---- A/B/C: one name + one claim → Selected, decimals preserved --------------------------
     @Test
@@ -75,13 +77,90 @@ class BoxCaptureTest {
         assertNull(r.guess.fbName)
     }
 
+    // Owner 2026-09-02 "prefer name-associated claim": a number STACKED below the value line (a comment
+    // timestamp / actions row) is NOT the buyer's value — take the claim directly below the name.
     @Test
-    fun twoDifferentClaims_oneName_needsReview() {
+    fun stackedNumbers_pickValueDirectlyBelowName() {
         val r = ScreenshotOcr.guessBox(
             listOf(line("King Gonzales", 100), line(".64", 150), line(".77", 200)),
         )
+        assertEquals(BoxReview.NONE, r.review)
+        assertEquals("King Gonzales", r.guess.fbName)
+        assertEquals("0.64", r.guess.grams) // the value directly below the name, not the one further down
+    }
+
+    // THE PHYSICAL BUG (2026-09-02): "King Gonzales" / "44" / "2.01"(a 2:01 timestamp OCR'd with a dot).
+    // The timestamp must NOT create a false MULTIPLE — the value directly below the name (44) is taken.
+    @Test
+    fun timestampBelowValue_isIgnored_notMultiple() {
+        val r = ScreenshotOcr.guessBox(
+            listOf(line("King Gonzales", 100), line("44", 150), line("2.01", 200)),
+        )
+        assertEquals(BoxReview.NONE, r.review)
+        assertEquals("King Gonzales", r.guess.fbName)
+        assertEquals("44", r.guess.grams)
+    }
+
+    // Two DIFFERENT values on essentially the SAME row (side by side) is genuinely ambiguous → review.
+    @Test
+    fun sameRowTwoValues_needsReview() {
+        val r = ScreenshotOcr.guessBox(
+            listOf(
+                line("King Gonzales", 100),
+                lineAt(".64", 40, 150, 120, 190),
+                lineAt(".77", 220, 150, 300, 190),
+            ),
+        )
         assertEquals(BoxReview.MULTIPLE, r.review)
         assertNull(r.guess.fbName)
+    }
+
+    // ---- STEP 5 edge-clipping guard (crop dims supplied) -------------------------------------
+    // A name whose bbox is flush against the crop's RIGHT edge is probably truncated ("King Gon") →
+    // CLIPPED, never auto-printed.
+    @Test
+    fun nameHuggingRightEdge_isClipped() {
+        val r = ScreenshotOcr.guessBox(
+            listOf(lineAt("King Gonzales", 40, 100, 500, 140), lineAt("64", 40, 150, 120, 190)),
+            cropW = 500, cropH = 300,
+        )
+        assertEquals(BoxReview.CLIPPED, r.review)
+        assertNull(r.guess.fbName)
+    }
+
+    // A bare whole-integer value flush against the crop's LEFT edge may have lost a clipped leading
+    // decimal (".44" read as "44") → CLIPPED, never auto-print a possibly-wrong 44g.
+    @Test
+    fun bareIntegerHuggingLeftEdge_isClipped() {
+        val r = ScreenshotOcr.guessBox(
+            listOf(lineAt("King Gonzales", 120, 100, 360, 140), lineAt("44", 0, 150, 60, 190)),
+            cropW = 500, cropH = 300,
+        )
+        assertEquals(BoxReview.CLIPPED, r.review)
+    }
+
+    // A clean name + value with comfortable margins on all sides prints normally (no false clip). A
+    // whole-number value away from the left edge is NOT treated as a clipped decimal — it prints as-is.
+    @Test
+    fun comfortableMargins_notClipped_printsWhole() {
+        val r = ScreenshotOcr.guessBox(
+            listOf(lineAt("King Gonzales", 40, 100, 300, 140), lineAt("44", 40, 150, 120, 190)),
+            cropW = 500, cropH = 300,
+        )
+        assertEquals(BoxReview.NONE, r.review)
+        assertEquals("King Gonzales", r.guess.fbName)
+        assertEquals("44", r.guess.grams)
+    }
+
+    // A genuine leading decimal away from the edge still prints (decimal grammar preserved, no clip).
+    @Test
+    fun leadingDecimalWithMargin_printsDecimal() {
+        val r = ScreenshotOcr.guessBox(
+            listOf(lineAt("King Gonzales", 40, 100, 300, 140), lineAt(".44", 40, 150, 120, 190)),
+            cropW = 500, cropH = 300,
+        )
+        assertEquals(BoxReview.NONE, r.review)
+        assertEquals("0.44", r.guess.grams)
     }
 
     // ---- F: no name → NO_NAME, no print ------------------------------------------------------

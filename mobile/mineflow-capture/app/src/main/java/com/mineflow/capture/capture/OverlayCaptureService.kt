@@ -72,6 +72,8 @@ class OverlayCaptureService : Service() {
     private var boxView: CaptureBoxView? = null
     private var boxLp: WindowManager.LayoutParams? = null
     private var restoreHandle: View? = null
+    // The tiny tap-to-unlock chip shown only while the box is LOCKED (Box Capture v2, Owner 2026-09-02).
+    private var lockChip: View? = null
 
     private var projection: MediaProjection? = null
     // A PERSISTENT screen-mirror kept alive for the whole session, so consent is asked
@@ -109,7 +111,10 @@ class OverlayCaptureService : Service() {
         // service restart, so the operator's setup survives (PHASE 16). Orientation/scale changes are
         // handled at capture time — an off-screen box fails safely there rather than cropping wrong.
         val store = SecureStore.get(this)
-        if (store.captureMode == SecureStore.MODE_BOX && store.captureRoi != null) showCaptureBox()
+        if (store.captureMode == SecureStore.MODE_BOX && store.captureRoi != null) {
+            showCaptureBox()
+            if (store.captureRoi?.locked == true) showLockChip()
+        }
         if (store.controlsHidden) setControlsHidden(true)
     }
 
@@ -276,10 +281,12 @@ class OverlayCaptureService : Service() {
         // is enough for the overlay-window removal to clear from the screen mirror (~6 frames)
         // — trimmed to cut capture latency (P2) while keeping the button out of the shot.
         button?.visibility = View.GONE
-        // Hide the Capture Box outline + restore handle too, so no overlay text/handle can land in
-        // the screenshot (and thus never contaminates OCR). The saved box coords are unaffected.
+        // Hide the Capture Box outline + restore handle + lock chip too, so NO overlay decoration
+        // (border, ✓/lock icons, resize grip, unlock chip) can land in the screenshot — the crop is
+        // proven to contain Facebook content only. The saved box coords are unaffected.
         boxView?.visibility = View.GONE
         restoreHandle?.visibility = View.GONE
+        lockChip?.visibility = View.GONE
         handler.postDelayed({
             // Reuse the live mirror when we already have consent — no popup. Only the
             // FIRST capture of a session asks for permission.
@@ -359,7 +366,7 @@ class OverlayCaptureService : Service() {
             (roi.width * sw).toInt().coerceAtLeast(dp(48)),
             (roi.height * sh).toInt().coerceAtLeast(dp(48)),
             overlayType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            boxFlags(roi.locked),
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -378,6 +385,18 @@ class OverlayCaptureService : Service() {
         boxView?.let { runCatching { windowManager.removeView(it) } }
         boxView = null
         boxLp = null
+        hideLockChip()
+    }
+
+    // COORDINATE ALIGNMENT (Owner 2026-09-02, STEP 1). FLAG_LAYOUT_IN_SCREEN lays the box window out in
+    // the FULL physical screen from the top-left, ignoring the status bar — so the window's (x,y) are the
+    // SAME pixels the MediaProjection mirror captures (getRealMetrics for both). Without it an overlay can
+    // be offset DOWN by the status-bar height while the bitmap starts at the physical top, shifting the
+    // crop off the comment. This makes overlay-Y == bitmap-Y by construction (status/nav-bar offset handled).
+    private fun boxFlags(locked: Boolean): Int {
+        val base = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+        return if (locked) base or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE else base
     }
 
     /** Locked → the box is NOT_TOUCHABLE (comments below stay tappable, no accidental edit) and shows
@@ -386,10 +405,7 @@ class OverlayCaptureService : Service() {
         val lp = boxLp ?: return
         val v = boxView ?: return
         val locked = SecureStore.get(this).captureRoi?.locked ?: false
-        lp.flags = if (locked)
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-        else
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        lp.flags = boxFlags(locked)
         v.locked = locked
         runCatching { windowManager.updateViewLayout(v, lp) }
     }
@@ -408,7 +424,38 @@ class OverlayCaptureService : Service() {
         val store = SecureStore.get(this)
         store.captureRoi = (store.captureRoi ?: com.mineflow.capture.data.CaptureRoi.default()).copy(locked = locked)
         if (boxView == null) showCaptureBox() else applyBoxTouchability()
-        toastMain(if (locked) "Capture Area locked." else "Capture Area unlocked — drag to move, drag the corner to resize.")
+        if (locked) showLockChip() else hideLockChip()
+        toastMain(if (locked) "Capture Area locked — tap the lock to edit again." else "Capture Area unlocked — drag to move, drag the corner to resize, then tap ✓.")
+    }
+
+    // The tiny tap-to-unlock chip shown at a LOCKED box's upper-right. A SEPARATE small touchable window
+    // so the locked box stays NOT_TOUCHABLE (comments under it remain tappable) yet there is always a
+    // one-tap way back to Edit Mode (Owner 2026-09-02, Part A).
+    private fun showLockChip() {
+        val lp = boxLp ?: run { hideLockChip(); return }
+        hideLockChip()
+        val size = dp(34)
+        val pad = dp(6)
+        val chipLp = WindowManager.LayoutParams(
+            size, size, overlayType(),
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = (lp.x + lp.width - size - pad).coerceAtLeast(0)
+            y = (lp.y + pad).coerceAtLeast(0)
+        }
+        val v = LockChipView(this).apply {
+            contentDescription = "Unlock Capture Area"
+            setOnClickListener { setBoxLocked(false) }
+        }
+        lockChip = v
+        runCatching { windowManager.addView(v, chipLp) }
+    }
+
+    private fun hideLockChip() {
+        lockChip?.let { runCatching { windowManager.removeView(it) } }
+        lockChip = null
     }
 
     private fun resetCaptureBox() {
@@ -418,33 +465,58 @@ class OverlayCaptureService : Service() {
         toastMain("Capture Area reset. Position it over the comment, then Lock.")
     }
 
+    /** Minimum draggable box height in px — the STEP 4 two-line floor, scaled to this screen. */
+    private fun minBoxHeightPx(sh: Int): Int = maxOf(
+        com.mineflow.capture.data.CaptureRoi.MIN_HEIGHT_PX,
+        (sh * com.mineflow.capture.data.CaptureRoi.MIN_HEIGHT_FRACTION).toInt(),
+    )
+
+    /** DONE(✓)/LOCK on the box → persist the current position and LOCK it (Capture uses the locked
+     *  coords), which hides the edit controls and shows the tiny tap-to-unlock chip. The operator
+     *  finishes positioning WITHOUT returning to the dashboard (Owner 2026-09-02, Part A). */
+    private fun finishBoxEditing() {
+        saveBoxFromWindow()
+        setBoxLocked(true)
+    }
+
     private inner class BoxDragResizeListener : View.OnTouchListener {
         private var startX = 0; private var startY = 0; private var startW = 0; private var startH = 0
         private var touchX = 0f; private var touchY = 0f
-        private var resizing = false
+        private var mode = BoxControl.NONE
+        private var moved = false
         override fun onTouch(v: View, e: MotionEvent): Boolean {
             val lp = boxLp ?: return false
+            val bv = boxView ?: return false
             when (e.action) {
                 MotionEvent.ACTION_DOWN -> {
                     startX = lp.x; startY = lp.y; startW = lp.width; startH = lp.height
-                    touchX = e.rawX; touchY = e.rawY
-                    val bv = boxView
-                    resizing = bv != null &&
-                        e.x > bv.width - bv.handlePx * 1.8f && e.y > bv.height - bv.handlePx * 1.8f
+                    touchX = e.rawX; touchY = e.rawY; moved = false
+                    // Route by which on-box control the press landed on (upper-right DONE/LOCK, bottom-
+                    // right resize grip, else drag-to-move).
+                    mode = bv.hitControl(e.x, e.y)
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (e.rawX - touchX).toInt(); val dy = (e.rawY - touchY).toInt()
+                    if (abs(dx) > dp(6) || abs(dy) > dp(6)) moved = true
                     val (sw, sh) = screenSize()
-                    if (resizing) {
-                        lp.width = (startW + dx).coerceIn(dp(48), sw - lp.x)
-                        lp.height = (startH + dy).coerceIn(dp(48), sh - lp.y)
-                    } else {
-                        lp.x = (startX + dx).coerceIn(0, sw - lp.width)
-                        lp.y = (startY + dy).coerceIn(0, sh - lp.height)
+                    when (mode) {
+                        BoxControl.RESIZE -> {
+                            lp.width = (startW + dx).coerceIn(dp(72), sw - lp.x)
+                            lp.height = (startH + dy).coerceIn(minBoxHeightPx(sh), sh - lp.y)
+                            runCatching { windowManager.updateViewLayout(v, lp) }
+                        }
+                        BoxControl.DONE, BoxControl.LOCK -> { /* a control press — never move the box */ }
+                        BoxControl.NONE -> {
+                            lp.x = (startX + dx).coerceIn(0, sw - lp.width)
+                            lp.y = (startY + dy).coerceIn(0, sh - lp.height)
+                            runCatching { windowManager.updateViewLayout(v, lp) }
+                        }
                     }
-                    runCatching { windowManager.updateViewLayout(v, lp) }
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> saveBoxFromWindow()
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (!moved && (mode == BoxControl.DONE || mode == BoxControl.LOCK)) finishBoxEditing()
+                    else saveBoxFromWindow()
+                }
             }
             return true
         }
@@ -629,21 +701,31 @@ class OverlayCaptureService : Service() {
                     !roi.locked -> { toastMain("Lock Capture Area first."); bmp.recycle(); return@thread }
                     px == null -> { toastMain("Please reset your Capture Area."); bmp.recycle(); return@thread }
                 }
+                val pxNN = px!!
+                val roiNN = roi
                 val tCrop = android.os.SystemClock.elapsedRealtime()
-                val crop = runCatching { Bitmap.createBitmap(bmp, px!!.left, px.top, px.width, px.height) }.getOrNull()
+                val crop = runCatching { Bitmap.createBitmap(bmp, pxNN.left, pxNN.top, pxNN.width, pxNN.height) }.getOrNull()
                 if (crop == null) { toastMain("Please reset your Capture Area."); bmp.recycle(); return@thread }
+                val tMlStart = android.os.SystemClock.elapsedRealtime()
                 val box = ocrBoxBlocking(crop)
+                val tMlEnd = android.os.SystemClock.elapsedRealtime()
+                // STEP 2 (DEBUG builds only) — persist the EXACT crop + full geometry/insets so the
+                // physical crop can be inspected off-device (proving the box maps to the right pixels).
+                saveBoxDiagnostic(bmp, crop, pxNN, roiNN, box)
                 runCatching { crop.recycle() }
+                val t0box = if (lastTapElapsed > 0) lastTapElapsed else tOcrStart
                 Log.i(
                     TAG,
-                    "timing: BOX crop=${tCrop - tOcrStart}ms ocr=" +
-                        "${android.os.SystemClock.elapsedRealtime() - tCrop}ms review=${box?.review}",
+                    "timing BOX: tap->shot=${tOcrStart - t0box}ms roiMap+crop=${tMlStart - tCrop}ms " +
+                        "mlKit=${tMlEnd - tMlStart}ms review=${box?.review} " +
+                        "roiPx=[${pxNN.left},${pxNN.top} ${pxNN.width}x${pxNN.height}] shot=${bmp.width}x${bmp.height}",
                 )
                 if (box == null || box.review != com.mineflow.capture.data.BoxReview.NONE) {
                     toastMain(
                         when (box?.review) {
-                            com.mineflow.capture.data.BoxReview.NO_CLAIM -> "Claim not read — needs review."
+                            com.mineflow.capture.data.BoxReview.NO_CLAIM -> "Value not read — needs review."
                             com.mineflow.capture.data.BoxReview.MULTIPLE -> "More than one comment in the box — needs review."
+                            com.mineflow.capture.data.BoxReview.CLIPPED -> "Text looks cut off — adjust your Capture Area, then capture again."
                             else -> "Name not read — needs review." // NO_NAME / EMPTY / null
                         },
                     )
@@ -806,6 +888,63 @@ class OverlayCaptureService : Service() {
             out.toByteArray()
         }
 
+    /**
+     * BOX CAPTURE STEP 2 diagnostic (Owner 2026-09-02) — DEBUG BUILDS ONLY. Persist the EXACT crop
+     * handed to ML Kit plus the full coordinate geometry (screenshot size, saved normalized ROI, the
+     * resolved pixel ROI + crop size, status/navigation-bar insets, the box overlay window rect) and
+     * the raw OCR + review, into app-private files (getExternalFilesDir/mineflow-diag). This is how the
+     * physical crop is proven correct WITHOUT tethering — the crop PNG shows exactly what was OCR'd. It
+     * is NEVER uploaded, and a rolling window (~20 newest) keeps it from filling storage. No-op in
+     * release builds so customer crops are never persisted in production.
+     */
+    private fun saveBoxDiagnostic(
+        full: Bitmap,
+        crop: Bitmap,
+        px: com.mineflow.capture.data.PixelRoi,
+        roi: com.mineflow.capture.data.CaptureRoi,
+        box: com.mineflow.capture.data.BoxGuess?,
+    ) {
+        if (!com.mineflow.capture.BuildConfig.DEBUG) return
+        runCatching {
+            val dir = File(getExternalFilesDir(null), "mineflow-diag").apply { mkdirs() }
+            dir.listFiles()?.sortedByDescending { it.lastModified() }?.drop(20)
+                ?.forEach { runCatching { it.delete() } }
+            val ts = System.currentTimeMillis()
+            FileOutputStream(File(dir, "$ts-crop.png")).use { crop.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            val meta = JSONObject().apply {
+                put("ts", ts)
+                put("screenshot", JSONObject().put("w", full.width).put("h", full.height))
+                put(
+                    "savedRoi",
+                    JSONObject().put("left", roi.left).put("top", roi.top)
+                        .put("width", roi.width).put("height", roi.height).put("locked", roi.locked),
+                )
+                put("pixelRoi", JSONObject().put("left", px.left).put("top", px.top).put("w", px.width).put("h", px.height))
+                put("cropSize", JSONObject().put("w", crop.width).put("h", crop.height))
+                put("insets", JSONObject().put("statusBar", statusBarHeightPx()).put("navBar", navBarHeightPx()))
+                boxLp?.let { put("boxWindow", JSONObject().put("x", it.x).put("y", it.y).put("w", it.width).put("h", it.height)) }
+                put("review", box?.review?.name)
+                put("fbName", box?.guess?.fbName)
+                put("grams", box?.guess?.grams)
+                put("rawLines", JSONArray(box?.guess?.rawLines ?: emptyList<String>()))
+            }
+            File(dir, "$ts.json").writeText(meta.toString(2))
+            Log.i(TAG, "BOX DIAG saved: ${dir.absolutePath}/$ts-crop.png (review=${box?.review})")
+        }
+    }
+
+    /** Status-bar height in px (0 if unknown) — for the STEP 1 coordinate diagnostic. */
+    private fun statusBarHeightPx(): Int {
+        val id = resources.getIdentifier("status_bar_height", "dimen", "android")
+        return if (id > 0) resources.getDimensionPixelSize(id) else 0
+    }
+
+    /** Navigation-bar height in px (0 if unknown) — for the STEP 1 coordinate diagnostic. */
+    private fun navBarHeightPx(): Int {
+        val id = resources.getIdentifier("navigation_bar_height", "dimen", "android")
+        return if (id > 0) resources.getDimensionPixelSize(id) else 0
+    }
+
     /** Run on-device OCR and block briefly for the result. Safe on a background
      *  thread: ML Kit posts its callback to the main thread, which is free here. */
     private fun ocrBlocking(bmp: Bitmap): com.mineflow.capture.data.OcrGuess? {
@@ -844,6 +983,7 @@ class OverlayCaptureService : Service() {
         button?.visibility = View.VISIBLE
         boxView?.visibility = View.VISIBLE
         restoreHandle?.visibility = View.VISIBLE
+        lockChip?.visibility = View.VISIBLE
     }
 
     // ---- Notification ---------------------------------------------------------

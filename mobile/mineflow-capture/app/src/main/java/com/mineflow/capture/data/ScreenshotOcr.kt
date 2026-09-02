@@ -35,8 +35,11 @@ data class OcrGuess(
 
 /** Why a BOX CAPTURE (Owner 2026-09-02) is Needs Review, or NONE for a clean single name + claim.
  *  EMPTY = nothing usable · NO_NAME = a claim but no customer · NO_CLAIM = a name but no value ·
- *  MULTIPLE = the box holds two+ plausible comment blocks (never auto-pick one). */
-enum class BoxReview { NONE, EMPTY, NO_NAME, NO_CLAIM, MULTIPLE }
+ *  MULTIPLE = the box holds two+ plausible comment blocks (never auto-pick one) ·
+ *  CLIPPED = the selected name/value bbox hugs a crop edge → probably cut off (box too tight);
+ *  "Adjust Capture Area" — never auto-print a truncated name or a value that may have lost a
+ *  clipped leading decimal (Owner 2026-09-02, STEP 5). */
+enum class BoxReview { NONE, EMPTY, NO_NAME, NO_CLAIM, MULTIPLE, CLIPPED }
 
 /** A Box Capture result: the parsed guess (fbName/grams are null unless Selected) + the review
  *  reason, so the phone can show the right message and print ONLY on NONE. */
@@ -333,7 +336,9 @@ object ScreenshotOcr {
      * scan, no ROI fast-path, no pin gate. The caller crops to the saved box before calling this.
      */
     fun analyzeBox(crop: Bitmap, onResult: (BoxGuess) -> Unit) {
-        ocr(crop) { lines -> onResult(guessBox(lines)) }
+        val cw = crop.width
+        val ch = crop.height
+        ocr(crop) { lines -> onResult(guessBox(lines, cropW = cw, cropH = ch)) }
     }
 
     /** Run the recognizer on a bitmap and hand back its lines with bounding boxes. */
@@ -795,7 +800,7 @@ object ScreenshotOcr {
      * print). Anything else → Needs Review with a specific reason — and NEVER an arbitrary pick when
      * the box holds multiple plausible comment blocks.
      */
-    internal fun guessBox(olinesIn: List<OLine>): BoxGuess {
+    internal fun guessBox(olinesIn: List<OLine>, cropW: Int = 0, cropH: Int = 0): BoxGuess {
         val rawLines = olinesIn.map { it.text }
         val olines = restoreLeadingDecimals(olinesIn)
         val clean = olines.filterNot { isUiNoise(it.text) }
@@ -803,34 +808,82 @@ object ScreenshotOcr {
         val nameLines = clean.filter {
             looksLikeName(it.text) && !isChrome(it.text) && !MINE.containsMatchIn(it.text) && parseClaim(it.text) == null
         }
-        val claims = clean.mapNotNull { ol -> parseClaim(ol.text)?.let { ol to it } }
-
+        val claimsAll = clean.mapNotNull { ol -> parseClaim(ol.text)?.let { ol to it } }
         val distinctNames = nameLines
             .map { sanitizeLeadingNameGlyph(stripClaim(it.text).ifBlank { it.text }) }
             .filter { it.isNotBlank() }
             .distinct()
-        val distinctClaims = claims.map { it.second.value ?: it.second.grams ?: "" }.distinct()
 
-        val review = when {
-            distinctNames.isEmpty() && distinctClaims.isEmpty() -> BoxReview.EMPTY
-            distinctNames.isEmpty() -> BoxReview.NO_NAME
-            distinctClaims.isEmpty() -> BoxReview.NO_CLAIM
-            distinctNames.size > 1 || distinctClaims.size > 1 -> BoxReview.MULTIPLE
-            else -> BoxReview.NONE
-        }
-        if (review != BoxReview.NONE) return BoxGuess(OcrGuess(null, null, null, rawLines), review)
+        // Terminal reviews that don't depend on picking a value: no usable content, a value with no
+        // customer, or TWO customer name blocks in the box (never auto-pick between two people).
+        if (distinctNames.isEmpty() && claimsAll.isEmpty()) return review(rawLines, BoxReview.EMPTY)
+        if (distinctNames.isEmpty()) return review(rawLines, BoxReview.NO_NAME)
+        if (distinctNames.size > 1) return review(rawLines, BoxReview.MULTIPLE)
+        if (claimsAll.isEmpty()) return review(rawLines, BoxReview.NO_CLAIM)
 
-        val claim = claims.first().second
-        val name = sanitizeLeadingNameGlyph(
-            nameForClaim(clean, claims.first().first)
-                ?: stripClaim(nameLines.first().text).ifBlank { nameLines.first().text },
-        )
-        if (!looksLikeName(name) || isChrome(name)) {
-            return BoxGuess(OcrGuess(null, null, null, rawLines), BoxReview.NO_NAME)
+        // EXACTLY ONE customer in the box. The buyer's value is the claim DIRECTLY TIED to the name —
+        // the nearest claim at/below the name line (the comment's own text). A number FURTHER down is
+        // NOT the value: a comment TIMESTAMP ("2:01" OCR'd "2.01") or the Like/Reply row. This is the
+        // Owner's "prefer name-associated claim" (2026-09-02) — it removes the false MULTIPLE the
+        // timestamp was causing, WITHOUT guessing between two people (two names still → MULTIPLE above).
+        val nameOLine = nameLines.minByOrNull { it.box.top }!!
+        val belowName = claimsAll
+            .filter { it.first.box.bottom >= nameOLine.box.top }
+            .sortedBy { it.first.box.top }
+        if (belowName.isEmpty()) return review(rawLines, BoxReview.NO_CLAIM)
+        val claimLine = belowName.first().first
+        val claim = belowName.first().second
+
+        // SAME-ROW AMBIGUITY: two DIFFERENT values on essentially the value's own row (side by side) is
+        // genuinely ambiguous → Needs Review (never pick one). Stacked numbers below the value are the
+        // timestamp / actions and are ignored, per above.
+        val lh = maxOf(claimLine.box.height, 20)
+        val sameRowConflict = belowName.drop(1).any {
+            it.first.box.top - claimLine.box.top <= lh / 2 &&
+                (it.second.value ?: it.second.grams) != (claim.value ?: claim.grams)
         }
+        if (sameRowConflict) return review(rawLines, BoxReview.MULTIPLE)
+
+        val nameSrc = nameLineForClaim(clean, claimLine) ?: nameOLine
+        val name = sanitizeLeadingNameGlyph(stripClaim(nameSrc.text).ifBlank { nameSrc.text })
+        if (!looksLikeName(name) || isChrome(name)) return review(rawLines, BoxReview.NO_NAME)
+
+        // EDGE-CLIPPING GUARD (Owner 2026-09-02, STEP 5). When the crop size is known, a selected line
+        // whose bounding box is flush against a crop edge is probably cut off (the box is too tight).
+        // Rather than auto-print a truncated surname ("King Gonzales" → "King Gon") or a value that lost a
+        // clipped leading decimal (".44" read as "44"), return CLIPPED → Adjust Capture Area. GENERIC:
+        // no hardcoded name, and no global whole→decimal conversion (a value away from the edge prints).
+        if (cropW > 0 && cropH > 0 && isEdgeClipped(nameSrc, claimLine, claim, cropW)) {
+            return review(rawLines, BoxReview.CLIPPED)
+        }
+
         return BoxGuess(
             OcrGuess(fbName = name, itemQuery = claim.value, grams = claim.grams, rawLines = rawLines),
             BoxReview.NONE,
         )
+    }
+
+    private fun review(rawLines: List<String>, r: BoxReview) = BoxGuess(OcrGuess(null, null, null, rawLines), r)
+
+    /**
+     * STEP 5 edge-clipping test (Owner 2026-09-02). A selected name/value line pressed against a crop
+     * edge is treated as probably truncated. Margins scale with the line's own height, so the check is
+     * resolution-independent (a clipped glyph leaves the line's bbox essentially AT the boundary).
+     *  - NAME: RIGHT edge (a cut surname → "King Gon") or TOP edge (a name cut at the top). The LEFT
+     *    edge is NOT used for the name — comments are left-aligned, so a name naturally starts near the
+     *    left and that is not evidence of a cut.
+     *  - VALUE: LEFT edge, but ONLY when the read value is a bare whole small integer (≤3 digits, no
+     *    dot) sitting against the left — the ".44"→"44" clipped-leading-decimal case. A value with any
+     *    left margin, or a decimal/fixed price, is left to print (never a blind 44→0.44).
+     */
+    private fun isEdgeClipped(name: OLine, claimLine: OLine, claim: Claim, cropW: Int): Boolean {
+        fun margin(h: Int) = maxOf(3, h / 6)
+        val nm = margin(name.box.height)
+        val nameClip = name.box.right >= cropW - nm || name.box.top <= nm
+        val cm = margin(claimLine.box.height)
+        val g = claim.grams
+        val bareWholeInt = g != null && !g.contains('.') && g.length <= 3
+        val valueLeadingDecimalClip = bareWholeInt && claimLine.box.left <= cm
+        return nameClip || valueLeadingDecimalClip
     }
 }

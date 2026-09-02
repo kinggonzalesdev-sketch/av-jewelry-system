@@ -35,17 +35,34 @@ class CaptureRoiTest {
     @Test
     fun tooSmall_box_isInvalid() {
         assertFalse(CaptureRoi(0.1f, 0.1f, 0.02f, 0.2f).isValid()) // width < MIN_FRACTION
-        assertFalse(CaptureRoi(0.1f, 0.1f, 0.2f, 0.02f).isValid()) // height < MIN_FRACTION
+        assertFalse(CaptureRoi(0.1f, 0.1f, 0.2f, 0.02f).isValid()) // height < MIN_HEIGHT_FRACTION
+    }
+
+    // STEP 4 (Owner 2026-09-02): a box too SHORT to hold a two-line comment is rejected — a height
+    // between the old side-minimum (0.05) and the new two-line floor (0.09) is now invalid.
+    @Test
+    fun shallowBox_belowTwoLineMinimum_isInvalid() {
+        assertFalse(CaptureRoi(0.1f, 0.1f, 0.5f, 0.07f).isValid()) // 0.05 <= height < MIN_HEIGHT_FRACTION
+        assertTrue(CaptureRoi(0.1f, 0.1f, 0.5f, 0.10f).isValid()) // >= MIN_HEIGHT_FRACTION → ok
     }
 
     @Test
     fun belowMinimumPixels_returnsNull_evenWhenNormalizedValid() {
-        // 0.06 of a 200px-wide screen = 12px < MIN_PX (40) → no crop.
-        val roi = CaptureRoi(0.1f, 0.1f, 0.06f, 0.06f)
+        // width 0.06 of a 200px-wide screen = 12px < MIN_PX (40) → no crop (height kept valid at 0.10).
+        val roi = CaptureRoi(0.1f, 0.1f, 0.06f, 0.10f)
         assertTrue(roi.isValid())
         assertNull(roi.toPixelRoi(200, 200))
-        // Same box on a full-size screen is fine.
+        // Same box on a full-size screen is fine (width 65px, height 240px both clear the floors).
         assertTrue(roi.toPixelRoi(1080, 2400) != null)
+    }
+
+    // A crop that is wide enough but SHORTER than MIN_HEIGHT_PX yields no crop (two-line pixel floor).
+    @Test
+    fun belowMinimumHeightPixels_returnsNull() {
+        // height 0.09 of an 800px-tall screen = 72px < MIN_HEIGHT_PX (90) → null; width is ample.
+        val roi = CaptureRoi(0.1f, 0.1f, 0.6f, 0.09f)
+        assertTrue(roi.isValid())
+        assertNull(roi.toPixelRoi(1080, 800))
     }
 
     @Test

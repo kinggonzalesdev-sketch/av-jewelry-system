@@ -269,27 +269,26 @@ class SetupActivity : AppCompatActivity() {
         card.addView(captureAreaStatus)
         card.addView(
             TextView(this).apply {
-                text = "Capture reads ONLY inside the locked box. Position it over one comment, then lock it."
+                // The lock / done / resize controls now live ON the box (Box Capture v2), so the
+                // dashboard only needs status + a way in and a reset. Owner 2026-09-02.
+                text = "Capture reads ONLY inside the box. Tap Show / Edit Area, drag it over one comment, " +
+                    "resize with the corner grip, then tap ✓ (or the lock) on the box itself."
                 textSize = 11f; setTextColor(gray); setPadding(0, dp(4), 0, dp(10))
             },
             wide(),
         )
         val lp = { LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
         val row1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        row1.addView(ghostButton("Set / Edit Box") { onEditBox() }, lp().apply { rightMargin = dp(5) })
+        row1.addView(ghostButton("Show / Edit Area") { onEditBox() }, lp().apply { rightMargin = dp(5) })
+        // Reset stays — the ONE safe way to recover a corrupted / off-screen saved ROI (Owner: do not remove).
         row1.addView(
-            ghostButton("Lock Box") { OverlayCaptureService.lockBox(this); refreshCaptureArea() },
+            ghostButton("Reset") { OverlayCaptureService.resetBox(this); refreshCaptureArea() },
             lp().apply { leftMargin = dp(5) },
         )
         card.addView(row1, wide())
-        val row2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        row2.addView(
-            ghostButton("Reset Box") { OverlayCaptureService.resetBox(this); refreshCaptureArea() },
-            lp().apply { rightMargin = dp(5) },
-        )
-        controlsToggleBtn = ghostButton("Hide Controls") { onToggleControls() }
-        row2.addView(controlsToggleBtn, lp().apply { leftMargin = dp(5) })
-        card.addView(row2, wide().apply { topMargin = dp(8) })
+        // Secondary: declutter the floating capture button during a live (long-press its handle to restore).
+        controlsToggleBtn = ghostButton("Hide Floating Button") { onToggleControls() }
+        card.addView(controlsToggleBtn, wide().apply { topMargin = dp(8) })
         return card
     }
 
@@ -297,7 +296,7 @@ class SetupActivity : AppCompatActivity() {
         if (!Settings.canDrawOverlays(this)) { toast("Grant overlay permission first (Overlay → Grant Now)."); return }
         if (!OverlayCaptureService.isRunning) OverlayCaptureService.start(this)
         OverlayCaptureService.editBox(this)
-        toast("Drag the box over one comment; drag the corner to resize; then Lock Box.")
+        toast("Drag the box over one comment; drag the corner grip to resize; then tap ✓ or the lock on the box.")
         refreshCaptureArea()
     }
 
@@ -315,7 +314,7 @@ class SetupActivity : AppCompatActivity() {
         }
         captureAreaStatus.text = text
         captureAreaStatus.setTextColor(color)
-        controlsToggleBtn.text = if (store.controlsHidden) "Show Controls" else "Hide Controls"
+        controlsToggleBtn.text = if (store.controlsHidden) "Show Floating Button" else "Hide Floating Button"
     }
 
     // 4) PRINTER CARD.
