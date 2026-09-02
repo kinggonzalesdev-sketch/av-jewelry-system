@@ -327,6 +327,15 @@ object ScreenshotOcr {
         }
     }
 
+    /**
+     * BOX CAPTURE (Owner 2026-09-02). OCR the LOCKED-box CROP ONLY and validate one name + one
+     * claim (guessBox). The crop IS the entire universe of eligible OCR content — no full-screen
+     * scan, no ROI fast-path, no pin gate. The caller crops to the saved box before calling this.
+     */
+    fun analyzeBox(crop: Bitmap, onResult: (BoxGuess) -> Unit) {
+        ocr(crop) { lines -> onResult(guessBox(lines)) }
+    }
+
     /** Run the recognizer on a bitmap and hand back its lines with bounding boxes. */
     private fun ocr(bitmap: Bitmap, onLines: (List<OLine>) -> Unit) {
         recognizer.process(InputImage.fromBitmap(bitmap, 0))

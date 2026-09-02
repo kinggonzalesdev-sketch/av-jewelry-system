@@ -434,23 +434,54 @@ class OverlayCaptureService : Service() {
             //    sticker is NEVER gated on a slow live-venue upload (Owner priority 2026-08-14:
             //    the right-name / right-grams sticker must come out FIRST; the row, upload, and
             //    send all follow). A blank read (no pinned comment) leaves name/grams empty.
+            val store = SecureStore.get(ctx)
             val tOcrStart = android.os.SystemClock.elapsedRealtime()
-            val guess = ocrBlocking(bmp)
-            val tOcrEnd = android.os.SystemClock.elapsedRealtime()
-
-            // PIN GATE (Owner 2026-08-30). WAITING = no confident on-screen pin, OR the visual detector
-            // could not operate (templates missing / pixel snapshot failed / detector threw → FAIL
-            // CLOSED). Withhold the capture ENTIRELY on the phone: no local print, no PC row, no
-            // Facebook match, no AUTO send. A zero-pin capture must NEVER fall through into name/OCR
-            // matching and surface as "Name not read / No Facebook match" on the PC. Because no row is
-            // created, there is nothing for the PC to match or send — the decision stays fully on-device.
-            // The operator pins the customer's real comment and taps again.
-            if (guess?.pinGate == com.mineflow.capture.data.PinGate.WAITING) {
-                Log.i(TAG, "PIN GATE: WaitingForPin — no confident pin; capture withheld (no print, no row, no send).")
-                toastMain("Waiting for Pinned Comment — pin the customer's comment, then capture again.")
-                bmp.recycle()
-                return@thread
+            val guess: com.mineflow.capture.data.OcrGuess?
+            if (store.captureMode == SecureStore.MODE_BOX) {
+                // BOX CAPTURE (Owner 2026-09-02): OCR ONLY the LOCKED box crop — never the full
+                // screen, no pin. The saved normalized box is mapped to this bitmap's pixels and
+                // validated; an unset / unlocked / off-screen box STOPS here (no OCR, no print, no
+                // row) with a clear message (PHASE 13/15) rather than cropping a wrong region.
+                val roi = store.captureRoi
+                val px = roi?.toPixelRoi(bmp.width, bmp.height)
+                when {
+                    roi == null -> { toastMain("Set Capture Area first — Setup → Capture Area."); bmp.recycle(); return@thread }
+                    !roi.locked -> { toastMain("Lock Capture Area first."); bmp.recycle(); return@thread }
+                    px == null -> { toastMain("Please reset your Capture Area."); bmp.recycle(); return@thread }
+                }
+                val tCrop = android.os.SystemClock.elapsedRealtime()
+                val crop = runCatching { Bitmap.createBitmap(bmp, px!!.left, px.top, px.width, px.height) }.getOrNull()
+                if (crop == null) { toastMain("Please reset your Capture Area."); bmp.recycle(); return@thread }
+                val box = ocrBoxBlocking(crop)
+                runCatching { crop.recycle() }
+                Log.i(
+                    TAG,
+                    "timing: BOX crop=${tCrop - tOcrStart}ms ocr=" +
+                        "${android.os.SystemClock.elapsedRealtime() - tCrop}ms review=${box?.review}",
+                )
+                if (box == null || box.review != com.mineflow.capture.data.BoxReview.NONE) {
+                    toastMain(
+                        when (box?.review) {
+                            com.mineflow.capture.data.BoxReview.NO_CLAIM -> "Claim not read — needs review."
+                            com.mineflow.capture.data.BoxReview.MULTIPLE -> "More than one comment in the box — needs review."
+                            else -> "Name not read — needs review." // NO_NAME / EMPTY / null
+                        },
+                    )
+                }
+                guess = box?.guess
+            } else {
+                guess = ocrBlocking(bmp)
+                // PIN GATE (legacy full-screen path only). WAITING = no confident on-screen pin, OR the
+                // detector could not operate (FAIL CLOSED). Withhold the capture ENTIRELY: no local
+                // print, no PC row, no send. Box mode never shows "Waiting for Pinned Comment".
+                if (guess?.pinGate == com.mineflow.capture.data.PinGate.WAITING) {
+                    Log.i(TAG, "PIN GATE: WaitingForPin — capture withheld (no print, no row, no send).")
+                    toastMain("Waiting for Pinned Comment — pin the customer's comment, then capture again.")
+                    bmp.recycle()
+                    return@thread
+                }
             }
+            val tOcrEnd = android.os.SystemClock.elapsedRealtime()
 
             val name = guess?.fbName?.trim().orEmpty()
             // ALWAYS attach the OCR result — including the RAW recognised lines — whenever OCR
@@ -605,6 +636,16 @@ class OverlayCaptureService : Service() {
         // onCaptured withholds the capture entirely (no print, no PC row, no send). A single pin →
         // SELECTED (reads name+claim); 2+/ambiguous → NEEDS_REVIEW (a manual-review row, no auto-send).
         ScreenshotOcr.analyze(bmp, applyPinGate = true) { g -> result = g; latch.countDown() }
+        runCatching { latch.await(5, java.util.concurrent.TimeUnit.SECONDS) }
+        return result
+    }
+
+    /** BOX CAPTURE (Owner 2026-09-02): OCR the already-cropped locked box and validate one name +
+     *  one claim (guessBox). Blocks briefly for the result, like ocrBlocking. */
+    private fun ocrBoxBlocking(crop: Bitmap): com.mineflow.capture.data.BoxGuess? {
+        val latch = java.util.concurrent.CountDownLatch(1)
+        var result: com.mineflow.capture.data.BoxGuess? = null
+        ScreenshotOcr.analyzeBox(crop) { g -> result = g; latch.countDown() }
         runCatching { latch.await(5, java.util.concurrent.TimeUnit.SECONDS) }
         return result
     }

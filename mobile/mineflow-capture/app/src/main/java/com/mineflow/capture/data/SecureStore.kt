@@ -79,6 +79,47 @@ class SecureStore private constructor(private val prefs: SharedPreferences) {
         get() = prefs.getString(KEY_PRICE_REV, null)
         set(value) = prefs.edit().putString(KEY_PRICE_REV, value).apply()
 
+    // ---- Box Capture (Owner 2026-09-02) ---------------------------------------
+    /** Capture mode: "box" (Box Capture v1 — crop to the locked box, no machine pin) or
+     *  "full_screen_pin" (the legacy full-screen + visual-pin path, preserved). Default box. */
+    var captureMode: String
+        get() = prefs.getString(KEY_CAPTURE_MODE, MODE_BOX) ?: MODE_BOX
+        set(value) = prefs.edit().putString(KEY_CAPTURE_MODE, value).apply()
+
+    /** The saved Capture Box as NORMALIZED fractions (survives resolution/scale/restart), or null
+     *  when the operator has not set one yet. Locked state travels with it. */
+    var captureRoi: CaptureRoi?
+        get() {
+            if (!prefs.getBoolean(KEY_ROI_SET, false)) return null
+            return CaptureRoi(
+                prefs.getFloat(KEY_ROI_L, 0f),
+                prefs.getFloat(KEY_ROI_T, 0f),
+                prefs.getFloat(KEY_ROI_W, 0f),
+                prefs.getFloat(KEY_ROI_H, 0f),
+                prefs.getBoolean(KEY_ROI_LOCKED, false),
+            )
+        }
+        set(value) {
+            val e = prefs.edit()
+            if (value == null) {
+                e.putBoolean(KEY_ROI_SET, false)
+            } else {
+                e.putBoolean(KEY_ROI_SET, true)
+                    .putFloat(KEY_ROI_L, value.left)
+                    .putFloat(KEY_ROI_T, value.top)
+                    .putFloat(KEY_ROI_W, value.width)
+                    .putFloat(KEY_ROI_H, value.height)
+                    .putBoolean(KEY_ROI_LOCKED, value.locked)
+            }
+            e.apply()
+        }
+
+    /** Whether the floating controls (button + quick menu) are hidden while the locked box stays
+     *  visible (PHASE 3). A small restore handle always remains so controls are never lost. */
+    var controlsHidden: Boolean
+        get() = prefs.getBoolean(KEY_CONTROLS_HIDDEN, false)
+        set(value) = prefs.edit().putBoolean(KEY_CONTROLS_HIDDEN, value).apply()
+
     // Signed in while we hold EITHER a live access token OR a refresh token: an access
     // token expires after ~1h (shorter than a live), but the refresh token lets us mint
     // a new one silently. Only a real logout / a failed refresh clears both.
@@ -101,6 +142,18 @@ class SecureStore private constructor(private val prefs: SharedPreferences) {
         private const val KEY_PRICE_PER_GRAM = "price_per_gram"
         private const val KEY_PRICE_DIRTY = "price_per_gram_dirty"
         private const val KEY_PRICE_REV = "price_per_gram_server_rev"
+        private const val KEY_CAPTURE_MODE = "capture_mode"
+        private const val KEY_ROI_SET = "capture_roi_set"
+        private const val KEY_ROI_L = "capture_roi_left"
+        private const val KEY_ROI_T = "capture_roi_top"
+        private const val KEY_ROI_W = "capture_roi_width"
+        private const val KEY_ROI_H = "capture_roi_height"
+        private const val KEY_ROI_LOCKED = "capture_roi_locked"
+        private const val KEY_CONTROLS_HIDDEN = "capture_controls_hidden"
+
+        /** Capture-mode values (Owner 2026-09-02). */
+        const val MODE_BOX = "box"
+        const val MODE_FULL_SCREEN_PIN = "full_screen_pin"
 
         @Volatile private var instance: SecureStore? = null
 
