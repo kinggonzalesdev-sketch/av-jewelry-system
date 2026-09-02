@@ -33,6 +33,15 @@ data class OcrGuess(
     val pinGate: PinGate? = null,
 )
 
+/** Why a BOX CAPTURE (Owner 2026-09-02) is Needs Review, or NONE for a clean single name + claim.
+ *  EMPTY = nothing usable · NO_NAME = a claim but no customer · NO_CLAIM = a name but no value ·
+ *  MULTIPLE = the box holds two+ plausible comment blocks (never auto-pick one). */
+enum class BoxReview { NONE, EMPTY, NO_NAME, NO_CLAIM, MULTIPLE }
+
+/** A Box Capture result: the parsed guess (fbName/grams are null unless Selected) + the review
+ *  reason, so the phone can show the right message and print ONLY on NONE. */
+data class BoxGuess(val guess: OcrGuess, val review: BoxReview)
+
 /** A recognised line's screen rectangle — a plain value type (not android.graphics.Rect) so
  *  the selection logic is pure-JVM unit-testable. */
 internal data class Box(val left: Int, val top: Int, val right: Int, val bottom: Int) {
@@ -197,7 +206,11 @@ object ScreenshotOcr {
     // the video — never a buyer's name.
     private val BLOCK = Regex(
         "\\bmineflow\\b|\\bcapture\\b|\\bglive\\b|\\bcamera\\b|\\bfloating button\\b|" +
-            "\\bopen app\\b|^g?\\s*live(\\s*\\d+)?$",
+            "\\bopen app\\b|^g?\\s*live(\\s*\\d+)?$|" +
+            // Box Capture overlay labels (Owner 2026-09-02) — belt-and-suspenders so a
+            // "Locked" / "Lock" / "Unlock" chip can never become a name/claim if it ever
+            // leaks into the crop (the overlay is also hidden during the screenshot).
+            "\\block(ed)?\\b|\\bunlock\\b|\\bcapture area\\b",
         RegexOption.IGNORE_CASE,
     )
     // Facebook Live PANEL / NAVIGATION tab labels — the "Overview / Live chat / Your replies"
@@ -759,6 +772,56 @@ object ScreenshotOcr {
             itemQuery = claim.value,
             grams = claim.grams,
             rawLines = rawLines,
+        )
+    }
+
+    /**
+     * BOX CAPTURE selection (Owner 2026-09-02). Runs on the locked box's CROP lines ONLY — no
+     * full-screen selection, NO pin gate, and NO positional bottom-most pick. The box authorizes
+     * WHERE to look; OCR still validates WHAT is inside. Decimal grammar is fully preserved
+     * (restoreLeadingDecimals + parseClaim): ".64"→0.64, ".18"→0.18, "M. 64"→0.64, "64"→64, and a
+     * fixed price stays a fixed price (grams null).
+     *
+     * PHASE 6/7 rule: EXACTLY one plausible customer name AND one plausible claim → Selected (auto
+     * print). Anything else → Needs Review with a specific reason — and NEVER an arbitrary pick when
+     * the box holds multiple plausible comment blocks.
+     */
+    internal fun guessBox(olinesIn: List<OLine>): BoxGuess {
+        val rawLines = olinesIn.map { it.text }
+        val olines = restoreLeadingDecimals(olinesIn)
+        val clean = olines.filterNot { isUiNoise(it.text) }
+
+        val nameLines = clean.filter {
+            looksLikeName(it.text) && !isChrome(it.text) && !MINE.containsMatchIn(it.text) && parseClaim(it.text) == null
+        }
+        val claims = clean.mapNotNull { ol -> parseClaim(ol.text)?.let { ol to it } }
+
+        val distinctNames = nameLines
+            .map { sanitizeLeadingNameGlyph(stripClaim(it.text).ifBlank { it.text }) }
+            .filter { it.isNotBlank() }
+            .distinct()
+        val distinctClaims = claims.map { it.second.value ?: it.second.grams ?: "" }.distinct()
+
+        val review = when {
+            distinctNames.isEmpty() && distinctClaims.isEmpty() -> BoxReview.EMPTY
+            distinctNames.isEmpty() -> BoxReview.NO_NAME
+            distinctClaims.isEmpty() -> BoxReview.NO_CLAIM
+            distinctNames.size > 1 || distinctClaims.size > 1 -> BoxReview.MULTIPLE
+            else -> BoxReview.NONE
+        }
+        if (review != BoxReview.NONE) return BoxGuess(OcrGuess(null, null, null, rawLines), review)
+
+        val claim = claims.first().second
+        val name = sanitizeLeadingNameGlyph(
+            nameForClaim(clean, claims.first().first)
+                ?: stripClaim(nameLines.first().text).ifBlank { nameLines.first().text },
+        )
+        if (!looksLikeName(name) || isChrome(name)) {
+            return BoxGuess(OcrGuess(null, null, null, rawLines), BoxReview.NO_NAME)
+        }
+        return BoxGuess(
+            OcrGuess(fbName = name, itemQuery = claim.value, grams = claim.grams, rawLines = rawLines),
+            BoxReview.NONE,
         )
     }
 }
