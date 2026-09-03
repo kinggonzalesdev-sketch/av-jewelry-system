@@ -556,10 +556,10 @@ class OverlayCaptureService : Service() {
         }
     }
 
-    /** Minimum draggable box height — a practical ~48dp floor (Name + one claim line), never below the
-     *  crop-viability floor. Owner-tuned 2026-09-03 for a thin single-comment box. */
+    /** Minimum draggable box height — just below the thin default so the operator can shrink a little,
+     *  never below the crop-viability floor. Fraction-based (scales with the screen like the default),
+     *  so it never exceeds the fractional default on shorter phones. Owner-tuned 2026-09-03. */
     private fun minBoxHeightPx(sh: Int): Int = maxOf(
-        dp(48),
         com.mineflow.capture.data.CaptureRoi.MIN_HEIGHT_PX,
         (sh * com.mineflow.capture.data.CaptureRoi.MIN_HEIGHT_FRACTION).toInt(),
     )

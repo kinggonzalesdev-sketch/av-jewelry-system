@@ -55,24 +55,23 @@ data class CaptureRoi(
         /** A box narrower than this fraction of the screen is rejected as unusable. */
         const val MIN_FRACTION = 0.05f
 
-        /** (Owner 2026-09-02) A box shorter than this fraction can't hold ONE two-line Facebook comment
-         *  (name + value). Deliberately small so the box can hug a single comment closely (the approved
-         *  reference is short), while still rejecting an unusably shallow box. A fraction → scales with
-         *  the screen; the real floor for tiny screens is MIN_HEIGHT_PX. */
-        const val MIN_HEIGHT_FRACTION = 0.045f
+        /** (Owner 2026-09-03) A box shorter than this fraction is rejected. Kept just below the thin
+         *  ~4.2% default so the operator can shrink a little, while a fraction scales with the screen.
+         *  The hard pixel floor for tiny screens is MIN_HEIGHT_PX. */
+        const val MIN_HEIGHT_FRACTION = 0.035f
 
         /** A crop narrower than this many pixels is rejected (too little to OCR). */
         const val MIN_PX = 40
 
-        /** A crop shorter than this many pixels is rejected — a one-comment (two-line) floor. ~70–90dp
-         *  on common densities; small enough to fit closely around a single comment. */
-        const val MIN_HEIGHT_PX = 96
+        /** A crop shorter than this many pixels is rejected — a one-comment floor. Lowered so the thin
+         *  ~100 px default is valid on shorter (1920 px) screens too. */
+        const val MIN_HEIGHT_PX = 72
         private const val EPS = 0.001f
 
-        /** Sensible starting box: a LONG, THIN band over one comment (the operator moves/resizes it).
-         *  Owner-tuned 2026-09-03 to 80% × 6% at (0.10, 0.60) — ≈ 864 × 144 px on a 1080×2400 phone
-         *  (~6:1, ~314×52 dp), sized to just "Name + one claim line". */
-        fun default(): CaptureRoi = CaptureRoi(0.10f, 0.60f, 0.80f, 0.06f)
+        /** Sensible starting box: a LONG, THIN band over one comment, CENTERED horizontally (left 0.176
+         *  = right margin 0.176). Owner-tuned 2026-09-03 to 64.8% × 4.2% at (0.176, 0.60) — ≈ 700 × 100 px
+         *  on a 1080×2400 phone (~7:1), sized to just "Name + one claim line". */
+        fun default(): CaptureRoi = CaptureRoi(0.176f, 0.60f, 0.648f, 0.042f)
 
         /**
          * TEXT-SAFE LEFT INSET (Owner 2026-09-03) — how many px to skip from the box's LEFT edge before

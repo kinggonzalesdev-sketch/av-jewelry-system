@@ -15,10 +15,10 @@ class CaptureRoiTest {
         assertTrue(roi.isValid())
         // 1080×2400 (a common portrait phone).
         val px = roi.toPixelRoi(1080, 2400)!!
-        assertEquals(Math.round(0.10f * 1080), px.left)
+        assertEquals(Math.round(0.176f * 1080), px.left)
         assertEquals(Math.round(0.60f * 2400), px.top)
-        assertEquals(Math.round(0.80f * 1080), px.width)
-        assertEquals(Math.round(0.06f * 2400), px.height)
+        assertEquals(Math.round(0.648f * 1080), px.width)
+        assertEquals(Math.round(0.042f * 2400), px.height)
         // Fully inside the bitmap.
         assertTrue(px.left + px.width <= 1080)
         assertTrue(px.top + px.height <= 2400)
@@ -56,11 +56,11 @@ class CaptureRoiTest {
         assertTrue(roi.toPixelRoi(1080, 2400) != null)
     }
 
-    // A crop that is wide enough but SHORTER than MIN_HEIGHT_PX yields no crop (two-line pixel floor).
+    // A crop that is wide enough but SHORTER than MIN_HEIGHT_PX yields no crop (one-comment pixel floor).
     @Test
     fun belowMinimumHeightPixels_returnsNull() {
-        // height 0.09 of an 800px-tall screen = 72px < MIN_HEIGHT_PX (90) → null; width is ample.
-        val roi = CaptureRoi(0.1f, 0.1f, 0.6f, 0.09f)
+        // height 0.08 of an 800px-tall screen = 64px < MIN_HEIGHT_PX (72) → null; width is ample.
+        val roi = CaptureRoi(0.1f, 0.1f, 0.6f, 0.08f)
         assertTrue(roi.isValid())
         assertNull(roi.toPixelRoi(1080, 800))
     }
