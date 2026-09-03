@@ -18,7 +18,7 @@ class CaptureRoiTest {
         assertEquals(Math.round(0.08f * 1080), px.left)
         assertEquals(Math.round(0.60f * 2400), px.top)
         assertEquals(Math.round(0.84f * 1080), px.width)
-        assertEquals(Math.round(0.13f * 2400), px.height)
+        assertEquals(Math.round(0.11f * 2400), px.height)
         // Fully inside the bitmap.
         assertTrue(px.left + px.width <= 1080)
         assertTrue(px.top + px.height <= 2400)

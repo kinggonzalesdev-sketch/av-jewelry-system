@@ -70,8 +70,9 @@ data class CaptureRoi(
         private const val EPS = 0.001f
 
         /** Sensible starting box: a SHORT band over the comment area (the operator shrinks/moves it to
-         *  hug one comment). Shorter default than before to match the approved reference. */
-        fun default(): CaptureRoi = CaptureRoi(0.08f, 0.60f, 0.84f, 0.13f)
+         *  hug one comment). Height trimmed ~15% (0.13 → 0.11) so it sits tighter around one comment
+         *  block with comfortable padding — Owner-approved, width unchanged. */
+        fun default(): CaptureRoi = CaptureRoi(0.08f, 0.60f, 0.84f, 0.11f)
     }
 }
 
