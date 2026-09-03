@@ -72,8 +72,12 @@ class OverlayCaptureService : Service() {
     private var boxView: CaptureBoxView? = null
     private var boxLp: WindowManager.LayoutParams? = null
     private var restoreHandle: View? = null
-    // The tiny tap-to-unlock chip shown only while the box is LOCKED (Box Capture v2, Owner 2026-09-02).
-    private var lockChip: View? = null
+    // The Lock/Check controls window OUTSIDE the box's upper-right (Owner 2026-09-02 reference), + whether
+    // the edit UI (controls + resize grip) is currently shown. A saved locked ROI restores as FINALIZED
+    // (outline only) until the operator taps Edit Box.
+    private var boxControls: BoxControlsView? = null
+    private var controlsLp: WindowManager.LayoutParams? = null
+    private var boxEditing: Boolean = false
 
     private var projection: MediaProjection? = null
     // A PERSISTENT screen-mirror kept alive for the whole session, so consent is asked
@@ -112,8 +116,9 @@ class OverlayCaptureService : Service() {
         // handled at capture time — an off-screen box fails safely there rather than cropping wrong.
         val store = SecureStore.get(this)
         if (store.captureMode == SecureStore.MODE_BOX && store.captureRoi != null) {
+            // Restore the saved box as FINALIZED (outline only) — editing UI returns via Edit Box.
+            boxEditing = false
             showCaptureBox()
-            if (store.captureRoi?.locked == true) showLockChip()
         }
         if (store.controlsHidden) setControlsHidden(true)
     }
@@ -150,8 +155,7 @@ class OverlayCaptureService : Service() {
             ACTION_SHOW -> addButton()
             ACTION_CAPTURE -> onCaptureTap()
             ACTION_SHOW_BOX -> showCaptureBox()
-            ACTION_EDIT_BOX -> setBoxLocked(false)
-            ACTION_LOCK_BOX -> setBoxLocked(true)
+            ACTION_EDIT_BOX -> enterEditMode()
             ACTION_RESET_BOX -> resetCaptureBox()
             ACTION_HIDE_CONTROLS -> setControlsHidden(true)
             ACTION_SHOW_CONTROLS -> setControlsHidden(false)
@@ -286,7 +290,7 @@ class OverlayCaptureService : Service() {
         // proven to contain Facebook content only. The saved box coords are unaffected.
         boxView?.visibility = View.GONE
         restoreHandle?.visibility = View.GONE
-        lockChip?.visibility = View.GONE
+        boxControls?.visibility = View.GONE
         handler.postDelayed({
             // Reuse the live mirror when we already have consent — no popup. Only the
             // FIRST capture of a session asks for permission.
@@ -355,9 +359,10 @@ class OverlayCaptureService : Service() {
         return m.widthPixels to m.heightPixels
     }
 
-    /** Show the Capture Box at the saved (or default) normalized position. Idempotent. */
+    /** Show the Capture Box at the saved (or default) normalized position. FINALIZED (outline only, no
+     *  controls) unless we are in edit mode. Idempotent. */
     private fun showCaptureBox() {
-        if (boxView != null) { applyBoxTouchability(); return }
+        if (boxView != null) { applyBoxState(); return }
         val store = SecureStore.get(this)
         val roi = (store.captureRoi ?: com.mineflow.capture.data.CaptureRoi.default()).normalized()
         if (store.captureRoi == null) store.captureRoi = roi // seed a usable default
@@ -366,103 +371,158 @@ class OverlayCaptureService : Service() {
             (roi.width * sw).toInt().coerceAtLeast(dp(48)),
             (roi.height * sh).toInt().coerceAtLeast(dp(48)),
             overlayType(),
-            boxFlags(roi.locked),
+            boxFlags(editableUnlocked = false),
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = (roi.left * sw).toInt()
             y = (roi.top * sh).toInt()
         }
-        val view = CaptureBoxView(this).apply { locked = roi.locked }
+        val view = CaptureBoxView(this).apply { editUi = boxEditing }
         view.setOnTouchListener(BoxDragResizeListener())
         boxLp = lp
         boxView = view
         runCatching { windowManager.addView(view, lp) }
-        applyBoxTouchability()
+        applyBoxState()
     }
 
     private fun hideCaptureBox() {
         boxView?.let { runCatching { windowManager.removeView(it) } }
         boxView = null
         boxLp = null
-        hideLockChip()
+        hideControls()
     }
 
-    // COORDINATE ALIGNMENT (Owner 2026-09-02, STEP 1). FLAG_LAYOUT_IN_SCREEN lays the box window out in
-    // the FULL physical screen from the top-left, ignoring the status bar — so the window's (x,y) are the
-    // SAME pixels the MediaProjection mirror captures (getRealMetrics for both). Without it an overlay can
-    // be offset DOWN by the status-bar height while the bitmap starts at the physical top, shifting the
-    // crop off the comment. This makes overlay-Y == bitmap-Y by construction (status/nav-bar offset handled).
-    private fun boxFlags(locked: Boolean): Int {
+    // COORDINATE ALIGNMENT (Owner 2026-09-02). FLAG_LAYOUT_IN_SCREEN lays the box out in the FULL physical
+    // screen from the top-left, so the window's (x,y) are the SAME pixels the MediaProjection mirror
+    // captures (getRealMetrics both sides) — overlay-Y == bitmap-Y (status/nav offset handled). The box is
+    // touchable ONLY while EDITING and UNLOCKED; otherwise NOT_TOUCHABLE so comments under it stay tappable.
+    private fun boxFlags(editableUnlocked: Boolean): Int {
         val base = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-        return if (locked) base or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE else base
+        return if (editableUnlocked) base else base or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
     }
 
-    /** Locked → the box is NOT_TOUCHABLE (comments below stay tappable, no accidental edit) and shows
-     *  the plain outline; unlocked → touchable for drag/resize with handles. */
-    private fun applyBoxTouchability() {
+    private fun isRoiLocked(): Boolean = SecureStore.get(this).captureRoi?.locked ?: false
+
+    /** Apply the current (editing + locked) state to the box + controls: touchability, the resize grip,
+     *  and whether the external Lock/Check controls are shown. */
+    private fun applyBoxState() {
         val lp = boxLp ?: return
         val v = boxView ?: return
-        val locked = SecureStore.get(this).captureRoi?.locked ?: false
-        lp.flags = boxFlags(locked)
-        v.locked = locked
+        val editableUnlocked = boxEditing && !isRoiLocked()
+        lp.flags = boxFlags(editableUnlocked)
+        v.editUi = boxEditing
         runCatching { windowManager.updateViewLayout(v, lp) }
+        if (boxEditing) showControls() else hideControls()
     }
 
+    /** Persist the box's current window rect as the normalized ROI (keeps the current locked flag). */
     private fun saveBoxFromWindow() {
         val lp = boxLp ?: return
         val (sw, sh) = screenSize()
         if (sw <= 0 || sh <= 0) return
-        val locked = SecureStore.get(this).captureRoi?.locked ?: false
+        val locked = isRoiLocked()
         SecureStore.get(this).captureRoi = com.mineflow.capture.data.CaptureRoi(
             lp.x.toFloat() / sw, lp.y.toFloat() / sh, lp.width.toFloat() / sw, lp.height.toFloat() / sh, locked,
         ).normalized()
     }
 
-    private fun setBoxLocked(locked: Boolean) {
+    /** Edit Box (dashboard) → show the box UNLOCKED with the Lock/Check controls + resize grip. */
+    private fun enterEditMode() {
         val store = SecureStore.get(this)
-        store.captureRoi = (store.captureRoi ?: com.mineflow.capture.data.CaptureRoi.default()).copy(locked = locked)
-        if (boxView == null) showCaptureBox() else applyBoxTouchability()
-        if (locked) showLockChip() else hideLockChip()
-        toastMain(if (locked) "Capture Area locked — tap the lock to edit again." else "Capture Area unlocked — drag to move, drag the corner to resize, then tap ✓.")
+        store.captureRoi = (store.captureRoi ?: com.mineflow.capture.data.CaptureRoi.default()).copy(locked = false)
+        boxEditing = true
+        if (boxView == null) showCaptureBox() else applyBoxState()
+        toastMain("Edit Capture Area — drag to move, drag the corner to resize. Tap ✓ when done.")
     }
 
-    // The tiny tap-to-unlock chip shown at a LOCKED box's upper-right. A SEPARATE small touchable window
-    // so the locked box stays NOT_TOUCHABLE (comments under it remain tappable) yet there is always a
-    // one-tap way back to Edit Mode (Owner 2026-09-02, Part A).
-    private fun showLockChip() {
-        val lp = boxLp ?: run { hideLockChip(); return }
-        hideLockChip()
-        val size = dp(34)
-        val pad = dp(6)
-        val chipLp = WindowManager.LayoutParams(
-            size, size, overlayType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = (lp.x + lp.width - size - pad).coerceAtLeast(0)
-            y = (lp.y + pad).coerceAtLeast(0)
-        }
-        val v = LockChipView(this).apply {
-            contentDescription = "Unlock Capture Area"
-            setOnClickListener { setBoxLocked(false) }
-        }
-        lockChip = v
-        runCatching { windowManager.addView(v, chipLp) }
+    /** Lock control → freeze / unfreeze move + resize; the box AND controls STAY visible (lock ≠ done). */
+    private fun toggleBoxLock() {
+        val store = SecureStore.get(this)
+        saveBoxFromWindow()
+        val nowLocked = !isRoiLocked()
+        store.captureRoi = (store.captureRoi ?: com.mineflow.capture.data.CaptureRoi.default()).copy(locked = nowLocked)
+        boxControls?.locked = nowLocked
+        applyBoxState()
+        toastMain(if (nowLocked) "Position locked — tap the lock again to move/resize." else "Unlocked — drag to move or resize.")
     }
 
-    private fun hideLockChip() {
-        lockChip?.let { runCatching { windowManager.removeView(it) } }
-        lockChip = null
+    /** Check (Done) → save + finalize: hide Lock, Check, the resize grip and every editing affordance,
+     *  leaving ONLY the gold box outline. Re-edit later from the dashboard (Edit Box). */
+    private fun finalizeBox() {
+        saveBoxFromWindow()
+        val store = SecureStore.get(this)
+        store.captureRoi = (store.captureRoi ?: com.mineflow.capture.data.CaptureRoi.default()).copy(locked = true)
+        boxEditing = false
+        applyBoxState()
+        toastMain("Capture Area saved.")
     }
 
     private fun resetCaptureBox() {
         SecureStore.get(this).captureRoi = com.mineflow.capture.data.CaptureRoi.default()
+        boxEditing = true
         hideCaptureBox()
         showCaptureBox()
-        toastMain("Capture Area reset. Position it over the comment, then Lock.")
+        toastMain("Capture Area reset — position it over one comment, then tap ✓.")
+    }
+
+    // ---- Lock/Check controls window (OUTSIDE the box, upper-right) -------------
+    private fun showControls() {
+        val box = boxLp ?: return
+        if (boxControls == null) {
+            val v = BoxControlsView(this).apply { locked = isRoiLocked() }
+            val lp = WindowManager.LayoutParams(
+                v.rowW, v.rowH, overlayType(),
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT,
+            ).apply { gravity = Gravity.TOP or Gravity.START }
+            v.setOnTouchListener(ControlsTouchListener(v))
+            boxControls = v
+            controlsLp = lp
+            runCatching { windowManager.addView(v, lp) }
+        } else {
+            boxControls?.locked = isRoiLocked()
+        }
+        // box is referenced by positionControls via boxLp; keep the reference to avoid an unused warning.
+        box.let { positionControls() }
+    }
+
+    private fun hideControls() {
+        boxControls?.let { runCatching { windowManager.removeView(it) } }
+        boxControls = null
+        controlsLp = null
+    }
+
+    /** Place the controls just OUTSIDE the box's upper-right; reposition so they are never clipped at the
+     *  top/right screen edges. The Capture Box coordinates themselves are never changed. */
+    private fun positionControls() {
+        val box = boxLp ?: return
+        val lp = controlsLp ?: return
+        val v = boxControls ?: return
+        val (sw, sh) = screenSize()
+        val gap = dp(8)
+        var x = box.x + box.width - v.rowW      // right-aligned to the box right edge
+        var y = box.y - v.rowH - gap            // above the box
+        if (y < 0) y = box.y + gap              // box near the top → drop just inside the top-right
+        if (x + v.rowW > sw) x = sw - v.rowW - gap  // near the right edge → shift left
+        if (x < 0) x = gap
+        if (y + v.rowH > sh) y = sh - v.rowH - gap
+        lp.x = x; lp.y = y
+        runCatching { windowManager.updateViewLayout(v, lp) }
+    }
+
+    private inner class ControlsTouchListener(private val v: BoxControlsView) : View.OnTouchListener {
+        override fun onTouch(view: View, e: MotionEvent): Boolean {
+            if (e.action == MotionEvent.ACTION_UP) {
+                when (v.hitControl(e.x, e.y)) {
+                    BoxControl.LOCK -> toggleBoxLock()
+                    BoxControl.CHECK -> finalizeBox()
+                    BoxControl.NONE -> {}
+                }
+            }
+            return true
+        }
     }
 
     /** Minimum draggable box height in px — the STEP 4 two-line floor, scaled to this screen. */
@@ -471,52 +531,35 @@ class OverlayCaptureService : Service() {
         (sh * com.mineflow.capture.data.CaptureRoi.MIN_HEIGHT_FRACTION).toInt(),
     )
 
-    /** DONE(✓)/LOCK on the box → persist the current position and LOCK it (Capture uses the locked
-     *  coords), which hides the edit controls and shows the tiny tap-to-unlock chip. The operator
-     *  finishes positioning WITHOUT returning to the dashboard (Owner 2026-09-02, Part A). */
-    private fun finishBoxEditing() {
-        saveBoxFromWindow()
-        setBoxLocked(true)
-    }
-
     private inner class BoxDragResizeListener : View.OnTouchListener {
         private var startX = 0; private var startY = 0; private var startW = 0; private var startH = 0
         private var touchX = 0f; private var touchY = 0f
-        private var mode = BoxControl.NONE
-        private var moved = false
+        private var resizing = false
         override fun onTouch(v: View, e: MotionEvent): Boolean {
             val lp = boxLp ?: return false
             val bv = boxView ?: return false
+            // The box only receives touches while EDITING + UNLOCKED (otherwise NOT_TOUCHABLE). Lower-right
+            // corner → resize; anywhere else → drag. Controls (Lock/Check) are a separate window.
             when (e.action) {
                 MotionEvent.ACTION_DOWN -> {
                     startX = lp.x; startY = lp.y; startW = lp.width; startH = lp.height
-                    touchX = e.rawX; touchY = e.rawY; moved = false
-                    // Route by which on-box control the press landed on (upper-right DONE/LOCK, bottom-
-                    // right resize grip, else drag-to-move).
-                    mode = bv.hitControl(e.x, e.y)
+                    touchX = e.rawX; touchY = e.rawY
+                    resizing = e.x > bv.width - bv.gripTouchPx && e.y > bv.height - bv.gripTouchPx
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (e.rawX - touchX).toInt(); val dy = (e.rawY - touchY).toInt()
-                    if (abs(dx) > dp(6) || abs(dy) > dp(6)) moved = true
                     val (sw, sh) = screenSize()
-                    when (mode) {
-                        BoxControl.RESIZE -> {
-                            lp.width = (startW + dx).coerceIn(dp(72), sw - lp.x)
-                            lp.height = (startH + dy).coerceIn(minBoxHeightPx(sh), sh - lp.y)
-                            runCatching { windowManager.updateViewLayout(v, lp) }
-                        }
-                        BoxControl.DONE, BoxControl.LOCK -> { /* a control press — never move the box */ }
-                        BoxControl.NONE -> {
-                            lp.x = (startX + dx).coerceIn(0, sw - lp.width)
-                            lp.y = (startY + dy).coerceIn(0, sh - lp.height)
-                            runCatching { windowManager.updateViewLayout(v, lp) }
-                        }
+                    if (resizing) {
+                        lp.width = (startW + dx).coerceIn(dp(64), sw - lp.x)
+                        lp.height = (startH + dy).coerceIn(minBoxHeightPx(sh), sh - lp.y)
+                    } else {
+                        lp.x = (startX + dx).coerceIn(0, sw - lp.width)
+                        lp.y = (startY + dy).coerceIn(0, sh - lp.height)
                     }
+                    runCatching { windowManager.updateViewLayout(v, lp) }
+                    positionControls() // keep the external controls attached to the box's upper-right
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    if (!moved && (mode == BoxControl.DONE || mode == BoxControl.LOCK)) finishBoxEditing()
-                    else saveBoxFromWindow()
-                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> saveBoxFromWindow()
             }
             return true
         }
@@ -698,7 +741,7 @@ class OverlayCaptureService : Service() {
                 val px = roi?.toPixelRoi(bmp.width, bmp.height)
                 when {
                     roi == null -> { toastMain("Set Capture Area first — Setup → Capture Area."); bmp.recycle(); return@thread }
-                    !roi.locked -> { toastMain("Lock Capture Area first."); bmp.recycle(); return@thread }
+                    !roi.locked -> { toastMain("Finish your Capture Area first — tap ✓ on the box."); bmp.recycle(); return@thread }
                     px == null -> { toastMain("Please reset your Capture Area."); bmp.recycle(); return@thread }
                 }
                 val pxNN = px!!
@@ -983,7 +1026,7 @@ class OverlayCaptureService : Service() {
         button?.visibility = View.VISIBLE
         boxView?.visibility = View.VISIBLE
         restoreHandle?.visibility = View.VISIBLE
-        lockChip?.visibility = View.VISIBLE
+        boxControls?.visibility = View.VISIBLE
     }
 
     // ---- Notification ---------------------------------------------------------
@@ -1042,7 +1085,6 @@ class OverlayCaptureService : Service() {
         private const val ACTION_DELIVER_PROJECTION = "com.mineflow.capture.PROJECTION"
         private const val ACTION_SHOW_BOX = "com.mineflow.capture.SHOW_BOX"
         private const val ACTION_EDIT_BOX = "com.mineflow.capture.EDIT_BOX"
-        private const val ACTION_LOCK_BOX = "com.mineflow.capture.LOCK_BOX"
         private const val ACTION_RESET_BOX = "com.mineflow.capture.RESET_BOX"
         private const val ACTION_HIDE_CONTROLS = "com.mineflow.capture.HIDE_CONTROLS"
         private const val ACTION_SHOW_CONTROLS = "com.mineflow.capture.SHOW_CONTROLS"
@@ -1056,11 +1098,9 @@ class OverlayCaptureService : Service() {
         }
 
         // Box Capture controls, driven from the Setup "Capture Area" section (Owner 2026-09-02).
-        /** Show + UNLOCK the box for editing (drag/resize). */
+        /** Enter edit mode: show the box UNLOCKED with the external Lock/Check controls + resize grip. */
         fun editBox(context: Context) = send(context, ACTION_EDIT_BOX)
-        /** Lock the box at its current position — Capture uses the locked coords. */
-        fun lockBox(context: Context) = send(context, ACTION_LOCK_BOX)
-        /** Reset the box to the default position + size. */
+        /** Reset the box to the default position + size (then edit mode). */
         fun resetBox(context: Context) = send(context, ACTION_RESET_BOX)
         /** Hide the floating controls (keep the locked box + a tiny capture/restore handle). */
         fun hideControls(context: Context) = send(context, ACTION_HIDE_CONTROLS)

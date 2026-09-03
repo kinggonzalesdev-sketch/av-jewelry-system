@@ -16,9 +16,9 @@ class CaptureRoiTest {
         // 1080×2400 (a common portrait phone).
         val px = roi.toPixelRoi(1080, 2400)!!
         assertEquals(Math.round(0.08f * 1080), px.left)
-        assertEquals(Math.round(0.55f * 2400), px.top)
+        assertEquals(Math.round(0.60f * 2400), px.top)
         assertEquals(Math.round(0.84f * 1080), px.width)
-        assertEquals(Math.round(0.20f * 2400), px.height)
+        assertEquals(Math.round(0.13f * 2400), px.height)
         // Fully inside the bitmap.
         assertTrue(px.left + px.width <= 1080)
         assertTrue(px.top + px.height <= 2400)
@@ -38,12 +38,12 @@ class CaptureRoiTest {
         assertFalse(CaptureRoi(0.1f, 0.1f, 0.2f, 0.02f).isValid()) // height < MIN_HEIGHT_FRACTION
     }
 
-    // STEP 4 (Owner 2026-09-02): a box too SHORT to hold a two-line comment is rejected — a height
-    // between the old side-minimum (0.05) and the new two-line floor (0.09) is now invalid.
+    // Owner 2026-09-02 (reference): the box may be SHORT (hug one comment), but a hairline-thin box is
+    // still rejected. A height below MIN_HEIGHT_FRACTION (0.045) is invalid; a short one-comment box is ok.
     @Test
-    fun shallowBox_belowTwoLineMinimum_isInvalid() {
-        assertFalse(CaptureRoi(0.1f, 0.1f, 0.5f, 0.07f).isValid()) // 0.05 <= height < MIN_HEIGHT_FRACTION
-        assertTrue(CaptureRoi(0.1f, 0.1f, 0.5f, 0.10f).isValid()) // >= MIN_HEIGHT_FRACTION → ok
+    fun shallowBox_belowOneCommentMinimum_isInvalid() {
+        assertFalse(CaptureRoi(0.1f, 0.1f, 0.5f, 0.03f).isValid()) // height < MIN_HEIGHT_FRACTION
+        assertTrue(CaptureRoi(0.1f, 0.1f, 0.5f, 0.06f).isValid())  // short but usable → ok
     }
 
     @Test

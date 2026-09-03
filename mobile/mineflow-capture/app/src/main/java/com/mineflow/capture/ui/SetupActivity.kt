@@ -88,9 +88,8 @@ class SetupActivity : AppCompatActivity() {
     private lateinit var notifyAction: Button
     private lateinit var captureAction: Button
 
-    // ---- Capture Area (Box Capture v1) ---------------------------------------
+    // ---- Capture Area (Box Capture — Owner 2026-09-02 reference) --------------
     private lateinit var captureAreaStatus: TextView
-    private lateinit var controlsToggleBtn: Button
 
     // ---- Printer section (moved verbatim from BluetoothPrinterActivity) ------
     private lateinit var printerNameTv: TextView
@@ -269,26 +268,23 @@ class SetupActivity : AppCompatActivity() {
         card.addView(captureAreaStatus)
         card.addView(
             TextView(this).apply {
-                // The lock / done / resize controls now live ON the box (Box Capture v2), so the
-                // dashboard only needs status + a way in and a reset. Owner 2026-09-02.
-                text = "Capture reads ONLY inside the box. Tap Show / Edit Area, drag it over one comment, " +
-                    "resize with the corner grip, then tap ✓ (or the lock) on the box itself."
+                // All controls (Lock / Check / resize) now live ON the overlay itself, so the dashboard
+                // only needs status + a way into edit mode + a reset. Owner 2026-09-02 (approved reference).
+                text = "Capture reads ONLY inside the box. Tap Edit Box, drag it over one comment, resize " +
+                    "with the corner grip, then tap ✓ on the box to save."
                 textSize = 11f; setTextColor(gray); setPadding(0, dp(4), 0, dp(10))
             },
             wide(),
         )
         val lp = { LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
         val row1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        row1.addView(ghostButton("Show / Edit Area") { onEditBox() }, lp().apply { rightMargin = dp(5) })
+        row1.addView(ghostButton("Edit Box") { onEditBox() }, lp().apply { rightMargin = dp(5) })
         // Reset stays — the ONE safe way to recover a corrupted / off-screen saved ROI (Owner: do not remove).
         row1.addView(
-            ghostButton("Reset") { OverlayCaptureService.resetBox(this); refreshCaptureArea() },
+            ghostButton("Reset Box") { OverlayCaptureService.resetBox(this); refreshCaptureArea() },
             lp().apply { leftMargin = dp(5) },
         )
         card.addView(row1, wide())
-        // Secondary: declutter the floating capture button during a live (long-press its handle to restore).
-        controlsToggleBtn = ghostButton("Hide Floating Button") { onToggleControls() }
-        card.addView(controlsToggleBtn, wide().apply { topMargin = dp(8) })
         return card
     }
 
@@ -296,12 +292,7 @@ class SetupActivity : AppCompatActivity() {
         if (!Settings.canDrawOverlays(this)) { toast("Grant overlay permission first (Overlay → Grant Now)."); return }
         if (!OverlayCaptureService.isRunning) OverlayCaptureService.start(this)
         OverlayCaptureService.editBox(this)
-        toast("Drag the box over one comment; drag the corner grip to resize; then tap ✓ or the lock on the box.")
-        refreshCaptureArea()
-    }
-
-    private fun onToggleControls() {
-        if (store.controlsHidden) OverlayCaptureService.showControls(this) else OverlayCaptureService.hideControls(this)
+        toast("Drag the box over one comment; drag the corner grip to resize; then tap ✓ on the box.")
         refreshCaptureArea()
     }
 
@@ -309,12 +300,11 @@ class SetupActivity : AppCompatActivity() {
         val roi = store.captureRoi
         val (text, color) = when {
             roi == null -> "Capture Area: Not Set" to amber
-            roi.locked -> "Capture Area: Locked" to green
-            else -> "Capture Area: Editing (unlocked)" to amber
+            roi.locked -> "Capture Area: Ready" to green
+            else -> "Capture Area: Editing" to amber
         }
         captureAreaStatus.text = text
         captureAreaStatus.setTextColor(color)
-        controlsToggleBtn.text = if (store.controlsHidden) "Show Floating Button" else "Hide Floating Button"
     }
 
     // 4) PRINTER CARD.

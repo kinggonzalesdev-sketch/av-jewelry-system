@@ -55,20 +55,23 @@ data class CaptureRoi(
         /** A box narrower than this fraction of the screen is rejected as unusable. */
         const val MIN_FRACTION = 0.05f
 
-        /** STEP 4 (Owner 2026-09-02): a box SHORTER than this fraction can't hold a two-line Facebook
-         *  comment (name + value), so it is rejected — prevents extremely shallow boxes that clip a line.
-         *  Not device-specific: a fraction, so it scales with the screen. */
-        const val MIN_HEIGHT_FRACTION = 0.09f
+        /** (Owner 2026-09-02) A box shorter than this fraction can't hold ONE two-line Facebook comment
+         *  (name + value). Deliberately small so the box can hug a single comment closely (the approved
+         *  reference is short), while still rejecting an unusably shallow box. A fraction → scales with
+         *  the screen; the real floor for tiny screens is MIN_HEIGHT_PX. */
+        const val MIN_HEIGHT_FRACTION = 0.045f
 
         /** A crop narrower than this many pixels is rejected (too little to OCR). */
         const val MIN_PX = 40
 
-        /** A crop shorter than this many pixels is rejected — a two-line comment floor (STEP 4). */
-        const val MIN_HEIGHT_PX = 90
+        /** A crop shorter than this many pixels is rejected — a one-comment (two-line) floor. ~70–90dp
+         *  on common densities; small enough to fit closely around a single comment. */
+        const val MIN_HEIGHT_PX = 96
         private const val EPS = 0.001f
 
-        /** Sensible starting box (Owner's example): centered band over the comment area. */
-        fun default(): CaptureRoi = CaptureRoi(0.08f, 0.55f, 0.84f, 0.20f)
+        /** Sensible starting box: a SHORT band over the comment area (the operator shrinks/moves it to
+         *  hug one comment). Shorter default than before to match the approved reference. */
+        fun default(): CaptureRoi = CaptureRoi(0.08f, 0.60f, 0.84f, 0.13f)
     }
 }
 
