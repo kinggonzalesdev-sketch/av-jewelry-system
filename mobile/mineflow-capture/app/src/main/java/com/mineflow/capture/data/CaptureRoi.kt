@@ -69,10 +69,10 @@ data class CaptureRoi(
         const val MIN_HEIGHT_PX = 96
         private const val EPS = 0.001f
 
-        /** Sensible starting box: a SHORT band over the comment area (the operator shrinks/moves it to
-         *  hug one comment). Height trimmed ~15% (0.13 → 0.11) so it sits tighter around one comment
-         *  block with comfortable padding — Owner-approved, width unchanged. */
-        fun default(): CaptureRoi = CaptureRoi(0.08f, 0.60f, 0.84f, 0.11f)
+        /** Sensible starting box: a SHORT, snug band over one comment (the operator moves/resizes it).
+         *  Owner-tuned 2026-09-03 to 76% × 8.5% at (0.12, 0.612) — ≈ 821 × 204 px on a 1080×2400 phone
+         *  (~4:1), tight around a single "Name + claim" comment block. */
+        fun default(): CaptureRoi = CaptureRoi(0.12f, 0.612f, 0.76f, 0.085f)
     }
 }
 

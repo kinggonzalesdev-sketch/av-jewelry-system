@@ -15,10 +15,10 @@ class CaptureRoiTest {
         assertTrue(roi.isValid())
         // 1080×2400 (a common portrait phone).
         val px = roi.toPixelRoi(1080, 2400)!!
-        assertEquals(Math.round(0.08f * 1080), px.left)
-        assertEquals(Math.round(0.60f * 2400), px.top)
-        assertEquals(Math.round(0.84f * 1080), px.width)
-        assertEquals(Math.round(0.11f * 2400), px.height)
+        assertEquals(Math.round(0.12f * 1080), px.left)
+        assertEquals(Math.round(0.612f * 2400), px.top)
+        assertEquals(Math.round(0.76f * 1080), px.width)
+        assertEquals(Math.round(0.085f * 2400), px.height)
         // Fully inside the bitmap.
         assertTrue(px.left + px.width <= 1080)
         assertTrue(px.top + px.height <= 2400)
