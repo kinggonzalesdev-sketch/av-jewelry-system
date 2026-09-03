@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import {
   addOrderItemAction,
   removeOrderItemAction,
+  removePaidOrderItemAction,
   splitOrderItemAction,
   requestOrderEditAction,
   searchCaptureItemsAction,
@@ -66,13 +67,21 @@ export function OrderItemEditControls({
   const [note, setNote] = useState<string | null>(null);
   const [reason, setReason] = useState('');
 
+  // A settled/paid order (LOCKED) is normally uneditable. Only the SUPER ADMIN may still remove an item
+  // from it — the paid-order removal (restock + preserve payments + overpayment credit). No add/split.
+  if (LOCKED_STATUSES.has(status)) {
+    return isOwner ? (
+      <PaidOrderRemovalControls orderId={orderId} items={items} onRefresh={onRefresh} />
+    ) : null;
+  }
+
   // Owner edits directly; an approval-capable admin requests; anyone else sees nothing.
   const mode: 'direct' | 'request' | null = isOwner
     ? 'direct'
     : canRequestEdit
       ? 'request'
       : null;
-  if (!mode || LOCKED_STATUSES.has(status)) return null;
+  if (!mode) return null;
   const isRequest = mode === 'request';
 
   const label = (it: OrderLineItemDetail) => it.itemCode ?? it.claimReference;
@@ -303,6 +312,171 @@ export function OrderItemEditControls({
               </p>
             </div>
           ) : null}
+          {error ? (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+/**
+ * PAID-ORDER item removal (Owner 2026-09-03) — the SUPER ADMIN removes an item from a Fully-Paid /
+ * settled (locked) order. Stronger confirmation + a MANDATORY reason. The item returns to Active
+ * inventory, the order total recalculates, payments are preserved, and any overpayment shows as a
+ * credit (never auto-refunded). Only shown to the Owner on a locked order (the parent gates it).
+ */
+function PaidOrderRemovalControls({
+  orderId,
+  items,
+  onRefresh,
+}: {
+  orderId: string;
+  items: OrderLineItemDetail[];
+  onRefresh: () => void;
+}) {
+  const [target, setTarget] = useState<OrderLineItemDetail | null>(null);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+
+  const label = (it: OrderLineItemDetail) => it.itemCode ?? it.claimReference;
+
+  const run = async () => {
+    if (!target || busy) return;
+    if (reason.trim().length === 0) {
+      setError('A reason is required to remove a paid item.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const name = label(target);
+    const res = await removePaidOrderItemAction(orderId, target.claimId, reason);
+    setBusy(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    const s = res.snapshot;
+    const overpay = Number(s.overpaymentCredit);
+    setNote(
+      `Removed ${name} — returned to Active inventory. New total ${formatPeso(s.newTotal)}, paid ${formatPeso(s.paid)}` +
+        (overpay > 0
+          ? ` → the order is now overpaid: ${formatPeso(s.overpaymentCredit)} credit (payments unchanged, never auto-refunded).`
+          : '.'),
+    );
+    setTarget(null);
+    setReason('');
+    onRefresh();
+  };
+
+  const header = (
+    <div className="flex items-center justify-between gap-2">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-destructive">
+        Remove Paid Item
+      </p>
+      <span className="rounded-full bg-destructive/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-destructive">
+        Super Admin
+      </span>
+    </div>
+  );
+
+  if (items.length <= 1) {
+    return (
+      <div className="rounded-lg border border-destructive/40 p-3" data-testid="order-paid-remove">
+        {header}
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          This paid order has one item — use Cancel Order to void the whole order instead.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-destructive/40 p-3" data-testid="order-paid-remove">
+      {header}
+      <p className="mb-2 mt-0.5 text-[11px] text-muted-foreground">
+        This order is settled/paid. Removing a piece returns it to Active inventory and recalculates
+        the total — payments stay (any overpayment shows as a credit, never auto-refunded).
+      </p>
+      {note ? (
+        <p className="mb-2 text-xs font-medium text-emerald-600" data-testid="order-paid-remove-note">
+          {note}
+        </p>
+      ) : null}
+      <ul className="space-y-1.5">
+        {items.map((it) => (
+          <li
+            key={it.claimId}
+            className="flex items-center justify-between gap-2 rounded-md border border-border/60 px-2.5 py-1.5"
+          >
+            <span className="font-mono text-xs">{label(it)}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setError(null);
+                setReason('');
+                setTarget(it);
+              }}
+              data-testid={`order-paid-remove-${it.claimId}`}
+              className="rounded-md border border-destructive/40 px-2 py-1 text-[11px] font-medium text-destructive hover:bg-destructive/10"
+            >
+              Remove
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <Modal
+        open={target !== null}
+        onClose={() => {
+          if (!busy) setTarget(null);
+        }}
+        critical
+        size="sm"
+        title="Remove paid item?"
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setTarget(null)} disabled={busy}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void run()}
+              disabled={busy}
+              data-testid="order-paid-remove-confirm"
+            >
+              {busy ? 'Removing…' : 'Remove Item & Return to Stock'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-2 text-sm">
+          <p className="font-mono">{target ? label(target) : ''}</p>
+          <p className="text-muted-foreground">
+            This item will return to available Inventory. Existing payment records will remain
+            unchanged and the order totals will be recalculated. If that leaves the order overpaid, it
+            shows a credit — never auto-refunded.
+          </p>
+          <div>
+            <label className="text-xs text-muted-foreground" htmlFor="paid-remove-reason">
+              Reason for removal
+            </label>
+            <Input
+              id="paid-remove-reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              autoComplete="off"
+              placeholder="Why is this paid item being removed?"
+              className="mt-1 h-9"
+              data-testid="order-paid-remove-reason"
+            />
+          </div>
           {error ? (
             <p role="alert" className="text-sm text-destructive">
               {error}

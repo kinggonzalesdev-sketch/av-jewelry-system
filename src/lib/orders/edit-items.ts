@@ -73,6 +73,102 @@ export async function removeOrderItem(
   return { ok: true };
 }
 
+export type PaidRemovalSnapshot = {
+  inventoryCode: string | null;
+  previousTotal: string;
+  newTotal: string;
+  paid: string;
+  overpaymentCredit: string;
+  outstandingBalance: string;
+};
+export type RemovePaidItemResult =
+  | { ok: true; snapshot: PaidRemovalSnapshot }
+  | { ok: false; error: string };
+
+/**
+ * PAID-ORDER item removal (Owner 2026-09-03). The SUPER ADMIN may remove an item from a Fully-Paid /
+ * settled (LOCKED) order. The DB `remove_paid_order_item` (SECURITY DEFINER, owner-re-checked, reason
+ * mandatory) restocks the EXACT piece to Active inventory, recalculates the DERIVED order total, and
+ * PRESERVES every payment record (payments reference the order, never a claim) — any resulting
+ * overpayment surfaces as a CREDIT via order_balance, never an auto-refund. The financial snapshot it
+ * returns is written to a PAID_ORDER_ITEM_REMOVED_AND_RESTOCKED audit with the reason.
+ */
+export async function removePaidOrderItem(
+  orderId: string,
+  claimId: string,
+  reason: string,
+): Promise<RemovePaidItemResult> {
+  try {
+    await requireOwner();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) {
+      await recordAuditEvent({
+        action: 'order.remove_paid_item',
+        entityType: 'official_order',
+        entityId: orderId,
+        outcome: 'denied',
+        reason: cause.message,
+      });
+      return { ok: false, error: cause.message };
+    }
+    throw cause;
+  }
+
+  const trimmed = (reason ?? '').trim();
+  if (trimmed.length === 0) {
+    return { ok: false, error: 'A reason is required to remove an item from a paid order.' };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = (await supabase.rpc('remove_paid_order_item', {
+    p_order_id: orderId,
+    p_claim_id: claimId,
+    p_reason: trimmed,
+  })) as { data: Record<string, unknown> | null; error: { message: string } | null };
+
+  if (error) {
+    await recordAuditEvent({
+      action: 'order.remove_paid_item',
+      entityType: 'official_order',
+      entityId: orderId,
+      outcome: 'failed',
+      reason: error.message,
+    });
+    return { ok: false, error: cleanError(error.message) };
+  }
+
+  const d = data ?? {};
+  const snapshot: PaidRemovalSnapshot = {
+    inventoryCode: (d.inventory_code as string | null) ?? null,
+    previousTotal: String(d.previous_total ?? '0'),
+    newTotal: String(d.new_total ?? '0'),
+    paid: String(d.verified_net_payments ?? '0'),
+    overpaymentCredit: String(d.overpayment_credit ?? '0'),
+    outstandingBalance: String(d.outstanding_balance ?? '0'),
+  };
+
+  // Financial audit — the spec's PAID_ORDER_ITEM_REMOVED_AND_RESTOCKED, with the full money snapshot.
+  await recordAuditEvent({
+    action: 'order.paid_item_removed_and_restocked',
+    entityType: 'official_order',
+    entityId: orderId,
+    context: {
+      auditAction: 'PAID_ORDER_ITEM_REMOVED_AND_RESTOCKED',
+      claimId,
+      inventoryItemId: d.inventory_item_id ?? null,
+      inventoryCode: snapshot.inventoryCode,
+      previousTotal: snapshot.previousTotal,
+      newTotal: snapshot.newTotal,
+      paid: snapshot.paid,
+      overpaymentCredit: snapshot.overpaymentCredit,
+      outstandingBalance: snapshot.outstandingBalance,
+      orderStatus: d.order_status ?? null,
+      reason: trimmed,
+    },
+  });
+  return { ok: true, snapshot };
+}
+
 export async function splitOrderItem(
   orderId: string,
   claimId: string,

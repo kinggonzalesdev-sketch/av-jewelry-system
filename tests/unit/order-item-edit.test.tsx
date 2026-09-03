@@ -15,12 +15,28 @@ const add = vi.fn((..._a: unknown[]) =>
 );
 const search = vi.fn((): Promise<CaptureItem[]> => Promise.resolve([]));
 const requestEdit = vi.fn(() => Promise.resolve({ ok: true as const }));
+// Paid-order removal (Owner 2026-09-03). Forwards its args so a test can assert the exact
+// (orderId, claimId, reason) sent, and returns a snapshot with an overpayment so the note path runs.
+const paidRemove = vi.fn((..._a: unknown[]) =>
+  Promise.resolve({
+    ok: true as const,
+    snapshot: {
+      inventoryCode: 'SBA-R-2',
+      previousTotal: '89908.00',
+      newTotal: '63336.00',
+      paid: '89908.00',
+      overpaymentCredit: '26572.00',
+      outstandingBalance: '0.00',
+    },
+  }),
+);
 vi.mock('@/lib/orders/actions', () => ({
   removeOrderItemAction: () => remove(),
   splitOrderItemAction: () => split(),
   addOrderItemAction: (...a: unknown[]) => add(...a),
   searchCaptureItemsAction: () => search(),
   requestOrderEditAction: () => requestEdit(),
+  removePaidOrderItemAction: (...a: unknown[]) => paidRemove(...a),
 }));
 
 function item(over: Partial<OrderLineItemDetail> = {}): OrderLineItemDetail {
@@ -174,5 +190,60 @@ describe('OrderItemEditControls — Edit Items (Super Admin)', () => {
     fireEvent.click(screen.getByTestId('order-add-item-confirm'));
     await vi.waitFor(() => expect(add).toHaveBeenCalledTimes(1));
     expect(add).toHaveBeenCalledWith('o1', 'inv-1', '1500.00', 1);
+  });
+});
+
+// Paid-order item removal (Owner 2026-09-03). On a LOCKED/settled order the normal Edit-Items
+// panel is gone; the Super Admin instead gets a separate "Remove Paid Item" panel that restocks
+// the piece, recalculates the (derived) total, keeps payments, and surfaces any overpayment as a
+// credit. A reason is mandatory. Admins/staff see nothing on a locked order.
+describe('OrderItemEditControls — Remove Paid Item (locked / settled order)', () => {
+  it('shows the paid-removal panel for an owner on a locked order (not the Edit-Items panel)', () => {
+    renderControls({ status: 'completed' });
+    expect(screen.getByTestId('order-paid-remove')).toBeInTheDocument();
+    // The editable-order Edit Items / Add panel must NOT appear on a settled order.
+    expect(screen.queryByTestId('order-edit-items')).not.toBeInTheDocument();
+    expect(screen.getByTestId('order-paid-remove-claim-a')).toBeInTheDocument();
+  });
+
+  it('is hidden for a non-owner on a locked order', () => {
+    renderControls({ status: 'completed', isOwner: false });
+    expect(screen.queryByTestId('order-paid-remove')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('order-edit-items')).not.toBeInTheDocument();
+  });
+
+  it('on a single-item paid order, points to Cancel Order instead of offering Remove', () => {
+    renderControls({ status: 'completed', items: [item()] });
+    expect(screen.getByTestId('order-paid-remove')).toBeInTheDocument();
+    expect(screen.getByText(/use Cancel Order/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('order-paid-remove-claim-a')).not.toBeInTheDocument();
+  });
+
+  it('requires a reason — confirming with an empty reason sends nothing and warns', () => {
+    paidRemove.mockClear();
+    renderControls({ status: 'completed' });
+    fireEvent.click(screen.getByTestId('order-paid-remove-claim-a'));
+    // The critical confirm modal is open; confirm with no reason.
+    fireEvent.click(screen.getByTestId('order-paid-remove-confirm'));
+    expect(paidRemove).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(/reason is required/i);
+  });
+
+  it('with a reason: removes the item and surfaces the overpayment as a credit (never a refund)', async () => {
+    paidRemove.mockClear();
+    renderControls({ status: 'completed' });
+    fireEvent.click(screen.getByTestId('order-paid-remove-claim-a'));
+    fireEvent.change(screen.getByTestId('order-paid-remove-reason'), {
+      target: { value: 'customer returned the ring' },
+    });
+    fireEvent.click(screen.getByTestId('order-paid-remove-confirm'));
+    await vi.waitFor(() => expect(paidRemove).toHaveBeenCalledTimes(1));
+    // Exact (orderId, claimId, reason) reaches the server action.
+    expect(paidRemove).toHaveBeenCalledWith('o1', 'claim-a', 'customer returned the ring');
+    // The success note reports the recalculated total + the overpayment CREDIT wording.
+    const note = await screen.findByTestId('order-paid-remove-note');
+    expect(note).toHaveTextContent(/overpaid/i);
+    expect(note).toHaveTextContent(/credit/i);
+    expect(note).toHaveTextContent('₱26,572');
   });
 });

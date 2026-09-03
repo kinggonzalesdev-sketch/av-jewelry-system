@@ -7,11 +7,13 @@ import { listOrdersPage, type OrdersPageResult } from '@/lib/orders/service';
 import {
   addOrderItem,
   removeOrderItem,
+  removePaidOrderItem,
   splitOrderItem,
   requestOrderEdit,
   type AddOrderItemResult,
   type EditItemResult,
   type OrderEditKind,
+  type RemovePaidItemResult,
   type RequestOrderEditResult,
   type SplitItemResult,
 } from '@/lib/orders/edit-items';
@@ -209,6 +211,26 @@ export async function removeOrderItemAction(
   if (result.ok) {
     revalidatePath('/orders');
     revalidatePath('/orders/inventory');
+  }
+  return result;
+}
+
+/**
+ * PAID-ORDER item removal (Owner 2026-09-03) — Super Admin removes an item from a Fully-Paid /
+ * settled order (reason required). Restocks the piece, recalculates the total, preserves payments,
+ * and shows any overpayment as a credit. Revalidates Orders + Inventory + Payments so the item list,
+ * Active Inventory, and the balance/overpayment all update.
+ */
+export async function removePaidOrderItemAction(
+  officialOrderId: string,
+  claimId: string,
+  reason: string,
+): Promise<RemovePaidItemResult> {
+  const result = await removePaidOrderItem(officialOrderId, claimId, reason);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/inventory');
+    revalidatePath('/orders/payments');
   }
   return result;
 }
