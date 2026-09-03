@@ -28,22 +28,25 @@ class BoxControlsView(context: Context) : View(context) {
     private val d = resources.displayMetrics.density
     val circle = 32f * d
     val gap = 12f * d
-    /** Content size for the host window. */
-    val rowW: Int get() = kotlin.math.ceil(circle * 2 + gap).toInt()
-    val rowH: Int get() = kotlin.math.ceil(circle).toInt()
+    private val glowPad = 5f * d // room for the soft white halo (reference look)
+    /** Content size for the host window (includes the glow padding). */
+    val rowW: Int get() = kotlin.math.ceil(circle * 2 + gap + glowPad * 2).toInt()
+    val rowH: Int get() = kotlin.math.ceil(circle + glowPad * 2).toInt()
 
     private val gold = Color.parseColor("#E0A81E")
     private val ink = Color.parseColor("#3A3A3A")
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = gold }
+    // Soft white halo behind each circle so the gold controls stand out over Facebook Live (reference).
+    private val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = Color.argb(95, 255, 255, 255) }
     private val icon = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE; color = ink; strokeWidth = 2.4f * d
         strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
     }
     private val iconFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = ink }
 
-    private fun lockCx() = circle / 2f
-    private fun checkCx() = circle + gap + circle / 2f
-    private fun cy() = circle / 2f
+    private fun lockCx() = glowPad + circle / 2f
+    private fun checkCx() = glowPad + circle + gap + circle / 2f
+    private fun cy() = glowPad + circle / 2f
 
     /** Which control a touch at (x,y) landed on (touch radius slightly > the visible circle). */
     fun hitControl(x: Float, y: Float): BoxControl {
@@ -60,8 +63,10 @@ class BoxControlsView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         val yy = cy()
+        canvas.drawCircle(lockCx(), yy, circle / 2f + glowPad, glow)
         canvas.drawCircle(lockCx(), yy, circle / 2f, fill)
         drawLock(canvas, lockCx(), yy)
+        canvas.drawCircle(checkCx(), yy, circle / 2f + glowPad, glow)
         canvas.drawCircle(checkCx(), yy, circle / 2f, fill)
         drawCheck(canvas, checkCx(), yy)
     }

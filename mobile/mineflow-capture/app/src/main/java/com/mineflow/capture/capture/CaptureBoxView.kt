@@ -8,17 +8,15 @@ import android.graphics.Path
 import android.view.View
 
 /**
- * BOX CAPTURE overlay (Owner 2026-09-02, matches the approved reference image). Draws ONLY the Capture
- * Box: a thin gold outline with a distinctive NOTCHED UPPER-LEFT corner (a two-step staircase), a
- * transparent interior (comments stay readable), and a small lower-right resize grip while editing.
+ * BOX CAPTURE overlay (Owner-approved reference, 2026-09-03). Draws ONLY the Capture Box: a thin gold
+ * PLAIN-RECTANGLE outline (clean square corners — no notch), a transparent interior (comments stay
+ * readable), and a nested lower-right resize corner while editing.
  *
  * The Lock + Check controls are NOT drawn here — they are a SEPARATE small circular window OUTSIDE the
  * box's upper-right ([BoxControlsView]), owned by the service, so they never enter the OCR crop.
  *
- * IMPORTANT — visualPath vs contentCropBounds: the notch is DECORATION on the drawn outline only. The
- * OCR content ROI is the plain rectangle of the window bounds (see CaptureRoi/toPixelRoi); the notch
- * never trims the crop, so Facebook text is never lost to the decorative corner. Draw-only; the whole
- * view is hidden during the screenshot so no gold pixel can contaminate OCR.
+ * The OCR content ROI is exactly this rectangle (the window bounds — see CaptureRoi/toPixelRoi).
+ * Draw-only; the whole view is hidden during the screenshot so no gold pixel can contaminate OCR.
  */
 class CaptureBoxView(context: Context) : View(context) {
 
@@ -39,28 +37,17 @@ class CaptureBoxView(context: Context) : View(context) {
         style = Paint.Style.STROKE; color = gold; strokeWidth = 3f * d; strokeCap = Paint.Cap.ROUND
     }
 
-    /**
-     * The notched visual outline (Owner 2026-09-02 approved reference) — exactly ONE clean notch in the
-     * upper-left, NOT a staircase. The far-left edge begins LOWER than the main top border; going
-     * clockwise from the bottom-left it rises, makes ONE short horizontal segment right, ONE vertical
-     * rise up, then the main long top border. The other three corners are square. Proportional to the
-     * box (~9% width, ~26% height) so it stays subtle and never oversized. This math is mirrored in the
-     * SVG design preview so the on-screen shape matches the reference.
-     */
+    /** The visual outline: a clean gold rectangle (Owner-approved 2026-09-03 — no notch, square corners).
+     *  The stroke is kept fully inside the window so it matches the OCR crop rectangle exactly. */
     private fun outlinePath(): Path {
         val w = width.toFloat(); val h = height.toFloat()
-        val i = stroke.strokeWidth // keep the stroke fully inside the window
-        val innerH = (h - 2 * i).coerceAtLeast(1f)
-        val nx = i + 0.09f * w        // notch horizontal width ~9% of the box width
-        val ny = i + 0.26f * innerH   // notch vertical rise ~26% of the box height
+        val i = stroke.strokeWidth
         return Path().apply {
-            moveTo(w - i, i)       // top-right
-            lineTo(w - i, h - i)   // → bottom-right (right edge)
-            lineTo(i, h - i)       // → bottom-left (bottom edge)
-            lineTo(i, ny)          // → up the far-left edge to the notch (it starts LOWER than the top)
-            lineTo(nx, ny)         // → ONE short horizontal segment right
-            lineTo(nx, i)          // → ONE vertical rise up to the top border
-            close()                // → the main long top border back to top-right
+            moveTo(i, i)
+            lineTo(w - i, i)       // top
+            lineTo(w - i, h - i)   // right
+            lineTo(i, h - i)       // bottom
+            close()                // left
         }
     }
 
@@ -69,14 +56,17 @@ class CaptureBoxView(context: Context) : View(context) {
         if (editUi) drawResizeGrip(canvas)
     }
 
-    /** A small, subtle lower-right resize affordance: an inside L-bracket plus a short diagonal tick. */
+    /** The nested lower-right resize corner (Owner reference): an inner L-bracket set in from the bottom-
+     *  right corner plus a short diagonal tick pointing to it — a clear, gold, integrated affordance. */
     private fun drawResizeGrip(canvas: Canvas) {
         val w = width.toFloat(); val h = height.toFloat()
         val i = stroke.strokeWidth
-        val s = 15f * d
-        val gx = w - i - 5f * d; val gy = h - i - 5f * d
-        canvas.drawLine(gx - s, gy, gx, gy, grip)              // ─
-        canvas.drawLine(gx, gy - s, gx, gy, grip)              // │
-        canvas.drawLine(gx - s * 0.62f, gy - s * 0.62f, gx - s * 0.18f, gy - s * 0.18f, grip) // ╲ tick
+        val s = 20f * d          // bracket arm length
+        val off = 8f * d         // inset from the visible corner
+        val gx = w - i - off; val gy = h - i - off
+        canvas.drawLine(gx - s, gy, gx, gy, grip)  // ─ bottom arm
+        canvas.drawLine(gx, gy - s, gx, gy, grip)  // │ right arm
+        // diagonal tick pointing into the corner
+        canvas.drawLine(gx - s * 0.55f, gy - s * 0.55f, gx - s * 0.12f, gy - s * 0.12f, grip)
     }
 }
