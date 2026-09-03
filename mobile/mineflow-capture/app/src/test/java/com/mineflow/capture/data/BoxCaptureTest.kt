@@ -208,4 +208,51 @@ class BoxCaptureTest {
         assertEquals(BoxReview.NONE, r.review)
         assertEquals("King Gonzales", r.guess.fbName)
     }
+
+    // ---- Facebook verification-BADGE artifact (Owner 2026-09-03) ------------------------------
+    // The blue badge to the LEFT of the name is sometimes OCR'd as a lone leading "O"/"0". It is stripped
+    // ONLY on a lone glyph + space at the extreme LEFT — real O/0-names (fused) are NEVER touched.
+    private fun nameAtLeft(text: String) = OLine(text, Box(2, 100, 360, 140))
+
+    @Test // CASE A — badge excluded before OCR (clean name)
+    fun A_verified_cleanName() {
+        val r = ScreenshotOcr.guessBox(listOf(nameAtLeft("King Gonzales"), lineAt(".55", 2, 150, 120, 190)), 500, 300)
+        assertEquals(BoxReview.NONE, r.review)
+        assertEquals("King Gonzales", r.guess.fbName)
+        assertEquals("0.55", r.guess.grams)
+    }
+
+    @Test // CASE B — "O King Gonzales" at the extreme left → King Gonzales
+    fun B_badgeO_stripped() {
+        val r = ScreenshotOcr.guessBox(listOf(nameAtLeft("O King Gonzales"), lineAt(".55", 2, 150, 120, 190)), 500, 300)
+        assertEquals(BoxReview.NONE, r.review)
+        assertEquals("King Gonzales", r.guess.fbName)
+        assertEquals("0.55", r.guess.grams)
+    }
+
+    @Test // CASE C — "0 King Gonzales" (zero) at the extreme left → King Gonzales
+    fun C_badgeZero_stripped() {
+        val r = ScreenshotOcr.guessBox(listOf(nameAtLeft("0 King Gonzales"), lineAt(".55", 2, 150, 120, 190)), 500, 300)
+        assertEquals(BoxReview.NONE, r.review)
+        assertEquals("King Gonzales", r.guess.fbName)
+    }
+
+    @Test // CASE D/E/F — real O-names are NEVER stripped (fused, no space)
+    fun DEF_realONames_preserved() {
+        for (n in listOf("Olivia Santos", "Oscar Reyes", "Ocampo Maria")) {
+            val r = ScreenshotOcr.guessBox(listOf(nameAtLeft(n), lineAt(".55", 2, 150, 120, 190)), 500, 300)
+            assertEquals(n, r.guess.fbName)
+        }
+    }
+
+    // A lone "O <Name>" that is NOT at the extreme left (no icon-zone evidence) is left alone.
+    @Test
+    fun badgeGlyph_awayFromLeftEdge_notStripped() {
+        // name box far from the left (left=300) → no spatial evidence → keep as-is.
+        val r = ScreenshotOcr.guessBox(
+            listOf(OLine("O King Gonzales", Box(300, 100, 620, 140)), lineAt(".55", 300, 150, 420, 190)),
+            700, 300,
+        )
+        assertEquals("O King Gonzales", r.guess.fbName)
+    }
 }

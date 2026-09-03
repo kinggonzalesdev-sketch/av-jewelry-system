@@ -585,6 +585,24 @@ object ScreenshotOcr {
         return PHANTOM_LEADING_NAME_GLYPH.matchEntire(t)?.groupValues?.get(1)?.trim() ?: t
     }
 
+    // BADGE ARTIFACT (Owner 2026-09-03): the Facebook verification badge / avatar to the LEFT of the name
+    // is sometimes read by ML Kit as a LONE leading "O"/"0" SPACED from the name ("O King Gonzales"). Unlike
+    // a real O/0-name (which is FUSED — "Olivia", never "O livia"), the badge glyph is a separate token AND
+    // sits at the extreme LEFT of the crop (the icon zone). It is stripped ONLY on BOTH signals — structural
+    // (a lone glyph + space, which no legitimate name has) AND spatial (extreme left). This is NOT blanket
+    // "startsWith O → drop": Olivia / Oscar / Ocampo never match (no space after the O). The primary defence
+    // is the crop's text-safe left inset (avatar/badge excluded before OCR); this is the secondary net.
+    private val BADGE_LEAD = Regex("^[O0]\\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ .'-]{1,60})$")
+
+    /** Strip a badge-artifact leading O/0 from a name line — see [BADGE_LEAD]. Requires the name line to
+     *  sit at the extreme LEFT of the crop (icon zone): boxLeft within ~15% of the crop width, or one
+     *  line-height when the crop width is unknown. `internal` for unit tests. */
+    internal fun stripBadgeGlyph(text: String, boxLeft: Int, boxHeight: Int, cropW: Int): String {
+        val m = BADGE_LEAD.matchEntire(text.trim()) ?: return text
+        val leftLimit = if (cropW > 0) maxOf(boxHeight, (cropW * 0.15f).toInt()) else maxOf(boxHeight, 48)
+        return if (boxLeft <= leftLimit) m.groupValues[1].trim() else text
+    }
+
     /**
      * PIN-LOCKED selection (Owner 2026-08-29). The on-screen visual pin is the SOLE authority: find the
      * single pinned comment block and return ITS name + own claim. Unpinned comments never participate
@@ -803,7 +821,11 @@ object ScreenshotOcr {
     internal fun guessBox(olinesIn: List<OLine>, cropW: Int = 0, cropH: Int = 0): BoxGuess {
         val rawLines = olinesIn.map { it.text }
         val olines = restoreLeadingDecimals(olinesIn)
+        // Strip a Facebook badge/avatar glyph mis-read as a lone leading "O"/"0" at the extreme LEFT BEFORE
+        // classifying lines as name vs claim — otherwise "0 King Gonzales" parses the leading 0 as a claim.
+        // Only fires on a lone glyph + space at the icon zone; real O/0-names (fused) are untouched.
         val clean = olines.filterNot { isUiNoise(it.text) }
+            .map { it.copy(text = stripBadgeGlyph(it.text, it.box.left, it.box.height, cropW)) }
 
         val nameLines = clean.filter {
             looksLikeName(it.text) && !isChrome(it.text) && !MINE.containsMatchIn(it.text) && parseClaim(it.text) == null

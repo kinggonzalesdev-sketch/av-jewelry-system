@@ -73,6 +73,22 @@ data class CaptureRoi(
          *  Owner-tuned 2026-09-03 to 76% × 8.5% at (0.12, 0.612) — ≈ 821 × 204 px on a 1080×2400 phone
          *  (~4:1), tight around a single "Name + claim" comment block. */
         fun default(): CaptureRoi = CaptureRoi(0.12f, 0.612f, 0.76f, 0.085f)
+
+        /**
+         * TEXT-SAFE LEFT INSET (Owner 2026-09-03) — how many px to skip from the box's LEFT edge before
+         * OCR, so the Facebook AVATAR + verification BADGE (predictable left-side icons) are excluded and
+         * the badge is never misread as a leading "O"/"0" on the customer name. The VISIBLE gold box is
+         * unchanged; this only shrinks the INTERNAL OCR crop (`boxLeft + inset … boxRight`).
+         *
+         * Device-aware: the avatar/badge is a fixed dp size, so the caller passes its width in px
+         * (dp-derived). Capped at 28% of the box so a narrow box is never over-cropped, and never so much
+         * that less than MIN_PX remains — the full customer name is always preserved.
+         */
+        fun textOcrLeftInset(boxWidthPx: Int, avatarBadgePx: Int): Int {
+            if (boxWidthPx <= 0 || avatarBadgePx <= 0) return 0
+            val maxInset = (boxWidthPx - MIN_PX).coerceAtLeast(0)
+            return minOf(avatarBadgePx, (boxWidthPx * 0.28f).toInt(), maxInset).coerceAtLeast(0)
+        }
     }
 }
 

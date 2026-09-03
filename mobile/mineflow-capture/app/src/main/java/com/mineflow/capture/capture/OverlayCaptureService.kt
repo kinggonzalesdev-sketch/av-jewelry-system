@@ -792,7 +792,13 @@ class OverlayCaptureService : Service() {
                 val pxNN = px!!
                 val roiNN = roi
                 val tCrop = android.os.SystemClock.elapsedRealtime()
-                val crop = runCatching { Bitmap.createBitmap(bmp, pxNN.left, pxNN.top, pxNN.width, pxNN.height) }.getOrNull()
+                // TEXT-SAFE LEFT INSET (Owner 2026-09-03): OCR the box MINUS its left avatar/badge strip, so
+                // the Facebook verification badge is never read as a leading "O"/"0" on the name. The VISIBLE
+                // gold box is unchanged — this only shrinks the internal crop. dp(56) ≈ avatar(~40dp)+badge/gap.
+                val leftInset = com.mineflow.capture.data.CaptureRoi.textOcrLeftInset(pxNN.width, dp(56))
+                val crop = runCatching {
+                    Bitmap.createBitmap(bmp, pxNN.left + leftInset, pxNN.top, pxNN.width - leftInset, pxNN.height)
+                }.getOrNull()
                 if (crop == null) { toastMain("Please reset your Capture Area."); bmp.recycle(); return@thread }
                 val tMlStart = android.os.SystemClock.elapsedRealtime()
                 val box = ocrBoxBlocking(crop)
@@ -805,7 +811,7 @@ class OverlayCaptureService : Service() {
                 Log.i(
                     TAG,
                     "timing BOX: tap->shot=${tOcrStart - t0box}ms roiMap+crop=${tMlStart - tCrop}ms " +
-                        "mlKit=${tMlEnd - tMlStart}ms review=${box?.review} " +
+                        "mlKit=${tMlEnd - tMlStart}ms review=${box?.review} leftInset=${leftInset}px " +
                         "roiPx=[${pxNN.left},${pxNN.top} ${pxNN.width}x${pxNN.height}] shot=${bmp.width}x${bmp.height}",
                 )
                 if (box == null || box.review != com.mineflow.capture.data.BoxReview.NONE) {
