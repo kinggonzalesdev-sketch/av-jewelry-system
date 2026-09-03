@@ -78,6 +78,8 @@ class OverlayCaptureService : Service() {
     private var boxControls: BoxControlsView? = null
     private var controlsLp: WindowManager.LayoutParams? = null
     private var boxEditing: Boolean = false
+    // Controls were revealed by a long-press on a locked box (arms the idle auto-hide; cleared on any tap).
+    private var revealedByLongPress: Boolean = false
 
     private var projection: MediaProjection? = null
     // A PERSISTENT screen-mirror kept alive for the whole session, so consent is asked
@@ -371,7 +373,7 @@ class OverlayCaptureService : Service() {
             (roi.width * sw).toInt().coerceAtLeast(dp(48)),
             (roi.height * sh).toInt().coerceAtLeast(dp(48)),
             overlayType(),
-            boxFlags(editableUnlocked = false),
+            boxFlags(),
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -379,7 +381,7 @@ class OverlayCaptureService : Service() {
             y = (roi.top * sh).toInt()
         }
         val view = CaptureBoxView(this).apply { editUi = boxEditing }
-        view.setOnTouchListener(BoxDragResizeListener())
+        view.setOnTouchListener(BoxTouchListener())
         boxLp = lp
         boxView = view
         runCatching { windowManager.addView(view, lp) }
@@ -395,26 +397,24 @@ class OverlayCaptureService : Service() {
 
     // COORDINATE ALIGNMENT (Owner 2026-09-02). FLAG_LAYOUT_IN_SCREEN lays the box out in the FULL physical
     // screen from the top-left, so the window's (x,y) are the SAME pixels the MediaProjection mirror
-    // captures (getRealMetrics both sides) — overlay-Y == bitmap-Y (status/nav offset handled). The box is
-    // touchable ONLY while EDITING and UNLOCKED; otherwise NOT_TOUCHABLE so comments under it stay tappable.
-    private fun boxFlags(editableUnlocked: Boolean): Int {
-        val base = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-        return if (editableUnlocked) base else base or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-    }
+    // captures (getRealMetrics both sides) — overlay-Y == bitmap-Y. The box is ALWAYS touchable: in Ready
+    // it catches the long-press (reveal controls) and ignores tap/drag; in Edit it resizes/moves from any
+    // edge/corner. It is hidden during the screenshot so it never contaminates OCR.
+    private fun boxFlags(): Int =
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
 
     private fun isRoiLocked(): Boolean = SecureStore.get(this).captureRoi?.locked ?: false
 
-    /** Apply the current (editing + locked) state to the box + controls: touchability, the resize grip,
-     *  and whether the external Lock/Check controls are shown. */
+    /** Apply the current state to the box + controls: the resize grip (edit only) and whether the
+     *  external Lock/Check controls are shown. The box window is always touchable. */
     private fun applyBoxState() {
         val lp = boxLp ?: return
         val v = boxView ?: return
-        val editableUnlocked = boxEditing && !isRoiLocked()
-        lp.flags = boxFlags(editableUnlocked)
+        lp.flags = boxFlags()
         v.editUi = boxEditing
         runCatching { windowManager.updateViewLayout(v, lp) }
         if (boxEditing) showControls() else hideControls()
+        boxControls?.locked = isRoiLocked()
     }
 
     /** Persist the box's current window rect as the normalized ROI (keeps the current locked flag). */
@@ -433,31 +433,62 @@ class OverlayCaptureService : Service() {
         val store = SecureStore.get(this)
         store.captureRoi = (store.captureRoi ?: com.mineflow.capture.data.CaptureRoi.default()).copy(locked = false)
         boxEditing = true
+        revealedByLongPress = false
+        cancelAutoHide()
         if (boxView == null) showCaptureBox() else applyBoxState()
-        toastMain("Edit Capture Area — drag to move, drag the corner to resize. Tap ✓ when done.")
+        toastMain("Edit Capture Area — drag to move, drag any edge/corner to resize. Tap ✓ when done.")
     }
 
-    /** Lock control → freeze / unfreeze move + resize; the box AND controls STAY visible (lock ≠ done). */
+    /** Unlock control → enable / re-freeze move + resize; the box AND controls STAY visible. Any control
+     *  tap cancels the long-press auto-hide (the operator is clearly interacting now). */
     private fun toggleBoxLock() {
         val store = SecureStore.get(this)
         saveBoxFromWindow()
         val nowLocked = !isRoiLocked()
         store.captureRoi = (store.captureRoi ?: com.mineflow.capture.data.CaptureRoi.default()).copy(locked = nowLocked)
-        boxControls?.locked = nowLocked
+        revealedByLongPress = false
+        cancelAutoHide()
         applyBoxState()
-        toastMain(if (nowLocked) "Position locked — tap the lock again to move/resize." else "Unlocked — drag to move or resize.")
+        toastMain(if (nowLocked) "Locked — tap the lock to move/resize." else "Unlocked — drag to move, drag any edge/corner to resize.")
     }
 
     /** Check (Done) → save + finalize: hide Lock, Check, the resize grip and every editing affordance,
-     *  leaving ONLY the gold box outline. Re-edit later from the dashboard (Edit Box). */
+     *  leaving ONLY the gold box outline. Re-edit later by LONG-PRESSING the box (or dashboard Edit Box). */
     private fun finalizeBox() {
         saveBoxFromWindow()
         val store = SecureStore.get(this)
         store.captureRoi = (store.captureRoi ?: com.mineflow.capture.data.CaptureRoi.default()).copy(locked = true)
         boxEditing = false
+        revealedByLongPress = false
+        cancelAutoHide()
         applyBoxState()
         toastMain("Capture Area saved.")
     }
+
+    // ---- Long-press reveal (from the finalized box) + auto-hide ----------------
+    /** Long-press on a LOCKED/READY box reveals the Lock/Check controls WITHOUT unlocking — the box stays
+     *  immobile until the operator explicitly taps Unlock (prevents accidental movement during a Live). */
+    private fun revealControlsFromLongPress() {
+        if (!isRoiLocked()) return // already editable
+        boxEditing = true
+        revealedByLongPress = true
+        applyBoxState()
+        armAutoHide()
+        toastMain("Tap the lock to edit, or ✓ to keep it.")
+    }
+
+    private val autoHideControls = Runnable {
+        // If the operator did nothing after the long-press (still locked, revealed by long-press), tidy up
+        // back to the clean outline. Never fires mid-edit — any control tap / unlock cancels it first.
+        if (boxEditing && isRoiLocked() && revealedByLongPress) {
+            boxEditing = false
+            revealedByLongPress = false
+            applyBoxState()
+        }
+    }
+
+    private fun armAutoHide() { handler.removeCallbacks(autoHideControls); handler.postDelayed(autoHideControls, 6000) }
+    private fun cancelAutoHide() { handler.removeCallbacks(autoHideControls) }
 
     private fun resetCaptureBox() {
         SecureStore.get(this).captureRoi = com.mineflow.capture.data.CaptureRoi.default()
@@ -534,35 +565,46 @@ class OverlayCaptureService : Service() {
         (sh * com.mineflow.capture.data.CaptureRoi.MIN_HEIGHT_FRACTION).toInt(),
     )
 
-    private inner class BoxDragResizeListener : View.OnTouchListener {
-        private var startX = 0; private var startY = 0; private var startW = 0; private var startH = 0
+    private inner class BoxTouchListener : View.OnTouchListener {
+        private var start = WinRect(0, 0, 0, 0)
         private var touchX = 0f; private var touchY = 0f
-        private var resizing = false
+        private var zone = ResizeZone.NONE
+        private var longPressArmed = false
+        private val longPress = Runnable { longPressArmed = false; revealControlsFromLongPress() }
+
         override fun onTouch(v: View, e: MotionEvent): Boolean {
             val lp = boxLp ?: return false
-            val bv = boxView ?: return false
-            // The box only receives touches while EDITING + UNLOCKED (otherwise NOT_TOUCHABLE). Lower-right
-            // corner → resize; anywhere else → drag. Controls (Lock/Check) are a separate window.
+            // EDITING = controls shown AND unlocked → resize/move from any edge/corner. Otherwise the box
+            // is READY/locked: a LONG PRESS reveals the controls (no auto-unlock); a plain tap/drag is ignored.
+            val editing = boxEditing && !isRoiLocked()
             when (e.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    startX = lp.x; startY = lp.y; startW = lp.width; startH = lp.height
+                    start = WinRect(lp.x, lp.y, lp.width, lp.height)
                     touchX = e.rawX; touchY = e.rawY
-                    resizing = e.x > bv.width - bv.gripTouchPx && e.y > bv.height - bv.gripTouchPx
+                    if (editing) {
+                        zone = BoxGesture.hitZone(lp.width, lp.height, dp(20), e.x.toInt(), e.y.toInt())
+                    } else {
+                        longPressArmed = true
+                        handler.postDelayed(longPress, 500)
+                    }
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (e.rawX - touchX).toInt(); val dy = (e.rawY - touchY).toInt()
-                    val (sw, sh) = screenSize()
-                    if (resizing) {
-                        lp.width = (startW + dx).coerceIn(dp(64), sw - lp.x)
-                        lp.height = (startH + dy).coerceIn(minBoxHeightPx(sh), sh - lp.y)
-                    } else {
-                        lp.x = (startX + dx).coerceIn(0, sw - lp.width)
-                        lp.y = (startY + dy).coerceIn(0, sh - lp.height)
+                    if (editing) {
+                        val (sw, sh) = screenSize()
+                        val nr = BoxGesture.applyResize(zone, start, dx, dy, sw, sh, dp(64), minBoxHeightPx(sh))
+                        lp.x = nr.x; lp.y = nr.y; lp.width = nr.w; lp.height = nr.h
+                        runCatching { windowManager.updateViewLayout(v, lp) }
+                        positionControls() // controls follow the box's upper-right
+                    } else if (longPressArmed && (abs(dx) > dp(8) || abs(dy) > dp(8))) {
+                        // moved before the long press fired → a drag/scroll intent, not a long press
+                        longPressArmed = false; handler.removeCallbacks(longPress)
                     }
-                    runCatching { windowManager.updateViewLayout(v, lp) }
-                    positionControls() // keep the external controls attached to the box's upper-right
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> saveBoxFromWindow()
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (longPressArmed) { longPressArmed = false; handler.removeCallbacks(longPress) }
+                    if (editing) saveBoxFromWindow()
+                }
             }
             return true
         }
@@ -1066,6 +1108,7 @@ class OverlayCaptureService : Service() {
         hideQuickMenu()
         button?.let { runCatching { windowManager.removeView(it) } }
         button = null
+        cancelAutoHide()
         hideCaptureBox()
         removeRestoreHandle()
         teardownCapture()
