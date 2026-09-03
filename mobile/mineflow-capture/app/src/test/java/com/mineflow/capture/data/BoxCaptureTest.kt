@@ -255,4 +255,33 @@ class BoxCaptureTest {
         )
         assertEquals("O King Gonzales", r.guess.fbName)
     }
+
+    // ---- STEP 5 physical regression fixtures (Owner 2026-09-03) — full box OCR, name must survive -----
+    // The exact claims the Owner physically tested; every one must read "King Gonzales" + its decimal.
+    @Test
+    fun king_allPhysicalDecimalClaims() {
+        for ((raw, g) in listOf(".33" to "0.33", ".44" to "0.44", ".55" to "0.55", ".66" to "0.66", ".77" to "0.77")) {
+            val r = ScreenshotOcr.guessBox(listOf(line("King Gonzales", 100), line(raw, 150)))
+            assertEquals("read $raw", BoxReview.NONE, r.review)
+            assertEquals(raw, "King Gonzales", r.guess.fbName)
+            assertEquals(raw, g, r.guess.grams)
+        }
+    }
+
+    @Test // A — verified badge (leading O) + .33 → King Gonzales / 0.33 (geometry strip, full box OCR)
+    fun verifiedBadge_King_33() {
+        val r = ScreenshotOcr.guessBox(listOf(nameAtLeft("O King Gonzales"), lineAt(".33", 2, 150, 120, 190)), 700, 300)
+        assertEquals(BoxReview.NONE, r.review)
+        assertEquals("King Gonzales", r.guess.fbName)
+        assertEquals("0.33", r.guess.grams)
+    }
+
+    // Whole numbers stay whole — no global integer→decimal conversion.
+    @Test
+    fun king_wholeClaims_stayWhole() {
+        for (w in listOf("33", "44", "55")) {
+            val r = ScreenshotOcr.guessBox(listOf(line("King Gonzales", 100), line(w, 150)))
+            assertEquals(w, w, r.guess.grams)
+        }
+    }
 }

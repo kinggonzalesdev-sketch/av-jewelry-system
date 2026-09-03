@@ -89,14 +89,4 @@ class CaptureRoiTest {
         assertTrue(n.top + n.height <= 1f + 0.001f)
     }
 
-    // TEXT-SAFE LEFT INSET (Owner 2026-09-03): excludes the avatar/badge strip from OCR; capped at 28% so a
-    // narrow box is never over-cropped and the full customer name always survives.
-    @Test
-    fun textOcrLeftInset_excludesAvatar_cappedForNarrowBox() {
-        assertEquals(154, CaptureRoi.textOcrLeftInset(821, 154)) // wide box → full avatar inset
-        assertEquals(84, CaptureRoi.textOcrLeftInset(300, 154))  // narrow → capped at 28%
-        assertEquals(28, CaptureRoi.textOcrLeftInset(100, 154))  // tiny → 28% (still leaves >= MIN_PX)
-        assertEquals(0, CaptureRoi.textOcrLeftInset(0, 154))     // degenerate width
-        assertEquals(0, CaptureRoi.textOcrLeftInset(821, 0))     // no avatar px
-    }
 }
