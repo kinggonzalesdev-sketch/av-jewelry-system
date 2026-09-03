@@ -35,6 +35,87 @@ function Requirement({ met, children }: { met: boolean; children: React.ReactNod
   );
 }
 
+// Inline eye glyph (the codebase carries no icon library — icons are inline SVG). `off` shows the
+// struck-through eye, meaning "currently visible, click to hide".
+function EyeGlyph({ off }: { off: boolean }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {off ? (
+        <>
+          <path d="M10.7 5.1A9.9 9.9 0 0 1 12 5c6.5 0 10 7 10 7a13.2 13.2 0 0 1-1.7 2.4M6.1 6.1A13.3 13.3 0 0 0 2 12s3.5 7 10 7a9.9 9.9 0 0 0 5.9-1.9" />
+          <path d="m1 1 22 22" />
+          <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+        </>
+      ) : (
+        <>
+          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+          <circle cx="12" cy="12" r="3" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+// A password field with a show/hide eye toggle. Each field keeps its own reveal state so New and
+// Confirm can be shown independently; the toggle never submits and stays out of the tab order so
+// the field → field → submit flow is unbroken.
+function PasswordField({
+  id,
+  name,
+  label,
+  value,
+  onChange,
+  testId,
+}: {
+  id: string;
+  name: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  testId: string;
+}) {
+  const [reveal, setReveal] = useState(false);
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      <div className="relative">
+        <Input
+          id={id}
+          name={name}
+          type={reveal ? 'text' : 'password'}
+          autoComplete="new-password"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          data-testid={testId}
+          className="pr-10"
+          required
+        />
+        <button
+          type="button"
+          onClick={() => setReveal((v) => !v)}
+          aria-label={reveal ? 'Hide password' : 'Show password'}
+          aria-pressed={reveal}
+          tabIndex={-1}
+          className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground transition-colors hover:text-foreground"
+          data-testid={`${testId}-toggle`}
+        >
+          <EyeGlyph off={reveal} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Forgot-password flow: Email → 6-digit code → New password → Success. Uses Supabase Auth's
  * native email-OTP recovery via the server actions; the browser never decides auth. Matches
@@ -203,32 +284,22 @@ export function ResetPasswordForm() {
 
       {step === 'password' ? (
         <form onSubmit={onSetPassword} className="space-y-4" noValidate>
-          <div className="space-y-2">
-            <Label htmlFor="reset-password-input">New password</Label>
-            <Input
-              id="reset-password-input"
-              name="password"
-              type="password"
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              data-testid="reset-new-password"
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="reset-confirm">Confirm new password</Label>
-            <Input
-              id="reset-confirm"
-              name="confirmPassword"
-              type="password"
-              autoComplete="new-password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              data-testid="reset-confirm-password"
-              required
-            />
-          </div>
+          <PasswordField
+            id="reset-password-input"
+            name="password"
+            label="New password"
+            value={password}
+            onChange={setPassword}
+            testId="reset-new-password"
+          />
+          <PasswordField
+            id="reset-confirm"
+            name="confirmPassword"
+            label="Confirm new password"
+            value={confirm}
+            onChange={setConfirm}
+            testId="reset-confirm-password"
+          />
           <ul className="space-y-1 text-xs">
             <Requirement met={checks.length}>
               At least {MINIMUM_PASSWORD_LENGTH} characters
