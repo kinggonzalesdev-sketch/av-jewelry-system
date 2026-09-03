@@ -67,17 +67,31 @@ The app validates `/^\d{6}$/` and expects a 10-minute code.
 (seconds) and **OTP length = 6**.
 **API:** add to the same PATCH body: `"mailer_otp_exp": 600` (and `"mailer_otp_length": 6` if your API exposes it).
 
-### 6.3 Recovery email template — must show the code
+### 6.3 Recovery email template — must show the code  ← THE ONE THAT BIT US
+> ⚠️ **Symptom if this is skipped (observed 2026-09-03):** the email arrives saying *"Follow the link
+> below"* with a **Reset password link** (the Supabase default `{{ .ConfirmationURL }}` template).
+> Clicking it goes to `…/?code=<uuid>` and **fails**, because MineFlow's screen wants a **typed 6-digit
+> code**, not a link — there is no link-handler in the app. Fix = make the email print the code.
+
 **Dashboard:** Authentication → **Emails** → **Templates** → **Reset Password**:
 - **Subject:** `Your A.V. Jewelry password reset code`
-- **Body** must contain **`{{ .Token }}`** (not a link). Example:
-  > Your A.V. Jewelry password reset code is **{{ .Token }}**.
-  > It expires in 10 minutes. If you didn't request this, ignore this email.
+- **Message body:** delete the default link markup and paste this (it prints the code, no link):
+```html
+<h2>Reset your password</h2>
+<p>Use this 6-digit code to reset your A.V. Jewelry password:</p>
+<p style="font-size:28px;font-weight:bold;letter-spacing:4px">{{ .Token }}</p>
+<p>Enter it on the reset screen. It expires in 10 minutes.</p>
+<p>If you didn't request this, you can safely ignore this email.</p>
+```
 
 ### 6.4 URL configuration
+> ⚠️ **Symptom if this is skipped (observed 2026-09-03):** the email link pointed to
+> `localhost:3000/?code=…` → **ERR_CONNECTION_REFUSED**. That's the dev default Site URL leaking into
+> the email. Set it to prod. (After 6.3 the email has no link at all — but still fix this so every other
+> auth email resolves correctly.)
+
 **Dashboard:** Authentication → **URL Configuration** → **Site URL** = `https://avjewelry.online`;
-ensure it's in the redirect allow-list. (OTP doesn't rely on the redirect, but keep Site URL correct so
-other auth emails resolve.)
+ensure it's in the redirect allow-list.
 
 **Leave enabled (already on):** Leaked-password protection (Authentication → Passwords).
 
@@ -95,10 +109,11 @@ staff member mid-shift.
 **Steps**
 1. Go to `https://avjewelry.online` → **Forgot password**. Enter the test email → Submit.
    - ✅ Screen shows the generic *"If an account exists…"* message (never reveals existence).
-2. Open the mailbox.
+2. Open the mailbox. **Do NOT click any link — copy the 6-digit code.** (After §6.3 there is no link,
+   only a code.) The whole reset happens on the same browser tab where you clicked *Forgot password*.
    - ✅ Email arrives within ~1 min, from your sender, **containing a 6-digit code** (not a link).
    - ✅ Not in spam (if it is, fix SPF/DKIM on the sender domain and re-test).
-3. Enter the 6-digit code on the verify screen.
+3. Go back to the reset tab and **type the 6-digit code** on the verify screen.
    - ✅ Accepts → advances to "set new password". (Wrong code → "Invalid or expired"; after 10 min →
      "That code has expired. Send a new code.")
 4. Set a new password **≥ 12 characters**, confirm it.
