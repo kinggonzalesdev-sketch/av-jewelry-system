@@ -91,7 +91,8 @@ export function IncomingCapturesStrip({
   // cached. `preparingUse` is the capture whose data is currently loading.
   const [orderData, setOrderData] = useState<NewOrderData | null>(initialData ?? null);
   const [preparingUse, setPreparingUse] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  // (Dismiss no longer needs a per-row "busy" spinner: the card is removed optimistically on
+  // click, so there is nothing left on screen to spin.)
   // The capture whose screenshot is mid-send to Messenger (per-row spinner).
   const [sendingId, setSendingId] = useState<string | null>(null);
   // The capture whose operator edits (grams/note) are mid-save (per-row "Save" spinner).
@@ -113,6 +114,15 @@ export function IncomingCapturesStrip({
   );
   // Captures we've already kicked a resolution for, so each resolves exactly once.
   const resolvedRef = useRef<Set<string>>(new Set());
+
+  // OPTIMISTIC DISMISS bookkeeping (Owner 2026-09-05).
+  // `dismissedRef` = ids removed from the visible list but whose server DELETE has not
+  // confirmed yet. It is a SUPPRESSION set: both the 5s recovery poll and the realtime
+  // handler consult it, so a request that was already in flight when Dismiss was clicked
+  // can never resurrect the card. `dismissRollbackRef` keeps the exact row object so a
+  // FAILED mutation restores it in its original position instead of silently losing it.
+  const dismissedRef = useRef<Set<string>>(new Set());
+  const dismissRollbackRef = useRef<Map<string, PendingCaptureRow>>(new Map());
 
   // Set by the auto-print effect below; lets the realtime handler kick an INSTANT drain
   // the moment a capture arrives (null while no printer is connected / auto-print off).
@@ -144,7 +154,12 @@ export function IncomingCapturesStrip({
 
   const load = useCallback(() => {
     loadPendingCapturesAction()
-      .then((data) => setRows(data))
+      .then((data) =>
+        // Drop anything optimistically dismissed but not yet confirmed. A load() that was
+        // already in flight when Dismiss was clicked returns a PRE-dismiss snapshot; without
+        // this filter it would put the card back for a few seconds ("flicker").
+        setRows(data.filter((r) => !dismissedRef.current.has(r.captureRecordId))),
+      )
       .catch(() => undefined);
   }, []);
 
@@ -165,6 +180,9 @@ export function IncomingCapturesStrip({
       if (!raw) return;
       const id = typeof raw.id === 'string' ? raw.id : '';
       if (!id) return;
+      // Optimistically dismissed → stay gone. A realtime echo for the row (or a late
+      // INSERT/UPDATE that raced the DELETE) must not make the card reappear.
+      if (dismissedRef.current.has(id)) return;
       // Mirror listPendingCaptures' filter EXACTLY: a pending floating capture has
       // source 'floating', no linked order, and confirmed still null (jsonb).
       const isPending =
@@ -640,23 +658,64 @@ export function IncomingCapturesStrip({
     }
   };
 
+  /**
+   * Put an optimistically-dismissed capture BACK exactly where it was and surface the failure.
+   * Never lose a capture to a failed persist: the row object was snapshotted before removal, and
+   * un-suppressing the id hands authority back to the server list.
+   */
+  const restoreDismissed = (id: string, message: string) => {
+    const snapshot = dismissRollbackRef.current.get(id);
+    dismissRollbackRef.current.delete(id);
+    dismissedRef.current.delete(id);
+    if (snapshot) {
+      setRows((cur) =>
+        cur.some((r) => r.captureRecordId === id)
+          ? cur // a reconcile already brought it back — don't duplicate
+          : // Re-insert in its original slot (the list is captured_at DESC), not at the top.
+            [...cur, snapshot].sort((a, b) => b.capturedAt.localeCompare(a.capturedAt)),
+      );
+    }
+    setError(`${message} Please retry.`);
+  };
+
+  /**
+   * OPTIMISTIC Dismiss (Owner 2026-09-05). The card leaves the list on the SAME tick as the
+   * click; the authoritative DELETE + revalidate run in the background.
+   *
+   * Before, the row was removed only inside `.then()`, so the operator watched the card for the
+   * ENTIRE server round-trip — 2–5s while the database is saturated (the `staff_profiles`
+   * permission read alone averaged 1.6s and peaked at 7.6s on 2026-09-05). Nothing about that
+   * wait was load-bearing: `dismiss_pending_capture` is one DELETE with no Pancake/Facebook/
+   * storage work, so the UI has no reason to block on it.
+   *
+   * Safety: the id is SUPPRESSED (see `dismissedRef`) until the mutation confirms, so neither the
+   * 5s recovery poll nor a realtime echo can resurrect it; a FAILED mutation restores the exact
+   * row via `restoreDismissed`. Duplicate clicks are rejected on the capture's stable id.
+   */
   const dismiss = (id: string) => {
-    if (busy) return;
-    setBusy(id);
+    // Duplicate protection — one mutation per capture, keyed by its stable internal id.
+    if (dismissedRef.current.has(id)) return;
+    const snapshot = rows.find((r) => r.captureRecordId === id);
+    if (!snapshot) return;
+
+    dismissedRef.current.add(id);
+    dismissRollbackRef.current.set(id, snapshot);
     setError(null);
-    dismissPendingCaptureAction(id)
+    // 1) INSTANT — the card disappears now. The rows.length effect fires CAPTURE_COUNT_EVENT
+    //    in the same commit, so "Incoming Captures (33)" becomes (32) without a server reply.
+    setRows((cur) => cur.filter((r) => r.captureRecordId !== id));
+
+    // 2) BACKGROUND — persist. The visible list never awaits this.
+    void dismissPendingCaptureAction(id)
       .then((res) => {
-        setBusy(null);
-        if (!res.ok) {
-          setError(res.error);
+        if (res.ok) {
+          // Committed. Keep the id suppressed: a stale in-flight load() may still list it.
+          dismissRollbackRef.current.delete(id);
           return;
         }
-        setRows((cur) => cur.filter((r) => r.captureRecordId !== id));
+        restoreDismissed(id, res.error);
       })
-      .catch(() => {
-        setBusy(null);
-        setError('Could not dismiss the capture.');
-      });
+      .catch(() => restoreDismissed(id, 'Could not dismiss the capture.'));
   };
 
   // "Use" a capture → convert it to a New Order. The form's data is loaded lazily on
@@ -954,10 +1013,10 @@ export function IncomingCapturesStrip({
                       type="button"
                       size="sm"
                       variant="outline"
-                      disabled={busy === r.captureRecordId}
                       onClick={() => dismiss(r.captureRecordId)}
+                      data-testid={`incoming-dismiss-${r.captureRecordId}`}
                     >
-                      {busy === r.captureRecordId ? '…' : 'Dismiss'}
+                      Dismiss
                     </Button>
                   </div>
                   {/* Linked Facebook Customer — resolved from the detected name. Full width

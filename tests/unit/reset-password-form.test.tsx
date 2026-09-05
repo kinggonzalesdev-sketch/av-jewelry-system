@@ -5,9 +5,12 @@ import { ResetPasswordForm } from '@/app/(auth)/reset-password/reset-password-fo
 
 // The password step is gated behind the email → 6-digit code flow, so mock the three server
 // actions to walk the form to that step deterministically.
-const requestReset = vi.fn(() => Promise.resolve({ message: 'If an account exists…' }));
-const verifyOtp = vi.fn(() => Promise.resolve({ ok: true as const }));
-const changePw = vi.fn(() => Promise.resolve({ ok: true as const }));
+// Rest params so the forwarding spreads below type-check (a zero-arg vi.fn cannot take a spread).
+const requestReset = vi.fn((..._a: unknown[]) =>
+  Promise.resolve({ message: 'If an account exists…' }),
+);
+const verifyOtp = vi.fn((..._a: unknown[]) => Promise.resolve({ ok: true as const }));
+const changePw = vi.fn((..._a: unknown[]) => Promise.resolve({ ok: true as const }));
 vi.mock('@/lib/auth/password-reset', () => ({
   requestPasswordReset: (...a: unknown[]) => requestReset(...a),
   verifyResetOtp: (...a: unknown[]) => verifyOtp(...a),
