@@ -39,6 +39,11 @@ export const config = {
      * when NODE_ENV is production, so it can never be served from a production
      * build. Excluding it here therefore widens no production surface.
      */
-    '/((?!_next/static|_next/image|favicon.ico|preview|api/mobile|api/cron|api/webhooks|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // `manifest.webmanifest` is excluded because the browser fetches it WITHOUT credentials
+    // when offering "Add to Home Screen" / launching the installed app. Under the proxy it
+    // 307s to /sign-in and the install silently breaks. It carries only public metadata
+    // (app name, colours, icon paths) and makes no authorization decision, so excluding it
+    // widens no production surface — same reasoning as the static assets beside it.
+    '/((?!_next/static|_next/image|favicon.ico|manifest\\.webmanifest|preview|api/mobile|api/cron|api/webhooks|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

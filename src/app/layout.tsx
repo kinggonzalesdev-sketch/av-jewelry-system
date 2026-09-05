@@ -21,6 +21,15 @@ export const viewport: Viewport = {
   initialScale: 1,
   // Zoom is deliberately NOT disabled — pinch-zoom is an accessibility requirement.
   maximumScale: 5,
+  // `env(safe-area-inset-*)` resolves to 0 unless the viewport is fit to cover, so without
+  // this the safe-area padding already on the mobile nav/header/modals was inert. With it,
+  // iOS reports the real notch / home-indicator insets. No effect on Android or desktop.
+  viewportFit: 'cover',
+  // Colours the browser/OS chrome to match the app surface (also used when installed).
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#f7f7f5' },
+    { media: '(prefers-color-scheme: dark)', color: '#0c0f0d' },
+  ],
 };
 
 export default function RootLayout({

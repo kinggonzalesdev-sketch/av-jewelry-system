@@ -87,7 +87,9 @@ export function Modal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4"
+      // Safe-area padding so a full-height dialog never sits under an iPhone notch or the
+      // home indicator once viewport-fit=cover is on. These resolve to 0 on Android/desktop.
+      className="fixed inset-0 z-50 flex items-center justify-center p-0 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] sm:p-4"
       role="dialog"
       aria-modal="true"
       // A portaled dialog renders in <body>, but React events bubble through the
@@ -115,7 +117,9 @@ export function Modal({
       )}
 
       <div
-        className={`relative z-10 flex max-h-[90vh] w-[calc(100vw-32px)] flex-col overflow-hidden border border-border bg-card shadow-xl sm:w-full sm:rounded-xl ${maxWidthClass ?? WIDTH[size]}`}
+        // dvh, not vh: on a phone the address bar collapsing changes vh, which resized the
+        // dialog mid-interaction. Same geometry on desktop.
+        className={`relative z-10 flex max-h-[90dvh] w-[calc(100vw-32px)] flex-col overflow-hidden border border-border bg-card shadow-xl sm:w-full sm:rounded-xl ${maxWidthClass ?? WIDTH[size]}`}
         data-testid="modal"
       >
         {title || description || ariaLabel || headerActions ? (
@@ -137,7 +141,9 @@ export function Modal({
                 onClick={onClose}
                 aria-label="Close"
                 data-testid="modal-close"
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border text-sm text-muted-foreground hover:bg-accent"
+                // tap-44 keeps the 28px circle visually identical but gives it a ~44px
+                // touch region on coarse pointers (it was the smallest target in the app).
+                className="tap-44 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border text-sm text-muted-foreground hover:bg-accent"
               >
                 ✕
               </button>

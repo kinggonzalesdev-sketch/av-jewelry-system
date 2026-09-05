@@ -326,7 +326,9 @@ export function AppSidebar({
         {/* ---------------- Main ---------------- */}
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Compact mobile header: real identity + honest printer + theme. */}
-          <header className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-2.5 lg:hidden">
+          {/* pt-[safe-area-inset-top] pairs with viewport-fit=cover so the header clears an
+              iPhone notch / dynamic island; resolves to 0 on Android and desktop. */}
+          <header className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-2.5 pt-[max(0.625rem,env(safe-area-inset-top))] lg:hidden">
             <div className="flex min-w-0 items-center gap-2">
               <BrandMark size="sm" />
               <div className="min-w-0" title={fullName}>

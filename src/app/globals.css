@@ -294,8 +294,115 @@
    works (page-level sticky is blocked by the horizontal-scroll wrapper). Applied to
    the long, paginated tables. Short tables never hit the cap, so nothing changes. */
 .table-scroll {
+  /* dvh, not vh: on a phone the address bar hiding/showing changes vh mid-scroll, which
+     made the table viewport jump. vh stays as the fallback for browsers without dvh. */
   max-height: 75vh;
+  max-height: 75dvh;
   overflow: auto;
+}
+
+/* ---------------------------------------------------------------------------
+ * MOBILE CARD TABLE (Owner 2026-09-05) — opt-in responsive primitive.
+ *
+ * Every operational table carries a desktop `min-w-[640…1120px]`, so on a 360px
+ * phone the operator must swipe sideways to read a row. A table that ALSO carries
+ * `.data-table--stack` collapses below 640px into one card per row: the header is
+ * hidden and each cell renders as a `label — value` line taken from the cell's own
+ * `data-label`. Adopting it is one class + `data-label` on the <td>s.
+ *
+ * Desktop is untouched: every rule lives inside the max-width query.
+ * ------------------------------------------------------------------------- */
+@media (max-width: 639px) {
+  /* Neutralise the desktop min-width that forces the horizontal scroll. */
+  .data-table--stack {
+    min-width: 0 !important;
+    table-layout: auto !important;
+  }
+  /* Percentage colgroups must not apply once the cells stop being table cells. */
+  .data-table--stack > colgroup {
+    display: none;
+  }
+  /* Header is redundant once each cell is labelled — hide it accessibly. */
+  .data-table--stack > thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .data-table--stack,
+  .data-table--stack > tbody,
+  .data-table--stack > tbody > tr,
+  .data-table--stack > tbody > tr > td {
+    display: block;
+    width: auto;
+    height: auto;
+  }
+  /* One row = one card, in the existing card idiom (same border/radius/surface). */
+  .data-table--stack > tbody > tr {
+    margin-bottom: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background-color: var(--card);
+  }
+  .data-table--stack > tbody > tr > td {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    height: auto !important;
+    padding: 3px 0 !important;
+    border: 0;
+    text-align: right;
+    white-space: normal;
+  }
+  .data-table--stack > tbody > tr > td::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    text-align: left;
+    font-weight: 500;
+    color: var(--muted-foreground);
+  }
+  /* An unlabelled cell (e.g. the actions cell) spans the whole card instead. */
+  .data-table--stack > tbody > tr > td:not([data-label])::before,
+  .data-table--stack > tbody > tr > td[data-label='']::before {
+    content: none;
+  }
+  .data-table--stack > tbody > tr > td.col-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    margin-top: 4px;
+    padding-top: 8px !important;
+    border-top: 1px solid var(--border);
+  }
+  /* An empty-state / colspan row stays a plain full-width line, not a card. */
+  .data-table--stack > tbody > tr > td[colspan]::before {
+    content: none;
+  }
+  .data-table--stack > tbody > tr:has(> td[colspan]) {
+    border: 0;
+    background: none;
+    padding: 0;
+  }
+}
+
+/* Comfortable ~44px tap area on touch devices WITHOUT changing the visual size —
+   the pseudo-element only enlarges the hit region (Owner 2026-09-05). */
+@media (pointer: coarse) {
+  .tap-44 {
+    position: relative;
+  }
+  .tap-44::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 .data-table.data-roomy > tbody > tr > td {
   padding: 6px 12px;
