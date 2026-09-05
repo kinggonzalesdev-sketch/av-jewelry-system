@@ -1,0 +1,35 @@
+-- Index the media-eligibility lookup on pancake_webhook_events (Owner 2026-09-05).
+--
+-- WHY: the 2026-09-04/05 slowdown audit found this single query was the #1 cost in the whole
+-- database — 2,106,834 calls / 1,431,552 s total / 679 ms mean — because it ran a Parallel Seq
+-- Scan over a 187k-row, 343 MB table. There was no index on facebook_psid (only pkey,
+-- (page_id, comment_id) and (received_at DESC)), and none had ever been created.
+--
+-- The query is `isConversationMediaEligible` in src/lib/capture/media-window.ts, called ONCE PER
+-- ROW by listPendingCaptures. With 33 uncleared captures on screen and the strip's 5s poll that
+-- is ~360 full table scans/minute, which saturated the connection pool and dragged every other
+-- page down (staff_profiles went 18 ms -> 1,638 ms avg, 1,829 gateway timeouts).
+--
+--   select raw, event_timestamp from pancake_webhook_events
+--    where facebook_psid = $1 and post_type is null and event_timestamp > $2
+--    order by event_timestamp desc limit 50
+--
+-- The index mirrors that predicate exactly: composite on (facebook_psid, event_timestamp DESC)
+-- so the ORDER BY ... LIMIT is satisfied straight from the index, and PARTIAL on
+-- `post_type is null` so it only covers Inbox-shaped events — which keeps it at ~8 MB instead of
+-- indexing all 187k rows.
+--
+-- MEASURED after creation: Index Scan, Buffers shared hit=8, Execution Time 0.252 ms
+-- (from 679 ms mean) — roughly 2,700x.
+--
+-- APPLIED WITH `CREATE INDEX CONCURRENTLY` via execute_sql rather than apply_migration, because
+-- CONCURRENTLY cannot run inside a transaction block. Concurrently was used deliberately: it
+-- takes no write lock, so live Pancake webhook inserts were never blocked during the build.
+-- Verified afterwards as indisvalid = true AND indisready = true (a failed concurrent build
+-- leaves an INVALID index, so this check matters).
+--
+-- ADDITIVE and instantly reversible:
+--   drop index concurrently if exists public.idx_pwe_psid_event_ts_inbox;
+create index concurrently if not exists idx_pwe_psid_event_ts_inbox
+  on public.pancake_webhook_events (facebook_psid, event_timestamp desc)
+  where post_type is null;
