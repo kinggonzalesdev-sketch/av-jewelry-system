@@ -69,7 +69,8 @@ Users **never reinstall**. A normal `vercel --prod` deploy is all it takes:
 2. When the new worker is installed and waiting, MineFlow shows **Update available — Update now /
    Later** (bottom of the screen, above the mobile nav).
 3. **Update now** asks the new worker to take over and reloads **once**. The worker never activates
-   itself and never reloads on its own, so there is no update loop.
+   itself and never reloads on its own, so there is no update loop. If another open MineFlow tab
+   already applied the update, **Update now** in this tab simply reloads it into the new build.
 4. **Unsaved-work guard:** while any _critical_ dialog is open (Add Payment, invoice/order entry,
    inventory edit, walk-in sale…) or a capture edit is unsaved, **Update now** first warns
    _"You have an entry in progress…"_ and requires **Update anyway**. It will not discard work

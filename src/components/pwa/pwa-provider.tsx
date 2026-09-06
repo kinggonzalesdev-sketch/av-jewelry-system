@@ -71,6 +71,9 @@ const Ctx = createContext<PwaState>(defaultState);
 
 const STANDALONE_QUERY = '(display-mode: standalone)';
 
+// Module-level so its identity is stable across renders (it is a hook dependency).
+const defaultReload = () => window.location.reload();
+
 function detectStandalone(): boolean {
   if (typeof window === 'undefined') return false;
   const mq =
@@ -109,12 +112,15 @@ export function PwaProvider({
   children,
   version = (process.env.APP_COMMIT ?? 'local').trim() || 'local',
   registerServiceWorker = process.env.NODE_ENV === 'production',
+  reload = defaultReload,
 }: {
   children: ReactNode;
   /** Public build id used to version the worker URL. */
   version?: string;
   /** Register /sw.js — production by default; tests pass true with a mocked container. */
   registerServiceWorker?: boolean;
+  /** The one-time reload into the new build; injectable because jsdom cannot navigate. */
+  reload?: () => void;
 }) {
   const online = useSyncExternalStore(subscribeOnline, readOnline, () => true);
   const standalone = useSyncExternalStore(
@@ -196,7 +202,7 @@ export function PwaProvider({
     const onControllerChange = () => {
       if (reloadRequested.current && !reloaded.current) {
         reloaded.current = true;
-        window.location.reload();
+        reload();
       }
     };
     container.addEventListener('controllerchange', onControllerChange);
@@ -215,7 +221,7 @@ export function PwaProvider({
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [registerServiceWorker, version, swSupported]);
+  }, [registerServiceWorker, version, swSupported, reload]);
 
   const promptInstall = useCallback(async () => {
     const ev = deferredPrompt.current;
@@ -229,11 +235,22 @@ export function PwaProvider({
   }, []);
 
   const applyUpdate = useCallback(() => {
-    const w = waiting.current;
+    const w = registration.current?.waiting ?? waiting.current;
     if (!w) return;
     reloadRequested.current = true;
-    w.postMessage({ type: 'SKIP_WAITING' });
-  }, []);
+    if (w.state === 'installed') {
+      // Still waiting: ask it to take over; controllerchange then reloads once.
+      w.postMessage({ type: 'SKIP_WAITING' });
+      return;
+    }
+    // It already took over — another open tab pressed "Update now", or the browser activated it
+    // while this tab was idle. Nothing is waiting to message, so this tab just loads the new
+    // build (once). Without this branch the button would post to a dead worker and do nothing.
+    if (!reloaded.current) {
+      reloaded.current = true;
+      reload();
+    }
+  }, [reload]);
 
   const checkForUpdate = useCallback(async () => {
     await registration.current?.update();

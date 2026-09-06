@@ -59,7 +59,17 @@ function makeSwMock() {
     installing.state = 'installed';
     installing.listeners.forEach((fn) => fn(new Event('statechange')));
   };
-  return { container, registration, installing, simulateNewVersionInstalled };
+  const fireControllerChange = () =>
+    containerListeners.controllerchange?.forEach((fn) =>
+      fn(new Event('controllerchange')),
+    );
+  return {
+    container,
+    registration,
+    installing,
+    simulateNewVersionInstalled,
+    fireControllerChange,
+  };
 }
 
 let sw: ReturnType<typeof makeSwMock>;
@@ -84,11 +94,18 @@ afterEach(() => {
   matchMediaMatches = false;
 });
 
-async function mount(ui: React.ReactNode, opts?: { register?: boolean }) {
+async function mount(
+  ui: React.ReactNode,
+  opts?: { register?: boolean; reload?: () => void },
+) {
   await act(async () => {
     render(
       <UnsavedChangesProvider>
-        <PwaProvider version="abc1234" registerServiceWorker={opts?.register ?? true}>
+        <PwaProvider
+          version="abc1234"
+          registerServiceWorker={opts?.register ?? true}
+          {...(opts?.reload ? { reload: opts.reload } : {})}
+        >
           {ui}
         </PwaProvider>
       </UnsavedChangesProvider>,
@@ -221,6 +238,42 @@ describe('PwaProvider', () => {
     expect(screen.getByTestId('pwa-update-now')).toHaveTextContent('Update anyway');
     fireEvent.click(screen.getByTestId('pwa-update-now'));
     expect(sw.installing.postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
+  });
+
+  it('reloads exactly once, on controllerchange, and only after "Update now" asked', async () => {
+    const reload = vi.fn();
+    await mount(<UpdateToast />, { reload });
+    // First install / claim: a controllerchange nobody asked for must NOT reload.
+    act(() => {
+      sw.fireControllerChange();
+    });
+    expect(reload).not.toHaveBeenCalled();
+
+    act(() => {
+      sw.simulateNewVersionInstalled();
+    });
+    fireEvent.click(screen.getByTestId('pwa-update-now'));
+    expect(sw.installing.postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
+    act(() => {
+      sw.fireControllerChange();
+      sw.fireControllerChange();
+    });
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('multi-tab: if the new worker already took over, "Update now" reloads this tab once instead of posting to a dead worker', async () => {
+    const reload = vi.fn();
+    await mount(<UpdateToast />, { reload });
+    act(() => {
+      sw.simulateNewVersionInstalled();
+    });
+    // Another tab pressed "Update now": the worker we hold is now active, nothing is waiting.
+    sw.installing.state = 'activated';
+    fireEvent.click(screen.getByTestId('pwa-update-now'));
+    const again = screen.queryByTestId('pwa-update-now');
+    if (again) fireEvent.click(again);
+    expect(sw.installing.postMessage).not.toHaveBeenCalled();
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it('"Later" hides the toast without updating', async () => {
