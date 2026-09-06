@@ -398,7 +398,7 @@ export function LedgerAddPayment({
                 </div>
               ) : null}
             </dl>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <Label htmlFor={`ledger-pay-date-${id}`} className="text-xs">
                   Payment Date
@@ -679,7 +679,7 @@ export function LedgerEditAccount({
                 className="mt-1 h-9"
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <Label className="text-xs">Item Amount</Label>
                 <MoneyInput
@@ -702,7 +702,7 @@ export function LedgerEditAccount({
             <p className="text-[10px] text-muted-foreground">
               Grand Total (Item + Interest) and Balance are recomputed on save.
             </p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <Label htmlFor={`ledger-edit-datep-${id}`} className="text-xs">
                   Date Purchased

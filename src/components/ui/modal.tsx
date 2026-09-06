@@ -3,6 +3,8 @@
 import { createPortal } from 'react-dom';
 import { useEffect, useId } from 'react';
 
+import { useUnsavedChanges } from '@/components/pwa/unsaved-changes';
+
 /**
  * Modal — the ONE standard dialog for the whole app. Every Create / Add / Edit /
  * View / Upload / Payment / Fulfillment / Scrap / Supplier / Financer / Customer
@@ -68,6 +70,12 @@ export function Modal({
 }) {
   const titleId = useId();
 
+  // A `critical` dialog is, by this app's own definition, a half-filled entry (payment,
+  // invoice, walk-in…). While one is open the PWA update flow must never reload the page
+  // — registering it as "unsaved" is what stops that (Owner 2026-09-05). No-op without the
+  // provider, so the primitive stays usable in isolation.
+  useUnsavedChanges(open && critical);
+
   // Lock background scroll while open; close on Escape unless the form is critical.
   useEffect(() => {
     if (!open) return;
@@ -89,7 +97,9 @@ export function Modal({
     <div
       // Safe-area padding so a full-height dialog never sits under an iPhone notch or the
       // home indicator once viewport-fit=cover is on. These resolve to 0 on Android/desktop.
-      className="fixed inset-0 z-50 flex items-center justify-center p-0 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] sm:p-4"
+      // Phones: a BOTTOM SHEET (items-end, full width, rounded top) so the dialog reads as
+      // native and its actions sit under the thumb. ≥640px: the unchanged centered card.
+      className="fixed inset-0 z-50 flex items-end justify-center p-0 pt-[env(safe-area-inset-top)] sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       // A portaled dialog renders in <body>, but React events bubble through the
@@ -119,7 +129,7 @@ export function Modal({
       <div
         // dvh, not vh: on a phone the address bar collapsing changes vh, which resized the
         // dialog mid-interaction. Same geometry on desktop.
-        className={`relative z-10 flex max-h-[90dvh] w-[calc(100vw-32px)] flex-col overflow-hidden border border-border bg-card shadow-xl sm:w-full sm:rounded-xl ${maxWidthClass ?? WIDTH[size]}`}
+        className={`relative z-10 flex max-h-[calc(100dvh-env(safe-area-inset-top))] w-full flex-col overflow-hidden rounded-t-2xl border border-border bg-card pb-[env(safe-area-inset-bottom)] shadow-xl sm:max-h-[90dvh] sm:rounded-xl sm:pb-0 ${maxWidthClass ?? WIDTH[size]}`}
         data-testid="modal"
       >
         {title || description || ariaLabel || headerActions ? (
