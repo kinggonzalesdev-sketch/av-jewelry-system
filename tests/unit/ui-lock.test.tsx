@@ -47,14 +47,16 @@ describe('LOCKED: desktop sidebar (exact order, labels, routes, icons)', () => {
 });
 
 describe('LOCKED: mobile navigation', () => {
-  it('bottom bar is exactly Dashboard · Orders · Inventory · Layaway (+ More)', () => {
+  it('bottom bar is exactly Dashboard · Orders · Inventory · Layaway · Daily Cash (+ More)', () => {
     // Invoice folded into Orders → For Invoice (Owner request 2026-07-22).
-    // Mobile audit 2026-09-05 (Owner-approved plan): the primary FOUR in the 5-slot bar.
+    // Owner 2026-09-06: the primary FIVE in a six-slot bar (More always right-most), refining
+    // the 2026-09-05 four — Daily Cash Summary is the Owner/Admin end-of-day module.
     expect(mobilePrimaryItems().map((i) => i.label)).toEqual([
       'Dashboard Profile',
       'Orders',
       'Inventory',
       'Layaway',
+      'Daily Cash Summary',
     ]);
   });
 
@@ -62,7 +64,6 @@ describe('LOCKED: mobile navigation', () => {
     expect(mobileMoreItems().map((i) => i.label)).toEqual([
       'Scrap',
       'Approvals',
-      'Daily Cash Summary',
       'Attendance',
       'Review Attendance',
       'Payroll',

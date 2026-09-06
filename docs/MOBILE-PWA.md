@@ -35,7 +35,8 @@ Safari never shows an automatic install prompt; this is the only way and it is n
 ### iPad (Safari)
 
 Same as iPhone. In landscape the sidebar/bottom-nav behave like a tablet (≥1024px shows the
-desktop sidebar; below that the mobile header + bottom nav + ☰ drawer).
+desktop sidebar; below that the mobile header + the single bottom bar, whose **More** tab opens a
+bottom sheet with the remaining modules, Settings and Logout).
 
 The **Install MineFlow** card in Settings shows the right instructions for the device it is on,
 and says "✓ MineFlow is installed on this device" once running as an app.
@@ -184,5 +185,5 @@ the PWA today:
 | Offline page                          | `src/app/offline/page.tsx`                                                          |
 | Public-path exclusions                | `src/proxy.ts` (matcher), `src/lib/supabase/proxy.ts` (`PUBLIC_ROUTES`)             |
 | Mobile card tables                    | `globals.css` `.data-table--stack`, `src/components/ui/stacked-table.ts`            |
-| Mobile nav (bottom nav + ☰ drawer)   | `src/components/shell/app-sidebar.tsx`, `navigation.ts` (`mobilePrimary`)           |
+| Mobile nav (bottom bar + More sheet)  | `src/components/shell/app-sidebar.tsx`, `navigation.ts` (`mobileBarItems`)          |
 | Bottom-sheet dialogs                  | `src/components/ui/modal.tsx`                                                       |

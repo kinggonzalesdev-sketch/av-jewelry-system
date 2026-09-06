@@ -1,19 +1,26 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useEffect, useState, useTransition, type ReactNode } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+  type ReactNode,
+} from 'react';
 
 import {
   canSeeNavItem,
+  mobileBarItems,
   mobileLabel,
-  mobileMoreItems,
-  mobilePrimaryItems,
+  mobileSheetItems,
+  mobileShortLabel,
   navRows,
   SETTINGS_ITEM,
   type NavItem,
 } from '@/components/shell/navigation';
-import { InstallMineFlow } from '@/components/pwa/install-mineflow';
 import { PrinterStatusBadge, PrinterStatusRow } from '@/components/shell/printer-status';
 import { PrivacyToggle } from '@/components/shell/privacy';
 import { ThemeToggle } from '@/components/shell/theme-toggle';
@@ -79,6 +86,7 @@ function BrandMark({ size = 'md' }: { size?: 'sm' | 'md' }) {
 
 function LogoutButton({ variant = 'sidebar' }: { variant?: 'sidebar' | 'more' }) {
   const [pending, start] = useTransition();
+  const more = variant === 'more';
   return (
     <button
       type="button"
@@ -88,10 +96,15 @@ function LogoutButton({ variant = 'sidebar' }: { variant?: 'sidebar' | 'more' })
       className={cn(
         'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors',
         'text-muted-foreground hover:bg-destructive/10 hover:text-destructive',
-        variant === 'more' && 'text-destructive',
+        // The More sheet row: the same 48px row as the modules above it, red like the
+        // desktop hover state so it reads as the destructive action it is.
+        more && 'min-h-12 gap-3 px-3 text-destructive',
       )}
     >
-      <span aria-hidden="true" className="w-4 shrink-0 text-center text-xs">
+      <span
+        aria-hidden="true"
+        className={cn('shrink-0 text-center', more ? 'w-5 text-base' : 'w-4 text-xs')}
+      >
         ⏻
       </span>
       <span>{pending ? 'Signing out…' : 'Logout'}</span>
@@ -160,11 +173,7 @@ export function AppSidebar({
   children: ReactNode;
 }) {
   const pathname = usePathname();
-  const [moreOpen, setMoreOpen] = useState(false);
-  // Mobile ☰ drawer (Owner 2026-09-05): the SAME permitted modules as the desktop sidebar, in a
-  // slide-out menu, beside the bottom nav's primary four. Closes on link tap / overlay / ✕ / Esc.
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const closeDrawer = () => setDrawerOpen(false);
+  const router = useRouter();
   // Manual open/close per collapsible group. Undefined → follow whether a child is
   // active (so navigating into Attendance/Payroll auto-expands Team Management).
   const [openSection, setOpenSection] = useState<Record<string, boolean>>({});
@@ -174,11 +183,73 @@ export function AppSidebar({
   // re-checks, so hiding is convenience, never the control.
   const allowed = allowedPages ? new Set(allowedPages) : undefined;
 
-  // Drawer: Escape closes it and background scroll is locked while it is open.
+  // Mobile bottom bar (Owner 2026-09-06): this member's five permitted tabs + More; the More
+  // sheet lists every permitted module that did not make the bar, then Settings and Logout.
+  // It is the ONE secondary menu on phones — no theme control inside (the header has the
+  // single theme button), no second navigation bar.
+  const barItems = mobileBarItems(roleKey, allowed);
+  const sheetItems = mobileSheetItems(roleKey, allowed, barItems);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreOpenRef = useRef(false);
   useEffect(() => {
-    if (!drawerOpen) return;
+    moreOpenRef.current = moreOpen;
+  }, [moreOpen]);
+
+  // Device Back closes the sheet instead of leaving the page: opening pushes one history entry
+  // (Next.js copies its own router state into it), and popstate closes the sheet. Closing from
+  // the UI pops that entry itself; choosing a module pops it first and navigates once the pop
+  // has landed, so the module never ends up "behind" a stale sheet entry.
+  const pendingHref = useRef<string | null>(null);
+  const historyMarked = () =>
+    Boolean((window.history.state as { mineflowMore?: boolean } | null)?.mineflowMore);
+  const openMore = () => {
+    setMoreOpen(true);
+    try {
+      window.history.pushState({ mineflowMore: true }, '');
+    } catch {
+      // History unavailable: the sheet still opens; Back simply will not close it.
+    }
+  };
+  const closeMore = useCallback(() => {
+    setMoreOpen(false);
+    if (historyMarked()) window.history.back();
+  }, []);
+  const selectFromMore = (href: string) => {
+    setMoreOpen(false);
+    if (!historyMarked()) {
+      router.push(href);
+      return;
+    }
+    pendingHref.current = href;
+    window.history.back();
+    // Belt and braces: if the browser never reports the pop, navigate anyway.
+    window.setTimeout(() => {
+      if (pendingHref.current === href) {
+        pendingHref.current = null;
+        router.push(href);
+      }
+    }, 300);
+  };
+  useEffect(() => {
+    const onPop = () => {
+      if (moreOpenRef.current) setMoreOpen(false);
+      const href = pendingHref.current;
+      if (href) {
+        pendingHref.current = null;
+        // Let the router finish restoring the popped entry before navigating away — a push
+        // dispatched inside the same popstate task is superseded by that restore.
+        window.setTimeout(() => router.push(href), 0);
+      }
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [router]);
+
+  // Sheet: Escape closes it and background scroll is locked while it is open.
+  useEffect(() => {
+    if (!moreOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setDrawerOpen(false);
+      if (e.key === 'Escape') closeMore();
     };
     document.addEventListener('keydown', onKey);
     const previousOverflow = document.body.style.overflow;
@@ -187,7 +258,7 @@ export function AppSidebar({
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = previousOverflow;
     };
-  }, [drawerOpen]);
+  }, [moreOpen, closeMore]);
 
   const isActive = (href: string) =>
     pathname === href ||
@@ -351,17 +422,6 @@ export function AppSidebar({
               iPhone notch / dynamic island; resolves to 0 on Android and desktop. */}
           <header className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-2.5 pt-[max(0.625rem,env(safe-area-inset-top))] lg:hidden">
             <div className="flex min-w-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setDrawerOpen(true)}
-                aria-label="Open menu"
-                aria-expanded={drawerOpen}
-                aria-controls="mobile-drawer"
-                data-testid="mobile-menu-button"
-                className="tap-44 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-base text-foreground"
-              >
-                ☰
-              </button>
               <BrandMark size="sm" />
               <div className="min-w-0" title={fullName}>
                 <p className="truncate text-xs font-bold text-foreground">A.V. Jewelry</p>
@@ -377,87 +437,12 @@ export function AppSidebar({
             </div>
           </header>
 
-          {/* ---------------- Mobile ☰ drawer ---------------- */}
-          {drawerOpen ? (
-            <div
-              className="fixed inset-0 z-40 lg:hidden"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Menu"
-              id="mobile-drawer"
-            >
-              <button
-                type="button"
-                aria-label="Close menu"
-                onClick={closeDrawer}
-                className="absolute inset-0 bg-black/50"
-                data-testid="mobile-drawer-overlay"
-              />
-              <div
-                className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col border-r border-border bg-card pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pt-[env(safe-area-inset-top)] shadow-xl"
-                data-testid="mobile-drawer"
-              >
-                <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <BrandMark size="sm" />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-foreground">
-                        A.V. Jewelry
-                      </p>
-                      <p className="truncate text-[10px] text-muted-foreground">
-                        {roleWord} Control
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={closeDrawer}
-                    aria-label="Close menu"
-                    data-testid="mobile-drawer-close"
-                    className="tap-44 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-sm text-muted-foreground"
-                  >
-                    ✕
-                  </button>
-                </div>
-                {/* The SAME rows + the SAME role/permission filter as the desktop sidebar — never a
-                    second hard-coded list. Grouped sections render flat under a small heading. */}
-                <nav aria-label="Menu" className="flex-1 overflow-y-auto p-2">
-                  <ul className="space-y-0.5">
-                    {navRows().map((row) => {
-                      if (row.kind === 'item') {
-                        return canSeeNavItem(row.item, roleKey, allowed)
-                          ? renderSidebarLink(row.item, false, closeDrawer)
-                          : null;
-                      }
-                      const items = row.items.filter((it) =>
-                        canSeeNavItem(it, roleKey, allowed),
-                      );
-                      if (items.length === 0) return null;
-                      return (
-                        <li key={row.section}>
-                          <p className="px-2.5 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                            {row.section}
-                          </p>
-                          <ul className="space-y-0.5">
-                            {items.map((it) => renderSidebarLink(it, true, closeDrawer))}
-                          </ul>
-                        </li>
-                      );
-                    })}
-                    {renderSidebarLink(SETTINGS_ITEM, false, closeDrawer)}
-                  </ul>
-                </nav>
-                <div className="space-y-1.5 border-t border-border p-2">
-                  <ThemeToggle />
-                  <PrivacyToggle />
-                  <InstallMineFlow variant="menu" />
-                  <LogoutButton />
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          <main id="main-content" className="min-w-0 flex-1 p-3 pb-24 sm:p-5 lg:pb-8">
+          {/* Bottom padding = the fixed 64px bar + the home-indicator inset + 16px breathing room,
+              so the last card/button is never hidden behind the bar. Desktop keeps pb-8. */}
+          <main
+            id="main-content"
+            className="min-w-0 flex-1 p-3 pb-[calc(5rem+env(safe-area-inset-bottom))] sm:p-5 sm:pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-8"
+          >
             {children}
           </main>
         </div>
@@ -468,86 +453,195 @@ export function AppSidebar({
         {userEmail}
       </span>
 
-      {/* ---------------- Mobile bottom nav: four primary + More ---------------- */}
+      {/* ---------------- Mobile bottom bar: five modules + More (Owner 2026-09-06) ---------------- */}
+      {/* The ONE mobile navigation system: a fixed 64px bar over the home-indicator safe area,
+          six slots, More always right-most. The slot count follows the member's PERMITTED
+          modules (never a blank or forbidden tab); the bar's height/position classes are the
+          same for every role — geometry never depends on role. */}
       <nav
         aria-label="Primary"
         className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card pb-[env(safe-area-inset-bottom)] lg:hidden"
         data-testid="bottom-nav"
       >
-        <ul className="grid grid-cols-5">
-          {mobilePrimaryItems()
-            .filter((item) => canSeeNavItem(item, roleKey, allowed))
-            .map((item) => (
-              <li key={item.href}>
+        <ul
+          className="grid h-16"
+          style={{
+            gridTemplateColumns: `repeat(${barItems.length + 1}, minmax(0, 1fr))`,
+          }}
+        >
+          {barItems.map((item) => {
+            const active = isActive(item.href);
+            return (
+              <li key={item.href} className="min-w-0">
                 <Link
                   href={item.href}
-                  aria-current={isActive(item.href) ? 'page' : undefined}
+                  aria-current={active ? 'page' : undefined}
+                  data-testid={`bottom-tab-${item.href.replace(/^\//, '').replace(/\//g, '-')}`}
                   className={cn(
-                    'flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 text-[10px] font-medium',
-                    isActive(item.href) ? 'text-gold-strong' : 'text-muted-foreground',
+                    'flex h-full min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 text-[11px] font-medium leading-none transition-colors',
+                    active ? 'text-gold-strong' : 'text-muted-foreground',
                   )}
                 >
-                  <span aria-hidden="true" className="text-sm">
+                  {/* Icon on a subtle gold pill when active — the existing accent, nothing new. */}
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      'flex h-7 items-center justify-center rounded-full px-3 text-xl leading-none',
+                      active && 'bg-gold/15',
+                    )}
+                  >
                     {item.icon}
                   </span>
-                  <span className="truncate">{mobileLabel(item)}</span>
+                  {/* Full label from 360px up; below that a meaning-preserving short form
+                      ("Inv.", "Cash", "Dash") instead of shrinking the text. */}
+                  <span className="hidden max-w-full truncate min-[360px]:inline">
+                    {mobileLabel(item)}
+                  </span>
+                  <span className="max-w-full truncate min-[360px]:hidden">
+                    {mobileShortLabel(item)}
+                  </span>
                 </Link>
               </li>
-            ))}
-          <li>
+            );
+          })}
+          <li className="min-w-0">
             <button
               type="button"
-              onClick={() => setMoreOpen((o) => !o)}
+              onClick={moreOpen ? closeMore : openMore}
               aria-expanded={moreOpen}
+              aria-haspopup="dialog"
+              aria-controls="mobile-more-sheet"
+              data-testid="mobile-more-button"
               className={cn(
-                'flex min-h-14 w-full flex-col items-center justify-center gap-0.5 px-1 text-[10px] font-medium',
+                'flex h-full w-full min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 text-[11px] font-medium leading-none transition-colors',
                 moreOpen ? 'text-gold-strong' : 'text-muted-foreground',
               )}
             >
-              <span aria-hidden="true" className="text-sm">
+              <span
+                aria-hidden="true"
+                className={cn(
+                  'flex h-7 items-center justify-center rounded-full px-3 text-xl leading-none',
+                  moreOpen && 'bg-gold/15',
+                )}
+              >
                 ⋯
               </span>
-              More
+              <span>More</span>
             </button>
           </li>
         </ul>
-
-        {moreOpen ? (
-          <div className="absolute inset-x-0 bottom-full border-t border-border bg-card p-2 shadow-lg">
-            <ul className="grid grid-cols-2 gap-1">
-              {/* Role-filtered so a non-Owner is not offered an Owner-only page.
-                  Settings is appended (it lives in the desktop footer, not the nav). */}
-              {[
-                ...mobileMoreItems().filter((item) =>
-                  canSeeNavItem(item, roleKey, allowed),
-                ),
-                ...(canSeeNavItem(SETTINGS_ITEM, roleKey, allowed)
-                  ? [SETTINGS_ITEM]
-                  : []),
-              ].map((item) => (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    onClick={() => setMoreOpen(false)}
-                    className="flex items-center gap-2 rounded-lg px-2.5 py-2.5 text-xs font-medium text-foreground hover:bg-accent"
-                  >
-                    <span aria-hidden="true">{item.icon}</span>
-                    <span className="truncate">{item.label}</span>
-                    {item.available ? null : <SoonTag />}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-1 space-y-1 border-t border-border pt-1">
-              <ThemeToggle />
-              <LogoutButton variant="more" />
-              <p className="px-2.5 pb-1 pt-2 text-center text-[10px] text-muted-foreground">
-                Powered by King GenZ Digital
-              </p>
-            </div>
-          </div>
-        ) : null}
       </nav>
+
+      {/* ---------------- More: a bottom sheet above the bar ---------------- */}
+      {moreOpen ? (
+        <div
+          className="fixed inset-0 z-40 lg:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="More"
+          id="mobile-more-sheet"
+        >
+          <button
+            type="button"
+            aria-label="Close menu"
+            onClick={closeMore}
+            className="absolute inset-0 bg-black/50"
+            data-testid="mobile-more-overlay"
+          />
+          <div
+            className="absolute inset-x-0 flex max-h-[calc(100dvh-5rem-env(safe-area-inset-bottom)-env(safe-area-inset-top))] flex-col rounded-t-2xl border border-border bg-card shadow-xl"
+            style={{ bottom: 'calc(4rem + env(safe-area-inset-bottom))' }}
+            data-testid="mobile-more-sheet"
+          >
+            <div className="flex items-center justify-between px-4 pb-1 pt-3">
+              <p className="text-sm font-semibold text-foreground">More</p>
+              <button
+                type="button"
+                onClick={closeMore}
+                aria-label="Close menu"
+                data-testid="mobile-more-close"
+                className="tap-44 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-sm text-muted-foreground"
+              >
+                ✕
+              </button>
+            </div>
+            {/* The SAME role/permission filter as the desktop sidebar — never a second
+                hard-coded list. Modules first, then Settings and Logout under a divider. */}
+            <nav aria-label="More" className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+              <ul className="space-y-0.5">
+                {sheetItems.map((item) => (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        selectFromMore(item.href);
+                      }}
+                      aria-current={isActive(item.href) ? 'page' : undefined}
+                      className={cn(
+                        'flex min-h-12 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors',
+                        isActive(item.href)
+                          ? 'bg-gold/15 text-gold-strong'
+                          : 'text-foreground hover:bg-accent',
+                      )}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="w-5 shrink-0 text-center text-base"
+                      >
+                        {item.icon}
+                      </span>
+                      <span className="truncate">{item.label}</span>
+                      {item.available ? null : <SoonTag />}
+                      {item.href === '/approvals' && pendingApprovals > 0 ? (
+                        <span
+                          className="ml-auto rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
+                          data-testid="approvals-badge"
+                        >
+                          {pendingApprovals}
+                        </span>
+                      ) : null}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              <div className="my-2 border-t border-border" aria-hidden="true" />
+              <ul className="space-y-0.5">
+                {canSeeNavItem(SETTINGS_ITEM, roleKey, allowed) ? (
+                  <li>
+                    <Link
+                      href={SETTINGS_ITEM.href}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        selectFromMore(SETTINGS_ITEM.href);
+                      }}
+                      aria-current={isActive(SETTINGS_ITEM.href) ? 'page' : undefined}
+                      data-testid="more-settings"
+                      className={cn(
+                        'flex min-h-12 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors',
+                        isActive(SETTINGS_ITEM.href)
+                          ? 'bg-gold/15 text-gold-strong'
+                          : 'text-foreground hover:bg-accent',
+                      )}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="w-5 shrink-0 text-center text-base"
+                      >
+                        {SETTINGS_ITEM.icon}
+                      </span>
+                      <span>{SETTINGS_ITEM.label}</span>
+                    </Link>
+                  </li>
+                ) : null}
+                <li>
+                  <LogoutButton variant="more" />
+                </li>
+              </ul>
+            </nav>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

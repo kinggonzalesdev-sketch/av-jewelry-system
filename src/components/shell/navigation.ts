@@ -44,12 +44,17 @@ export type NavItem = {
    */
   readonly section?: string;
   /**
-   * A mobile bottom-nav primary slot (the last slot is the More button). The primary
-   * FOUR (mobile audit 2026-09-05): Dashboard · Orders · Inventory · Layaway — the
-   * highest-frequency operational surfaces. Before this only Orders was flagged, so
-   * phones showed "Orders + More" and every other module was two taps away.
+   * A mobile bottom-bar slot (the last slot is always the More button). The primary FIVE
+   * (Owner 2026-09-06, refining the 2026-09-05 four): Dashboard · Orders · Inventory · Layaway ·
+   * Daily Cash — the highest-frequency operational surfaces, one tap on a phone. When a member
+   * lacks one of them, `mobileBarItems()` fills that slot with the next PERMITTED module in
+   * approved order, so the bar never shows a blank or forbidden tab.
    */
   readonly mobilePrimary: boolean;
+  /** Bottom-bar label (defaults to the first word of `label`, e.g. "Orders"). */
+  readonly mobileLabel?: string;
+  /** Even shorter bar label for very narrow phones (<360px); defaults to `mobileLabel`. */
+  readonly mobileShortLabel?: string;
   /**
    * `false` → the approved nav POSITION is preserved, but the route renders an
    * honest "not available yet" state instead of a finished page. Never a dead
@@ -97,6 +102,8 @@ export const PRIMARY_NAV: readonly NavItem[] = [
     label: 'Dashboard Profile',
     icon: '▥',
     mobilePrimary: true,
+    mobileLabel: 'Dashboard',
+    mobileShortLabel: 'Dash',
     available: true,
   },
   { href: '/orders', label: 'Orders', icon: '□', mobilePrimary: true, available: true },
@@ -111,6 +118,7 @@ export const PRIMARY_NAV: readonly NavItem[] = [
     label: 'Inventory',
     icon: '◈',
     mobilePrimary: true,
+    mobileShortLabel: 'Inv.',
     available: true,
   },
   // "Layaway" (Owner request 2026-07-24 — shortened from "Payments & Layaway";
@@ -149,11 +157,15 @@ export const PRIMARY_NAV: readonly NavItem[] = [
   // Reports link were removed (Owner request 2026-08-17). The /reports route still
   // exists (reached from the Dashboard's Export Reports) — it is just not a sidebar
   // item anymore.
+  // Mobile: the fifth bottom-bar tab (Owner 2026-09-06) — an Owner/Admin daily operational
+  // module. The bar shows "Daily Cash" ("Cash" on <360px phones); the module name is unchanged.
   {
     href: '/cash/daily',
     label: 'Daily Cash Summary',
     icon: '▦',
-    mobilePrimary: false,
+    mobilePrimary: true,
+    mobileLabel: 'Daily Cash',
+    mobileShortLabel: 'Cash',
     available: true,
   },
   // Team Management — a collapsible group (Owner request 2026-07-22). The
@@ -262,17 +274,50 @@ export function canSeeNavItem(
   return true;
 }
 
-/** The four mobile bottom-nav destinations (before the More button). */
+/** The five mobile bottom-bar destinations (before the More button), approved order. */
 export const mobilePrimaryItems = (): readonly NavItem[] =>
   PRIMARY_NAV.filter((item) => item.mobilePrimary);
 
-/**
- * Everything not in the mobile primary four, in approved order. Dashboard Profile
- * leads because it is not one of the mobile primary four but is the landing page.
- */
+/** Everything not in the mobile primary five, in approved order (Scrap first). */
 export const mobileMoreItems = (): readonly NavItem[] =>
   PRIMARY_NAV.filter((item) => !item.mobilePrimary);
 
-/** The short label the mobile bottom nav shows (prototype uses the first word). */
+/** Bottom-bar slots before More. Six items total is the Owner-approved phone layout. */
+export const MOBILE_BAR_SLOTS = 5;
+
+/**
+ * The bottom-bar tabs for THIS member (Owner 2026-09-06): the permitted primaries in approved
+ * order; when one is not permitted, the next permitted module in approved order takes its slot
+ * (Scrap, Approvals, Attendance, …), so a member with fewer grants still gets a full, working bar
+ * — never a blank or forbidden tab. Visibility here is convenience; every page re-checks the
+ * same permission key server-side (Bible §30.3 r2).
+ */
+export function mobileBarItems(
+  roleKey: string | undefined,
+  allowed?: ReadonlySet<string>,
+): NavItem[] {
+  const permitted = PRIMARY_NAV.filter((item) => canSeeNavItem(item, roleKey, allowed));
+  const primaries = permitted.filter((item) => item.mobilePrimary);
+  const rest = permitted.filter((item) => !item.mobilePrimary);
+  return [...primaries, ...rest].slice(0, MOBILE_BAR_SLOTS);
+}
+
+/** The More sheet's modules: everything permitted that did not make the bar, approved order. */
+export function mobileSheetItems(
+  roleKey: string | undefined,
+  allowed: ReadonlySet<string> | undefined,
+  bar: readonly NavItem[],
+): NavItem[] {
+  const inBar = new Set(bar.map((item) => item.href));
+  return PRIMARY_NAV.filter(
+    (item) => !inBar.has(item.href) && canSeeNavItem(item, roleKey, allowed),
+  );
+}
+
+/** The label the bottom bar shows (an explicit short form, else the first word). */
 export const mobileLabel = (item: NavItem): string =>
-  item.label.split(' ')[0] ?? item.label;
+  item.mobileLabel ?? item.label.split(' ')[0] ?? item.label;
+
+/** The label on very narrow phones (<360px), e.g. "Inv." — meaning preserved, never tiny text. */
+export const mobileShortLabel = (item: NavItem): string =>
+  item.mobileShortLabel ?? mobileLabel(item);

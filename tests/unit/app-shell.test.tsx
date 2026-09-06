@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppSidebar } from '@/components/shell/app-sidebar';
 import {
+  mobileBarItems,
   mobileLabel,
   mobileMoreItems,
   mobilePrimaryItems,
@@ -11,7 +12,10 @@ import {
 
 // Nav components read the current path; signOut is a server action; the theme
 // toggle reads matchMedia — stub all three so the shell renders in jsdom.
-vi.mock('next/navigation', () => ({ usePathname: () => '/dashboard' }));
+vi.mock('next/navigation', () => ({
+  usePathname: () => '/dashboard',
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
+}));
 vi.mock('@/lib/auth/actions', () => ({ signOut: vi.fn() }));
 
 beforeEach(() => {
@@ -57,14 +61,15 @@ describe('approved navigation model (navigation.ts is the source of truth)', () 
 
   it('has the exact approved mobile bottom-nav primary items', () => {
     // Invoice was folded into Orders → For Invoice (Owner request 2026-07-22).
-    // Mobile audit 2026-09-05 (Owner-approved plan): the primary FOUR — Dashboard · Orders ·
-    // Inventory · Layaway — so the highest-frequency modules are one tap on a phone. The bar
-    // has exactly 5 slots (4 + More).
+    // Owner 2026-09-06 (refining the 2026-09-05 four): the primary FIVE — Dashboard · Orders ·
+    // Inventory · Layaway · Daily Cash — in a six-slot bar (5 + More). Daily Cash is the
+    // Owner/Admin end-of-day module and must be one tap away.
     expect(mobilePrimaryItems().map((i) => i.label)).toEqual([
       'Dashboard Profile',
       'Orders',
       'Inventory',
       'Layaway',
+      'Daily Cash Summary',
     ]);
   });
 
@@ -72,7 +77,6 @@ describe('approved navigation model (navigation.ts is the source of truth)', () 
     expect(mobileMoreItems().map((i) => i.label)).toEqual([
       'Scrap',
       'Approvals',
-      'Daily Cash Summary',
       'Attendance',
       'Review Attendance',
       'Payroll',
@@ -164,7 +168,8 @@ describe('AppSidebar renders the approved shell', () => {
   it('renders the mobile bottom nav: primary destinations + More', () => {
     renderShell();
     const nav = screen.getByTestId('bottom-nav');
-    for (const item of mobilePrimaryItems()) {
+    // No allowedPages → no permission filter → the bar is exactly the five primaries.
+    for (const item of mobileBarItems('staff', undefined)) {
       expect(
         within(nav).getByRole('link', { name: new RegExp(mobileLabel(item)) }),
       ).toHaveAttribute('href', item.href);
@@ -304,10 +309,13 @@ describe('shell geometry is role-independent (role changes content, never dimens
     expect(a.mainClass).toBe(o.mainClass);
     expect(s.mainClass).toBe(o.mainClass);
     expect(o.mainClass).toMatch(/(^|\s)flex-1(\s|$)/);
-    // Mobile bottom nav: the same fixed 5-column grid for every role.
+    // Mobile bottom bar: the same fixed 64px grid class string for every role. The number of
+    // slots follows the member's PERMITTED modules (content, like the sidebar link count —
+    // never a blank or forbidden tab), but the bar's height/position never changes by role.
     expect(a.bottomNavClass).toBe(o.bottomNavClass);
     expect(s.bottomNavClass).toBe(o.bottomNavClass);
-    expect(o.bottomNavClass).toMatch(/grid-cols-5/);
+    expect(o.bottomNavClass).toMatch(/(^|\s)grid(\s|$)/);
+    expect(o.bottomNavClass).toMatch(/(^|\s)h-16(\s|$)/);
   });
 
   it('Test E — fewer permitted modules do NOT shrink the sidebar', () => {

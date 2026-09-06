@@ -34,10 +34,15 @@ document is updated first by Owner decision.
 
 ### Mobile navigation
 
-- **Bottom bar (four primary + More):** Orders · Invoice · Live · Customers · **More**
-- **Under More (Dashboard Profile first):** Dashboard Profile · Items / Inventory ·
-  Payments & Layaway · Fulfillment · Reports · Settings — plus the theme toggle,
-  Logout, and the footer.
+- **Bottom bar (five primary + More), Owner 2026-09-06:** Dashboard · Orders · Inventory ·
+  Layaway · Daily Cash · **More** — ONE fixed 64px bar (+ safe area), More always right-most.
+  Bar labels are display-only short forms ("Dashboard", "Daily Cash"; "Dash" / "Inv." / "Cash"
+  below 360px); the module names are unchanged. A member who lacks a primary module gets the
+  next permitted module in that slot — never a blank or forbidden tab.
+- **Under More (a bottom sheet above the bar, not a page):** every remaining permitted module
+  in approved order (Scrap · Approvals · Attendance · Review Attendance · Payroll · Special
+  Calculator), then Settings and Logout. **No theme control inside More** — the header's theme
+  button is the single mobile theme control.
 
 ### Placements that are LOCKED
 
@@ -59,8 +64,9 @@ document is updated first by Owner decision.
   **Bluetooth / Printer status** → **Logout** (Logout last, directly under the printer).
 - **Profile / user area:** real authenticated identity (name + role) in the
   sidebar user card; email is discoverable (sr-only) for support.
-- **Mobile:** printer status badge + theme toggle in the top header; theme
-  toggle + Logout + footer in the More menu.
+- **Mobile:** printer status badge + privacy (eye) toggle + theme toggle in the top
+  header; Settings + Logout in the More sheet (no theme toggle there — one control only,
+  Owner 2026-09-06).
 - **Footer wording (exact):** `Powered by King GenZ Digital`.
 
 ### Control behaviour (LOCKED, must stay honest)
