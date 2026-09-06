@@ -1,6 +1,10 @@
 import type { Metadata, Viewport } from 'next';
 
+import { PwaProvider } from '@/components/pwa/pwa-provider';
+import { UnsavedChangesProvider } from '@/components/pwa/unsaved-changes';
+import { UpdateToast } from '@/components/pwa/update-toast';
 import { THEME_INIT_SCRIPT } from '@/components/shell/theme';
+import { StackedTableLabels } from '@/components/ui/stacked-table-labels';
 
 import './globals.css';
 
@@ -12,6 +16,12 @@ export const metadata: Metadata = {
   description: 'Internal staff operations system. Not for public or customer use.',
   // Internal tool: never index it.
   robots: { index: false, follow: false },
+  // Installed-app identity (PWA, Owner 2026-09-05). `appleWebApp` is what makes iOS "Add to
+  // Home Screen" open MineFlow as a standalone app with the right title and status bar;
+  // the Apple touch icon is rasterised from the official logo by /pwa-icon/apple-180.
+  applicationName: 'MineFlow',
+  appleWebApp: { capable: true, title: 'MineFlow', statusBarStyle: 'black-translucent' },
+  icons: { apple: '/pwa-icon/apple-180' },
   // Favicon: app/icon.svg is auto-served by Next on every route (no per-page
   // override), so the tab icon is fixed everywhere too.
 };
@@ -57,7 +67,16 @@ export default function RootLayout({
         >
           Skip to main content
         </a>
-        {children}
+        {/* PWA runtime (Owner 2026-09-05): one service-worker registration + update/install state,
+            the unsaved-work registry the update flow respects, the mobile card-table labeller, and
+            the "Update available" toast. All render nothing until they have something to say. */}
+        <UnsavedChangesProvider>
+          <PwaProvider>
+            {children}
+            <UpdateToast />
+            <StackedTableLabels />
+          </PwaProvider>
+        </UnsavedChangesProvider>
       </body>
     </html>
   );

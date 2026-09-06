@@ -29,7 +29,15 @@ import { createRetryingFetch } from '@/lib/supabase/retry-fetch';
 // '/' is the public landing page (marketing). Because isPublicRoute matches
 // `pathname === route`, only the EXACT root is public — every other path stays
 // protected and unauthenticated visitors are still sent to sign-in.
-const PUBLIC_ROUTES = ['/', '/sign-in', '/account-disabled', '/reset-password'];
+// '/offline' is the PWA's data-free offline fallback — the service worker precaches it without
+// a session, so it must never redirect to sign-in (defense in depth beside the matcher).
+const PUBLIC_ROUTES = [
+  '/',
+  '/sign-in',
+  '/account-disabled',
+  '/reset-password',
+  '/offline',
+];
 
 function isPublicRoute(pathname: string): boolean {
   return PUBLIC_ROUTES.some(

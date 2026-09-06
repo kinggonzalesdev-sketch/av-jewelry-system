@@ -44,6 +44,9 @@ export const config = {
     // 307s to /sign-in and the install silently breaks. It carries only public metadata
     // (app name, colours, icon paths) and makes no authorization decision, so excluding it
     // widens no production surface — same reasoning as the static assets beside it.
-    '/((?!_next/static|_next/image|favicon.ico|manifest\\.webmanifest|preview|api/mobile|api/cron|api/webhooks|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // `sw.js`, `offline` and `pwa-icon/*` are excluded for the same reason: the service worker
+    // fetches them WITHOUT a session (install-time precache, offline fallback, launcher icons).
+    // All three are static/public and carry no business data (Owner 2026-09-05).
+    '/((?!_next/static|_next/image|favicon.ico|manifest\\.webmanifest|sw\\.js|offline|pwa-icon|preview|api/mobile|api/cron|api/webhooks|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };
