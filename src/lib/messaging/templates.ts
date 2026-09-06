@@ -6,7 +6,6 @@ import { createClient } from '@/lib/supabase/server';
 import {
   EDITABLE_TEMPLATE_KEYS,
   INVOICE_OPTIONAL_TOKENS,
-  renderTemplate,
   renderWithOptionalLines,
   SUPPORTED_TOKENS,
   tokensUsed,

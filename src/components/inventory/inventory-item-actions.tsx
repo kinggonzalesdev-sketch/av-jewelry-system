@@ -15,7 +15,7 @@ import {
   type InventoryActionState,
 } from '@/lib/inventory/action-state';
 import type { InventoryRow } from '@/lib/inventory/service';
-import { detectInventoryCodeIssues, parseInventoryCode } from '@/lib/inventory/code-parser';
+import { detectInventoryCodeIssues } from '@/lib/inventory/code-parser';
 import { rowGramsDisplay } from '@/lib/inventory/grams-display';
 import { isHKItem } from '@/lib/inventory/hk-item';
 import { Button } from '@/components/ui/button';
@@ -72,7 +72,6 @@ export function InventoryItemActions({
   onMutated?: () => void;
 }) {
   const router = useRouter();
-  const parsed = parseInventoryCode(row.itemCode);
 
   const [view, setView] = useState(false);
   const [edit, setEdit] = useState(false);
@@ -104,9 +103,6 @@ export function InventoryItemActions({
   // HK ITEM = fixed price, no grams (Owner 2026-09-02 BR2). Reactive to the code being edited so the
   // grams field auto-locks the moment the code becomes (or stops being) an HK ITEM.
   const isHk = isHKItem({ code: codeVal || row.itemCode || '', name: row.itemName });
-  useEffect(() => {
-    if (edit) setCodeVal(row.itemCode);
-  }, [edit, row.itemCode]);
 
   // --- Owner DIRECT delete ---------------------------------------------------
   const [delState, delAction, deleting] = useActionState<InventoryActionState, FormData>(
@@ -222,6 +218,9 @@ export function InventoryItemActions({
           type="button"
           onClick={() => {
             setNote(null);
+            // Reset the editable code to the current value on every open. Previously done by
+            // a setState-in-effect on `edit`; same behaviour, now at the event that opens it.
+            setCodeVal(row.itemCode);
             setEdit(true);
           }}
           data-testid={`inventory-edit-${row.inventoryItemId}`}

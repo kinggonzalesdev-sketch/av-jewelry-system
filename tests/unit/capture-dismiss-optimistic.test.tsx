@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { IncomingCapturesStrip } from '@/components/capture/incoming-captures-strip';
 import {
@@ -15,7 +15,8 @@ import {
  */
 
 // The dismiss mutation is held open so every assertion runs while the server is STILL pending.
-let dismissResolve: ((v: { ok: true } | { ok: false; error: string }) => void) | null = null;
+let dismissResolve: ((v: { ok: true } | { ok: false; error: string }) => void) | null =
+  null;
 const dismissMock = vi.fn(
   () =>
     new Promise<{ ok: true } | { ok: false; error: string }>((res) => {
@@ -36,7 +37,9 @@ vi.mock('@/lib/capture/pending-actions', () => ({
   retryCaptureAutoTextAction: () => Promise.resolve({ ok: true as const }),
   resolveCaptureLinkAction: () => Promise.resolve({ ok: false }),
 }));
-vi.mock('@/lib/orders/actions', () => ({ loadNewOrderDataAction: () => Promise.resolve(null) }));
+vi.mock('@/lib/orders/actions', () => ({
+  loadNewOrderDataAction: () => Promise.resolve(null),
+}));
 vi.mock('@/components/shell/dashboard-sync', () => ({
   useDashboardSync: () => ({ lastSyncedAt: 0 }),
 }));
@@ -50,7 +53,9 @@ vi.mock('@/lib/supabase/client', () => ({
     return { channel: () => ch, removeChannel: () => undefined };
   },
 }));
-vi.mock('@/lib/supabase/realtime-auth', () => ({ authorizeRealtime: () => () => undefined }));
+vi.mock('@/lib/supabase/realtime-auth', () => ({
+  authorizeRealtime: () => () => undefined,
+}));
 
 function row(n: number): PendingCaptureRow {
   return {
@@ -74,14 +79,22 @@ function row(n: number): PendingCaptureRow {
   };
 }
 
+/** Let pending promise callbacks (server-action .then handlers) run. */
+async function flush() {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 /** Mount the strip, let its initial load settle, then open the panel (pill toggle event). */
 async function renderStrip(count: number) {
   listData = Array.from({ length: count }, (_, i) => row(i));
   await act(async () => {
     render(<IncomingCapturesStrip />);
+    await flush();
   });
   await act(async () => {
     window.dispatchEvent(new CustomEvent(TOGGLE_INCOMING_CAPTURES_EVENT));
+    await flush();
   });
 }
 
@@ -92,6 +105,9 @@ beforeEach(() => {
   dismissMock.mockClear();
   loadMock.mockClear();
   dismissResolve = null;
+});
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('Incoming Captures — optimistic Dismiss', () => {
@@ -119,6 +135,7 @@ describe('Incoming Captures — optimistic Dismiss', () => {
 
     await act(async () => {
       dismissResolve?.({ ok: true }); // server replies much later
+      await flush();
     });
     expect(cardCount()).toBe(32);
     expect(screen.queryByTestId('incoming-dismiss-cap-0')).not.toBeInTheDocument();
@@ -131,6 +148,7 @@ describe('Incoming Captures — optimistic Dismiss', () => {
 
     await act(async () => {
       dismissResolve?.({ ok: false, error: 'Not authorized.' });
+      await flush();
     });
 
     expect(cardCount()).toBe(5);
@@ -155,24 +173,36 @@ describe('Incoming Captures — optimistic Dismiss', () => {
     expect(cardCount()).toBe(4);
   });
 
-  it('TEST 5: a STALE refetch that still lists the capture does not make it reappear', async () => {
+  it("TEST 5: the strip's own 5s recovery poll returning a PRE-dismiss snapshot does not resurrect the card", async () => {
+    vi.useFakeTimers();
     await renderStrip(5);
     fireEvent.click(screen.getByTestId('incoming-dismiss-cap-3'));
     expect(cardCount()).toBe(4);
 
-    // The 5s recovery poll was already in flight and returns a PRE-dismiss snapshot (all 5).
+    // Drive the COMPONENT's setInterval(load, 5000) — not a direct mock call — so the real
+    // load() → setRows(filter) path runs. The server still answers with all 5 rows.
+    loadMock.mockClear();
     await act(async () => {
-      loadMock();
-      await Promise.resolve();
+      vi.advanceTimersByTime(5000);
+      await flush();
     });
+    expect(loadMock).toHaveBeenCalled(); // the poll genuinely ran
     expect(cardCount()).toBe(4); // suppressed — no flicker
     expect(screen.queryByTestId('incoming-dismiss-cap-3')).not.toBeInTheDocument();
 
-    // After a FAILED persist the suppression lifts, so the server list governs again.
+    // A FAILED persist lifts the suppression and restores the row immediately …
     await act(async () => {
       dismissResolve?.({ ok: false, error: 'Network down.' });
+      await flush();
     });
     expect(screen.getByTestId('incoming-dismiss-cap-3')).toBeInTheDocument();
+
+    // … and the next poll (server still lists it) keeps it — the server governs again.
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+      await flush();
+    });
+    expect(cardCount()).toBe(5);
   });
 
   it('TEST 6: Use / Dismiss on the remaining cards are untouched', async () => {

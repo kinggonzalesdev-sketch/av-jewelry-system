@@ -85,6 +85,18 @@ export type RemovePaidItemResult =
   | { ok: true; snapshot: PaidRemovalSnapshot }
   | { ok: false; error: string };
 
+/** The jsonb `remove_paid_order_item` returns — money arrives as numeric or text, never an object. */
+type RemovePaidOrderItemRow = {
+  inventory_item_id?: string | null;
+  inventory_code?: string | null;
+  previous_total?: number | string | null;
+  new_total?: number | string | null;
+  verified_net_payments?: number | string | null;
+  overpayment_credit?: number | string | null;
+  outstanding_balance?: number | string | null;
+  order_status?: string | null;
+};
+
 /**
  * PAID-ORDER item removal (Owner 2026-09-03). The SUPER ADMIN may remove an item from a Fully-Paid /
  * settled (LOCKED) order. The DB `remove_paid_order_item` (SECURITY DEFINER, owner-re-checked, reason
@@ -124,7 +136,7 @@ export async function removePaidOrderItem(
     p_order_id: orderId,
     p_claim_id: claimId,
     p_reason: trimmed,
-  })) as { data: Record<string, unknown> | null; error: { message: string } | null };
+  })) as { data: RemovePaidOrderItemRow | null; error: { message: string } | null };
 
   if (error) {
     await recordAuditEvent({
@@ -137,9 +149,9 @@ export async function removePaidOrderItem(
     return { ok: false, error: cleanError(error.message) };
   }
 
-  const d = data ?? {};
+  const d: RemovePaidOrderItemRow = data ?? {};
   const snapshot: PaidRemovalSnapshot = {
-    inventoryCode: (d.inventory_code as string | null) ?? null,
+    inventoryCode: d.inventory_code ?? null,
     previousTotal: String(d.previous_total ?? '0'),
     newTotal: String(d.new_total ?? '0'),
     paid: String(d.verified_net_payments ?? '0'),

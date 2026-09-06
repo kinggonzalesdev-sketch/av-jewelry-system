@@ -194,7 +194,7 @@ export function ResetPasswordForm() {
       {step === 'email' ? (
         <form onSubmit={onSendEmail} className="space-y-4" noValidate>
           <p className="text-sm text-muted-foreground">
-            Enter your account email and we'll send a 6-digit code to reset your password.
+            Enter your account email and we&apos;ll send a 6-digit code to reset your password.
           </p>
           <div className="space-y-2">
             <Label htmlFor="reset-email">Email</Label>
@@ -325,7 +325,7 @@ export function ResetPasswordForm() {
       {step === 'done' ? (
         <div className="space-y-4" data-testid="reset-done">
           <p className="text-sm text-foreground">
-            Your password has been changed and you've been signed out of all devices. Sign
+            Your password has been changed and you&apos;ve been signed out of all devices. Sign
             in with your new password.
           </p>
           <Button

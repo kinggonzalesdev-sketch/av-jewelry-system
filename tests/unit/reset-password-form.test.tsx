@@ -34,31 +34,31 @@ async function advanceToPasswordStep() {
 describe('ResetPasswordForm — password reveal toggle (Owner 2026-09-03)', () => {
   it('New password starts masked and the eye toggles it visible then masked again', async () => {
     await advanceToPasswordStep();
-    const input = screen.getByTestId('reset-new-password') as HTMLInputElement;
+    const input = screen.getByTestId('reset-new-password');
     const toggle = screen.getByTestId('reset-new-password-toggle');
 
-    expect(input.type).toBe('password');
+    expect(input).toHaveAttribute('type', 'password');
     expect(toggle).toHaveAttribute('aria-label', 'Show password');
 
     fireEvent.click(toggle);
-    expect(input.type).toBe('text');
+    expect(input).toHaveAttribute('type', 'text');
     expect(toggle).toHaveAttribute('aria-label', 'Hide password');
 
     fireEvent.click(toggle);
-    expect(input.type).toBe('password');
+    expect(input).toHaveAttribute('type', 'password');
   });
 
   it('New and Confirm reveal independently (their own eye each)', async () => {
     await advanceToPasswordStep();
-    const newPw = screen.getByTestId('reset-new-password') as HTMLInputElement;
-    const confirmPw = screen.getByTestId('reset-confirm-password') as HTMLInputElement;
+    const newPw = screen.getByTestId('reset-new-password');
+    const confirmPw = screen.getByTestId('reset-confirm-password');
 
     fireEvent.click(screen.getByTestId('reset-new-password-toggle'));
-    expect(newPw.type).toBe('text');
+    expect(newPw).toHaveAttribute('type', 'text');
     // Confirm stays masked — each field owns its reveal state.
-    expect(confirmPw.type).toBe('password');
+    expect(confirmPw).toHaveAttribute('type', 'password');
 
     fireEvent.click(screen.getByTestId('reset-confirm-password-toggle'));
-    expect(confirmPw.type).toBe('text');
+    expect(confirmPw).toHaveAttribute('type', 'text');
   });
 });
