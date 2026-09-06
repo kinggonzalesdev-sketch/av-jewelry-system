@@ -33,6 +33,7 @@ import { loadNewOrderDataAction, type NewOrderData } from '@/lib/orders/actions'
 import { useDashboardSync } from '@/components/shell/dashboard-sync';
 import { createClient } from '@/lib/supabase/client';
 import { authorizeRealtime } from '@/lib/supabase/realtime-auth';
+import { useUnsavedChanges } from '@/components/pwa/unsaved-changes';
 import { usePrinter } from '@/components/print/printer-context';
 import { writeToChannel } from '@/lib/print/bluetooth-printer';
 import { encodeReceipt } from '@/lib/print/receipt-encoders';
@@ -103,6 +104,9 @@ export function IncomingCapturesStrip({
   // Operator's grams correction per capture (for the review case + manual reprint),
   // and a short per-row status note ("Printed ✓").
   const [gramsEdits, setGramsEdits] = useState<Record<string, string>>({});
+  // An unsaved grams/price correction is in-progress operator work — the PWA update flow
+  // must not reload the station while one exists (Owner 2026-09-05).
+  useUnsavedChanges(Object.keys(gramsEdits).length > 0);
   // Grams (default) vs Fixed Price per capture. The phone/printer already printed the Grams
   // sticker; Fixed Price is a PC-side choice that reprints "FIXED • ₱X".
   const [priceMode, setPriceMode] = useState<Record<string, 'grams' | 'fixed'>>({});
@@ -964,13 +968,17 @@ export function IncomingCapturesStrip({
                       );
                     })()}
                   </div>
-                  <div className="flex items-center gap-2">
+                  {/* Phones: a 2×2 action grid on its own row under the card (Print · Send/Save /
+                      Use · Dismiss) with ≥44px targets — never one cramped row. ≥640px: the
+                      original inline row, unchanged (Owner 2026-09-05). */}
+                  <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center">
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
                       onClick={() => void printLabel(r)}
                       data-testid={`incoming-print-${r.captureRecordId}`}
+                      className="min-h-11 sm:min-h-0"
                     >
                       🖨 Print
                     </Button>
@@ -1006,6 +1014,7 @@ export function IncomingCapturesStrip({
                       disabled={preparingUse === r.captureRecordId}
                       onClick={() => void handleUse(r)}
                       data-testid={`incoming-use-${r.captureRecordId}`}
+                      className="min-h-11 sm:min-h-0"
                     >
                       {preparingUse === r.captureRecordId ? 'Loading…' : 'Use'}
                     </Button>
@@ -1015,6 +1024,7 @@ export function IncomingCapturesStrip({
                       variant="outline"
                       onClick={() => dismiss(r.captureRecordId)}
                       data-testid={`incoming-dismiss-${r.captureRecordId}`}
+                      className="min-h-11 sm:min-h-0"
                     >
                       Dismiss
                     </Button>
