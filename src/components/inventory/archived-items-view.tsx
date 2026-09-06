@@ -130,7 +130,7 @@ export function ArchivedItemsView({
 
       <div className="overflow-x-auto rounded-xl border border-border bg-card">
         <table
-          className="data-table w-full min-w-[860px] text-left text-xs"
+          className="data-table data-table--stack w-full min-w-[860px] text-left text-xs"
           data-testid="archived-items"
         >
           <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">

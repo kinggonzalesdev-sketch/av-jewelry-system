@@ -941,7 +941,7 @@ export function PaymentsWorkspace({
           <EmptyState title="No payments in this period" />
         ) : (
           <div className="overflow-x-auto">
-            <table className="data-table w-full min-w-[720px] text-left text-xs">
+            <table className="data-table data-table--stack w-full min-w-[720px] text-left text-xs">
               <thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2">Order</th>
@@ -1074,7 +1074,7 @@ function LayawayTable({
     <div>
       <div className="table-scroll rounded-xl border border-border bg-card">
         <table
-          className="data-table data-roomy lay-table w-full min-w-[1120px] text-left text-xs"
+          className="data-table data-table--stack data-roomy lay-table w-full min-w-[1120px] text-left text-xs"
           data-testid="layaway-table"
         >
           {/* Owner width spec: Unique Code + Customer Name are the two widest; Code and
@@ -1315,7 +1315,7 @@ function CompletedLayawayTable({
     <div>
       <div className="table-scroll rounded-xl border border-border bg-card">
         <table
-          className="data-table lay-table w-full min-w-[1000px] text-left text-xs"
+          className="data-table data-table--stack lay-table w-full min-w-[1000px] text-left text-xs"
           data-testid="layaway-completed-table"
         >
           <thead className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">

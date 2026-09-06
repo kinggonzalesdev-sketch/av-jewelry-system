@@ -156,7 +156,7 @@ export function EmployeeRatesView({
   return (
     <div className="overflow-x-auto rounded-xl border border-border bg-card">
       <table
-        className="data-table w-full min-w-[720px] text-left text-sm"
+        className="data-table data-table--stack w-full min-w-[720px] text-left text-sm"
         data-testid="employee-rates"
       >
         <colgroup>

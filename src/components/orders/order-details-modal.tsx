@@ -182,7 +182,7 @@ function Block({ title, children }: { title: string; children: React.ReactNode }
       <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         {title}
       </p>
-      <div className="grid grid-cols-2 gap-x-4">{children}</div>
+      <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">{children}</div>
     </div>
   );
 }
@@ -1434,7 +1434,7 @@ function DetailBody({
                 </p>
                 <div className="overflow-x-auto">
                   <table
-                    className="data-table w-full min-w-[420px] text-left text-xs"
+                    className="data-table data-table--stack w-full min-w-[420px] text-left text-xs"
                     data-testid="order-payment-history"
                   >
                     <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
@@ -1489,7 +1489,7 @@ function DetailBody({
             ) : (
               <div className="overflow-x-auto">
                 <table
-                  className="data-table w-full min-w-[540px] text-left text-xs"
+                  className="data-table data-table--stack w-full min-w-[540px] text-left text-xs"
                   data-testid="order-modal-items"
                 >
                   <thead className="border-b bg-muted/50 text-[10px] uppercase text-muted-foreground">
@@ -1584,7 +1584,7 @@ function DetailBody({
                   </p>
                 ) : (
                   <ul
-                    className="grid grid-cols-2 gap-2"
+                    className="grid grid-cols-1 gap-2 sm:grid-cols-2"
                     data-testid="order-modal-attachments"
                   >
                     {detail.attachments.map((att) => (

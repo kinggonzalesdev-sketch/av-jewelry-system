@@ -152,7 +152,7 @@ export function AttendanceView({
             ) : (
               <div className="overflow-x-auto">
                 <table
-                  className="data-table w-full min-w-[900px] text-left text-sm"
+                  className="data-table data-table--stack w-full min-w-[900px] text-left text-sm"
                   data-testid="payroll"
                 >
                   <colgroup>
@@ -330,7 +330,7 @@ function AttendanceHistory({
     <>
       <div className="overflow-x-auto">
         <table
-          className="data-table w-full min-w-[680px] text-left text-sm"
+          className="data-table data-table--stack w-full min-w-[680px] text-left text-sm"
           data-testid="attendance-days"
         >
           <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">

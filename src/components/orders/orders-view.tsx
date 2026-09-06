@@ -855,7 +855,7 @@ export function OrdersView({
             </a>
           </div>
           <div className="overflow-x-auto border-t border-border">
-            <table className="data-table w-full min-w-[640px] text-left text-sm">
+            <table className="data-table data-table--stack w-full min-w-[640px] text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
                   <th className="px-3 py-2 font-medium">Code</th>

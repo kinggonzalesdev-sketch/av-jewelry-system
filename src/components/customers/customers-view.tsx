@@ -79,7 +79,7 @@ function CustomerList({
     <div className="space-y-3">
       <div className="rounded-xl border border-border bg-card">
         <div className="table-scroll">
-          <table className="data-table w-full min-w-[640px] text-left text-sm">
+          <table className="data-table data-table--stack w-full min-w-[640px] text-left text-sm">
             <thead>
               <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
                 <th className="col-grow px-3 py-2.5 text-left font-medium">

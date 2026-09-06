@@ -112,7 +112,7 @@ export function DeletionRequestsPanel({
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border bg-card">
           <table
-            className="data-table w-full min-w-[760px] text-left text-sm"
+            className="data-table data-table--stack w-full min-w-[760px] text-left text-sm"
             data-testid="deletion-requests"
           >
             <thead className="border-b text-[11px] uppercase tracking-wide text-muted-foreground">
