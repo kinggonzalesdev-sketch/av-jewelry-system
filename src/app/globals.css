@@ -365,9 +365,12 @@
     font-weight: 500;
     color: var(--muted-foreground);
   }
-  /* An unlabelled cell (e.g. the actions cell) spans the whole card instead. */
+  /* An unlabelled cell (e.g. the actions cell) spans the whole card instead. Labels are
+     stamped from the table's own <th> text by StackedTableLabels, so a table opts in with
+     ONE class and never hand-writes data-label attributes. */
   .data-table--stack > tbody > tr > td:not([data-label])::before,
-  .data-table--stack > tbody > tr > td[data-label='']::before {
+  .data-table--stack > tbody > tr > td[data-label='']::before,
+  .data-table--stack > tbody > tr > td.col-actions::before {
     content: none;
   }
   .data-table--stack > tbody > tr > td.col-actions {
