@@ -44,9 +44,10 @@ export type NavItem = {
    */
   readonly section?: string;
   /**
-   * A mobile bottom-nav primary slot (the last slot is the More button). Mobile
-   * primary is Orders · Customers (Live removed 2026-07-22; Invoice folded into
-   * Orders → For Invoice 2026-07-22).
+   * A mobile bottom-nav primary slot (the last slot is the More button). The primary
+   * FOUR (mobile audit 2026-09-05): Dashboard · Orders · Inventory · Layaway — the
+   * highest-frequency operational surfaces. Before this only Orders was flagged, so
+   * phones showed "Orders + More" and every other module was two taps away.
    */
   readonly mobilePrimary: boolean;
   /**
@@ -95,7 +96,7 @@ export const PRIMARY_NAV: readonly NavItem[] = [
     href: '/dashboard',
     label: 'Dashboard Profile',
     icon: '▥',
-    mobilePrimary: false,
+    mobilePrimary: true,
     available: true,
   },
   { href: '/orders', label: 'Orders', icon: '□', mobilePrimary: true, available: true },
@@ -109,7 +110,7 @@ export const PRIMARY_NAV: readonly NavItem[] = [
     href: '/orders/inventory',
     label: 'Inventory',
     icon: '◈',
-    mobilePrimary: false,
+    mobilePrimary: true,
     available: true,
   },
   // "Layaway" (Owner request 2026-07-24 — shortened from "Payments & Layaway";
@@ -118,7 +119,7 @@ export const PRIMARY_NAV: readonly NavItem[] = [
     href: '/orders/payments',
     label: 'Layaway',
     icon: '₱',
-    mobilePrimary: false,
+    mobilePrimary: true,
     available: true,
   },
   // Fulfillment was removed as a standalone sidebar item (Owner request): it

@@ -47,16 +47,19 @@ describe('LOCKED: desktop sidebar (exact order, labels, routes, icons)', () => {
 });
 
 describe('LOCKED: mobile navigation', () => {
-  it('bottom bar is exactly Orders (+ More)', () => {
+  it('bottom bar is exactly Dashboard · Orders · Inventory · Layaway (+ More)', () => {
     // Invoice folded into Orders → For Invoice (Owner request 2026-07-22).
-    expect(mobilePrimaryItems().map((i) => i.label)).toEqual(['Orders']);
-  });
-
-  it('More carries the rest, Dashboard Profile first', () => {
-    expect(mobileMoreItems().map((i) => i.label)).toEqual([
+    // Mobile audit 2026-09-05 (Owner-approved plan): the primary FOUR in the 5-slot bar.
+    expect(mobilePrimaryItems().map((i) => i.label)).toEqual([
       'Dashboard Profile',
+      'Orders',
       'Inventory',
       'Layaway',
+    ]);
+  });
+
+  it('More carries the rest, Scrap first', () => {
+    expect(mobileMoreItems().map((i) => i.label)).toEqual([
       'Scrap',
       'Approvals',
       'Daily Cash Summary',

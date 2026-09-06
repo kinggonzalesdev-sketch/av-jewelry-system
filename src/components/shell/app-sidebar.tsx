@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState, useTransition, type ReactNode } from 'react';
+import { useEffect, useState, useTransition, type ReactNode } from 'react';
 
 import {
   canSeeNavItem,
@@ -13,6 +13,7 @@ import {
   SETTINGS_ITEM,
   type NavItem,
 } from '@/components/shell/navigation';
+import { InstallMineFlow } from '@/components/pwa/install-mineflow';
 import { PrinterStatusBadge, PrinterStatusRow } from '@/components/shell/printer-status';
 import { PrivacyToggle } from '@/components/shell/privacy';
 import { ThemeToggle } from '@/components/shell/theme-toggle';
@@ -160,6 +161,10 @@ export function AppSidebar({
 }) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
+  // Mobile ☰ drawer (Owner 2026-09-05): the SAME permitted modules as the desktop sidebar, in a
+  // slide-out menu, beside the bottom nav's primary four. Closes on link tap / overlay / ✕ / Esc.
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const closeDrawer = () => setDrawerOpen(false);
   // Manual open/close per collapsible group. Undefined → follow whether a child is
   // active (so navigating into Attendance/Payroll auto-expands Team Management).
   const [openSection, setOpenSection] = useState<Record<string, boolean>>({});
@@ -169,16 +174,32 @@ export function AppSidebar({
   // re-checks, so hiding is convenience, never the control.
   const allowed = allowedPages ? new Set(allowedPages) : undefined;
 
+  // Drawer: Escape closes it and background scroll is locked while it is open.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDrawerOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [drawerOpen]);
+
   const isActive = (href: string) =>
     pathname === href ||
     // A parent tab is active for its sub-routes, but /orders must NOT light up
     // for /orders/invoice etc. — those are their own nav items.
     (href !== '/orders' && pathname.startsWith(`${href}/`));
 
-  const renderSidebarLink = (item: NavItem, indent = false) => (
+  const renderSidebarLink = (item: NavItem, indent = false, onNavigate?: () => void) => (
     <li key={item.href}>
       <Link
         href={item.href}
+        {...(onNavigate ? { onClick: onNavigate } : {})}
         aria-current={isActive(item.href) ? 'page' : undefined}
         className={cn(
           'flex items-center gap-2.5 rounded-lg py-2 text-sm font-medium transition-colors',
@@ -330,6 +351,17 @@ export function AppSidebar({
               iPhone notch / dynamic island; resolves to 0 on Android and desktop. */}
           <header className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-2.5 pt-[max(0.625rem,env(safe-area-inset-top))] lg:hidden">
             <div className="flex min-w-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setDrawerOpen(true)}
+                aria-label="Open menu"
+                aria-expanded={drawerOpen}
+                aria-controls="mobile-drawer"
+                data-testid="mobile-menu-button"
+                className="tap-44 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-base text-foreground"
+              >
+                ☰
+              </button>
               <BrandMark size="sm" />
               <div className="min-w-0" title={fullName}>
                 <p className="truncate text-xs font-bold text-foreground">A.V. Jewelry</p>
@@ -344,6 +376,86 @@ export function AppSidebar({
               <ThemeToggle variant="compact" />
             </div>
           </header>
+
+          {/* ---------------- Mobile ☰ drawer ---------------- */}
+          {drawerOpen ? (
+            <div
+              className="fixed inset-0 z-40 lg:hidden"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Menu"
+              id="mobile-drawer"
+            >
+              <button
+                type="button"
+                aria-label="Close menu"
+                onClick={closeDrawer}
+                className="absolute inset-0 bg-black/50"
+                data-testid="mobile-drawer-overlay"
+              />
+              <div
+                className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col border-r border-border bg-card pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pt-[env(safe-area-inset-top)] shadow-xl"
+                data-testid="mobile-drawer"
+              >
+                <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <BrandMark size="sm" />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-foreground">
+                        A.V. Jewelry
+                      </p>
+                      <p className="truncate text-[10px] text-muted-foreground">
+                        {roleWord} Control
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeDrawer}
+                    aria-label="Close menu"
+                    data-testid="mobile-drawer-close"
+                    className="tap-44 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-sm text-muted-foreground"
+                  >
+                    ✕
+                  </button>
+                </div>
+                {/* The SAME rows + the SAME role/permission filter as the desktop sidebar — never a
+                    second hard-coded list. Grouped sections render flat under a small heading. */}
+                <nav aria-label="Menu" className="flex-1 overflow-y-auto p-2">
+                  <ul className="space-y-0.5">
+                    {navRows().map((row) => {
+                      if (row.kind === 'item') {
+                        return canSeeNavItem(row.item, roleKey, allowed)
+                          ? renderSidebarLink(row.item, false, closeDrawer)
+                          : null;
+                      }
+                      const items = row.items.filter((it) =>
+                        canSeeNavItem(it, roleKey, allowed),
+                      );
+                      if (items.length === 0) return null;
+                      return (
+                        <li key={row.section}>
+                          <p className="px-2.5 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            {row.section}
+                          </p>
+                          <ul className="space-y-0.5">
+                            {items.map((it) => renderSidebarLink(it, true, closeDrawer))}
+                          </ul>
+                        </li>
+                      );
+                    })}
+                    {renderSidebarLink(SETTINGS_ITEM, false, closeDrawer)}
+                  </ul>
+                </nav>
+                <div className="space-y-1.5 border-t border-border p-2">
+                  <ThemeToggle />
+                  <PrivacyToggle />
+                  <InstallMineFlow variant="menu" />
+                  <LogoutButton />
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <main id="main-content" className="min-w-0 flex-1 p-3 pb-24 sm:p-5 lg:pb-8">
             {children}

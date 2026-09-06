@@ -57,14 +57,19 @@ describe('approved navigation model (navigation.ts is the source of truth)', () 
 
   it('has the exact approved mobile bottom-nav primary items', () => {
     // Invoice was folded into Orders → For Invoice (Owner request 2026-07-22).
-    expect(mobilePrimaryItems().map((i) => i.label)).toEqual(['Orders']);
-  });
-
-  it('puts the rest under More, Dashboard Profile first', () => {
-    expect(mobileMoreItems().map((i) => i.label)).toEqual([
+    // Mobile audit 2026-09-05 (Owner-approved plan): the primary FOUR — Dashboard · Orders ·
+    // Inventory · Layaway — so the highest-frequency modules are one tap on a phone. The bar
+    // has exactly 5 slots (4 + More).
+    expect(mobilePrimaryItems().map((i) => i.label)).toEqual([
       'Dashboard Profile',
+      'Orders',
       'Inventory',
       'Layaway',
+    ]);
+  });
+
+  it('puts the rest under More, Scrap first', () => {
+    expect(mobileMoreItems().map((i) => i.label)).toEqual([
       'Scrap',
       'Approvals',
       'Daily Cash Summary',
