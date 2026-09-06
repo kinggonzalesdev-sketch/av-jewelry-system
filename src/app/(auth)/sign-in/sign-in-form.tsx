@@ -77,7 +77,7 @@ export function SignInForm() {
       <p className="text-center text-sm">
         <Link
           href="/reset-password"
-          className="text-muted-foreground underline-offset-2 hover:underline"
+          className="tap-44 text-muted-foreground underline-offset-2 hover:underline"
           data-testid="forgot-password-link"
         >
           Forgot password?
