@@ -4,6 +4,8 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 
 import { StickerPrintPanel } from '@/components/print/sticker-print-panel';
+import { AppInformation } from '@/components/pwa/app-information';
+import { InstallMineFlow } from '@/components/pwa/install-mineflow';
 import { SystemDiagnostics } from '@/components/settings/system-diagnostics';
 import { appCommit } from '@/lib/app-version';
 import { getLatestCaptureDevice } from '@/lib/live/capture-heartbeat';
@@ -203,6 +205,21 @@ export default async function SettingsPage() {
             Renders inside the app-wide PrinterProvider. */}
         <div data-testid="settings-live-operations">
           <StickerPrintPanel />
+        </div>
+      </SettingsSection>
+
+      {/* Install / App Information (PWA, Owner 2026-09-05) — the always-available manual
+          "Install MineFlow" entry plus public build/mode/update facts. Shown to every
+          settings-viewer; contains no secrets. */}
+      <SettingsSection
+        icon="📲"
+        title="Install MineFlow"
+        subtitle="Use MineFlow as an app on this phone or tablet · app information"
+      >
+        <div className="space-y-4" data-testid="settings-install">
+          <InstallMineFlow />
+          <div className="border-t border-border" aria-hidden="true" />
+          <AppInformation />
         </div>
       </SettingsSection>
 
