@@ -13,8 +13,10 @@ export const dynamic = 'force-dynamic';
  * is enforced here AND in the sales RPC. Read-only: nothing is written or deleted.
  */
 export async function POST(request: Request): Promise<Response> {
+  let isOwner = false;
   try {
-    await requireOwnerOrAdmin();
+    const staff = await requireOwnerOrAdmin();
+    isOwner = staff.roleKey === 'owner';
   } catch (cause) {
     if (cause instanceof AuthorizationError) {
       return NextResponse.json({ error: cause.message }, { status: 403 });
@@ -54,6 +56,7 @@ export async function POST(request: Request): Promise<Response> {
       to,
       applyRange,
       sections: finalSections,
+      isOwner,
     });
 
     await recordAuditEvent({

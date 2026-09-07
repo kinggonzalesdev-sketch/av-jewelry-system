@@ -3,8 +3,9 @@
 import { useState } from 'react';
 
 import {
-  ALL_EXPORT_SECTION_KEYS,
   EXPORT_SECTIONS,
+  SENSITIVE_SECTION_KEYS,
+  sectionsForRole,
   type ExportSectionKey,
 } from '@/lib/export/sections';
 import { Button } from '@/components/ui/button';
@@ -23,18 +24,25 @@ export function ExportAllButton({
   label = '⭳ Export All Data',
   testId = 'export-all-data',
   size,
+  isOwner = false,
 }: {
   /** The trigger's wording. Dashboard Profile shows it as "Export Reports". */
   label?: string;
   testId?: string;
   size?: 'sm';
+  /** The Owner also sees the sensitive sheets (Team, Approvals, Audit Log, Capture). */
+  isOwner?: boolean;
 } = {}) {
+  // A non-owner is never offered the sensitive sheets (the API re-checks regardless).
+  const availableSections = EXPORT_SECTIONS.filter(
+    (s) => isOwner || !SENSITIVE_SECTION_KEYS.has(s.key),
+  );
   const [open, setOpen] = useState(false);
   const [applyRange, setApplyRange] = useState(false);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [selected, setSelected] = useState<Set<ExportSectionKey>>(
-    new Set(ALL_EXPORT_SECTION_KEYS),
+    new Set(sectionsForRole(isOwner)),
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -203,7 +211,7 @@ export function ExportAllButton({
                 <button
                   type="button"
                   className="text-gold-strong hover:underline"
-                  onClick={() => setSelected(new Set(ALL_EXPORT_SECTION_KEYS))}
+                  onClick={() => setSelected(new Set(sectionsForRole(isOwner)))}
                 >
                   Select all
                 </button>
@@ -217,7 +225,7 @@ export function ExportAllButton({
               </div>
             </div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3">
-              {EXPORT_SECTIONS.map((s) => (
+              {availableSections.map((s) => (
                 <label key={s.key} className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
@@ -229,6 +237,11 @@ export function ExportAllButton({
                 </label>
               ))}
             </div>
+            {isOwner ? (
+              <p className="text-[11px] text-muted-foreground">
+                Team, Approvals, Audit Log and Capture Metadata are Owner-only sheets.
+              </p>
+            ) : null}
           </div>
 
           {error ? (

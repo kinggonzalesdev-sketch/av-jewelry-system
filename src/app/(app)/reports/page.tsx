@@ -61,7 +61,7 @@ export default async function ReportsPage({
       />
       {canExportAll ? (
         <div className="mb-4 flex justify-end">
-          <ExportAllButton />
+          <ExportAllButton isOwner={staff.roleKey === 'owner'} />
         </div>
       ) : null}
       <ReportsView canExport={canExport} from={from} to={to} result={result} />

@@ -149,6 +149,7 @@ export function DashboardView({
   rangeFrom,
   rangeTo,
   canExport,
+  isOwner = false,
 }: {
   counts: DashboardCounts | null;
   metrics: DashboardMetrics | null;
@@ -159,6 +160,8 @@ export function DashboardView({
   rangeFrom?: string | undefined;
   rangeTo?: string | undefined;
   canExport: boolean;
+  /** Owner also gets the sensitive export sheets. */
+  isOwner?: boolean;
 }) {
   const router = useRouter();
   // Privacy Mode (§7): every financial figure on the dashboard masks to dots when
@@ -263,6 +266,7 @@ export function DashboardView({
                   label="⭳ Export Reports"
                   testId="dash-export"
                   size="sm"
+                  isOwner={isOwner}
                 />
               ) : null}
             </div>

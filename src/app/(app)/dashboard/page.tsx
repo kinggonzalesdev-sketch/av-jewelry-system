@@ -3,7 +3,11 @@ import { notFound } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-primitives';
 
 import { DashboardView } from '@/components/dashboard/dashboard-view';
-import { canOpenPage, getGrantedPermissions } from '@/lib/authz/guard';
+import {
+  canOpenPage,
+  getGrantedPermissions,
+  requireActiveStaff,
+} from '@/lib/authz/guard';
 import {
   getDashboardCounts,
   getDashboardMetricsRanged,
@@ -49,16 +53,25 @@ export default async function DashboardPage({
   const effFrom = rangeFrom ?? '2000-01-01';
   const effTo = rangeTo ?? today;
 
-  const [counts, metrics, salesByChannel, scrapTotal, scrapIncome, permissions, layaway] =
-    await Promise.all([
-      getDashboardCounts(),
-      getDashboardMetricsRanged(effFrom, effTo),
-      getSalesByChannel(effFrom, effTo),
-      getScrapTotal(effFrom, effTo),
-      getScrapIncome(effFrom, effTo),
-      getGrantedPermissions(),
-      getLayawayDashboard(),
-    ]);
+  const [
+    counts,
+    metrics,
+    salesByChannel,
+    scrapTotal,
+    scrapIncome,
+    permissions,
+    layaway,
+    staff,
+  ] = await Promise.all([
+    getDashboardCounts(),
+    getDashboardMetricsRanged(effFrom, effTo),
+    getSalesByChannel(effFrom, effTo),
+    getScrapTotal(effFrom, effTo),
+    getScrapIncome(effFrom, effTo),
+    getGrantedPermissions(),
+    getLayawayDashboard(),
+    requireActiveStaff(),
+  ]);
 
   const scrapByMaterial = scrapIncome.ok ? scrapIncome.rows : [];
 
@@ -76,6 +89,7 @@ export default async function DashboardPage({
         rangeFrom={rangeFrom}
         rangeTo={rangeTo}
         canExport={permissions.has('export_data_reports')}
+        isOwner={staff.roleKey === 'owner'}
       />
     </div>
   );
