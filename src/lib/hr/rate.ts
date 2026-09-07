@@ -132,6 +132,7 @@ export async function listEmployeeRates(): Promise<EmployeeRateRow[]> {
       .select('id, full_name, role_key, hourly_rate')
       .eq('is_active', true)
       .eq('is_demo', false)
+      .neq('role_key', 'owner') // Owners are not on payroll (Owner 2026-09-07)
       .order('full_name', { ascending: true }),
     supabase
       .from('staff_salary_rates')
