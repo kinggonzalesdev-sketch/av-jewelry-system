@@ -545,6 +545,162 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
     );
   }
 
+  // ---- Daily Cash (detail ledger + per-day reconciliation) ----------------
+  // Two sheets under one toggle: the concrete cash movements (expenses / remittances / cash
+  // in-out / trade-ins), and the daily close reconciliation (expected vs actual). Both read
+  // stored rows directly (no per-day summary RPC iteration). Owner + Selected Admin, matching
+  // the module's own access. Test-mode rows are kept but flagged so nothing is hidden.
+  if (want('daily_cash')) {
+    await loadStaffNames();
+    const [exp, rem, mov, trd, closes] = await Promise.all([
+      rangeFilter(
+        supabase
+          .from('daily_cash_expenses')
+          .select('expense_date, payee, category, amount, remarks, is_test, created_by')
+          .order('expense_date', { ascending: false }),
+        'expense_date',
+        opts,
+      ),
+      rangeFilter(
+        supabase
+          .from('daily_cash_remittances')
+          .select('remit_date, reference, amount, remarks, is_test, created_by')
+          .order('remit_date', { ascending: false }),
+        'remit_date',
+        opts,
+      ),
+      rangeFilter(
+        supabase
+          .from('daily_cash_movements')
+          .select(
+            'movement_date, direction, movement_type, amount, remarks, is_test, created_by',
+          )
+          .order('movement_date', { ascending: false }),
+        'movement_date',
+        opts,
+      ),
+      rangeFilter(
+        supabase
+          .from('daily_cash_trades')
+          .select('trade_date, name, related_sale, amount, remarks, is_test, created_by')
+          .order('trade_date', { ascending: false }),
+        'trade_date',
+        opts,
+      ),
+      rangeFilter(
+        supabase
+          .from('daily_cash_closes')
+          .select(
+            'close_date, status, expected_cash, actual_cash_count, difference, notes, closed_by, closed_at',
+          )
+          .order('close_date', { ascending: false }),
+        'close_date',
+        opts,
+      ),
+    ]);
+
+    type DetailRow = {
+      dateKey: string;
+      date: Date | null;
+      kind: string;
+      detail: string;
+      direction: string;
+      amount: number | null;
+      recorded: string;
+      remarks: string;
+      test: string;
+    };
+    const detail: DetailRow[] = [];
+    const push = (
+      dateKey: unknown,
+      kind: string,
+      detailText: string,
+      direction: string,
+      r: Record<string, unknown>,
+    ) => {
+      detail.push({
+        dateKey: (dateKey as string) ?? '',
+        date: dateVal(dateKey),
+        kind,
+        detail: detailText || '—',
+        direction,
+        amount: num(r.amount),
+        recorded: nameOf(r.created_by),
+        remarks: (r.remarks as string) ?? '—',
+        test: r.is_test === true ? 'Yes' : 'No',
+      });
+    };
+    for (const r of (exp.data ?? []) as Array<Record<string, unknown>>) {
+      push(
+        r.expense_date,
+        'Expense',
+        [r.payee as string, humanize(r.category as string)].filter(Boolean).join(' · '),
+        'Out',
+        r,
+      );
+    }
+    for (const r of (rem.data ?? []) as Array<Record<string, unknown>>) {
+      push(r.remit_date, 'Remittance', (r.reference as string) ?? '', 'Out', r);
+    }
+    for (const r of (mov.data ?? []) as Array<Record<string, unknown>>) {
+      const dir = (r.direction as string) === 'in' ? 'In' : 'Out';
+      push(r.movement_date, 'Cash Movement', humanize(r.movement_type as string), dir, r);
+    }
+    for (const r of (trd.data ?? []) as Array<Record<string, unknown>>) {
+      push(
+        r.trade_date,
+        'Trade-in',
+        [r.name as string, r.related_sale as string].filter(Boolean).join(' · '),
+        '—',
+        r,
+      );
+    }
+    detail.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+    addSheet(
+      wb,
+      'Daily Cash Detail',
+      [
+        { header: 'Date', key: 'date', width: 14, type: 'date' },
+        { header: 'Type', key: 'kind', width: 16 },
+        { header: 'Detail', key: 'detail', width: 28 },
+        { header: 'Direction', key: 'direction', width: 10 },
+        { header: 'Amount', key: 'amount', width: 14, type: 'money' },
+        { header: 'Recorded By', key: 'recorded', width: 22 },
+        { header: 'Remarks', key: 'remarks', width: 26 },
+        { header: 'Test', key: 'test', width: 8 },
+      ],
+      detail,
+    );
+
+    const closeRows = ((closes.data ?? []) as Array<Record<string, unknown>>).map(
+      (r) => ({
+        date: dateVal(r.close_date),
+        status: humanize(r.status as string),
+        expected: num(r.expected_cash),
+        actual: num(r.actual_cash_count),
+        difference: num(r.difference),
+        notes: (r.notes as string) ?? '—',
+        closedBy: nameOf(r.closed_by),
+        closedAt: dateVal(r.closed_at),
+      }),
+    );
+    addSheet(
+      wb,
+      'Daily Cash Close',
+      [
+        { header: 'Date', key: 'date', width: 14, type: 'date' },
+        { header: 'Status', key: 'status', width: 12 },
+        { header: 'Expected Cash', key: 'expected', width: 16, type: 'money' },
+        { header: 'Actual Count', key: 'actual', width: 16, type: 'money' },
+        { header: 'Difference', key: 'difference', width: 14, type: 'money' },
+        { header: 'Notes', key: 'notes', width: 26 },
+        { header: 'Closed By', key: 'closedBy', width: 22 },
+        { header: 'Closed At', key: 'closedAt', width: 18, type: 'datetime' },
+      ],
+      closeRows,
+    );
+  }
+
   // ---- Team / Employees (Owner only) --------------------------------------
   // The personnel roster + current salary rate. Excludes auth ids and the temp-password flag.
   if (want('team')) {

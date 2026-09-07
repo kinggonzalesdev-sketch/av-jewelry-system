@@ -29,6 +29,7 @@ describe('export sections catalogue', () => {
       'customers',
       'attendance',
       'payroll',
+      'daily_cash',
       'team',
       'approvals',
       'audit',

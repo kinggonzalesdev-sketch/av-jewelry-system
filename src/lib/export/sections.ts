@@ -20,6 +20,7 @@ export const EXPORT_SECTIONS = [
   { key: 'customers', label: 'Customers' },
   { key: 'attendance', label: 'Attendance' },
   { key: 'payroll', label: 'Payroll' },
+  { key: 'daily_cash', label: 'Daily Cash' },
   { key: 'team', label: 'Team / Employees', sensitive: true },
   { key: 'approvals', label: 'Approvals', sensitive: true },
   { key: 'audit', label: 'Audit Log', sensitive: true },
