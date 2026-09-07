@@ -389,6 +389,74 @@ export async function deleteAttendanceRecord(
   return { ok: true };
 }
 
+/**
+ * Correct ONE record's clock-out time — Owner or Selected Admin only (Review Attendance,
+ * Owner 2026-09-07). Closes a forgotten open session or shortens an over-long one WITHOUT
+ * deleting it, writing the who/why into edited_by/edit_reason. The database re-checks the role
+ * and validates the time (>= clock-in, <= now); payroll is derived, so it recomputes on the
+ * next read (issued payslip snapshots are frozen and unaffected). A correction reason is
+ * mandatory. Returns the old clock-out for the audit trail.
+ */
+export async function correctAttendanceClockOut(
+  recordId: string,
+  timeOutIso: string,
+  reason: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await requireOwnerOrAdmin();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) {
+      await recordAuditEvent({
+        action: 'attendance.clock_out_corrected',
+        entityType: 'attendance_record',
+        entityId: recordId,
+        outcome: 'denied',
+        reason: cause.message,
+      });
+      return { ok: false, error: cause.message };
+    }
+    throw cause;
+  }
+
+  const trimmedReason = reason.trim();
+  if (!trimmedReason) return { ok: false, error: 'A correction reason is required.' };
+  const when = new Date(timeOutIso);
+  if (Number.isNaN(when.getTime())) {
+    return { ok: false, error: 'Enter a valid clock-out time.' };
+  }
+  const newIso = when.toISOString();
+
+  const supabase = await createClient();
+  const res = (await supabase.rpc('correct_attendance_clock_out', {
+    p_record_id: recordId,
+    p_time_out: newIso,
+    p_reason: trimmedReason,
+  })) as { data: string | null; error: { message: string } | null };
+
+  if (res.error) {
+    await recordAuditEvent({
+      action: 'attendance.clock_out_corrected',
+      entityType: 'attendance_record',
+      entityId: recordId,
+      outcome: 'failed',
+      reason: res.error.message,
+    });
+    return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+
+  await recordAuditEvent({
+    action: 'attendance.clock_out_corrected',
+    entityType: 'attendance_record',
+    entityId: recordId,
+    context: {
+      old_time_out: res.data ?? null,
+      new_time_out: newIso,
+      reason: trimmedReason,
+    },
+  });
+  return { ok: true };
+}
+
 /** Clock-in / clock-out selfie URLs for one attendance record. Each is a
  *  short-lived signed URL (5 min) minted with a download disposition, so it both
  *  renders in an <img> and saves to the browser's Downloads folder when clicked. */

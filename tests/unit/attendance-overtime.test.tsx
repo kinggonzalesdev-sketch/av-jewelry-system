@@ -15,6 +15,8 @@ vi.mock('@/lib/hr/actions', () => ({
   clockInAction: vi.fn(),
   clockOutAction: vi.fn(),
   deleteAttendanceRecordAction: vi.fn(),
+  // The Review day modal now also renders the clock-out correction control.
+  correctAttendanceClockOutAction: vi.fn(),
   // Selfies are lazy-loaded when a day is opened — echo signed URLs for the requested ids.
   loadAttendanceSelfiesAction: vi.fn((ids: string[]) =>
     Promise.resolve({

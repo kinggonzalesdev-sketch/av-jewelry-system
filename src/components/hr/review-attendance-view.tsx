@@ -5,6 +5,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import {
+  correctAttendanceClockOutAction,
   deleteAttendanceRecordAction,
   loadAttendanceSelfiesAction,
 } from '@/lib/hr/actions';
@@ -320,7 +321,10 @@ function ReviewDayModal({
                     ) : (
                       <>
                         <SelfieThumb label="In" url={selfies[s.row.id]?.inUrl ?? null} />
-                        <SelfieThumb label="Out" url={selfies[s.row.id]?.outUrl ?? null} />
+                        <SelfieThumb
+                          label="Out"
+                          url={selfies[s.row.id]?.outUrl ?? null}
+                        />
                       </>
                     )}
                   </div>
@@ -331,7 +335,8 @@ function ReviewDayModal({
                   </p>
                 ) : null}
                 {canManage ? (
-                  <div className="mt-2">
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <ReviewRowCorrect row={s.row} />
                     <ReviewRowDelete row={s.row} />
                   </div>
                 ) : null}
@@ -350,6 +355,135 @@ function ReviewDayModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+/** A timestamptz → the `YYYY-MM-DDTHH:mm` value a datetime-local input expects, in local time. */
+function toLocalInputValue(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+/**
+ * Owner/Selected Admin clock-out correction (Owner 2026-09-07). Closes a forgotten OPEN
+ * session — which also unblocks that staff member from clocking in again — or shortens an
+ * over-long one, with a mandatory reason. It never edits the clock-IN; the database validates
+ * the new time (>= clock-in, <= now) and records who/why. Payroll recomputes on the next read.
+ */
+function ReviewRowCorrect({ row }: { row: AttendanceRow }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  // Default to the current clock-out, or the clock-in time when the session is still open.
+  const [localValue, setLocalValue] = useState('');
+  const [reason, setReason] = useState('');
+  const [state, submit, pending] = useActionState<HrActionState, FormData>(
+    correctAttendanceClockOutAction,
+    EMPTY_HR_STATE,
+  );
+
+  const lastSuccess = useRef<string | null>(null);
+  useEffect(() => {
+    if (state.success && state.success !== lastSuccess.current) {
+      lastSuccess.current = state.success;
+      setOpen(false);
+      router.refresh();
+    }
+  }, [state.success, router]);
+
+  const openModal = () => {
+    setLocalValue(toLocalInputValue(row.timeOut ?? row.timeIn));
+    setReason('');
+    setOpen(true);
+  };
+
+  const formId = `review-correct-form-${row.id}`;
+  const isoValue = localValue ? new Date(localValue).toISOString() : '';
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={openModal}
+        data-testid={`review-correct-${row.id}`}
+        className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+      >
+        {row.timeOut ? 'Correct clock-out' : 'Set clock-out'}
+      </button>
+
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title={row.timeOut ? 'Correct clock-out time' : 'Set clock-out time'}
+        description="Closes or shortens this session. Clock-in is unchanged; payroll recomputes."
+        size="sm"
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form={formId}
+              disabled={pending || !localValue || reason.trim().length === 0}
+            >
+              {pending ? 'Saving…' : 'Save correction'}
+            </Button>
+          </>
+        }
+      >
+        <form id={formId} action={submit} className="space-y-3">
+          <input type="hidden" name="recordId" value={row.id} />
+          <input type="hidden" name="timeOut" value={isoValue} />
+          <p className="text-sm">
+            {row.staffName ?? 'This staff member'} clocked in at{' '}
+            <strong>{new Date(row.timeIn).toLocaleString()}</strong>
+            {row.timeOut ? (
+              <>
+                {' '}
+                and out at <strong>{new Date(row.timeOut).toLocaleString()}</strong>.
+              </>
+            ) : (
+              <> and has no clock-out (session still open).</>
+            )}
+          </p>
+          <div>
+            <Label htmlFor={`review-correct-time-${row.id}`} className="text-xs">
+              New clock-out time
+            </Label>
+            <Input
+              id={`review-correct-time-${row.id}`}
+              type="datetime-local"
+              value={localValue}
+              onChange={(e) => setLocalValue(e.target.value)}
+              data-testid={`review-correct-time-${row.id}`}
+              className="mt-1 h-9"
+            />
+          </div>
+          <div>
+            <Label htmlFor={`review-correct-reason-${row.id}`} className="text-xs">
+              Reason <span className="text-destructive">*</span>
+            </Label>
+            <textarea
+              id={`review-correct-reason-${row.id}`}
+              name="reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={2}
+              placeholder="e.g. Forgot to clock out; left at 6:00 PM per shift log."
+              data-testid={`review-correct-reason-${row.id}`}
+              className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-gold"
+            />
+          </div>
+          {state.error ? (
+            <p role="alert" className="text-sm text-destructive">
+              {state.error}
+            </p>
+          ) : null}
+        </form>
+      </Modal>
+    </>
   );
 }
 

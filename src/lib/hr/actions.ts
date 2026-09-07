@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 
 import {
+  correctAttendanceClockOut,
   deleteAttendanceRecord,
   kioskClockIn,
   kioskClockOut,
@@ -138,6 +139,32 @@ export async function deleteAttendanceRecordAction(
   revalidatePath('/admin/attendance/review');
   revalidatePath('/admin/payroll');
   return { error: null, success: 'Attendance record permanently deleted.' };
+}
+
+/**
+ * Correct a record's clock-out time (Review Attendance, Owner/Selected Admin). Closes a
+ * forgotten open session or shortens an over-long one with a mandatory reason; the domain
+ * module + database re-check the role and validate the time. Payroll recomputes on the next
+ * read (issued payslips are frozen).
+ */
+export async function correctAttendanceClockOutAction(
+  _prev: HrActionState,
+  formData: FormData,
+): Promise<HrActionState> {
+  const recordId = text(formData, 'recordId');
+  const timeOut = text(formData, 'timeOut');
+  const reason = text(formData, 'reason');
+  if (!recordId) return { error: 'Missing attendance record.', success: null };
+  if (!timeOut) return { error: 'Enter a clock-out time.', success: null };
+  if (!reason) return { error: 'A correction reason is required.', success: null };
+
+  const result = await correctAttendanceClockOut(recordId, timeOut, reason);
+  if (!result.ok) return { error: result.error, success: null };
+
+  revalidatePath('/admin/attendance/review');
+  revalidatePath('/admin/attendance');
+  revalidatePath('/admin/payroll');
+  return { error: null, success: 'Clock-out corrected.' };
 }
 
 /**
