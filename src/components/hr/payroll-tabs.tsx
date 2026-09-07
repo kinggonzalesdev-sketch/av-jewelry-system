@@ -43,8 +43,6 @@ export function PayrollTabs({
       to={to}
       isOwner={isOwner}
       canManagePayroll={canManagePayroll}
-      showClock={false}
-      showRecords={false}
     />
   );
 

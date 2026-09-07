@@ -9,6 +9,15 @@ import {
 } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 import { isAttendanceGatingActive, verifyDeviceCookie } from '@/lib/hr/devices';
+import {
+  DEFAULT_ATTENDANCE_PAGE_SIZE,
+  dayKey,
+  shopDayBounds,
+  shopToday,
+  type AttendanceFilters,
+  type AttendancePage,
+  type AttendancePageSize,
+} from '@/lib/hr/attendance-paging';
 
 /**
  * Device gate: once the Owner has registered a shop phone, only that device (its
@@ -482,6 +491,127 @@ export async function listAttendanceSelfiesFor(
   return out;
 }
 
+const ROW_COLUMNS =
+  'id, staff_profile_id, work_date, time_in, time_out, note, is_overtime, overtime_amount, staff:staff_profiles!staff_profile_id ( full_name )';
+
+function toRow(r: Record<string, unknown>): AttendanceRow {
+  const staff = one<{ full_name: string }>(r.staff);
+  return {
+    id: r.id as string,
+    staffProfileId: r.staff_profile_id as string,
+    staffName: staff?.full_name ?? null,
+    workDate: r.work_date as string,
+    timeIn: r.time_in as string,
+    timeOut: (r.time_out as string | null) ?? null,
+    note: (r.note as string | null) ?? null,
+    isOvertime: r.is_overtime === true,
+    overtimeAmount: String((r.overtime_amount as string | number | null) ?? '0'),
+  };
+}
+
+/**
+ * ONE page of attendance SESSIONS, filtered and counted in SQL (Owner 2026-09-06).
+ *
+ * Before this the page read the newest 100 sessions and filtered in the browser, so history
+ * beyond 100 was simply unreachable and every render carried the whole list. Now the date
+ * range, staff and open/completed filters are `where` clauses, the count is a HEAD count, and
+ * only `pageSize` rows come back — the same reads work at any history size.
+ *
+ * Dates filter the CLOCK-IN time within Manila day bounds, not the stored `work_date`: the
+ * column is written from the UTC date, so an early-morning Manila session carries the previous
+ * date. Filtering the timestamp is what makes "Today" mean today in the shop.
+ *
+ * `completion` returns the other sessions of the (staff, day) pairs on this page, so a day is
+ * always rendered whole with the correct total even when its sessions straddle a page edge.
+ * RLS is unchanged: own rows, or all for the Owner / an hr_review_attendance holder.
+ */
+export async function listAttendancePage(
+  filters: AttendanceFilters,
+  page = 1,
+  pageSize: AttendancePageSize = DEFAULT_ATTENDANCE_PAGE_SIZE,
+): Promise<AttendancePage> {
+  const supabase = await createClient();
+  const empty: AttendancePage = { rows: [], completion: [], total: 0, page, pageSize };
+  // An explicit empty staff list means "no staff matched the search" — nothing can match.
+  if (filters.staffIds && filters.staffIds.length === 0) return empty;
+
+  const { fromTs, toTs } = shopDayBounds(filters.from, filters.to);
+  const applyFilters = <T extends { gte: unknown }>(q: T): T => {
+    let out = q as unknown as {
+      gte: (c: string, v: string) => typeof out;
+      lte: (c: string, v: string) => typeof out;
+      in: (c: string, v: string[]) => typeof out;
+      is: (c: string, v: null) => typeof out;
+      not: (c: string, op: string, v: null) => typeof out;
+    };
+    if (fromTs) out = out.gte('time_in', fromTs);
+    if (toTs) out = out.lte('time_in', toTs);
+    if (filters.staffIds) out = out.in('staff_profile_id', filters.staffIds);
+    if (filters.status === 'open') out = out.is('time_out', null);
+    if (filters.status === 'completed') out = out.not('time_out', 'is', null);
+    return out as unknown as T;
+  };
+
+  const countRes = await applyFilters(
+    supabase.from('attendance_records').select('id', { count: 'exact', head: true }),
+  );
+  if (countRes.error) return empty;
+  const total = countRes.count ?? 0;
+
+  const offset = Math.max(0, (page - 1) * pageSize);
+  const { data, error } = await applyFilters(
+    supabase.from('attendance_records').select(ROW_COLUMNS),
+  )
+    .order('time_in', { ascending: false })
+    .range(offset, offset + pageSize - 1);
+  if (error || !data) return { ...empty, total };
+
+  const rows = (data as Array<Record<string, unknown>>).map(toRow);
+
+  // Complete every (staff, day) this page touches — bounded by the page size, and only for
+  // the days actually shown, so it never grows with history.
+  const staffIds = [...new Set(rows.map((r) => r.staffProfileId))];
+  const dates = [...new Set(rows.map((r) => r.workDate))];
+  let completion: AttendanceRow[] = [];
+  if (staffIds.length > 0 && dates.length > 0) {
+    const { data: extra } = await supabase
+      .from('attendance_records')
+      .select(ROW_COLUMNS)
+      .in('staff_profile_id', staffIds)
+      .in('work_date', dates)
+      .order('time_in', { ascending: false });
+    const wanted = new Set(rows.map(dayKey));
+    const onPage = new Set(rows.map((r) => r.id));
+    completion = (extra ?? [])
+      .map((r) => toRow(r as Record<string, unknown>))
+      .filter((r) => wanted.has(dayKey(r)) && !onPage.has(r.id));
+  }
+
+  return { rows, completion, total, page, pageSize };
+}
+
+/**
+ * The team members who have a session that STARTED today (shop time), for the summary cards.
+ * Ids only — the names come from the roster the page already reads. RLS-scoped, so a member
+ * without review permission simply sees their own attendance reflected.
+ */
+export async function listTodaySessionStaff(): Promise<
+  Array<{ staffProfileId: string }>
+> {
+  const supabase = await createClient();
+  const today = shopToday();
+  const { fromTs, toTs } = shopDayBounds(today, today);
+  const { data, error } = await supabase
+    .from('attendance_records')
+    .select('staff_profile_id')
+    .gte('time_in', fromTs ?? today)
+    .lte('time_in', toTs ?? today);
+  if (error || !data) return [];
+  return (data as Array<{ staff_profile_id: string }>).map((r) => ({
+    staffProfileId: r.staff_profile_id,
+  }));
+}
+
 /**
  * Attendance rows the caller may see (RLS: own rows, or all for the Owner).
  * Newest first.
@@ -498,18 +628,5 @@ export async function listAttendance(limit = 100): Promise<AttendanceRow[]> {
 
   if (error || !data) return [];
 
-  return (data as Array<Record<string, unknown>>).map((r) => {
-    const staff = one<{ full_name: string }>(r.staff);
-    return {
-      id: r.id as string,
-      staffProfileId: r.staff_profile_id as string,
-      staffName: staff?.full_name ?? null,
-      workDate: r.work_date as string,
-      timeIn: r.time_in as string,
-      timeOut: (r.time_out as string | null) ?? null,
-      note: (r.note as string | null) ?? null,
-      isOvertime: r.is_overtime === true,
-      overtimeAmount: String((r.overtime_amount as string | number | null) ?? '0'),
-    };
-  });
+  return (data as Array<Record<string, unknown>>).map(toRow);
 }

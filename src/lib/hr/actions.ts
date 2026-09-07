@@ -6,9 +6,15 @@ import {
   deleteAttendanceRecord,
   kioskClockIn,
   kioskClockOut,
+  listAttendancePage,
   listAttendanceSelfiesFor,
   type AttendanceSelfies,
 } from '@/lib/hr/attendance';
+import type {
+  AttendanceFilters,
+  AttendancePage,
+  AttendancePageSize,
+} from '@/lib/hr/attendance-paging';
 import { requirePermission } from '@/lib/authz/guard';
 import {
   requestOwnerDeletion,
@@ -40,6 +46,20 @@ export async function loadAttendanceSelfiesAction(
 ): Promise<AttendanceSelfies> {
   await requirePermission('hr_review_attendance');
   return listAttendanceSelfiesFor(recordIds);
+}
+
+/**
+ * One page of attendance records for the toolbar (search, date range, staff, status) and the
+ * pagination footer. Gated on hr_attendance — the same permission the page requires — and the
+ * rows themselves stay RLS-scoped, so this can never widen what a member may read.
+ */
+export async function loadAttendancePageAction(
+  filters: AttendanceFilters,
+  page: number,
+  pageSize: AttendancePageSize,
+): Promise<AttendancePage> {
+  await requirePermission('hr_attendance');
+  return listAttendancePage(filters, page, pageSize);
 }
 
 export async function clockInAction(

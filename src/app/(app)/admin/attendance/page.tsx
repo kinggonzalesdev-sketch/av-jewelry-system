@@ -1,16 +1,25 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
-import { AttendanceView } from '@/components/hr/attendance-view';
+import { AttendanceClock } from '@/components/hr/attendance-clock';
+import { AttendanceRecords } from '@/components/hr/attendance-records';
+import { AttendanceSummaryCards } from '@/components/hr/attendance-summary-cards';
 import { DeviceManager } from '@/components/hr/device-manager';
+import { Card, CardContent } from '@/components/ui/card';
 import { canOpenPage, requireActiveStaff } from '@/lib/authz/guard';
 import { PageHeader } from '@/components/ui/page-primitives';
 import {
-  listAttendance,
+  listAttendancePage,
   listClockStaff,
   listLastClockOutToday,
   listOpenSessions,
+  listTodaySessionStaff,
 } from '@/lib/hr/attendance';
+import {
+  DEFAULT_ATTENDANCE_PAGE_SIZE,
+  quickRange,
+  summarizeAttendanceToday,
+} from '@/lib/hr/attendance-paging';
 import {
   isAttendanceGatingActive,
   isThisDeviceApproved,
@@ -22,39 +31,55 @@ export const metadata: Metadata = {};
 export const dynamic = 'force-dynamic';
 
 /**
- * Team Management → Attendance (Bible §F). Clock in/out is self-service for any
- * active staff member; records are RLS-scoped (own; Owner sees all). Payroll moved
- * to /admin/payroll; the all-records review is at /admin/attendance/review. Route
- * unchanged so existing links keep working.
+ * Team Management → Attendance (Bible §F). Clock in/out is self-service for any active staff
+ * member; records are RLS-scoped (own; Owner / a review-permission holder sees all).
  *
- * Device gate (Phase 2a): once the Owner registers a shop phone, only that device
- * may clock in/out — enforced server-side, logged when blocked. Before that, it is
- * a no-op (nobody is locked out).
+ * Refined 2026-09-06 (Owner): a compact device banner, a clear "Attendance today" action card,
+ * team summary cards for reviewers, and a filtered + SERVER-PAGINATED records list defaulting
+ * to the last 7 days — so the page no longer loads the whole history on every render. Clock,
+ * device, session and payroll logic are all unchanged.
  */
 export default async function AttendancePage() {
-  // Page access (Portal & Access). A member without this permission cannot open
-  // the page — by link OR by typing the URL. A Super Admin holds it implicitly.
   if (!(await canOpenPage('hr_attendance'))) notFound();
   const staff = await requireActiveStaff();
   const isOwner = staff.roleKey === 'owner';
 
-  const [records, openSessions, lastOutToday, clockStaff, gatingActive, thisApproved] =
-    await Promise.all([
-      listAttendance(),
-      listOpenSessions(),
-      listLastClockOutToday(),
-      // The kiosk roster is available to ANY hr_attendance holder (Owner request):
-      // reaching this page already requires that permission, so a granted staff/admin
-      // can operate the clock, not just the Owner. Returns active staff name + role.
-      listClockStaff(),
-      isAttendanceGatingActive(),
-      isThisDeviceApproved(),
-    ]);
+  // A reviewer (Owner or an hr_review_attendance holder) may see team-wide data — the same
+  // people RLS lets read every member's records. Everyone else sees only their own.
+  const canSeeTeam = isOwner || (await canOpenPage('hr_review_attendance'));
 
-  // Owner or Selected Admin may permanently delete an attendance record.
+  const initialFilters = {
+    ...quickRange('7d'),
+    staffIds: null,
+    status: 'all' as const,
+  };
+
+  const [
+    initialPage,
+    openSessions,
+    lastOutToday,
+    clockStaff,
+    todaySessionStaff,
+    gatingActive,
+    thisApproved,
+  ] = await Promise.all([
+    listAttendancePage(
+      { from: initialFilters.from, to: initialFilters.to, staffIds: null, status: 'all' },
+      1,
+      DEFAULT_ATTENDANCE_PAGE_SIZE,
+    ),
+    listOpenSessions(),
+    listLastClockOutToday(),
+    listClockStaff(),
+    canSeeTeam ? listTodaySessionStaff() : Promise.resolve([]),
+    isAttendanceGatingActive(),
+    isThisDeviceApproved(),
+  ]);
+
   const canManage = isOwner || staff.roleKey === 'selected_admin';
   const devices = isOwner ? await listDevices() : [];
   const blockedHere = gatingActive && !thisApproved;
+  const summary = summarizeAttendanceToday(todaySessionStaff, openSessions);
 
   return (
     <div>
@@ -81,21 +106,27 @@ export default async function AttendancePage() {
 
         {isOwner ? <DeviceManager devices={devices} thisApproved={thisApproved} /> : null}
 
-        <AttendanceView
-          records={records}
-          payroll={{ ok: true, rows: [] }}
-          from=""
-          to=""
-          isOwner={isOwner}
-          clockStaff={clockStaff}
-          openSessions={openSessions}
-          lastOutToday={lastOutToday}
-          // Everyone who can open this page holds hr_attendance, so the clock is
-          // shown to all of them — a granted staff/admin can sign the team in/out on
-          // the approved shop phone, not just the Owner.
-          showClock
-          showPayroll={false}
+        {/* Attendance today — pick who is signing in, then Clock In / Out / Continue Duty. */}
+        <Card>
+          <CardContent className="pt-4">
+            <p className="mb-1 text-sm font-semibold text-foreground">Attendance today</p>
+            <AttendanceClock
+              staff={clockStaff}
+              openSessions={openSessions}
+              lastOutToday={lastOutToday}
+            />
+          </CardContent>
+        </Card>
+
+        {canSeeTeam ? <AttendanceSummaryCards summary={summary} /> : null}
+
+        <AttendanceRecords
+          initialPage={initialPage}
+          roster={clockStaff}
           canManage={canManage}
+          isOwner={isOwner}
+          canFilterStaff={canSeeTeam}
+          defaultRange="7d"
         />
       </div>
     </div>
