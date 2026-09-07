@@ -32,12 +32,17 @@ import {
 import {
   printOrderStickers,
   stickerDate,
+  stickerLineItems,
   type OrderReceiptData,
 } from '@/lib/print/order-receipt';
 import { writeToChannel } from '@/lib/print/bluetooth-printer';
 import { encodeReceipt } from '@/lib/print/receipt-encoders';
 import { readStickerFields } from '@/lib/print/sticker-fields';
 import { usePrinter } from '@/components/print/printer-context';
+import {
+  enqueueOrderStickersAction,
+  type OrderStickerPayload,
+} from '@/lib/print/order-print-queue';
 import { linkCaptureToOrderAction } from '@/lib/capture/pending-actions';
 import { CustomerMatchHint } from '@/components/customers/customer-match-hint';
 import { PhotoCapture } from '@/components/attachments/photo-capture';
@@ -730,7 +735,9 @@ export function NewOrderModal({
     /** Walk-In only: the DB-authoritative remaining balance. */
     balance?: string;
   } | null>(null);
-  const [printState, setPrintState] = useState<'idle' | 'sending' | 'printed' | 'failed'>(
+  const [printState, setPrintState] = useState<
+    'idle' | 'sending' | 'queued' | 'printed' | 'failed'
+  >(
     'idle',
   );
   const submittingRef = useRef(false);
@@ -856,9 +863,11 @@ export function NewOrderModal({
     }));
   };
 
-  // Print one sticker per item, honouring the operator's Sticker Settings fields.
-  // Returns true when transmitted (or the browser dialog was used because no BLE
-  // printer is connected), false on a real write failure.
+  // LEGACY BROWSER FALLBACK — the existing browser / Web Bluetooth print, kept INTACT during
+  // the staged cutover (Owner 2026-09-07). Prints one sticker per item, honouring the operator's
+  // Sticker Settings fields. Returns true when transmitted (or the browser dialog was used
+  // because no BLE printer is connected), false on a real write failure. Retained until native
+  // order printing passes physical owner testing.
   const printStickers = async (stickers: OrderReceiptData[]): Promise<boolean> => {
     const fields = readStickerFields();
     if (!activeChannel) {
@@ -875,19 +884,51 @@ export function NewOrderModal({
     }
   };
 
+  // The native ORDER_STICKER payloads: authoritative pre-rendered lines (from the order snapshot
+  // + the operator's Sticker Settings), so MineFlow Capture prints the EXACT same Order sticker
+  // and never recomputes values.
+  const buildStickerPayloads = (stickers: OrderReceiptData[]): OrderStickerPayload[] => {
+    const fields = readStickerFields();
+    return stickers.map((s) => ({
+      customerName: s.customerName,
+      itemName: s.itemName,
+      grams: s.grams,
+      quantity: s.quantity,
+      unitPrice: s.unitPrice,
+      pricePerGram: s.pricePerGram ?? null,
+      fixedPrice: s.fixedPrice ?? null,
+      date: s.date,
+      lines: stickerLineItems(s, fields).map((l) => ({ text: l.text, kind: l.kind })),
+    }));
+  };
+
+  // STAGED CUTOVER (Owner 2026-09-07): the PRIMARY Print submits a native ORDER_STICKER job the
+  // MineFlow Capture app prints over native Bluetooth — instant, never waits on Bluetooth. The
+  // browser path (printStickers) is retained as an explicit fallback below.
   const runPrint = async (
     stickers: OrderReceiptData[],
     orderId: string,
     kind: 'print' | 'reprint',
   ) => {
+    if (!orderId) return;
+    setPrintState('sending');
+    const res = await enqueueOrderStickersAction(orderId, buildStickerPayloads(stickers), {
+      reprint: kind === 'reprint',
+    });
+    setPrintState(res.ok ? 'queued' : 'failed');
+    void recordOrderPrintAction(
+      orderId,
+      res.ok ? (kind === 'reprint' ? 'reprinted' : 'printed') : 'failed',
+    );
+  };
+
+  // The retained browser fallback, invoked explicitly during the staged cutover.
+  const runBrowserFallback = async (stickers: OrderReceiptData[], orderId: string) => {
     setPrintState('sending');
     const ok = await printStickers(stickers);
     setPrintState(ok ? 'printed' : 'failed');
     if (orderId) {
-      void recordOrderPrintAction(
-        orderId,
-        ok ? (kind === 'reprint' ? 'reprinted' : 'printed') : 'failed',
-      );
+      void recordOrderPrintAction(orderId, ok ? 'printed' : 'failed');
     }
   };
 
@@ -1078,6 +1119,9 @@ export function NewOrderModal({
   const handleReprint = () => {
     if (saved) void runPrint(saved.stickers, saved.officialOrderId, 'reprint');
   };
+  const handleBrowserFallback = () => {
+    if (saved) void runBrowserFallback(saved.stickers, saved.officialOrderId);
+  };
   const handleDone = () => {
     router.refresh();
     onClose();
@@ -1145,11 +1189,19 @@ export function NewOrderModal({
               data-testid="print-failed"
             >
               <p className="text-sm font-semibold text-destructive">
-                Order saved, but printing failed. You can reprint this order.
+                Order saved, but the sticker could not be sent to the printer.
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 <Button type="button" size="sm" onClick={handleReprint}>
-                  ⎙ Reprint
+                  ⎙ Retry
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleBrowserFallback}
+                >
+                  Print via browser (fallback)
                 </Button>
               </div>
             </div>
@@ -1157,9 +1209,33 @@ export function NewOrderModal({
             <p className="text-xs text-muted-foreground" data-testid="print-sending">
               Sending the sticker{saved.itemCount === 1 ? '' : 's'} to the printer…
             </p>
+          ) : printState === 'queued' ? (
+            <div className="space-y-1.5" data-testid="print-queued">
+              <p className="text-xs text-muted-foreground">
+                Sticker{saved.itemCount === 1 ? '' : 's'} sent to the printer — MineFlow
+                Capture will print {saved.itemCount === 1 ? 'it' : 'them'}.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={handleReprint}
+                  className="text-xs underline hover:text-foreground"
+                >
+                  Reprint
+                </button>
+                {/* Retained browser fallback during the staged cutover (Owner 2026-09-07). */}
+                <button
+                  type="button"
+                  onClick={handleBrowserFallback}
+                  className="text-xs text-muted-foreground underline hover:text-foreground"
+                >
+                  Print via browser (fallback)
+                </button>
+              </div>
+            </div>
           ) : printState === 'printed' ? (
             <p className="text-xs text-muted-foreground">
-              Sticker{saved.itemCount === 1 ? '' : 's'} printed.{' '}
+              Sticker{saved.itemCount === 1 ? '' : 's'} printed via browser.{' '}
               <button
                 type="button"
                 onClick={handleReprint}

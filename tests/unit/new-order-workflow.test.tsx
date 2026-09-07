@@ -16,6 +16,13 @@ vi.mock('@/lib/orders/actions', () => ({
   loadNewOrderDataAction: vi.fn(),
   recordOrderPrintAction: vi.fn(),
 }));
+// The native ORDER_STICKER enqueue is a server action; stub it so this UI test never loads the
+// server chain (its contract is covered by order-print-queue.test.ts).
+vi.mock('@/lib/print/order-print-queue', () => ({
+  enqueueOrderStickersAction: vi.fn(() =>
+    Promise.resolve({ ok: true, queued: 1, duplicates: 0, jobIds: ['j'] }),
+  ),
+}));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 // Stub the camera control so the Item Photos section is inspectable without real camera APIs.
 vi.mock('@/components/attachments/photo-capture', () => ({

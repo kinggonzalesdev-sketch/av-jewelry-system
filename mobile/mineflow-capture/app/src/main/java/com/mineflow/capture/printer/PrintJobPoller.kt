@@ -55,10 +55,16 @@ object PrintJobPoller {
                         if (cap.optBoolean("claimed", false)) {
                             drainedOne = printCaptureSticker(app, api, store, cap)
                         } else {
-                            // 2) Order / claim labels.
+                            // 2) Legacy claim label_jobs queue.
                             val job = api.claimLabelJob()
                             if (job.optBoolean("claimed", false)) {
                                 drainedOne = printLabelClaimed(app, api, store, job)
+                            } else {
+                                // 3) New Order stickers — the typed web print_jobs queue (ORDER_STICKER).
+                                val order = api.claimPrintJob()
+                                if (order.optBoolean("claimed", false)) {
+                                    drainedOne = printPrintJob(app, api, store, order)
+                                }
                             }
                         }
                     }
@@ -218,6 +224,34 @@ object PrintJobPoller {
             }
         } catch (e: Exception) {
             api.reportLabelJob(jobId, printed = false, reason = e.javaClass.simpleName)
+            false
+        }
+    }
+
+    /** Print one claimed typed web print job (New Order sticker) from its PRE-RENDERED lines,
+     *  reporting the outcome (a failure parks it for a manual retry). The web already computed the
+     *  EXACT Order sticker lines from the order snapshot, so nothing is recomputed on-device. */
+    private fun printPrintJob(
+        context: Context,
+        api: ApiClient,
+        store: SecureStore,
+        job: org.json.JSONObject,
+    ): Boolean {
+        val jobId = job.optString("print_job_id").ifBlank { return false }
+        val address = store.printerAddress ?: return false
+        return try {
+            val lines = job.optJSONObject("sticker")?.optJSONArray("lines")
+            if (lines == null || lines.length() == 0) {
+                api.reportPrintJob(jobId, printed = false, reason = "empty_sticker")
+                return false
+            }
+            val bytes = StickerEncoder.encodeLines(lines, store.printerTspl)
+            val res = BluetoothPrinterManager.print(context, address, bytes)
+            Log.i(TAG, "PRINT_SOURCE=mobile-poller order_job=$jobId ok=${res.ok}")
+            api.reportPrintJob(jobId, printed = res.ok, reason = if (res.ok) null else res.error)
+            res.ok
+        } catch (e: Exception) {
+            api.reportPrintJob(jobId, printed = false, reason = e.javaClass.simpleName)
             false
         }
     }

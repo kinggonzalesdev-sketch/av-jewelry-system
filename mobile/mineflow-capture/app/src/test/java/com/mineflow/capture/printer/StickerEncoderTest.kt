@@ -235,4 +235,51 @@ class StickerEncoderTest {
         assertTrue(out.contains("11.5g - P7,000/g"))
         assertFalse(out.contains("FIXED"))
     }
+
+    // ---- ORDER_STICKER native path (Owner 2026-09-07, staged cutover): the phone lays out the
+    //      web's AUTHORITATIVE pre-rendered Order sticker lines with the SAME engine — reproducing
+    //      the EXACT web Order sticker, never recomputing values on-device. -------------------------
+
+    private fun line(text: String, kind: String) =
+        org.json.JSONObject().put("text", text).put("kind", kind)
+
+    @Test
+    fun encodeLines_grams_reproducesCaptureEngineByteForByte() {
+        val lines = org.json.JSONArray()
+            .put(line("KING GONZALES", "name"))
+            .put(line("11.5g • ₱7,100/g", "pricePerGram"))
+            .put(line(StickerEncoder.today(), "date"))
+        val viaLines = String(StickerEncoder.encodeLines(lines, tspl = true), Charsets.US_ASCII)
+        assertTrue(viaLines.contains("KING GONZALES"))
+        assertTrue(viaLines.contains("11.5g - P7,100/g")) // asciified for the thermal codepage
+        // Byte-identical to the structured sticker with the same content → ONE shared layout engine,
+        // so an Order sticker matches the approved capture/label sticker exactly.
+        assertArrayEquals(
+            StickerEncoder.encode(StickerEncoder.fromCapture("KING GONZALES", "11.5", "7100"), tspl = true),
+            StickerEncoder.encodeLines(lines, tspl = true),
+        )
+    }
+
+    @Test
+    fun encodeLines_fixedPriceOrderSticker_showsFixed_neverPerGram() {
+        val lines = org.json.JSONArray()
+            .put(line("MARIA SANTOS", "name"))
+            .put(line("FIXED • ₱15,000", "pricePerGram"))
+            .put(line(StickerEncoder.today(), "date"))
+        val out = String(StickerEncoder.encodeLines(lines, tspl = true), Charsets.US_ASCII)
+        assertTrue(out.contains("MARIA SANTOS"))
+        assertTrue(out.contains("FIXED - P15,000"))
+        assertFalse(out.contains("/g"))
+    }
+
+    @Test
+    fun encodeLines_escpos_skipsBlankLines() {
+        val lines = org.json.JSONArray()
+            .put(line("ANA CRUZ", "name"))
+            .put(line("", "price")) // blank → skipped, never a stray empty line
+            .put(line(StickerEncoder.today(), "date"))
+        val esc = String(StickerEncoder.encodeLines(lines, tspl = false), Charsets.US_ASCII)
+        assertTrue(esc.contains("ANA CRUZ"))
+        assertTrue(esc.contains(StickerEncoder.today()))
+    }
 }

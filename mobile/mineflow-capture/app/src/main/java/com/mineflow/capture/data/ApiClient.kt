@@ -290,6 +290,29 @@ class ApiClient(context: Context) {
     }
 
     /**
+     * Claim the next typed WEB print job (ORDER_STICKER) for this device — New Order stickers
+     * enqueued from the web. The DB hands each job to ONE device (FOR UPDATE SKIP LOCKED), so a
+     * sticker is never printed twice. Returns { claimed:true, print_job_id, job_type, sticker }
+     * (sticker carries the pre-rendered `lines`), or { claimed:false } when the queue is empty.
+     * Requires the confirm_claim_print_label permission (checked in DB).
+     */
+    fun claimPrintJob(): JSONObject {
+        val payload = JSONObject().put("deviceInstallationId", store.deviceInstallationId)
+        val res = post("/api/mobile/print/next", payload)
+        return if (res.ok) res.body else JSONObject().put("claimed", false)
+    }
+
+    /** Report a claimed web print job printed or failed. 'printed' is terminal on the backend
+     *  (a reconnect can't reprint it); 'failed' parks it for a deliberate manual retry. */
+    fun reportPrintJob(printJobId: String, printed: Boolean, reason: String? = null): Boolean {
+        val payload = JSONObject()
+            .put("printJobId", printJobId)
+            .put("outcome", if (printed) "printed" else "failed")
+            .putOpt("reason", reason)
+        return post("/api/mobile/print/next-result", payload).ok
+    }
+
+    /**
      * Claim the next LIVE capture sticker from the shared PC+phone queue. The DB hands
      * each eligible capture to ONE device (SKIP LOCKED), so a PC and this phone can both
      * be set up and each sticker prints exactly once. Returns the claim JSON.

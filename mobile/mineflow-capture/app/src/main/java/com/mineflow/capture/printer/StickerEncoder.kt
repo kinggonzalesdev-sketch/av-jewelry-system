@@ -244,8 +244,10 @@ object StickerEncoder {
         return cmds
     }
 
-    private fun encodeTspl(d: Sticker): ByteArray {
-        val sized = lineItems(d).flatMap { fitElement(it.text, TSPL_FONT_BY_KIND[it.kind] ?: listOf("2")) }
+    private fun encodeTspl(d: Sticker): ByteArray = encodeTsplKinded(lineItems(d))
+
+    private fun encodeTsplKinded(lines: List<Kinded>): ByteArray {
+        val sized = lines.flatMap { fitElement(it.text, TSPL_FONT_BY_KIND[it.kind] ?: listOf("2")) }
         val program = (listOf("SIZE 40 mm,30 mm", "GAP 2 mm,0 mm", "DIRECTION 1", "CLS") +
             layoutTsplText(sized) + listOf("PRINT 1,1", "")).joinToString("\r\n")
         return asciify(program).toByteArray(Charsets.US_ASCII)
@@ -260,20 +262,22 @@ object StickerEncoder {
         "date" to EscStyle(1, 1, false, null),
     )
 
-    private fun encodeEscPos(d: Sticker): ByteArray {
+    private fun encodeEscPos(d: Sticker): ByteArray = encodeEscPosKinded(lineItems(d))
+
+    private fun encodeEscPosKinded(lines: List<Kinded>): ByteArray {
         val out = ArrayList<Int>()
         fun emit(text: String, wT: Int, hT: Int, bold: Boolean, maxChars: Int?) {
             out.addAll(listOf(GS, 0x21, gsSize(wT, hT)))
             out.addAll(listOf(ESC, 0x45, if (bold) 0x01 else 0x00))
-            val lines = if (maxChars != null) (wrapWords(asciify(text), maxChars, 2) ?: listOf(text)) else listOf(text)
-            for (l in lines) { asciify(l).toByteArray(Charsets.US_ASCII).forEach { out.add(it.toInt() and 0xff) }; out.add(LF) }
+            val wrapped = if (maxChars != null) (wrapWords(asciify(text), maxChars, 2) ?: listOf(text)) else listOf(text)
+            for (l in wrapped) { asciify(l).toByteArray(Charsets.US_ASCII).forEach { out.add(it.toInt() and 0xff) }; out.add(LF) }
             out.addAll(listOf(ESC, 0x45, 0x00))
             out.addAll(listOf(GS, 0x21, 0x00))
         }
         out.addAll(listOf(ESC, 0x40))       // init
         out.addAll(listOf(ESC, 0x61, 0x01)) // center
         out.add(LF)                         // top spacing
-        for (l in lineItems(d)) {
+        for (l in lines) {
             val s = ESC_STYLE_BY_KIND[l.kind] ?: EscStyle(1, 1, false, null)
             emit(l.text, s.w, s.h, s.bold, s.max)
         }
@@ -285,6 +289,24 @@ object StickerEncoder {
 
     /** Encode a sticker in the active language. */
     fun encode(d: Sticker, tspl: Boolean): ByteArray = if (tspl) encodeTspl(d) else encodeEscPos(d)
+
+    /**
+     * Encode PRE-RENDERED sticker lines (from the web's stickerLineItems, carried on an
+     * ORDER_STICKER print job) with the SAME layout engine + per-kind fonts as a capture
+     * sticker — so a New Order sticker reproduces the EXACT web Order sticker WITHOUT
+     * recomputing any value on-device. `linesJson` is [{text,kind}, ...]; an unknown/blank kind
+     * falls back to a safe default; blank-text lines are skipped.
+     */
+    fun encodeLines(linesJson: org.json.JSONArray, tspl: Boolean): ByteArray {
+        val kinded = ArrayList<Kinded>(linesJson.length())
+        for (i in 0 until linesJson.length()) {
+            val o = linesJson.optJSONObject(i) ?: continue
+            val text = o.optString("text")
+            if (text.isBlank()) continue
+            kinded.add(Kinded(text, o.optString("kind").ifBlank { "name" }))
+        }
+        return if (tspl) encodeTsplKinded(kinded) else encodeEscPosKinded(kinded)
+    }
 
     // Test Print sample identity (Owner-approved). A Test Print is NOT a separate template —
     // it is the EXACT production capture sticker built from this sample data + the device's
