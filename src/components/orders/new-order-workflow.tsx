@@ -30,15 +30,11 @@ import {
   type NewOrderData,
 } from '@/lib/orders/actions';
 import {
-  printOrderStickers,
   stickerDate,
   stickerLineItems,
   type OrderReceiptData,
 } from '@/lib/print/order-receipt';
-import { writeToChannel } from '@/lib/print/bluetooth-printer';
-import { encodeReceipt } from '@/lib/print/receipt-encoders';
 import { readStickerFields } from '@/lib/print/sticker-fields';
-import { usePrinter } from '@/components/print/printer-context';
 import {
   enqueueOrderStickersAction,
   type OrderStickerPayload,
@@ -612,7 +608,6 @@ export function NewOrderModal({
   defaultSaleDate?: string;
 }) {
   const router = useRouter();
-  const { activeChannel, printLang } = usePrinter();
 
   const [mode, setMode] = useState<'order' | 'walkin'>(walkInOnly ? 'walkin' : 'order');
   // Manila local date (NOT UTC). The walk-in reader (daily_cash_walkins) buckets by
@@ -736,7 +731,7 @@ export function NewOrderModal({
     balance?: string;
   } | null>(null);
   const [printState, setPrintState] = useState<
-    'idle' | 'sending' | 'queued' | 'printed' | 'failed'
+    'idle' | 'sending' | 'queued' | 'failed'
   >(
     'idle',
   );
@@ -863,27 +858,6 @@ export function NewOrderModal({
     }));
   };
 
-  // LEGACY BROWSER FALLBACK — the existing browser / Web Bluetooth print, kept INTACT during
-  // the staged cutover (Owner 2026-09-07). Prints one sticker per item, honouring the operator's
-  // Sticker Settings fields. Returns true when transmitted (or the browser dialog was used
-  // because no BLE printer is connected), false on a real write failure. Retained until native
-  // order printing passes physical owner testing.
-  const printStickers = async (stickers: OrderReceiptData[]): Promise<boolean> => {
-    const fields = readStickerFields();
-    if (!activeChannel) {
-      printOrderStickers(stickers, fields);
-      return true;
-    }
-    try {
-      for (const sticker of stickers) {
-        await writeToChannel(activeChannel, encodeReceipt(sticker, printLang, fields));
-      }
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
   // The native ORDER_STICKER payloads: authoritative pre-rendered lines (from the order snapshot
   // + the operator's Sticker Settings), so MineFlow Capture prints the EXACT same Order sticker
   // and never recomputes values.
@@ -902,9 +876,13 @@ export function NewOrderModal({
     }));
   };
 
-  // STAGED CUTOVER (Owner 2026-09-07): the PRIMARY Print submits a native ORDER_STICKER job the
-  // MineFlow Capture app prints over native Bluetooth — instant, never waits on Bluetooth. The
-  // browser path (printStickers) is retained as an explicit fallback below.
+  // NATIVE PRINTING IS THE ONLY PATH (Owner 2026-09-07, cutover completed). Print submits an
+  // ORDER_STICKER job that the MineFlow Capture app prints over native Bluetooth — instant, and
+  // it never waits on the browser's Bluetooth stack. The legacy browser/Web-Bluetooth fallback
+  // was retired once native printing passed physical acceptance (35 real prints on the XP-236B).
+  // NOTE: Web Bluetooth is still used ELSEWHERE and must not be removed there — the Capture
+  // ~1s direct-local auto-print, the sidebar printer card, the Printers page and the Sticker
+  // Settings test print all still depend on it.
   const runPrint = async (
     stickers: OrderReceiptData[],
     orderId: string,
@@ -920,16 +898,6 @@ export function NewOrderModal({
       orderId,
       res.ok ? (kind === 'reprint' ? 'reprinted' : 'printed') : 'failed',
     );
-  };
-
-  // The retained browser fallback, invoked explicitly during the staged cutover.
-  const runBrowserFallback = async (stickers: OrderReceiptData[], orderId: string) => {
-    setPrintState('sending');
-    const ok = await printStickers(stickers);
-    setPrintState(ok ? 'printed' : 'failed');
-    if (orderId) {
-      void recordOrderPrintAction(orderId, ok ? 'printed' : 'failed');
-    }
   };
 
   // New Entry: SAVE FIRST, then print. A single guarded DB call saves the parent
@@ -1119,9 +1087,6 @@ export function NewOrderModal({
   const handleReprint = () => {
     if (saved) void runPrint(saved.stickers, saved.officialOrderId, 'reprint');
   };
-  const handleBrowserFallback = () => {
-    if (saved) void runBrowserFallback(saved.stickers, saved.officialOrderId);
-  };
   const handleDone = () => {
     router.refresh();
     onClose();
@@ -1195,14 +1160,6 @@ export function NewOrderModal({
                 <Button type="button" size="sm" onClick={handleReprint}>
                   ⎙ Retry
                 </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={handleBrowserFallback}
-                >
-                  Print via browser (fallback)
-                </Button>
               </div>
             </div>
           ) : printState === 'sending' ? (
@@ -1223,27 +1180,8 @@ export function NewOrderModal({
                 >
                   Reprint
                 </button>
-                {/* Retained browser fallback during the staged cutover (Owner 2026-09-07). */}
-                <button
-                  type="button"
-                  onClick={handleBrowserFallback}
-                  className="text-xs text-muted-foreground underline hover:text-foreground"
-                >
-                  Print via browser (fallback)
-                </button>
               </div>
             </div>
-          ) : printState === 'printed' ? (
-            <p className="text-xs text-muted-foreground">
-              Sticker{saved.itemCount === 1 ? '' : 's'} printed via browser.{' '}
-              <button
-                type="button"
-                onClick={handleReprint}
-                className="underline hover:text-foreground"
-              >
-                Reprint
-              </button>
-            </p>
           ) : null}
         </div>
       </Modal>

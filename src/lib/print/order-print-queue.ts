@@ -6,9 +6,10 @@ import { createClient } from '@/lib/supabase/server';
 /**
  * Web → native print delivery for NEW ORDER stickers (Owner 2026-09-07, SAFE STAGED CUTOVER).
  *
- * The New Order Print action ADDITIONALLY enqueues a typed ORDER_STICKER job the native
- * MineFlow Capture app claims and prints over native Bluetooth — WITHOUT removing the browser
- * print fallback (kept intact until physical owner testing passes). This never touches the
+ * The New Order Print action enqueues a typed ORDER_STICKER job the native MineFlow Capture app
+ * claims and prints over native Bluetooth. This is now the ONLY path for order stickers — the
+ * legacy browser/Web-Bluetooth fallback was retired once native printing passed physical
+ * acceptance (Owner 2026-09-07, 35 real prints on the XP-236B). This never touches the
  * capture-sticker queue.
  *
  * IDEMPOTENCY: each first print gets a STABLE key `order:<id>:<index>`, so a double-click, a

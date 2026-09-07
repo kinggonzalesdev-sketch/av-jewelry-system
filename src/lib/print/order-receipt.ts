@@ -356,10 +356,13 @@ export function printOrderReceipt(
 }
 
 /**
- * Browser-print fallback for one-sticker-per-item: prints every item's sticker, each
- * on its own 40×30 mm page (page break between), in a single print dialog. Used by New
- * Entry so a multi-item order yields one centered sticker per piece — the same format
- * as the direct-to-printer path.
+ * Browser-print (window.print) for one-sticker-per-item: prints every item's sticker, each on
+ * its own 40×30 mm page (page break between), in a single print dialog.
+ *
+ * NOTE: New Order printing no longer calls this — order stickers now go exclusively through the
+ * native ORDER_STICKER queue (see order-print-queue.ts). Retained as a generic browser-print
+ * utility; kept out of the "remove Web Bluetooth" cleanup because it is plain window.print, not
+ * Web Bluetooth, and its helpers (receiptHtml/RECEIPT_STYLE/escapeHtml) are shared.
  */
 export function printOrderStickers(
   items: OrderReceiptData[],
