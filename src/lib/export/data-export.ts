@@ -759,6 +759,56 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
     );
   }
 
+  // ---- Permissions (Owner only) -------------------------------------------
+  // Who explicitly holds which permission (staff_permission_grants). The Owner holds every
+  // permission implicitly and has no grant rows, so this lists the Selected Admin / Staff
+  // grants — an accountability record of who can do what. Owner-only (RLS: is_owner OR self).
+  if (want('permissions')) {
+    await loadStaffNames();
+    const [{ data: grants }, { data: perms }, { data: staff }] = await Promise.all([
+      supabase
+        .from('staff_permission_grants')
+        .select('staff_profile_id, permission_key, granted_at, granted_by'),
+      supabase.from('permissions').select('key, label'),
+      supabase.from('staff_profiles').select('id, role_key'),
+    ]);
+    const permLabel = new Map(
+      ((perms ?? []) as Array<{ key: string; label: string | null }>).map((p) => [
+        p.key,
+        p.label ?? p.key,
+      ]),
+    );
+    const roleByStaff = new Map(
+      ((staff ?? []) as Array<{ id: string; role_key: string | null }>).map((s) => [
+        s.id,
+        s.role_key ?? '',
+      ]),
+    );
+    const rows = ((grants ?? []) as Array<Record<string, unknown>>).map((g) => ({
+      name: nameOf(g.staff_profile_id),
+      role: humanize(roleByStaff.get(g.staff_profile_id as string) ?? ''),
+      permission:
+        permLabel.get(g.permission_key as string) ?? (g.permission_key as string),
+      key: (g.permission_key as string) ?? '—',
+      grantedAt: dateVal(g.granted_at),
+      grantedBy: nameOf(g.granted_by),
+    }));
+    rows.sort((a, b) => a.name.localeCompare(b.name) || a.key.localeCompare(b.key));
+    addSheet(
+      wb,
+      'Permissions',
+      [
+        { header: 'Staff Name', key: 'name', width: 24 },
+        { header: 'Role', key: 'role', width: 16 },
+        { header: 'Permission', key: 'permission', width: 28 },
+        { header: 'Permission Key', key: 'key', width: 24 },
+        { header: 'Granted At', key: 'grantedAt', width: 18, type: 'datetime' },
+        { header: 'Granted By', key: 'grantedBy', width: 22 },
+      ],
+      rows,
+    );
+  }
+
   // ---- Approvals (Owner only) ---------------------------------------------
   // The Owner approval queue (owner_approval_requests) — inventory edit/delete, order delete,
   // layaway delete, etc. Cancelled/returned/removed history lives in the Audit Log below.

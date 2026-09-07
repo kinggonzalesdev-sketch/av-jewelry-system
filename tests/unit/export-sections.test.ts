@@ -31,6 +31,7 @@ describe('export sections catalogue', () => {
       'payroll',
       'daily_cash',
       'team',
+      'permissions',
       'approvals',
       'audit',
       'capture_meta',
@@ -39,7 +40,7 @@ describe('export sections catalogue', () => {
 
   it('marks exactly the personnel/audit/approvals/capture sheets sensitive (Owner-only)', () => {
     expect([...SENSITIVE_SECTION_KEYS].sort()).toEqual(
-      ['approvals', 'audit', 'capture_meta', 'team'].sort(),
+      ['approvals', 'audit', 'capture_meta', 'permissions', 'team'].sort(),
     );
   });
 

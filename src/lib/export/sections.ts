@@ -22,6 +22,7 @@ export const EXPORT_SECTIONS = [
   { key: 'payroll', label: 'Payroll' },
   { key: 'daily_cash', label: 'Daily Cash' },
   { key: 'team', label: 'Team / Employees', sensitive: true },
+  { key: 'permissions', label: 'Permissions', sensitive: true },
   { key: 'approvals', label: 'Approvals', sensitive: true },
   { key: 'audit', label: 'Audit Log', sensitive: true },
   { key: 'capture_meta', label: 'Capture Metadata', sensitive: true },
