@@ -84,7 +84,13 @@ function BrandMark({ size = 'md' }: { size?: 'sm' | 'md' }) {
   );
 }
 
-function LogoutButton({ variant = 'sidebar' }: { variant?: 'sidebar' | 'more' }) {
+function LogoutButton({
+  variant = 'sidebar',
+  collapsed = false,
+}: {
+  variant?: 'sidebar' | 'more';
+  collapsed?: boolean;
+}) {
   const [pending, start] = useTransition();
   const more = variant === 'more';
   return (
@@ -93,12 +99,15 @@ function LogoutButton({ variant = 'sidebar' }: { variant?: 'sidebar' | 'more' })
       disabled={pending}
       onClick={() => start(async () => void (await signOut()))}
       data-testid="logout"
+      title={collapsed ? 'Logout' : undefined}
       className={cn(
         'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors',
         'text-muted-foreground hover:bg-destructive/10 hover:text-destructive',
         // The More sheet row: the same 48px row as the modules above it, red like the
         // desktop hover state so it reads as the destructive action it is.
         more && 'min-h-12 gap-3 px-3 text-destructive',
+        // Collapsed rail: icon only, centered.
+        collapsed && 'justify-center gap-0 px-2',
       )}
     >
       <span
@@ -107,7 +116,7 @@ function LogoutButton({ variant = 'sidebar' }: { variant?: 'sidebar' | 'more' })
       >
         ⏻
       </span>
-      <span>{pending ? 'Signing out…' : 'Logout'}</span>
+      {collapsed ? null : <span>{pending ? 'Signing out…' : 'Logout'}</span>}
     </button>
   );
 }
@@ -177,6 +186,27 @@ export function AppSidebar({
   // Manual open/close per collapsible group. Undefined → follow whether a child is
   // active (so navigating into Attendance/Payroll auto-expands Team Management).
   const [openSection, setOpenSection] = useState<Record<string, boolean>>({});
+  // Desktop sidebar collapse (Owner 2026-09-07): a slim icon rail, remembered per browser.
+  // SSR-safe — server + first client render stay expanded; the saved state applies after mount.
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCollapsed(localStorage.getItem('mineflow.sidebarCollapsed') === '1');
+    } catch {
+      /* storage unavailable — stay expanded */
+    }
+  }, []);
+  const toggleCollapsed = () =>
+    setCollapsed((c) => {
+      const next = !c;
+      try {
+        localStorage.setItem('mineflow.sidebarCollapsed', next ? '1' : '0');
+      } catch {
+        /* non-fatal */
+      }
+      return next;
+    });
   const roleWord = roleKey ? (ROLE_WORD[roleKey] ?? 'Team') : 'Team';
   // Page permissions the member holds. Undefined -> no filtering (unchanged
   // behaviour); a Set -> links they cannot open are hidden. The PAGE still
@@ -272,9 +302,14 @@ export function AppSidebar({
         href={item.href}
         {...(onNavigate ? { onClick: onNavigate } : {})}
         aria-current={isActive(item.href) ? 'page' : undefined}
+        title={collapsed ? item.label : undefined}
         className={cn(
-          'flex items-center gap-2.5 rounded-lg py-2 text-sm font-medium transition-colors',
-          indent ? 'pl-9 pr-2.5' : 'px-2.5',
+          'relative flex items-center rounded-lg py-2 text-sm font-medium transition-colors',
+          collapsed
+            ? 'justify-center px-2'
+            : indent
+              ? 'gap-2.5 pl-9 pr-2.5'
+              : 'gap-2.5 px-2.5',
           isActive(item.href)
             ? 'bg-gold/15 text-gold-strong'
             : 'text-muted-foreground hover:bg-accent hover:text-foreground',
@@ -283,17 +318,24 @@ export function AppSidebar({
         <span aria-hidden="true" className="w-4 shrink-0 text-center text-xs">
           {item.icon}
         </span>
-        <span className="truncate">{item.label}</span>
-        {item.available ? null : <SoonTag />}
+        {collapsed ? null : <span className="truncate">{item.label}</span>}
+        {collapsed || item.available ? null : <SoonTag />}
         {/* Live pending-approval badge (amber). Only on the Approvals item, only
             when > 0; DashboardSync realtime keeps the count fresh. */}
-        {item.href === '/approvals' && pendingApprovals > 0 ? (
+        {!collapsed && item.href === '/approvals' && pendingApprovals > 0 ? (
           <span
             className="ml-auto rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
             data-testid="approvals-badge"
           >
             {pendingApprovals}
           </span>
+        ) : null}
+        {/* Collapsed rail: a compact amber dot stands in for the count. */}
+        {collapsed && item.href === '/approvals' && pendingApprovals > 0 ? (
+          <span
+            aria-label={`${pendingApprovals} pending approvals`}
+            className="absolute right-1 top-1 h-2 w-2 rounded-full bg-amber-500"
+          />
         ) : null}
       </Link>
     </li>
@@ -304,25 +346,48 @@ export function AppSidebar({
       <div className="flex flex-1">
         {/* ---------------- Desktop sidebar ---------------- */}
         <aside
-          className="hidden w-64 shrink-0 flex-col border-r border-border bg-card lg:sticky lg:top-0 lg:flex lg:h-dvh"
+          className={cn(
+            'hidden shrink-0 flex-col border-r border-border bg-card transition-[width] duration-200 lg:sticky lg:top-0 lg:flex lg:h-dvh',
+            collapsed ? 'w-16' : 'w-64',
+          )}
           data-testid="app-sidebar"
         >
           <div className="border-b border-border pb-3">
-            <div className="flex items-center gap-2 px-3 py-3.5">
+            <div
+              className={cn(
+                'flex items-center py-3.5',
+                collapsed ? 'flex-col gap-2 px-2' : 'gap-2 px-3',
+              )}
+            >
               <BrandMark />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-bold tracking-tight text-foreground">
-                  A.V. Jewelry
-                </p>
-                <p
-                  className="truncate text-[10px] text-muted-foreground"
-                  data-testid="brand-tagline"
-                >
-                  Powered by King GenZ Digital
-                </p>
-              </div>
+              {collapsed ? null : (
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold tracking-tight text-foreground">
+                    A.V. Jewelry
+                  </p>
+                  <p
+                    className="truncate text-[10px] text-muted-foreground"
+                    data-testid="brand-tagline"
+                  >
+                    Powered by King GenZ Digital
+                  </p>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={toggleCollapsed}
+                aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                aria-expanded={!collapsed}
+                title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                data-testid="sidebar-collapse-toggle"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <span aria-hidden="true" className="text-xs">
+                  {collapsed ? '»' : '«'}
+                </span>
+              </button>
             </div>
-            <UserCard fullName={fullName} roleWord={roleWord} />
+            {collapsed ? null : <UserCard fullName={fullName} roleWord={roleWord} />}
           </div>
 
           <nav aria-label="Primary" className="flex-1 overflow-y-auto p-2">
@@ -340,6 +405,10 @@ export function AppSidebar({
                   canSeeNavItem(it, roleKey, allowed),
                 );
                 if (items.length === 0) return null;
+                // Collapsed rail: no room for a group header — show the children as flat icon links.
+                if (collapsed) {
+                  return items.map((it) => renderSidebarLink(it));
+                }
                 const childActive = items.some((it) => isActive(it.href));
                 const open = openSection[row.section] ?? childActive;
                 const panelId = `nav-sect-${row.section
@@ -390,17 +459,28 @@ export function AppSidebar({
             Fixed footer (stays put while the nav above scrolls): Light/Dark →
             Bluetooth/Printer → a subtle divider → Settings → Logout (last).
           */}
-          <div className="space-y-1.5 border-t border-border p-2">
-            <ThemeToggle />
-            <PrivacyToggle />
-            <PrinterStatusRow />
-            <div className="my-1 border-t border-border" aria-hidden="true" />
+          <div
+            className={cn(
+              'border-t border-border p-2',
+              collapsed ? 'flex flex-col items-center gap-1.5' : 'space-y-1.5',
+            )}
+          >
+            {collapsed ? <ThemeToggle variant="compact" /> : <ThemeToggle />}
+            {collapsed ? <PrivacyToggle variant="compact" /> : <PrivacyToggle />}
+            {/* Bluetooth / Printer stays (Owner keeps it) — hidden only in the slim rail. */}
+            {collapsed ? null : <PrinterStatusRow />}
+            <div
+              className={cn('my-1 border-t border-border', collapsed && 'w-full')}
+              aria-hidden="true"
+            />
             <Link
               href={SETTINGS_ITEM.href}
               aria-current={isActive(SETTINGS_ITEM.href) ? 'page' : undefined}
               data-testid="sidebar-settings"
+              title={collapsed ? SETTINGS_ITEM.label : undefined}
               className={cn(
-                'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors',
+                'flex items-center rounded-lg py-2 text-sm font-medium transition-colors',
+                collapsed ? 'w-full justify-center px-2' : 'gap-2.5 px-2.5',
                 isActive(SETTINGS_ITEM.href)
                   ? 'bg-gold/15 text-gold-strong'
                   : 'text-muted-foreground hover:bg-accent hover:text-foreground',
@@ -409,9 +489,9 @@ export function AppSidebar({
               <span aria-hidden="true" className="w-4 shrink-0 text-center text-xs">
                 {SETTINGS_ITEM.icon}
               </span>
-              <span className="truncate">{SETTINGS_ITEM.label}</span>
+              {collapsed ? null : <span className="truncate">{SETTINGS_ITEM.label}</span>}
             </Link>
-            <LogoutButton />
+            <LogoutButton collapsed={collapsed} />
           </div>
         </aside>
 

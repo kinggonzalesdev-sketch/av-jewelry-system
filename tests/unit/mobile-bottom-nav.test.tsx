@@ -257,6 +257,29 @@ describe('mobile bottom navigation (Owner 2026-09-06)', () => {
     ).toBeInTheDocument();
   });
 
+  it('TEST 18 — desktop sidebar collapses to an icon rail and remembers it', () => {
+    renderShell();
+    const sidebar = screen.getByTestId('app-sidebar');
+    // Expanded by default: full width, Bluetooth/Printer card retained + visible.
+    expect(sidebar.className).toMatch(/(^|\s)w-64(\s|$)/);
+    expect(within(sidebar).getByTestId('printer-status')).toBeInTheDocument();
+    const toggle = screen.getByTestId('sidebar-collapse-toggle');
+    expect(toggle).toHaveAttribute('aria-label', 'Collapse sidebar');
+
+    // Collapse → slim rail: labels drop out, the printer card hides, the choice persists.
+    fireEvent.click(toggle);
+    expect(sidebar.className).toMatch(/(^|\s)w-16(\s|$)/);
+    expect(within(sidebar).queryByTestId('printer-status')).not.toBeInTheDocument();
+    expect(toggle).toHaveAttribute('aria-label', 'Expand sidebar');
+    expect(localStorage.getItem('mineflow.sidebarCollapsed')).toBe('1');
+
+    // Expand again → restored (printer card back).
+    fireEvent.click(toggle);
+    expect(sidebar.className).toMatch(/(^|\s)w-64(\s|$)/);
+    expect(within(sidebar).getByTestId('printer-status')).toBeInTheDocument();
+    expect(localStorage.getItem('mineflow.sidebarCollapsed')).toBe('0');
+  });
+
   it('closes when tapping outside, on ✕, and on Escape', () => {
     renderShell();
     openMore();
