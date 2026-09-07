@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReviewAttendanceView } from '@/components/hr/review-attendance-view';
 import type { HrActionState } from '@/lib/hr/action-state';
 import type { AttendanceRow } from '@/lib/hr/attendance';
+import type { AttendancePage } from '@/lib/hr/attendance-paging';
 
 /**
  * The Review Attendance clock-out correction (Owner 2026-09-07): a manager closes a forgotten
@@ -20,15 +21,25 @@ vi.mock('@/lib/hr/actions', () => ({
     correctMock(prev, fd),
   deleteAttendanceRecordAction: vi.fn(),
   loadAttendanceSelfiesAction: vi.fn(() => Promise.resolve({})),
+  loadReviewAttendancePageAction: vi.fn(),
 }));
+
+/** The args of the most recent correctAttendanceClockOutAction call, typed. */
+function lastCall(): [HrActionState, FormData] {
+  return correctMock.mock.calls.at(-1) as unknown as [HrActionState, FormData];
+}
+
+// A "today" (shop-time) date so the row falls inside the default last-7-days range.
+const NOW = new Date();
+const shopDate = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 
 function row(over: Partial<AttendanceRow> = {}): AttendanceRow {
   return {
     id: 'rec-1',
     staffProfileId: 's1',
     staffName: 'Ericka De Dios',
-    workDate: '2026-08-13',
-    timeIn: '2026-08-12T23:58:00.000Z',
+    workDate: shopDate(NOW),
+    timeIn: new Date(NOW.getTime() - 3 * 3_600_000).toISOString(),
     timeOut: null,
     note: null,
     isOvertime: false,
@@ -36,11 +47,21 @@ function row(over: Partial<AttendanceRow> = {}): AttendanceRow {
     ...over,
   };
 }
+const page = (rows: AttendanceRow[]): AttendancePage => ({
+  rows,
+  completion: [],
+  total: rows.length,
+  page: 1,
+  pageSize: 25,
+});
+const roster = [{ id: 's1', fullName: 'Ericka De Dios', roleKey: 'staff' }];
 
 async function openCorrect(over?: Partial<AttendanceRow>) {
-  render(<ReviewAttendanceView records={[row(over)]} canManage />);
-  fireEvent.click(screen.getByRole('button', { name: 'View' }));
-  // The correction control appears inside the day modal.
+  render(
+    <ReviewAttendanceView initialPage={page([row(over)])} roster={roster} canManage />,
+  );
+  // Desktop table + mobile cards both render in jsdom → two "Details"; open the first.
+  fireEvent.click(screen.getAllByRole('button', { name: /details/i })[0]!);
   const btn = await screen.findByTestId('review-correct-rec-1');
   fireEvent.click(btn);
 }
@@ -53,16 +74,13 @@ beforeEach(() => {
 describe('Review Attendance — clock-out correction', () => {
   it('an OPEN session offers "Set clock-out" and defaults the time to the clock-in', async () => {
     await openCorrect({ timeOut: null });
-    // Two controls carry this testid: the trigger button and the datetime input. The trigger
-    // is the one that reads "Set clock-out" (open session) rather than "Correct clock-out".
     expect(screen.getByRole('button', { name: /set clock-out/i })).toBeInTheDocument();
     const input = screen.getByTestId<HTMLInputElement>('review-correct-time-rec-1');
-    // 2026-08-12T23:58 UTC rendered into the input's LOCAL value — non-empty and minute-precise.
     expect(input.value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
   });
 
   it('a COMPLETED session says "Correct clock-out"', async () => {
-    await openCorrect({ timeOut: '2026-08-17T00:43:00.000Z' });
+    await openCorrect({ timeOut: new Date(NOW.getTime() - 3_600_000).toISOString() });
     expect(
       screen.getByRole('button', { name: /correct clock-out/i }),
     ).toBeInTheDocument();
@@ -90,10 +108,9 @@ describe('Review Attendance — clock-out correction', () => {
       fireEvent.click(screen.getByRole('button', { name: /save correction/i }));
     });
     await waitFor(() => expect(correctMock).toHaveBeenCalled());
-    const fd = correctMock.mock.calls.at(-1)![1];
+    const [, fd] = lastCall();
     expect(fd.get('recordId')).toBe('rec-1');
     expect(fd.get('reason')).toBe('Left at 6 PM per shift log.');
-    // The hidden field carries a real ISO timestamp derived from the local input.
     const raw = fd.get('timeOut');
     const iso = typeof raw === 'string' ? raw : '';
     expect(iso).not.toBe('');
@@ -101,8 +118,14 @@ describe('Review Attendance — clock-out correction', () => {
   });
 
   it('is hidden when the viewer cannot manage', async () => {
-    render(<ReviewAttendanceView records={[row()]} canManage={false} />);
-    fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    render(
+      <ReviewAttendanceView
+        initialPage={page([row()])}
+        roster={roster}
+        canManage={false}
+      />,
+    );
+    fireEvent.click(screen.getAllByRole('button', { name: /details/i })[0]!);
     const modal = await screen.findByRole('dialog');
     expect(within(modal).queryByTestId('review-correct-rec-1')).not.toBeInTheDocument();
   });

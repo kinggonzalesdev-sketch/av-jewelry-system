@@ -2,35 +2,50 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
 import { ReviewAttendanceView } from '@/components/hr/review-attendance-view';
-import { canOpenPage } from '@/lib/authz/guard';
+import { canOpenPage, requireActiveStaff } from '@/lib/authz/guard';
 import { PageHeader } from '@/components/ui/page-primitives';
-import { listAttendance } from '@/lib/hr/attendance';
+import { listAttendancePage, listClockStaff } from '@/lib/hr/attendance';
+import { DEFAULT_ATTENDANCE_PAGE_SIZE, quickRange } from '@/lib/hr/attendance-paging';
 
 export const metadata: Metadata = {};
 
 export const dynamic = 'force-dynamic';
 
 /**
- * Team Management → Review Attendance. A read-only review of ALL team attendance
- * with filters. Gated by the hr_review_attendance permission (assignable in Manage
- * Access; the Owner holds it implicitly). RLS scopes the data underneath:
- * listAttendance returns every row only because the attendance_read policy now
- * permits a holder of hr_review_attendance to read all — this page never bypasses that.
+ * Team Management → Review Attendance. A review WORKSPACE (Owner 2026-09-07): server-paginated,
+ * defaulting to the last 7 days at 25/page, so it no longer renders the whole history in one
+ * long table. Gated by hr_review_attendance (assignable in Manage Access; the Owner holds it
+ * implicitly). RLS scopes the data underneath — a holder of hr_review_attendance reads all
+ * records; this page never bypasses that. Selfies are lazy-loaded per opened day.
  */
 export default async function ReviewAttendancePage() {
-  // Page access (Portal & Access). A member without this permission cannot open
-  // the page — by link OR by typing the URL. A Super Admin holds it implicitly.
   if (!(await canOpenPage('hr_review_attendance'))) notFound();
+  const staff = await requireActiveStaff();
 
-  // Selfies are NO LONGER loaded here — minting a signed URL for EVERY selfie ever (~2
-  // Storage round-trips per record across all history) was the page's main delay. The review
-  // modal lazy-loads just the opened day's selfies via loadAttendanceSelfiesAction.
-  const records = await listAttendance(500);
+  const { from, to } = quickRange('7d');
+  const [initialPage, roster] = await Promise.all([
+    listAttendancePage(
+      { from, to, staffIds: null, status: 'all' },
+      1,
+      DEFAULT_ATTENDANCE_PAGE_SIZE,
+    ),
+    listClockStaff(),
+  ]);
+
+  // Owner or Selected Admin may correct/delete a record from Details.
+  const canManage = staff.roleKey === 'owner' || staff.roleKey === 'selected_admin';
 
   return (
     <div>
-      <PageHeader title="Review Attendance" />
-      <ReviewAttendanceView records={records} />
+      <PageHeader
+        title="Review Attendance"
+        description="Review and inspect attendance records."
+      />
+      <ReviewAttendanceView
+        initialPage={initialPage}
+        roster={roster}
+        canManage={canManage}
+      />
     </div>
   );
 }

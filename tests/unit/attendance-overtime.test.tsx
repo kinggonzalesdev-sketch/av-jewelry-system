@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AttendanceClock } from '@/components/hr/attendance-clock';
 import { ReviewAttendanceView } from '@/components/hr/review-attendance-view';
 import type { AttendanceRow } from '@/lib/hr/attendance';
+import type { AttendancePage } from '@/lib/hr/attendance-paging';
 
 // The clock calls server actions + useRouter; stub them so the render/UX tests
 // never touch the server chain (the camera path is exercised via jsdom, which
@@ -15,8 +16,9 @@ vi.mock('@/lib/hr/actions', () => ({
   clockInAction: vi.fn(),
   clockOutAction: vi.fn(),
   deleteAttendanceRecordAction: vi.fn(),
-  // The Review day modal now also renders the clock-out correction control.
   correctAttendanceClockOutAction: vi.fn(),
+  // Server pagination for Review — not hit on first render (initialPage is used).
+  loadReviewAttendancePageAction: vi.fn(),
   // Selfies are lazy-loaded when a day is opened — echo signed URLs for the requested ids.
   loadAttendanceSelfiesAction: vi.fn((ids: string[]) =>
     Promise.resolve({
@@ -31,45 +33,75 @@ vi.mock('@/lib/attachments/actions', () => ({
   uploadAttachmentAction: vi.fn(),
 }));
 
+// A "today" (shop-time) date so the row falls inside the default last-7-days range.
+const NOW = new Date();
+const shopDate = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+
 function row(over: Partial<AttendanceRow> = {}): AttendanceRow {
   return {
     id: crypto.randomUUID(),
     staffProfileId: 's1',
     staffName: 'King Gonzales',
-    workDate: '2026-07-22',
-    timeIn: '2026-07-22T14:00:00.000Z',
-    timeOut: '2026-07-22T15:00:00.000Z',
+    workDate: shopDate(NOW),
+    timeIn: new Date(NOW.getTime() - 3 * 3_600_000).toISOString(),
+    timeOut: new Date(NOW.getTime() - 1 * 3_600_000).toISOString(),
     note: null,
     isOvertime: false,
     overtimeAmount: '0',
     ...over,
   };
 }
+const page = (rows: AttendanceRow[]): AttendancePage => ({
+  rows,
+  completion: [],
+  total: rows.length,
+  page: 1,
+  pageSize: 25,
+});
+const roster = [
+  { id: 's1', fullName: 'King Gonzales', roleKey: 'staff' },
+  { id: 's2', fullName: 'Late Nighter', roleKey: 'staff' },
+];
 
-describe('ReviewAttendanceView — Overtime column', () => {
-  it('shows an Overtime column with the ₱ amount for a 10 PM+ clock-in', () => {
+describe('ReviewAttendanceView — overtime is a conditional badge (not a column)', () => {
+  it('shows an OT badge with the ₱ amount only for an overtime day', () => {
+    const late = row({
+      staffProfileId: 's2',
+      staffName: 'Late Nighter',
+      isOvertime: true,
+      overtimeAmount: '300.00',
+    });
+    const day = row({ staffProfileId: 's1', staffName: 'Day Shift', isOvertime: false });
     render(
-      <ReviewAttendanceView
-        records={[
-          row({ staffName: 'Late Nighter', isOvertime: true, overtimeAmount: '300.00' }),
-          row({ staffName: 'Day Shift', isOvertime: false, overtimeAmount: '0' }),
-        ]}
-      />,
+      <ReviewAttendanceView initialPage={page([late, day])} roster={roster} canManage />,
     );
-
     const table = screen.getByTestId('review-attendance');
-    expect(within(table).getByText('Overtime')).toBeInTheDocument();
-    // The overtime row shows ₱300 (whole → no decimals); the day-shift row a dash.
-    expect(within(table).getByText(/₱\s?300\b/)).toBeInTheDocument();
-    // The explanatory footer was removed by Owner request; the COLUMN is the record.
-    expect(screen.queryByText(/Total overtime shown/i)).not.toBeInTheDocument();
+    // There's no "Overtime" column header anymore.
+    const heads = within(table)
+      .getAllByRole('columnheader')
+      .map((h) => h.textContent);
+    expect(heads).toEqual([
+      'Employee',
+      'Date',
+      'Time',
+      'Total worked',
+      'Status',
+      'Details',
+    ]);
+    // The late day carries an OT badge with ₱300; the day-shift row carries none.
+    expect(
+      within(table).getByTestId(`review-ot-${late.staffProfileId}__${late.workDate}`),
+    ).toHaveTextContent(/₱\s?300/);
+    expect(
+      within(table).queryByTestId(`review-ot-${day.staffProfileId}__${day.workDate}`),
+    ).not.toBeInTheDocument();
   });
 
-  it('shows clock-in/out selfie thumbnails that link to the image (view/download)', async () => {
+  it('shows clock-in/out selfie thumbnails inside Details (lazy-loaded on open)', async () => {
     const r = row({ isOvertime: false });
-    render(<ReviewAttendanceView records={[r]} />);
-    // Selfies live in the day's detail popup now (§14), lazy-loaded on open — open it first.
-    fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    render(<ReviewAttendanceView initialPage={page([r])} roster={roster} canManage />);
+    // Desktop table + mobile cards both render in jsdom → two "Details"; open the first.
+    fireEvent.click(screen.getAllByRole('button', { name: /details/i })[0]!);
     const inThumb = await screen.findByAltText('In selfie');
     const outThumb = screen.getByAltText('Out selfie');
     expect(inThumb).toHaveAttribute('src', 'https://signed.example/in.jpg');
@@ -85,8 +117,6 @@ describe('AttendanceClock', () => {
 
   it('requires picking a team member from the dropdown before offering Clock In', () => {
     render(<AttendanceClock staff={staff} openSessions={{}} />);
-    // One dropdown; the option reads the NAME ONLY (Owner request); no clock
-    // button until someone is picked.
     const select = screen.getByTestId<HTMLSelectElement>('clock-staff-select');
     expect(select).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Grace Villanueva' })).toBeInTheDocument();
@@ -120,7 +150,6 @@ describe('AttendanceClock', () => {
     const clockOut = screen.getByTestId('clock-out');
     expect(clockOut).toBeInTheDocument();
 
-    // Clock Out routes through the same selfie step ("clock out" wording).
     fireEvent.click(clockOut);
     expect(screen.getByText(/Take a selfie to clock out/i)).toBeInTheDocument();
     expect(screen.getByTestId('clock-cancel')).toBeInTheDocument();

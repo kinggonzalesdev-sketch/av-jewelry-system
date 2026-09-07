@@ -63,6 +63,21 @@ export async function loadAttendancePageAction(
   return listAttendancePage(filters, page, pageSize);
 }
 
+/**
+ * One page of attendance for the Review Attendance workspace — gated on
+ * hr_review_attendance (the reviewer permission), which the RLS policy also honours so the
+ * rows come back team-wide. Same server-paginated reader as the Attendance page; only the
+ * permission gate differs.
+ */
+export async function loadReviewAttendancePageAction(
+  filters: AttendanceFilters,
+  page: number,
+  pageSize: AttendancePageSize,
+): Promise<AttendancePage> {
+  await requirePermission('hr_review_attendance');
+  return listAttendancePage(filters, page, pageSize);
+}
+
 export async function clockInAction(
   _prev: HrActionState,
   formData: FormData,
