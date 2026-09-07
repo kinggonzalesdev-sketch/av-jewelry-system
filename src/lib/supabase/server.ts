@@ -4,7 +4,7 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
 import { getClientEnv } from '@/lib/env';
-import { toSessionCookie } from '@/lib/supabase/cookies';
+import { toPersistentCookie } from '@/lib/supabase/cookies';
 import { createRetryingFetch } from '@/lib/supabase/retry-fetch';
 
 /**
@@ -35,7 +35,7 @@ export async function createClient() {
         setAll(cookiesToSet) {
           try {
             for (const { name, value, options } of cookiesToSet) {
-              cookieStore.set(name, value, toSessionCookie(options));
+              cookieStore.set(name, value, toPersistentCookie(options));
             }
           } catch {
             // `setAll` throws when called from a Server Component, where cookies are

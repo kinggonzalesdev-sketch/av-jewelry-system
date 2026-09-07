@@ -4,6 +4,7 @@ import { cache } from 'react';
 
 import type { User } from '@supabase/supabase-js';
 
+import { isTransientAuthError } from '@/lib/supabase/auth-error';
 import { createClient } from '@/lib/supabase/server';
 
 /**
@@ -23,7 +24,16 @@ import { createClient } from '@/lib/supabase/server';
  * Returns the authenticated user, or `null` when there is no valid session.
  * Does not redirect — callers decide how to handle the unauthenticated case.
  */
-export const getCurrentUser = cache(async (): Promise<User | null> => {
+/**
+ * The authenticated user plus whether a NULL result was caused by a TRANSIENT network / Auth-
+ * server failure (vs a genuine missing/invalid/revoked session). Cached per request. `transient`
+ * lets the guard RETRY (via the data-free /offline page) instead of treating a temporary network
+ * failure as a logout — the session cookie is never cleared here, so access self-heals once
+ * connectivity returns. A definitive failure has `transient: false` and still goes to sign-in.
+ */
+export type AuthState = { user: User | null; transient: boolean };
+
+const getAuthStateCached = cache(async (): Promise<AuthState> => {
   const supabase = await createClient();
 
   const {
@@ -31,11 +41,20 @@ export const getCurrentUser = cache(async (): Promise<User | null> => {
     error,
   } = await supabase.auth.getUser();
 
-  if (error || !user) {
-    return null;
-  }
+  if (user) return { user, transient: false };
+  return { user: null, transient: isTransientAuthError(error) };
+});
 
-  return user;
+export async function getAuthState(): Promise<AuthState> {
+  return getAuthStateCached();
+}
+
+/**
+ * Returns the authenticated user, or `null` when there is no valid session (or the Auth server
+ * could not be reached). Does not redirect — callers decide how to handle the null case.
+ */
+export const getCurrentUser = cache(async (): Promise<User | null> => {
+  return (await getAuthStateCached()).user;
 });
 
 /**

@@ -3,7 +3,6 @@ import type { ReactNode } from 'react';
 import { PrinterProvider } from '@/components/print/printer-context';
 import { AppSidebar } from '@/components/shell/app-sidebar';
 import { DashboardSyncProvider } from '@/components/shell/dashboard-sync';
-import { IdleLogout } from '@/components/shell/idle-logout';
 import { PrivacyProvider } from '@/components/shell/privacy';
 import { StickerSettingsSync } from '@/components/print/sticker-settings-sync';
 import { IncomingCapturesStrip } from '@/components/capture/incoming-captures-strip';
@@ -36,8 +35,9 @@ export function AppShell({
   return (
     <PrinterProvider>
       <PrivacyProvider>
-        {/* Auto sign-out after 30 min idle; session-only cookies handle browser close. */}
-        <IdleLogout minutes={30} />
+        {/* Persistent session (Owner 2026-09-07): no idle logout. Staff stay signed in on a
+            trusted device until they explicitly Logout; Supabase silently refreshes the access
+            token via the persistent refresh cookie, and revocation still applies per request. */}
         {/* Pull the ONE shared Sticker Settings the Owner saved into this device's
             localStorage cache, so every account's prints use the same config. */}
         <StickerSettingsSync />

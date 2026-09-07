@@ -5,7 +5,7 @@ import { cache } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { redirect } from 'next/navigation';
 
-import { getCurrentUser } from '@/lib/auth/session';
+import { getAuthState } from '@/lib/auth/session';
 import {
   permissionsForRole,
   type PermissionKey,
@@ -53,9 +53,16 @@ export type StaffContext = {
  * Requires an authenticated session. Proves only WHO the caller is.
  */
 export async function requireAuthenticatedStaff(): Promise<User> {
-  const user = await getCurrentUser();
+  const { user, transient } = await getAuthState();
 
   if (!user) {
+    // A TEMPORARY network / Auth-server failure is not a logout (Owner 2026-09-07): the session
+    // cookie is intact and verifies once connectivity returns. Send the user to the data-free
+    // /offline retry page, never to /sign-in — no private data renders either way. A genuine
+    // missing/invalid/revoked session is NOT transient and still redirects to sign-in.
+    if (transient) {
+      redirect('/offline');
+    }
     redirect('/sign-in');
   }
 
@@ -123,9 +130,14 @@ export const requireActiveStaff = cache(async (): Promise<StaffContext> => {
     .eq('auth_user_id', user.id)
     .maybeSingle();
 
+  // A TRANSIENT DB/network error reading the profile is not a disabled account — retry via the
+  // data-free /offline page rather than falsely showing "access disabled" (Owner 2026-09-07).
+  if (error) {
+    redirect('/offline');
+  }
   // No profile: authenticated with Supabase, but not a staff member. There is no
   // customer login, so this is not a valid application user.
-  if (error || !data) {
+  if (!data) {
     redirect('/account-disabled');
   }
 

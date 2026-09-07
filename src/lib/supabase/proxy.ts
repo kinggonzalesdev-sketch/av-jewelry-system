@@ -2,7 +2,8 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 import { getClientEnv } from '@/lib/env';
-import { toSessionCookie } from '@/lib/supabase/cookies';
+import { isTransientAuthError } from '@/lib/supabase/auth-error';
+import { toPersistentCookie } from '@/lib/supabase/cookies';
 import { createRetryingFetch } from '@/lib/supabase/retry-fetch';
 
 /**
@@ -84,7 +85,7 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
           }
           supabaseResponse = NextResponse.next({ request });
           for (const { name, value, options } of cookiesToSet) {
-            supabaseResponse.cookies.set(name, value, toSessionCookie(options));
+            supabaseResponse.cookies.set(name, value, toPersistentCookie(options));
           }
         },
       },
@@ -95,15 +96,24 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   // `getSession()`, which trusts the cookie without verification.
   const {
     data: { user },
+    error,
   } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
 
   if (!user && !isPublicRoute(pathname)) {
-    const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = '/sign-in';
-    redirectUrl.searchParams.set('redirectedFrom', pathname);
-    return NextResponse.redirect(redirectUrl);
+    // A TEMPORARY network / Auth-server failure is NOT a logout (Owner 2026-09-07): the
+    // refresh-token cookie is intact and verifies once connectivity returns. Do NOT bounce to
+    // /sign-in on a transient error — let the request through so the page's own guard shows the
+    // data-free /offline retry instead (requireUser + RLS still gate every page and query, so
+    // this only DEFERS the decision, never exposing data). A genuine missing/invalid/revoked
+    // session is NOT transient and still redirects to sign-in.
+    if (!isTransientAuthError(error)) {
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = '/sign-in';
+      redirectUrl.searchParams.set('redirectedFrom', pathname);
+      return NextResponse.redirect(redirectUrl);
+    }
   }
 
   // Staff ALWAYS pass through the sign-in section (Owner request 2026-07-25): an

@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
 import { createClient } from '@/lib/supabase/server';
@@ -59,7 +60,26 @@ export async function signIn(
 export async function signOut(): Promise<never> {
   const supabase = await createClient();
 
-  await supabase.auth.signOut();
+  // Explicit Logout is AUTHORITATIVE (Owner 2026-09-07). `auth.signOut()` revokes the refresh
+  // token server-side AND writes the value-clearing cookies — but it can return early WITHOUT
+  // clearing them when the access token has already expired and the Auth server is unreachable
+  // (auth-js `_signOut` bails on a non-"session missing" session error). Sessions are now
+  // PERSISTENT, so a silently-failed logout would leave a long-lived cookie on a shared device
+  // instead of a browser-session one. We therefore always clear the local `sb-*` auth cookies
+  // ourselves as well, so Logout ends the session ON THIS DEVICE even when the network call
+  // fails. Server-side revocation still happens whenever Auth is reachable.
+  const { error } = await supabase.auth.signOut();
+
+  if (error) {
+    console.error('[auth] signOut failed; clearing session cookies locally', error);
+  }
+
+  const cookieStore = await cookies();
+  for (const { name } of cookieStore.getAll()) {
+    if (name.startsWith('sb-')) {
+      cookieStore.delete(name);
+    }
+  }
 
   revalidatePath('/', 'layout');
   redirect('/sign-in');
