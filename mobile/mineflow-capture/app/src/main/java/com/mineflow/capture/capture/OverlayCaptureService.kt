@@ -29,7 +29,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
-import android.widget.Toast
+import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.mineflow.capture.App
@@ -80,6 +80,19 @@ class OverlayCaptureService : Service() {
     private var boxEditing: Boolean = false
     // Controls were revealed by a long-press on a locked box (arms the idle auto-hide; cleared on any tap).
     private var revealedByLongPress: Boolean = false
+
+    // TRANSIENT STATUS NOTIFICATION (Owner 2026-09-07): ONE reusable overlay shown TOP-CENTER, below
+    // the status bar / display cutout, for every short Capture message ("Captured ✓", "Sticker printed
+    // ✓ …", name-read / upload results). It replaces the old system Toast, which on API 30+ is pinned
+    // bottom-centre (over Facebook comments + the Capture Box) and cannot be restyled or moved. A new
+    // message REPLACES the current one in the same spot (never stacks). It is FLAG_NOT_TOUCHABLE so it
+    // never consumes a Facebook tap/scroll, and — like every overlay here — it is hidden before each
+    // screenshot so it can never land in the OCR crop or the saved image. Position/presentation only;
+    // no message text or capture/print logic changes.
+    private var notifView: View? = null
+    private var notifText: TextView? = null
+    private var notifLp: WindowManager.LayoutParams? = null
+    private val notifDismiss = Runnable { notifView?.visibility = View.GONE }
 
     private var projection: MediaProjection? = null
     // A PERSISTENT screen-mirror kept alive for the whole session, so consent is asked
@@ -293,6 +306,10 @@ class OverlayCaptureService : Service() {
         boxView?.visibility = View.GONE
         restoreHandle?.visibility = View.GONE
         boxControls?.visibility = View.GONE
+        // Hide the transient status notification too, so a lingering message from a PREVIOUS capture
+        // can never appear in THIS screenshot (belt-and-braces: it is a top-centre window, well away
+        // from the ROI, and messages are only shown AFTER a frame is grabbed).
+        hideNotif()
         handler.postDelayed({
             // Reuse the live mirror when we already have consent — no popup. Only the
             // FIRST capture of a session asks for permission.
@@ -1062,13 +1079,113 @@ class OverlayCaptureService : Service() {
         return result
     }
 
+    // ---- Transient top-center status notification -----------------------------
+
+    /**
+     * Show a transient Capture status message at TOP-CENTER, below the status bar / display cutout
+     * (Owner 2026-09-07). Every short Capture message routes here (keeping the SAME text strings), so
+     * there is a SINGLE notification region and a new message REPLACES the current one in place rather
+     * than stacking down the screen. Safe to call from any thread (posts to the main handler).
+     *
+     * Presentation only: the full message string is unchanged (still logged and sent to the server);
+     * it is just rendered compact — capped width, at most two lines, ellipsised — so a long completion
+     * message ("Sticker printed ✓ Read \"…\"") can never stretch across the screen. Business logic,
+     * OCR, name/grams parsing, print and sync are all untouched.
+     */
     private fun toastMain(msg: String) {
-        handler.post { Toast.makeText(this, msg, Toast.LENGTH_LONG).show() }
+        handler.post {
+            ensureNotif()
+            val v = notifView ?: return@post
+            notifText?.text = msg
+            v.visibility = View.VISIBLE
+            // Re-derive the top inset on every show so a rotation / cutout change is honoured.
+            notifLp?.let { lp ->
+                lp.y = topInsetPx() + dp(8)
+                runCatching { windowManager.updateViewLayout(v, lp) }
+            }
+            handler.removeCallbacks(notifDismiss)
+            // Keep a brief tick ("Captured ✓") ~1.6s and a detailed result ~3.5s — short, but long
+            // enough to read, matching the previous Toast feel without stacking.
+            val ms = if (msg.length <= 14) 1600L else 3500L
+            handler.postDelayed(notifDismiss, ms)
+        }
+    }
+
+    /** Build the single reusable notification window once (dark translucent, rounded, gold dot, white
+     *  text — the same visual language as the other overlays). FLAG_NOT_TOUCHABLE lets every Facebook
+     *  touch pass straight through; FLAG_LAYOUT_IN_SCREEN makes `y` absolute from the very top so the
+     *  inset offset lands it right below the status bar / cutout. */
+    private fun ensureNotif() {
+        if (notifView != null) return
+        val screenW = resources.displayMetrics.widthPixels
+        val tv = TextView(this).apply {
+            setTextColor(0xFFF5EFE0.toInt())
+            textSize = 13f
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            maxWidth = (screenW * 0.82f).toInt()
+        }
+        val dot = View(this).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#E0A81E")) // reference gold, same as the Capture Box
+            }
+        }
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = GradientDrawable().apply {
+                cornerRadius = dp(16).toFloat()
+                setColor(0xF2141414.toInt()) // dark translucent, same as the quick menu
+            }
+            setPadding(dp(12), dp(9), dp(12), dp(9))
+            addView(dot, LinearLayout.LayoutParams(dp(8), dp(8)).apply { rightMargin = dp(8) })
+            addView(tv)
+        }
+        notifText = tv
+        notifView = row
+        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
+        val lp = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            type,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            y = topInsetPx() + dp(8)
+        }
+        notifLp = lp
+        row.visibility = View.GONE
+        runCatching { windowManager.addView(row, lp) }
+    }
+
+    /** Height of the top system UI to clear — status bar plus any display cutout — computed from the
+     *  live window insets (device- and rotation-aware), with a status_bar_height fallback pre-API-30. */
+    private fun topInsetPx(): Int {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val insets = windowManager.currentWindowMetrics.windowInsets.getInsets(
+                android.view.WindowInsets.Type.statusBars() or
+                    android.view.WindowInsets.Type.displayCutout(),
+            )
+            if (insets.top > 0) return insets.top
+        }
+        val resId = resources.getIdentifier("status_bar_height", "dimen", "android")
+        return if (resId > 0) resources.getDimensionPixelSize(resId) else dp(24)
+    }
+
+    private fun hideNotif() {
+        handler.removeCallbacks(notifDismiss)
+        notifView?.visibility = View.GONE
     }
 
     private fun onCaptureFailed(reason: String) {
         restoreButton()
-        handler.post { Toast.makeText(this, reason, Toast.LENGTH_SHORT).show() }
+        toastMain(reason)
     }
 
     private fun restoreButton() {
@@ -1113,6 +1230,9 @@ class OverlayCaptureService : Service() {
         hideQuickMenu()
         button?.let { runCatching { windowManager.removeView(it) } }
         button = null
+        handler.removeCallbacks(notifDismiss)
+        notifView?.let { runCatching { windowManager.removeView(it) } }
+        notifView = null
         cancelAutoHide()
         hideCaptureBox()
         removeRestoreHandle()
