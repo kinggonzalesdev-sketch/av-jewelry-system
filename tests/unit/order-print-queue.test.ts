@@ -47,7 +47,7 @@ function sticker(over: Partial<OrderStickerPayload> = {}): OrderStickerPayload {
 
 /** The params object passed on the i-th enqueue RPC call. */
 function paramsOf(i: number): Record<string, unknown> {
-  return rpc.mock.calls[i]![1] as Record<string, unknown>;
+  return rpc.mock.calls[i]![1];
 }
 
 beforeEach(() => {

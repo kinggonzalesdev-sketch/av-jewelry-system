@@ -13,7 +13,14 @@ export const dynamic = 'force-dynamic';
  * previous client-side export exactly.
  */
 
-const SECTIONS = new Set(['active', 'overdue', 'forfeited', 'completed', 'all']);
+const SECTIONS = new Set([
+  'active',
+  'overdue',
+  'forfeited',
+  'completed',
+  'all',
+  'near_overdue',
+]);
 
 const HEADERS = [
   'Code',

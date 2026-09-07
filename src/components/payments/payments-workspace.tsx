@@ -419,9 +419,18 @@ export function PaymentsWorkspace({
             date (date purchased + 3 calendar months) is 1–30 days away. DB-aggregated over the
             whole active dataset (never the current page/filter); amber to match the row warnings.
             Not a money figure, so it never masks under Privacy Mode. */}
-          <div
-            className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 pt-5"
+          <button
+            type="button"
+            onClick={() => changeSection('near_overdue')}
+            aria-pressed={section === 'near_overdue'}
+            title="Show all Near Overdue accounts"
             data-testid="layaway-near-overdue-card"
+            className={cn(
+              'rounded-xl border p-4 pt-5 text-left transition-colors',
+              section === 'near_overdue'
+                ? 'border-amber-500 bg-amber-500/25 ring-1 ring-amber-500'
+                : 'border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20',
+            )}
           >
             <p className="text-[11px] leading-tight text-amber-700 dark:text-amber-400">
               Near Overdue (30 Days)
@@ -429,7 +438,7 @@ export function PaymentsWorkspace({
             <p className="mt-1 text-xl font-bold tabular-nums text-amber-700 dark:text-amber-400">
               {nearOverdueCount}
             </p>
-          </div>
+          </button>
         </div>
 
         {/* Date filters — the range is resolved server-side. */}
@@ -701,6 +710,25 @@ export function PaymentsWorkspace({
                 {label}
               </Button>
             ))}
+
+            {/* Active Near-Overdue filter chip (reached by clicking the card) — no tab lights up
+                for it, so this shows the state + a one-click way back to Active. */}
+            {section === 'near_overdue' ? (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/50 bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-700 dark:text-amber-400"
+                data-testid="layaway-near-overdue-chip"
+              >
+                Near Overdue only
+                <button
+                  type="button"
+                  onClick={() => changeSection('active')}
+                  aria-label="Clear Near Overdue filter"
+                  className="rounded text-sm leading-none hover:text-amber-900 dark:hover:text-amber-200"
+                >
+                  ✕
+                </button>
+              </span>
+            ) : null}
 
             {canImportExport ? <LayawayImportButton /> : null}
             {canImportExport ? (

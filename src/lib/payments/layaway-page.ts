@@ -21,7 +21,15 @@ import { arrangementRowsByIds } from '@/lib/payments/workspace';
  * row's shape and money are byte-for-byte what the browser produced before.
  */
 
-export type LayawaySection = 'active' | 'overdue' | 'forfeited' | 'completed' | 'all';
+// 'near_overdue' is a HIDDEN section (no tab) reached only by clicking the "Near Overdue
+// (30 Days)" card — it lists exactly the accounts layaway_near_overdue_count counts.
+export type LayawaySection =
+  | 'active'
+  | 'overdue'
+  | 'forfeited'
+  | 'completed'
+  | 'all'
+  | 'near_overdue';
 
 export type LayawaySectionCounts = {
   all: number;
