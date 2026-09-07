@@ -28,9 +28,10 @@ import { authorizeRealtime } from '@/lib/supabase/realtime-auth';
  * filters, search, and scroll position.
  *
  * What triggers a refresh:
- *   - A Postgres change on ANY table in `public` (same device OR another device /
- *     account / the Capture Mine app), delivered by Supabase Realtime and filtered
- *     by RLS so a user is only nudged by rows they may already read.
+ *   - A Postgres change on any table in `public` EXCEPT a small deny-list of high-churn
+ *     infrastructure tables with no server-rendered surface (see SYNC_IGNORE_TABLES),
+ *     delivered by Supabase Realtime and filtered by RLS so a user is only nudged by rows
+ *     they may already read.
  *   - Reconnection / reconciliation: on (re)subscribe, on browser `online`, and
  *     when the tab becomes visible again — so a missed Realtime event self-heals.
  *
@@ -70,6 +71,30 @@ export function useDashboardSync(): DashboardSyncValue {
 // that made the Dashboard feel laggy, while still reflecting a change within ~2s. Realtime
 // itself is unchanged — only the burst-coalescing window widened.
 const DEBOUNCE_MS = 2000;
+
+/**
+ * Realtime writes on these tables must NOT force a global `router.refresh()`: they are
+ * high-churn infrastructure/telemetry with NO server-rendered surface that this provider
+ * drives — the printer job queue and printer registry (owned by the printer poller / Web
+ * Bluetooth, not SSR), the Pancake message log (the Incoming Captures strip has its own
+ * channel), device heartbeats, and the internal layaway code-allocation pool. Every OTHER
+ * published table still refreshes, so no data surface can silently stop updating; and a change
+ * on a denied table still reflects on the next navigation or manual Refresh. This trims the
+ * redundant SSR re-renders that dominate Fluid CPU during a live (Owner cost audit 2026-09-07).
+ * Widen it only for a table proven to have no visible SSR surface.
+ */
+export const SYNC_IGNORE_TABLES: ReadonlySet<string> = new Set([
+  'label_jobs',
+  'printers',
+  'customer_messages',
+  'capture_device_heartbeats',
+  'layaway_code_pool',
+]);
+
+/** Whether a Realtime change on `table` should trigger a global refresh (default: yes). */
+export function shouldSyncForTable(table: string | undefined): boolean {
+  return !table || !SYNC_IGNORE_TABLES.has(table);
+}
 
 export function DashboardSyncProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -127,10 +152,11 @@ export function DashboardSyncProvider({ children }: { children: ReactNode }) {
 
     const channel = supabase
       .channel('mineflow-live-sync')
-      // No `table` filter → every table in `public`. RLS still decides which
-      // changes this user is told about.
-      .on('postgres_changes', { event: '*', schema: 'public' }, () => {
-        scheduleRefresh();
+      // No `table` filter → every table in `public`; RLS still decides which changes this
+      // user is told about. The callback then skips a refresh for the deny-listed
+      // infrastructure tables (SYNC_IGNORE_TABLES) so their churn does not re-render the page.
+      .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
+        if (shouldSyncForTable((payload as { table?: string }).table)) scheduleRefresh();
       })
       .subscribe((status) => {
         // Fires on first connect AND on every reconnect — reconcile each time so a
