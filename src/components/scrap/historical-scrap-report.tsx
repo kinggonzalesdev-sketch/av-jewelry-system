@@ -85,7 +85,7 @@ export function HistoricalScrapReport({
     setExporting(true);
     try {
       downloadCsv(
-        `MineFlow-Historical-Scrap-before-${cutoffLabel.replace(/[ ,]+/g, '-')}`,
+        `AV-Jewelry-Historical-Scrap-before-${cutoffLabel.replace(/[ ,]+/g, '-')}`,
         [
           { header: 'Material', value: (s) => s.material },
           { header: 'Karat', value: (s) => s.karat ?? '' },

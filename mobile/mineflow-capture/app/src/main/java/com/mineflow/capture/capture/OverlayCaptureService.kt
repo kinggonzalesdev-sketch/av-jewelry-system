@@ -337,7 +337,7 @@ class OverlayCaptureService : Service() {
         }
         menu.addView(item("Capture Now") { onCaptureTap() })
         menu.addView(item("Hide Button") { hideButton() })
-        menu.addView(item("Open MineFlow Capture") { openApp() })
+        menu.addView(item("Open A.V. Jewelry Capture") { openApp() })
         menu.addView(item("Stop Capture Service") { stopSelf() })
 
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
@@ -777,7 +777,7 @@ class OverlayCaptureService : Service() {
         restoreButton()
         val ctx = this
         if (!SecureStore.get(ctx).isLoggedIn) {
-            toastMain("Sign in to MineFlow Capture first.")
+            toastMain("Sign in to A.V. Jewelry Capture first.")
             bmp.recycle()
             return
         }
@@ -932,7 +932,7 @@ class OverlayCaptureService : Service() {
                 when {
                     name.isNotEmpty() ->
                         "${printNote}Read \"$name\" — the PC will send it once the chat matches."
-                    else -> "${printNote}Sent to MineFlow — confirm it on the PC."
+                    else -> "${printNote}Sent to A.V. Jewelry — confirm it on the PC."
                 },
             )
             bmp.recycle()
@@ -1208,10 +1208,10 @@ class OverlayCaptureService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         return NotificationCompat.Builder(this, App.CAPTURE_CHANNEL_ID)
-            .setContentText("MineFlow Capture is ready. Tap the floating button to capture a mined item.")
+            .setContentText("A.V. Jewelry Capture is ready. Tap the floating button to capture a mined item.")
             .setStyle(
                 NotificationCompat.BigTextStyle().bigText(
-                    "MineFlow Capture is ready. Tap the floating button to capture a mined item.",
+                    "A.V. Jewelry Capture is ready. Tap the floating button to capture a mined item.",
                 ),
             )
             .setSmallIcon(android.R.drawable.ic_menu_camera)

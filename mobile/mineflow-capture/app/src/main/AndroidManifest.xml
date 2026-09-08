@@ -75,7 +75,7 @@
             android:foregroundServiceType="specialUse|mediaProjection">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Floating on-demand screen-capture button for MineFlow order encoding over the Facebook app." />
+                android:value="Floating on-demand screen-capture button for A.V. Jewelry order encoding over the Facebook app." />
         </service>
 
     </application>

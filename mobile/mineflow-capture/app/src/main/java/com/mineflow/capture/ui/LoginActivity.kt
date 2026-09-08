@@ -45,13 +45,13 @@ class LoginActivity : AppCompatActivity() {
         }
 
         val title = TextView(this).apply {
-            text = "MineFlow Capture"
+            text = "A.V. Jewelry Capture"
             textSize = 26f
             setTextColor(ivory)
             setPadding(0, 0, 0, dp(6))
         }
         val subtitle = TextView(this).apply {
-            text = "Sign in with your MineFlow account."
+            text = "Sign in with your A.V. Jewelry account."
             textSize = 15f
             setTextColor(beige)
             setPadding(0, 0, 0, dp(24))

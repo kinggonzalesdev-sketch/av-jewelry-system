@@ -58,7 +58,7 @@ class PreviewActivity : AppCompatActivity() {
         val drafts = CaptureDraftStore.get(this)
 
         // Resolve the file + metadata for the mode.
-        var capturedBy = store.staffName ?: "MineFlow staff"
+        var capturedBy = store.staffName ?: "A.V. Jewelry staff"
         var capturedAt = System.currentTimeMillis()
         if (mode == MODE_VIEW) {
             val d = draftId?.let { drafts.getDraft(it) }
@@ -120,7 +120,7 @@ class PreviewActivity : AppCompatActivity() {
         root.addView(buttons, wide())
 
         if (mode == MODE_CAPTURE) {
-            sendButton = goldButton("Send to MineFlow") { sendToMineflow(file) }
+            sendButton = goldButton("Send to A.V. Jewelry") { sendToMineflow(file) }
             root.addView(sendButton, wide().apply { topMargin = dp(8) })
         }
 
@@ -138,7 +138,7 @@ class PreviewActivity : AppCompatActivity() {
     private fun sendToMineflow(file: File) {
         val store = SecureStore.get(this)
         if (!store.isLoggedIn) {
-            toast("Sign in to MineFlow first.")
+            toast("Sign in to A.V. Jewelry first.")
             return
         }
         sendButton?.isEnabled = false
@@ -147,7 +147,7 @@ class PreviewActivity : AppCompatActivity() {
         if (bmp == null) {
             toast("Screenshot could not be read.")
             sendButton?.isEnabled = true
-            sendButton?.text = "Send to MineFlow"
+            sendButton?.text = "Send to A.V. Jewelry"
             return
         }
         val api = ApiClient(this)
@@ -164,12 +164,12 @@ class PreviewActivity : AppCompatActivity() {
                 val res = api.createPendingCapture(captureId, path, ocr)
                 runOnUiThread {
                     if (res.ok) {
-                        toast("Sent to MineFlow. Confirm it on the PC.")
+                        toast("Sent to A.V. Jewelry. Confirm it on the PC.")
                         finish()
                     } else {
                         toast("Send failed: ${res.body.optString("error", "please try again")}")
                         sendButton?.isEnabled = true
-                        sendButton?.text = "Send to MineFlow"
+                        sendButton?.text = "Send to A.V. Jewelry"
                     }
                 }
             }
@@ -195,7 +195,7 @@ class PreviewActivity : AppCompatActivity() {
         val store = SecureStore.get(this)
         val draft = CaptureDraftStore.get(this).saveDraft(
             tempFile = file,
-            capturedBy = store.staffName ?: "MineFlow staff",
+            capturedBy = store.staffName ?: "A.V. Jewelry staff",
             deviceInstallationId = store.deviceInstallationId,
             width = width,
             height = height,

@@ -88,7 +88,7 @@ export function ExportAllButton({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `MineFlow-Data-Export-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.download = `AV-Jewelry-Data-Export-${new Date().toISOString().slice(0, 10)}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();

@@ -91,7 +91,7 @@ class CaptureDraftStore private constructor(private val context: Context) {
                 Draft(
                     id = o.getString("id"),
                     filePath = o.getString("filePath"),
-                    capturedBy = o.optString("capturedBy", "MineFlow staff"),
+                    capturedBy = o.optString("capturedBy", "A.V. Jewelry staff"),
                     capturedAtEpochMs = o.optLong("capturedAt", 0L),
                     status = o.optString("status", STATUS_DRAFT),
                     deviceInstallationId = o.optString("deviceId", ""),

@@ -100,7 +100,7 @@ function rangeFilter<T>(query: T, column: string, opts: ExportOptions): T {
 export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
   const supabase = await createClient();
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'MineFlow';
+  wb.creator = 'A.V. Jewelry';
   wb.created = new Date();
 
   // A sensitive sheet is built only when the caller is the Owner AND selected it. RLS is the

@@ -103,10 +103,10 @@ class ApiClient(context: Context) {
             // A bad/missing apikey — a configuration problem, not the user's credentials.
             code.contains("invalid_api_key") || desc.contains("Invalid API key", true) ||
                 (status == 401 && desc.isNotBlank()) ->
-                "MineFlow sign-in isn't configured correctly on this build. Contact your administrator."
+                "A.V. Jewelry sign-in isn't configured correctly on this build. Contact your administrator."
             status == 422 -> "Enter a valid email address."
             status == 429 -> "Too many attempts. Please wait a moment and try again."
-            status in 500..599 -> "MineFlow sign-in is temporarily unavailable. Please try again shortly."
+            status in 500..599 -> "A.V. Jewelry sign-in is temporarily unavailable. Please try again shortly."
             else -> "Invalid email or password."
         }
     }
@@ -115,16 +115,16 @@ class ApiClient(context: Context) {
     private fun mapSessionError(status: Int, body: JSONObject): String =
         when (body.optString("code")) {
             "account_not_found" ->
-                "This account isn't registered as MineFlow staff. Contact your administrator."
+                "This account isn't registered as A.V. Jewelry staff. Contact your administrator."
             "account_inactive" ->
-                "This MineFlow account has been deactivated. Contact your administrator."
+                "This A.V. Jewelry account has been deactivated. Contact your administrator."
             "permission_denied" ->
-                "You don't have permission to use MineFlow Capture."
+                "You don't have permission to use A.V. Jewelry Capture."
             else -> when {
                 status == 0 -> "Network unavailable. Check your internet connection and try again."
-                status == 404 -> "MineFlow endpoint not found — the app may be out of date."
+                status == 404 -> "A.V. Jewelry endpoint not found — the app may be out of date."
                 status == 401 -> "Your session couldn't be verified. Please sign in again."
-                status in 500..599 -> "MineFlow is temporarily unavailable. Please try again shortly."
+                status in 500..599 -> "A.V. Jewelry is temporarily unavailable. Please try again shortly."
                 else -> "Sign-in verification failed. Please try again."
             }
         }

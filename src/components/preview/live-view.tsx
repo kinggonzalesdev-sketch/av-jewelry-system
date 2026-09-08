@@ -175,7 +175,7 @@ export function LiveView() {
               <StatusBadge label={pancake} tone={INTEGRATION_TONE[pancake]} />
             </div>
             <p className="mt-2 text-[11px] leading-relaxed text-slate-600 night:text-slate-300">
-              MineFlow connects to <strong>Pancake</strong>, and reads the approved{' '}
+              A.V. Jewelry connects to <strong>Pancake</strong>, and reads the approved{' '}
               <strong>Facebook Page</strong> from it. There is no direct Facebook
               connector.
             </p>

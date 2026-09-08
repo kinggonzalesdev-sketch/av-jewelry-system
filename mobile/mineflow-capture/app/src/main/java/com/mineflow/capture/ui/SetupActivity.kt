@@ -45,7 +45,7 @@ import com.mineflow.capture.printer.StickerEncoder
 import kotlin.concurrent.thread
 
 /**
- * The MineFlow Capture CONTROL CENTER — a single-screen dashboard (Owner 2026-08-31 redesign).
+ * The A.V. Jewelry Capture CONTROL CENTER — a single-screen dashboard (Owner 2026-08-31 redesign).
  *
  * Combines what used to be three places (Capture Setup, the separate Bluetooth Printer screen, and
  * the Sticker rate) into ONE minimalist screen so live-selling staff can see, in ~2 seconds, whether
@@ -150,9 +150,9 @@ class SetupActivity : AppCompatActivity() {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val left = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         left.addView(
-            TextView(this).apply { text = "MineFlow Capture"; textSize = 22f; setTextColor(white); typeface = Typeface.DEFAULT_BOLD },
+            TextView(this).apply { text = "A.V. Jewelry Capture"; textSize = 22f; setTextColor(white); typeface = Typeface.DEFAULT_BOLD },
         )
-        val name = store.staffName?.takeIf { it.isNotBlank() } ?: "MineFlow staff"
+        val name = store.staffName?.takeIf { it.isNotBlank() } ?: "A.V. Jewelry staff"
         left.addView(
             TextView(this).apply { text = "Signed in as $name"; textSize = 13f; setTextColor(gray); setPadding(0, dp(2), 0, 0) },
         )
@@ -427,7 +427,7 @@ class SetupActivity : AppCompatActivity() {
 
     // 7) FOOTER — real app version.
     private fun buildFooter(): View = TextView(this).apply {
-        text = "MineFlow Capture v${BuildConfig.VERSION_NAME}"
+        text = "A.V. Jewelry Capture v${BuildConfig.VERSION_NAME}"
         textSize = 11f; setTextColor(grayDim); gravity = Gravity.CENTER
     }
 

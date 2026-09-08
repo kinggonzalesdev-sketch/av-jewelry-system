@@ -204,7 +204,7 @@ export function PreviewShell({ children }: { children: ReactNode }) {
               {collapsed ? null : (
                 <div className="min-w-0">
                   <p className="truncate text-sm font-bold tracking-tight text-slate-900 night:text-slate-100">
-                    MineFlow
+                    A.V. Jewelry
                   </p>
                   <p className="truncate text-[10px] text-slate-500 night:text-slate-400">
                     A.V. Jewelry
@@ -326,7 +326,7 @@ export function PreviewShell({ children }: { children: ReactNode }) {
               </div>
               <div className="min-w-0">
                 <p className="truncate text-xs font-bold text-slate-900 night:text-slate-100">
-                  MineFlow
+                  A.V. Jewelry
                 </p>
                 <p className="truncate text-[10px] text-slate-500 night:text-slate-400">
                   A.V. Owner · Owner

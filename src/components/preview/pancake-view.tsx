@@ -53,8 +53,8 @@ export function PancakeView() {
           {[
             'Facebook Page',
             'connected inside Pancake',
-            'MineFlow connects to Pancake',
-            'MineFlow reads the approved Page',
+            'A.V. Jewelry connects to Pancake',
+            'A.V. Jewelry reads the approved Page',
           ].map((node, i, arr) => (
             <span key={node} className="flex items-center gap-2">
               <span className="rounded-lg border border-slate-200 night:border-slate-700 bg-slate-50 night:bg-slate-800 px-2.5 py-1.5 font-medium text-slate-700 night:text-slate-300">

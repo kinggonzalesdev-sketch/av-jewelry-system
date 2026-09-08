@@ -24,7 +24,7 @@ class App : Application() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CAPTURE_CHANNEL_ID,
-                "MineFlow Capture",
+                "A.V. Jewelry Capture",
                 NotificationManager.IMPORTANCE_LOW,
             ).apply { description = "Shows while the Capture Mine button is active." }
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

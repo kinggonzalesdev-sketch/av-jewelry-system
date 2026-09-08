@@ -97,7 +97,7 @@ export function ScrapView({
     setExporting(true);
     try {
       downloadCsv(
-        `MineFlow-Scrap-Sales-${new Date().toISOString().slice(0, 10)}`,
+        `AV-Jewelry-Scrap-Sales-${new Date().toISOString().slice(0, 10)}`,
         [
           { header: 'Material', value: (s) => s.material },
           { header: 'Karat', value: (s) => s.karat ?? '' },
