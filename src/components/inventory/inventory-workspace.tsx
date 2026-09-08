@@ -22,7 +22,7 @@ import type { CompletedInventoryRow } from '@/lib/inventory/completed';
 import { detectInventoryCodeIssues, parseInventoryCode } from '@/lib/inventory/code-parser';
 import { rowGramsDisplay } from '@/lib/inventory/grams-display';
 import { isHKItem } from '@/lib/inventory/hk-item';
-import { inventoryGroup } from '@/lib/inventory/group';
+import { groupSearchAlias, inventoryGroup } from '@/lib/inventory/group';
 import { downloadCsv } from '@/lib/export/csv';
 import { InventoryImportButton } from '@/components/inventory/inventory-import-modal';
 import { InventoryItemActions } from '@/components/inventory/inventory-item-actions';
@@ -417,13 +417,18 @@ export function InventoryWorkspace({
   const exportInventory = async () => {
     const res = await loadInventoryForExportAction();
     if (!res.ok) return;
-    const q = invSearch.trim().toLowerCase();
+    // Mirror the on-screen behaviour EXACTLY (Owner 2026-09-08): an exact group-name search (e.g.
+    // "hk") is a group filter, not a substring match — so the export matches the visible total.
+    const rawSearch = invSearch.trim();
+    const aliasGroup = invGroup === 'all' ? groupSearchAlias(rawSearch) : null;
+    const effGroup = aliasGroup ?? invGroup;
+    const q = aliasGroup ? '' : rawSearch.toLowerCase();
     // Export = ALL filtered rows (not just the visible page): apply the SAME active +
     // search + status + group filter the server uses, over the full list fetched on demand.
     const filtered = res.rows.filter((row) => {
       if (!ACTIVE_INVENTORY_STATUSES.has(row.availabilityStatus)) return false;
       if (invStatus !== 'all' && row.availabilityStatus !== invStatus) return false;
-      if (invGroup !== 'all' && inventoryGroup(row.itemCode, row.itemName) !== invGroup) {
+      if (effGroup !== 'all' && inventoryGroup(row.itemCode, row.itemName) !== effGroup) {
         return false;
       }
       if (!q) return true;

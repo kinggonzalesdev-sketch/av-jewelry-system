@@ -2,6 +2,7 @@ import 'server-only';
 
 import { recordAuditEvent } from '@/lib/audit/log';
 import { AuthorizationError, requirePermission } from '@/lib/authz/guard';
+import { groupSearchAlias } from '@/lib/inventory/group';
 import { createClient } from '@/lib/supabase/server';
 
 /**
@@ -208,10 +209,18 @@ export async function listInventoryActivePage(opts: {
   const size = Math.min(Math.max(opts.size ?? 25, 1), 200);
   const page = Math.max(opts.page ?? 1, 1);
 
+  // An EXACT group-name search becomes a GROUP filter so it matches the dropdown count (e.g. "hk"
+  // → the HK ITEM group's 226, not every row containing the substring "hk"). Only applies when no
+  // group is already selected; an explicit group keeps the search literal WITHIN that group. A
+  // longer, non-exact query stays ordinary substring search.
+  const rawSearch = (opts.search ?? '').trim();
+  const explicitGroup = opts.group ?? 'all';
+  const aliasGroup = explicitGroup === 'all' ? groupSearchAlias(rawSearch) : null;
+
   const { data, error } = (await supabase.rpc('inventory_active_ids_page', {
-    p_search: (opts.search ?? '').trim(),
+    p_search: aliasGroup ? '' : rawSearch,
     p_status: opts.status ?? 'all',
-    p_group: opts.group ?? 'all',
+    p_group: aliasGroup ?? explicitGroup,
     p_limit: size,
     p_offset: (page - 1) * size,
   })) as {
