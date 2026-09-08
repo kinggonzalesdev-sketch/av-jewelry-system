@@ -1,3 +1,4 @@
+import { canOpenPage } from '@/lib/authz/guard';
 import { listLayawayPage, type LayawaySection } from '@/lib/payments/layaway-page';
 import { uniqueCodeLabel } from '@/lib/payments/layaway-account-row';
 
@@ -44,6 +45,15 @@ function cell(v: string | null | undefined): string {
 }
 
 export async function GET(request: Request): Promise<Response> {
+  // FUNCTION-LEVEL AUTHORIZATION (Owner 2026-09-08 security fix). Match the SAME page gate the
+  // Layaway page enforces (`nav_layaway`). Without this, any active staff member who cannot open
+  // the Layaway page could still pull the FULL customer-PII CSV (names, balances, financers,
+  // order/account numbers) by requesting this URL directly — the RPC's `is_active_staff()` check
+  // alone is coarser than the page permission.
+  if (!(await canOpenPage('nav_layaway'))) {
+    return new Response('Forbidden', { status: 403 });
+  }
+
   const url = new URL(request.url);
   const search = (url.searchParams.get('search') ?? '').trim();
   const financer = (url.searchParams.get('financer') ?? '').trim();

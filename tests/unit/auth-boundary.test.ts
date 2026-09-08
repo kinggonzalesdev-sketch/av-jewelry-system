@@ -129,8 +129,11 @@ describe('protected route boundary (ADR §7, Invariant #3)', () => {
     // /offline (Owner 2026-09-05, PWA) is the service worker's data-free offline fallback. The
     // worker precaches it WITHOUT a session at install time, so it must not redirect to sign-in.
     // It renders no data, reads no database and makes no authorization decision.
+    // /privacy, /terms, /refund-policy, /cookie-policy (Owner 2026-09-08 compliance pass) are the
+    // PUBLIC legal/policy pages — a privacy notice etc. must be readable by anyone; they render
+    // static text, read no database, and make no authorization decision.
     expect(middleware).toMatch(
-      /PUBLIC_ROUTES\s*=\s*\[\s*'\/',\s*'\/sign-in',\s*'\/account-disabled',\s*'\/reset-password',\s*'\/offline',?\s*\]/,
+      /PUBLIC_ROUTES\s*=\s*\[\s*'\/',\s*'\/sign-in',\s*'\/account-disabled',\s*'\/reset-password',\s*'\/offline',\s*'\/privacy',\s*'\/terms',\s*'\/refund-policy',\s*'\/cookie-policy',?\s*\]/,
     );
   });
 });

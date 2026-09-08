@@ -41,7 +41,7 @@ export function SearchInput({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         autoComplete="off"
-        className="h-9 w-full rounded-md border border-border bg-background pl-8 pr-8 text-sm text-foreground outline-none focus:border-gold"
+        className="h-9 w-full rounded-md border border-border bg-background pl-8 pr-8 text-sm text-foreground outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         {...rest}
       />
       {value ? (

@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
+import { SiteFooter } from '@/components/shell/site-footer';
+
 /**
  * Public landing page for A.V. Jewelry (the ONE public route — see PUBLIC_ROUTES
  * in the proxy). Marketing only: it exposes no data and makes no authorization
@@ -196,16 +198,7 @@ export default function LandingPage() {
         </section>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-border">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-4 py-6 text-center text-xs text-muted-foreground sm:flex-row sm:px-6 sm:text-left">
-          <span className="flex items-center gap-2">
-            <BrandMark />
-            A.V. Jewelry — Fine Jewelry. Fair Value.
-          </span>
-          <span>Powered by King GenZ Digital</span>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

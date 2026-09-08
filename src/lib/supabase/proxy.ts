@@ -32,12 +32,19 @@ import { createRetryingFetch } from '@/lib/supabase/retry-fetch';
 // protected and unauthenticated visitors are still sent to sign-in.
 // '/offline' is the PWA's data-free offline fallback — the service worker precaches it without
 // a session, so it must never redirect to sign-in (defense in depth beside the matcher).
+// The legal/policy pages (Owner 2026-09-08 compliance pass) are PUBLIC by necessity — a Privacy
+// Policy / Terms / Refund / Cookie notice must be readable by anyone, signed in or not. They render
+// static text, read no database, and make no authorization decision.
 const PUBLIC_ROUTES = [
   '/',
   '/sign-in',
   '/account-disabled',
   '/reset-password',
   '/offline',
+  '/privacy',
+  '/terms',
+  '/refund-policy',
+  '/cookie-policy',
 ];
 
 function isPublicRoute(pathname: string): boolean {

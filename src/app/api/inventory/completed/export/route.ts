@@ -1,3 +1,4 @@
+import { canOpenPage } from '@/lib/authz/guard';
 import { parseInventoryCode } from '@/lib/inventory/code-parser';
 import { listCompletedInventoryPage } from '@/lib/inventory/completed';
 
@@ -48,6 +49,15 @@ function cell(v: string | null | undefined): string {
 }
 
 export async function GET(request: Request): Promise<Response> {
+  // FUNCTION-LEVEL AUTHORIZATION (Owner 2026-09-08 security fix). Match the SAME page gate the
+  // Inventory page enforces (`nav_inventory`). Without this, any active staff member who cannot
+  // open the Completed Inventory page in the UI could still pull the FULL customer-PII CSV
+  // (names, invoice numbers, sale amounts, couriers, tracking) by requesting this URL directly —
+  // the RPC's `is_active_staff()` check alone is coarser than the page permission.
+  if (!(await canOpenPage('nav_inventory'))) {
+    return new Response('Forbidden', { status: 403 });
+  }
+
   const url = new URL(request.url);
   const search = (url.searchParams.get('search') ?? '').trim();
   const type = (url.searchParams.get('type') ?? 'all').trim() || 'all';

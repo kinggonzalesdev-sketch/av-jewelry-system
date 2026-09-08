@@ -1,7 +1,7 @@
 'use client';
 
 import { createPortal } from 'react-dom';
-import { useEffect, useId } from 'react';
+import { useEffect, useId, useRef } from 'react';
 
 import { useUnsavedChanges } from '@/components/pwa/unsaved-changes';
 
@@ -69,6 +69,60 @@ export function Modal({
   children: React.ReactNode;
 }) {
   const titleId = useId();
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // FOCUS MANAGEMENT (WCAG 2.4.3 Focus Order + 2.1.2 No Keyboard Trap — Owner 2026-09-08 a11y
+  // pass). On open: remember what was focused, then move focus INTO the dialog. While open: TRAP
+  // Tab / Shift+Tab inside the dialog so keyboard + screen-reader users can't wander onto the
+  // inert page behind it. On close: RETURN focus to the element that opened the dialog. Escape +
+  // scroll-lock stay in the effect below.
+  useEffect(() => {
+    if (!open) return;
+    const panel = panelRef.current;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+
+    const SELECTOR =
+      'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+    const focusable = (): HTMLElement[] =>
+      panel
+        ? Array.from(panel.querySelectorAll<HTMLElement>(SELECTOR)).filter(
+            (el) => el.offsetParent !== null || el === document.activeElement,
+          )
+        : [];
+
+    // Move focus into the dialog itself (not a specific control — avoids surprising the user or
+    // popping a mobile keyboard). The trap below sends the first Tab to the first control.
+    panel?.focus();
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || !panel) return;
+      const items = focusable();
+      if (items.length === 0) {
+        e.preventDefault();
+        panel.focus();
+        return;
+      }
+      const firstEl = items[0]!;
+      const lastEl = items[items.length - 1]!;
+      const active = document.activeElement;
+      if (e.shiftKey) {
+        if (active === firstEl || active === panel || !panel.contains(active)) {
+          e.preventDefault();
+          lastEl.focus();
+        }
+      } else if (active === lastEl || !panel.contains(active)) {
+        e.preventDefault();
+        firstEl.focus();
+      }
+    };
+    panel?.addEventListener('keydown', onKeyDown);
+    return () => {
+      panel?.removeEventListener('keydown', onKeyDown);
+      if (previouslyFocused && document.contains(previouslyFocused)) {
+        previouslyFocused.focus();
+      }
+    };
+  }, [open]);
 
   // A `critical` dialog is, by this app's own definition, a half-filled entry (payment,
   // invoice, walk-in…). While one is open the PWA update flow must never reload the page
@@ -127,9 +181,13 @@ export function Modal({
       )}
 
       <div
+        ref={panelRef}
+        // tabIndex -1: lets focus land on the dialog container on open (WCAG 2.4.3) without making
+        // it a Tab stop. The focus trap above cycles Tab through the real controls inside.
+        tabIndex={-1}
         // dvh, not vh: on a phone the address bar collapsing changes vh, which resized the
         // dialog mid-interaction. Same geometry on desktop.
-        className={`relative z-10 flex max-h-[calc(100dvh-env(safe-area-inset-top))] w-full flex-col overflow-hidden rounded-t-2xl border border-border bg-card pb-[env(safe-area-inset-bottom)] shadow-xl sm:max-h-[90dvh] sm:rounded-xl sm:pb-0 ${maxWidthClass ?? WIDTH[size]}`}
+        className={`relative z-10 flex max-h-[calc(100dvh-env(safe-area-inset-top))] w-full flex-col overflow-hidden rounded-t-2xl border border-border bg-card pb-[env(safe-area-inset-bottom)] shadow-xl outline-none sm:max-h-[90dvh] sm:rounded-xl sm:pb-0 ${maxWidthClass ?? WIDTH[size]}`}
         data-testid="modal"
       >
         {title || description || ariaLabel || headerActions ? (

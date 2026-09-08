@@ -539,7 +539,9 @@ export function AppSidebar({
           modules (never a blank or forbidden tab); the bar's height/position classes are the
           same for every role — geometry never depends on role. */}
       <nav
-        aria-label="Primary"
+        // Distinct from the desktop sidebar's "Primary" landmark (both are in the DOM at once, one
+        // CSS-hidden) so screen-reader landmark lists don't show two identically-named navs.
+        aria-label="Primary (mobile)"
         className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card pb-[env(safe-area-inset-bottom)] lg:hidden"
         data-testid="bottom-nav"
       >
