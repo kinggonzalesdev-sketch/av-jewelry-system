@@ -3,13 +3,12 @@
 -- did NOT exclude captures already turned into orders, and had NO attempt bound, so any un-printed
 -- floating capture stayed auto-claimable FOREVER and drained on reconnect.
 --
--- ⚠️ APPLICATION IS BLOCKED until the live definition is confirmed. This file recovers the current
--- claim_next_capture_sticker body VERBATIM from repo migration 20260821220000_claim_sticker_raw_value
--- and only ADDS three guards. Migration drift was found on the capture-sticker objects, so BEFORE
--- applying this, run and compare against the live body:
---     select pg_get_functiondef('public.claim_next_capture_sticker(text)'::regprocedure);
--- If the live body differs from 20260821220000, DO NOT apply — send me the live body and I will
--- rebase these guards onto it. CREATE OR REPLACE overwrites the live function, so this must match.
+-- ✅ APPLIED TO PRODUCTION 2026-09-09 (Supabase migration `capture_autoprint_safety`).
+-- Drift gate was satisfied FIRST: pg_get_functiondef on the live claim_next_capture_sticker matched
+-- the repo baseline 20260821220000_claim_sticker_raw_value (45s expiry ✓, is_active_staff ✓,
+-- SKIP LOCKED ✓) and contained NONE of the three new guards, so nothing production-only was
+-- overwritten. Post-apply verification confirmed all three guards present and the atomic claim +
+-- auth guard preserved. This file recovers that claim body verbatim and only ADDS the guards.
 --
 -- SCOPE: only the AUTO drain path (claim_next_capture_sticker). The explicit by-id path
 -- (claim_capture_sticker_by_id) is intentionally LEFT UNCHANGED so a staff member can still
