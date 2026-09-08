@@ -457,7 +457,15 @@ export function IncomingCapturesStrip({
   // whoever is active takes it. Runs on an interval while a printer is connected +
   // auto-print is enabled; a print failure releases the claim for the other device.
   useEffect(() => {
-    if (!activeChannel) return;
+    // PC CAPTURE AUTO-PRINT DISABLED (Owner 2026-09-09 — single auto-print authority). The MineFlow
+    // Capture Android app is now the ONLY device that automatically prints capture stickers over
+    // Bluetooth. This PC Web-Bluetooth drain was a SECOND independent drainer of the shared capture
+    // queue, which let an old backlog print when a printer reconnected. It is kept DORMANT for
+    // rollback (flip the flag) but never runs: `drainRef` stays null, so the realtime INSERT/UPDATE
+    // and reconnect handlers can no longer trigger a Web-Bluetooth print. Normal realtime LIST
+    // updates and manual print/reprint below are unaffected.
+    const PC_CAPTURE_AUTO_PRINT = false as boolean;
+    if (!PC_CAPTURE_AUTO_PRINT || !activeChannel) return;
     let alive = true;
     let draining = false;
     const tick = async () => {

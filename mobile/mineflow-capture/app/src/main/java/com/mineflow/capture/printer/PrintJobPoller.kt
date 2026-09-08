@@ -175,6 +175,13 @@ object PrintJobPoller {
     ): Boolean {
         val id = cap.optString("capture_record_id").ifBlank { return false }
         val address = store.printerAddress ?: return false
+        // DURABLE IDEMPOTENCY (Owner 2026-09-09): if THIS device already physically printed this
+        // capture — even if the earlier server acknowledgement POST failed — never print it again.
+        // Re-report the success to clear it server-side, then move on. Closes the ack-failure reprint.
+        if (store.wasCapturePrinted(id)) {
+            runCatching { api.reportCaptureSticker(id, printed = true) }
+            return false
+        }
         return try {
             // Classify the RAW value: a FIXED PRICE ("15k"/"15000"/"₱15,000") prints "FIXED • ₱X";
             // a real weight prints "Xg • ₱rate/g". Matches the direct-local + PC classification.
@@ -194,7 +201,11 @@ object PrintJobPoller {
             // Provenance: this capture was printed by the POST-NETWORK mobile poll queue, NOT the
             // local-first direct path (which would have marked it printed and skipped this claim).
             Log.i(TAG, "PRINT_SOURCE=mobile-poller capture=$id ok=${res.ok} (post-network queue claim)")
-            api.reportCaptureSticker(id, printed = res.ok)
+            // Persist the physical success LOCALLY FIRST, so a failed acknowledgement POST can never
+            // cause a reprint on a later claim (the wasCapturePrinted guard above catches it).
+            if (res.ok) store.rememberPrintedCapture(id)
+            runCatching { api.reportCaptureSticker(id, printed = res.ok) }
+                .onFailure { Log.w(TAG, "capture-result POST failed for $id — local ledger prevents reprint") }
             res.ok
         } catch (e: Exception) {
             api.reportCaptureSticker(id, printed = false)

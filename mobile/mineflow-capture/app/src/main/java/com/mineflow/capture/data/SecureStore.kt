@@ -120,6 +120,29 @@ class SecureStore private constructor(private val prefs: SharedPreferences) {
         get() = prefs.getBoolean(KEY_CONTROLS_HIDDEN, false)
         set(value) = prefs.edit().putBoolean(KEY_CONTROLS_HIDDEN, value).apply()
 
+    // ---- Durable printed-capture ledger (Owner 2026-09-09 forensic fix) -------
+    /** Capture-record ids this device has PHYSICALLY printed. Kept durably (survives app/service
+     *  restart) so a sticker whose Bluetooth write SUCCEEDED but whose server acknowledgement POST
+     *  FAILED can NEVER be reprinted when the row is claimed again. Bounded FIFO — only the most
+     *  recent ids are retained, so it cannot grow without limit. */
+    fun wasCapturePrinted(id: String): Boolean =
+        id.isNotBlank() && printedCaptureIds().contains(id)
+
+    fun rememberPrintedCapture(id: String) {
+        if (id.isBlank()) return
+        val ids = printedCaptureIds().toMutableList()
+        if (ids.contains(id)) return
+        ids.add(id)
+        while (ids.size > PRINTED_CAPTURE_CAP) ids.removeAt(0)
+        prefs.edit().putString(KEY_PRINTED_CAPTURES, ids.joinToString("\n")).apply()
+    }
+
+    private fun printedCaptureIds(): List<String> =
+        prefs.getString(KEY_PRINTED_CAPTURES, null)
+            ?.split("\n")
+            ?.filter { it.isNotBlank() }
+            ?: emptyList()
+
     // Signed in while we hold EITHER a live access token OR a refresh token: an access
     // token expires after ~1h (shorter than a live), but the refresh token lets us mint
     // a new one silently. Only a real logout / a failed refresh clears both.
@@ -150,6 +173,9 @@ class SecureStore private constructor(private val prefs: SharedPreferences) {
         private const val KEY_ROI_H = "capture_roi_height"
         private const val KEY_ROI_LOCKED = "capture_roi_locked"
         private const val KEY_CONTROLS_HIDDEN = "capture_controls_hidden"
+        private const val KEY_PRINTED_CAPTURES = "printed_capture_ids"
+        /** Cap on the durable printed-capture ledger (most-recent ids retained). */
+        private const val PRINTED_CAPTURE_CAP = 1000
 
         /** Capture-mode values (Owner 2026-09-02). */
         const val MODE_BOX = "box"
