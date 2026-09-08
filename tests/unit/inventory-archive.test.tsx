@@ -21,7 +21,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 const emptyState = () => Promise.resolve({ error: null, success: null });
 // Controllable delete result so a test can simulate the DB's "linked to a business
 // record" refusal — that refusal is what reveals the Super Admin force-delete.
-const h = vi.hoisted(() => ({ deleteLinked: false }));
+const h = vi.hoisted(() => ({ deleteLinked: false, depsActive: false }));
 vi.mock('@/lib/inventory/actions', () => ({
   deleteInventoryItemAction: () =>
     Promise.resolve(
@@ -32,6 +32,15 @@ vi.mock('@/lib/inventory/actions', () => ({
           }
         : { error: null, success: null },
     ),
+  // The force override is now gated on the item's REAL dependency resolution: an ACTIVE link keeps
+  // the override hidden (depsActive=true), a resolved link reveals it (depsActive=false, default).
+  checkItemDependenciesAction: () =>
+    Promise.resolve({
+      ok: true,
+      dependencies: h.depsActive
+        ? [{ kind: 'official_order', label: 'Order #1', isActive: true }]
+        : [{ kind: 'inventory_reservation', label: 'Released reservation', isActive: false }],
+    }),
   forceDeleteInventoryItemAction: () => emptyState(),
   editInventoryItemAction: () => emptyState(),
   restoreInventoryItemAction: () => emptyState(),
@@ -221,6 +230,7 @@ describe('InventoryItemActions — per-permission Edit / Delete', () => {
 
   it('reveals the Super Admin force-delete ONLY after a blocked delete', async () => {
     h.deleteLinked = true;
+    h.depsActive = false; // the linking record is RESOLVED → force-delete is genuinely available
     render(
       <InventoryItemActions
         row={row({})}
@@ -243,6 +253,38 @@ describe('InventoryItemActions — per-permission Edit / Delete', () => {
     expect(
       await screen.findByTestId('inventory-force-delete-item-1'),
     ).toBeInTheDocument();
+    h.depsActive = false; // reset for later tests
+  });
+
+  it('does NOT offer force-delete when a blocked item is held by an ACTIVE record', async () => {
+    // The BNW-N-6137 case (Owner 2026-09-08): the DB refuses the normal delete AND would refuse a
+    // force delete, because a live order/payment/hold/layaway/sale holds the item. The override must
+    // NOT be offered (it would only be refused again) — an actionable "Protected" note shows instead.
+    h.deleteLinked = true;
+    h.depsActive = true;
+    render(
+      <InventoryItemActions
+        row={row({})}
+        canEdit={true}
+        canDelete={true}
+        isOwner={true}
+        canForceDelete={true}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('inventory-delete-item-1'));
+    fireEvent.change(screen.getByPlaceholderText('DELETE'), {
+      target: { value: 'DELETE' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Delete permanently/i }));
+
+    expect(
+      await screen.findByTestId('inventory-force-protected-item-1'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('inventory-force-delete-item-1'),
+    ).not.toBeInTheDocument();
+    h.deleteLinked = false;
+    h.depsActive = false; // reset for later tests
   });
 
   it('an Admin submits Delete for approval — never a direct delete or force override', () => {

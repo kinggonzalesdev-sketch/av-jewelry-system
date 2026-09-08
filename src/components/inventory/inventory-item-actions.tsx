@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useActionState, useTransition } f
 import { useRouter } from 'next/navigation';
 
 import {
+  checkItemDependenciesAction,
   deleteInventoryItemAction,
   forceDeleteInventoryItemAction,
   editInventoryItemAction,
@@ -134,8 +135,44 @@ export function InventoryItemActions({
     }
   }, [forceState.success, router, onMutated]);
 
-  const showForce =
+  // FORCE-DELETE ELIGIBILITY (Owner 2026-09-08 fix). The override used to appear for ANY Owner the
+  // moment a normal delete failed with "linked to…", WITHOUT ever checking whether the linking
+  // records were actually RESOLVED — so it offered a "Force delete" button the database then refused
+  // (the confusing "held only by resolved records" panel over the "linked to an active order…"
+  // refusal). Now we read the item's REAL dependencies and offer the override ONLY when every link is
+  // resolved (inactive). A force attempt the DB still refuses proves a live link the preview did not
+  // flag, so we mark the item ineligible and show an actionable "resolve the record first" note.
+  const blockedByLink =
     isOwner && canForceDelete && !!delState.error && /linked to/i.test(delState.error);
+  // The item's real dependency resolution, fetched once per blocked item. Stored WITH its item id so
+  // a stale result from a previous item is never trusted. Set only inside the async callback (no
+  // synchronous set-state-in-effect); everything else below is derived during render.
+  const [depCheck, setDepCheck] = useState<{ itemId: string; resolvedOnly: boolean } | null>(null);
+  useEffect(() => {
+    if (!blockedByLink) return;
+    let cancelled = false;
+    void checkItemDependenciesAction(row.inventoryItemId).then((res) => {
+      if (cancelled) return;
+      // Held ONLY by resolved records (every link inactive) → force-delete is genuinely available.
+      // Any active link (a real order/payment/hold/layaway/sale) → the DB will refuse, so hide it.
+      setDepCheck({
+        itemId: row.inventoryItemId,
+        resolvedOnly:
+          res.ok && res.dependencies.length > 0 && res.dependencies.every((d) => !d.isActive),
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [blockedByLink, row.inventoryItemId]);
+
+  // Derived during render (no extra effect). The dep result counts only for the CURRENT item; a
+  // force attempt the DB refused (forceState.error) proves a live link the preview missed, so it
+  // forces the "protected" branch.
+  const resolvedOnly =
+    depCheck && depCheck.itemId === row.inventoryItemId ? depCheck.resolvedOnly : null;
+  const showForce = blockedByLink && resolvedOnly === true && !forceState.error;
+  const showProtected = blockedByLink && (resolvedOnly === false || !!forceState.error);
 
   // --- Admin request submitters (Edit/Delete → Approval) ---------------------
   const submitEditRequest = (e: React.FormEvent<HTMLFormElement>) => {
@@ -578,6 +615,25 @@ export function InventoryItemActions({
             >
               {forcing ? 'Force deleting…' : 'Force delete (Super Admin)'}
             </Button>
+            {forceState.error ? (
+              <p role="alert" className="text-sm text-destructive">
+                {forceState.error}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {showProtected ? (
+          <div
+            className="mt-3 space-y-2 rounded-md border border-destructive/40 bg-destructive/5 p-2.5"
+            data-testid={`inventory-force-protected-${row.inventoryItemId}`}
+          >
+            <p className="text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">Protected.</span> This item is
+              tied to an active order, payment, hold, layaway, or sale, so it can’t be deleted —
+              even by a Super Admin. Resolve that record first (remove the item from its order,
+              or void the sale / layaway), then delete.
+            </p>
             {forceState.error ? (
               <p role="alert" className="text-sm text-destructive">
                 {forceState.error}
