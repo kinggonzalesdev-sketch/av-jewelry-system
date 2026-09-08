@@ -6,8 +6,8 @@ describe('web app manifest (Owner spec 2026-09-05)', () => {
   const m = manifest();
 
   it('carries the approved identity', () => {
-    expect(m.name).toBe('MineFlow');
-    expect(m.short_name).toBe('MineFlow');
+    expect(m.name).toBe('A.V. Jewelry');
+    expect(m.short_name).toBe('A.V. Jewelry');
     expect(m.description).toBe(
       'Live-selling, inventory, orders, payments, and business management system.',
     );

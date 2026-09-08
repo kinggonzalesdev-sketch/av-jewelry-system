@@ -287,7 +287,7 @@ export function LayawayImportButton() {
           setOpen(false);
         }}
         title="Import layaway accounts from Excel / CSV"
-        description="Upload a .csv — MineFlow finds the header row and maps the columns automatically. Nothing is saved until you confirm."
+        description="Upload a .csv — A.V. Jewelry finds the header row and maps the columns automatically. Nothing is saved until you confirm."
         size="xl"
         critical
         footer={footer}

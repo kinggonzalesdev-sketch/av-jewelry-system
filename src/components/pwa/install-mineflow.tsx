@@ -82,7 +82,7 @@ export function InstallMineFlow({
     if (variant === 'menu') return null;
     return (
       <p className="text-sm text-muted-foreground" data-testid="pwa-install-installed">
-        ✓ MineFlow is installed on this device.
+        ✓ A.V. Jewelry is installed on this device.
       </p>
     );
   }
@@ -99,8 +99,8 @@ export function InstallMineFlow({
           className="flex-1 text-left text-xs font-medium text-foreground disabled:text-muted-foreground"
         >
           {installPromptAvailable
-            ? 'Install MineFlow'
-            : 'Install MineFlow (see Settings)'}
+            ? 'Install A.V. Jewelry'
+            : 'Install A.V. Jewelry (see Settings)'}
         </button>
         <button
           type="button"
@@ -117,7 +117,7 @@ export function InstallMineFlow({
   return (
     <div className="space-y-3" data-testid="pwa-install-settings">
       <p className="text-sm text-muted-foreground">
-        Install MineFlow on this phone or tablet to open it like an app — full screen, on
+        Install A.V. Jewelry on this phone or tablet to open it like an app — full screen, on
         your home screen, same live data. It still needs an internet connection.
       </p>
       {installPromptAvailable ? (
@@ -127,7 +127,7 @@ export function InstallMineFlow({
           disabled={busy}
           data-testid="pwa-install-button"
         >
-          {busy ? 'Installing…' : '📲 Install MineFlow'}
+          {busy ? 'Installing…' : '📲 Install A.V. Jewelry'}
         </Button>
       ) : ios ? (
         <ol
@@ -135,7 +135,7 @@ export function InstallMineFlow({
           data-testid="pwa-install-ios"
         >
           <li>
-            Open MineFlow in <strong>Safari</strong>.
+            Open A.V. Jewelry in <strong>Safari</strong>.
           </li>
           <li>
             Tap <strong>Share</strong> (the square with an arrow).

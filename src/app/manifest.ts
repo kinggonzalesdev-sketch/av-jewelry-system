@@ -16,8 +16,8 @@ import type { MetadataRoute } from 'next';
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'MineFlow',
-    short_name: 'MineFlow',
+    name: 'A.V. Jewelry',
+    short_name: 'A.V. Jewelry',
     description:
       'Live-selling, inventory, orders, payments, and business management system.',
     lang: 'en-PH',

@@ -30,7 +30,7 @@ export function AppInformation() {
   };
 
   const rows: Array<[string, string]> = [
-    ['App', 'MineFlow'],
+    ['App', 'A.V. Jewelry'],
     ['Mode', standalone ? 'Installed app' : 'Browser'],
     ['Connection', online ? 'Online' : 'Offline'],
     ['Version', version],

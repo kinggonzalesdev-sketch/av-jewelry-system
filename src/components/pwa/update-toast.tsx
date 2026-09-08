@@ -41,7 +41,7 @@ export function UpdateToast() {
       <p className="mt-0.5 text-xs text-muted-foreground">
         {confirmDirty
           ? 'You have an entry in progress. Finish or cancel it first — updating now will discard it.'
-          : 'A newer version of MineFlow is ready.'}
+          : 'A newer version of A.V. Jewelry is ready.'}
       </p>
       <div className="mt-2 flex items-center justify-end gap-2">
         <Button

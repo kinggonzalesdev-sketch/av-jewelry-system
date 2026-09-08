@@ -213,8 +213,8 @@ export default async function SettingsPage() {
           settings-viewer; contains no secrets. */}
       <SettingsSection
         icon="📲"
-        title="Install MineFlow"
-        subtitle="Use MineFlow as an app on this phone or tablet · app information"
+        title="Install A.V. Jewelry"
+        subtitle="Use A.V. Jewelry as an app on this phone or tablet · app information"
       >
         <div className="space-y-4" data-testid="settings-install">
           <InstallMineFlow />

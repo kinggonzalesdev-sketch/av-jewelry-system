@@ -462,7 +462,7 @@ function TestSendCard() {
             </span>
             <input
               name="message"
-              defaultValue="MineFlow test message ✅"
+              defaultValue="A.V. Jewelry test message ✅"
               className={inputClass}
               data-testid="pancake-test-message"
             />
@@ -772,10 +772,10 @@ function PancakeSenderCard({
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          Choose the authorized <strong>Pancake user</strong> that MineFlow sends Facebook
+          Choose the authorized <strong>Pancake user</strong> that A.V. Jewelry sends Facebook
           Live <strong>Private Replies</strong> as (the verified <code>sender_id</code>).
           Only <strong>active</strong> Page users are offered. Until a sender is selected,
-          MineFlow will not auto-send private replies.
+          A.V. Jewelry will not auto-send private replies.
         </p>
 
         {selectedSender ? (

@@ -16,11 +16,12 @@ export const metadata: Metadata = {
   description: 'Internal staff operations system. Not for public or customer use.',
   // Internal tool: never index it.
   robots: { index: false, follow: false },
-  // Installed-app identity (PWA, Owner 2026-09-05). `appleWebApp` is what makes iOS "Add to
-  // Home Screen" open MineFlow as a standalone app with the right title and status bar;
-  // the Apple touch icon is rasterised from the official logo by /pwa-icon/apple-180.
-  applicationName: 'MineFlow',
-  appleWebApp: { capable: true, title: 'MineFlow', statusBarStyle: 'black-translucent' },
+  // Installed-app identity (PWA, Owner 2026-09-05; renamed to the brand 2026-09-08). `appleWebApp`
+  // is what makes iOS "Add to Home Screen" open A.V. Jewelry as a standalone app with the right
+  // title and status bar; the Apple touch icon is rasterised from the official logo by
+  // /pwa-icon/apple-180.
+  applicationName: 'A.V. Jewelry',
+  appleWebApp: { capable: true, title: 'A.V. Jewelry', statusBarStyle: 'black-translucent' },
   icons: { apple: '/pwa-icon/apple-180' },
   // Favicon: app/icon.svg is auto-served by Next on every route (no per-page
   // override), so the tab icon is fixed everywhere too.

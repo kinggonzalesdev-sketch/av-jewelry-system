@@ -61,7 +61,7 @@ async function clientChecks(): Promise<SystemCheckItem[]> {
     },
     {
       key: 'realtime',
-      label: 'MineFlow Real-time Connection',
+      label: 'A.V. Jewelry Real-time Connection',
       status: realtime,
       detail:
         realtime === 'ready'

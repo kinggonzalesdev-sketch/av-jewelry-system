@@ -19,7 +19,7 @@ export default function OfflinePage() {
       </div>
       <h1 className="mt-5 text-2xl font-bold tracking-tight">You&apos;re offline</h1>
       <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-        MineFlow requires an internet connection to access live business records.
+        A.V. Jewelry requires an internet connection to access live business records.
       </p>
       <div className="mt-6">
         <OfflineRetryButton />
