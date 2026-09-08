@@ -45,6 +45,15 @@ const PUBLIC_ROUTES = [
   '/terms',
   '/refund-policy',
   '/cookie-policy',
+  // '/m' — the Route B secure screenshot share link, /m/{opaque_token} (Owner 2026-08-21). It is
+  // opened by a CUSTOMER from a Pancake private-reply text with NO session, so the proxy must not
+  // bounce it to /sign-in. Verified broken in production before this fix (307 → /sign-in), which
+  // made the feature unusable for the very people it is for. Safe to expose: it is a capability
+  // URL — the raw token is hashed and validated server-side, a valid/unexpired/un-revoked link
+  // yields ONLY that one capture's screenshot behind a short-lived signed Storage URL, the bucket
+  // stays private, no customer/order/PSID appears in the URL or page, it is noindex, and an
+  // invalid token renders a plain "unavailable" state.
+  '/m',
 ];
 
 function isPublicRoute(pathname: string): boolean {

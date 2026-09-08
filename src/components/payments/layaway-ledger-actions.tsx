@@ -317,7 +317,7 @@ export function LedgerAddPayment({
                   id={`ledger-pay-dest-${id}`}
                   value={dest}
                   onChange={(e) => setDest(e.target.value)}
-                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   data-testid={`ledger-pay-dest-${id}`}
                 >
                   <option value="">Choose destination…</option>
@@ -339,7 +339,7 @@ export function LedgerAddPayment({
             <div>
               <Label className="text-xs">Amount</Label>
               <MoneyInput
-                className="mt-1 h-9 w-full rounded-md border border-border bg-background px-3 text-right text-sm tabular-nums outline-none focus:border-gold"
+                className="mt-1 h-9 w-full rounded-md border border-border bg-background px-3 text-right text-sm tabular-nums outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 placeholder="0.00"
                 value={amount}
                 onValueChange={setAmount}
@@ -419,7 +419,7 @@ export function LedgerAddPayment({
                   id={`ledger-pay-mop-${id}`}
                   value={mop}
                   onChange={(e) => setMop(e.target.value)}
-                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
                   {PAYMENT_METHOD_OPTIONS.map((m) => (
                     <option key={m.value} value={m.value}>
@@ -453,7 +453,7 @@ export function LedgerAddPayment({
                   id={`ledger-pay-dest-${id}`}
                   value={dest}
                   onChange={(e) => setDest(e.target.value)}
-                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   data-testid={`ledger-pay-dest-${id}`}
                 >
                   <option value="">No transfer</option>
@@ -683,7 +683,7 @@ export function LedgerEditAccount({
               <div>
                 <Label className="text-xs">Item Amount</Label>
                 <MoneyInput
-                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-3 text-right text-sm tabular-nums outline-none focus:border-gold"
+                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-3 text-right text-sm tabular-nums outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   placeholder="0.00"
                   value={itemAmount}
                   onValueChange={setItemAmount}
@@ -692,7 +692,7 @@ export function LedgerEditAccount({
               <div>
                 <Label className="text-xs">Interest</Label>
                 <MoneyInput
-                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-3 text-right text-sm tabular-nums outline-none focus:border-gold"
+                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-3 text-right text-sm tabular-nums outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   placeholder="0.00"
                   value={interest}
                   onValueChange={setInterest}
@@ -762,7 +762,7 @@ export function LedgerEditAccount({
                   id={`ledger-edit-dest-${id}`}
                   value={dest}
                   onChange={(e) => setDest(e.target.value)}
-                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   data-testid={`ledger-edit-dest-${id}`}
                 >
                   <option value="">No transfer</option>

@@ -56,7 +56,7 @@ const L = ({ children }: { children: React.ReactNode }) => (
 );
 
 const fieldClass =
-  'h-11 w-full rounded-lg border border-border bg-background px-3 text-base outline-none focus:border-gold';
+  'h-11 w-full rounded-lg border border-border bg-background px-3 text-base outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2';
 
 export function PriceDownPaymentCalculator() {
   const [pricingType, setPricingType] = useState<'fixed' | 'per_gram'>('fixed');

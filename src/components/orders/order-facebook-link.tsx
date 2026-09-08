@@ -431,7 +431,7 @@ export function OrderFacebookLink({
                 value={convQuery}
                 onChange={(e) => setConvQuery(e.target.value)}
                 placeholder="Search Pancake by name…"
-                className="h-8 flex-1 rounded-md border border-border bg-card px-2 text-[11px] outline-none focus:border-gold"
+                className="h-8 flex-1 rounded-md border border-border bg-card px-2 text-[11px] outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 data-testid="order-fb-search-input"
               />
               <button
@@ -520,7 +520,7 @@ export function OrderFacebookLink({
             value={conv}
             onChange={(e) => setConv(e.target.value)}
             placeholder="e.g. 588622885161430_2825574771…"
-            className="h-8 w-full rounded-md border border-border bg-background px-2 font-mono text-[11px] outline-none focus:border-gold"
+            className="h-8 w-full rounded-md border border-border bg-background px-2 font-mono text-[11px] outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             data-testid="order-fb-conv-input"
           />
           <label className="block text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -530,7 +530,7 @@ export function OrderFacebookLink({
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://m.me/…"
-            className="h-8 w-full rounded-md border border-border bg-background px-2 text-[11px] outline-none focus:border-gold"
+            className="h-8 w-full rounded-md border border-border bg-background px-2 text-[11px] outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             data-testid="order-fb-url-input"
           />
           <div className="flex items-center gap-1.5">

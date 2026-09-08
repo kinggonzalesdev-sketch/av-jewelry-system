@@ -219,7 +219,7 @@ export function ScrapView({
             placeholder="Search by customer name or contact number"
             aria-label="Search scrap sales"
             data-testid="scrap-search"
-            className="mb-3 h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+            className="mb-3 h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           />
           {/* Built from the shared table components (the reference migration). */}
           <DataTable

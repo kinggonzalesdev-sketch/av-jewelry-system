@@ -250,7 +250,7 @@ export function MemberAccessControls({
               ? 'You cannot change your own role.'
               : undefined
         }
-        className="h-8 rounded-md border border-border bg-background px-2 text-xs outline-none focus:border-gold disabled:cursor-not-allowed disabled:opacity-50"
+        className="h-8 rounded-md border border-border bg-background px-2 text-xs outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {ROLE_OPTIONS.map((r) => (
           <option key={r.key} value={r.key} disabled={roleDisabled(r.key)}>

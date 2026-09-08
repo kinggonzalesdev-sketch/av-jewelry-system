@@ -181,7 +181,7 @@ export function TestModeControls({ initial }: { initial: TestMode }) {
             autoComplete="off"
             placeholder="DELETE"
             data-testid="reset-test-confirm-input"
-            className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+            className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           />
         </div>
       </Modal>

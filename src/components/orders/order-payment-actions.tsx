@@ -220,7 +220,7 @@ export function OrderPaymentActions({
           <div>
             <Label className="text-xs">Payment Amount</Label>
             <MoneyInput
-              className="mt-1 h-9 w-full rounded-md border border-border bg-background px-3 text-right text-sm tabular-nums outline-none focus:border-gold"
+              className="mt-1 h-9 w-full rounded-md border border-border bg-background px-3 text-right text-sm tabular-nums outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               placeholder="0.00"
               value={amount}
               onValueChange={setAmount}
@@ -283,7 +283,7 @@ export function OrderPaymentActions({
                 id="order-pay-mop"
                 value={mop}
                 onChange={(e) => setMop(e.target.value)}
-                className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+                className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 {PAYMENT_METHOD_OPTIONS.map((m) => (
                   <option key={m.value} value={m.value}>

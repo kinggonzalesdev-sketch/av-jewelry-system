@@ -94,7 +94,7 @@ export function OrderDestinationTransfer({
           value={selected}
           onChange={(e) => setSelected(e.target.value)}
           data-testid="order-destination-select"
-          className="h-9 flex-1 min-w-[12rem] rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+          className="h-9 flex-1 min-w-[12rem] rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
           <option value="">Choose destination…</option>
           {choices.map((d) => (

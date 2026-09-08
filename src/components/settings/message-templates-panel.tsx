@@ -166,7 +166,7 @@ function TemplateCard({ template }: { template: MessageTemplate }) {
           }}
           rows={10}
           data-testid={`template-body-${template.key}`}
-          className="block w-full resize-y whitespace-pre-wrap rounded-md border border-border bg-background p-2 font-mono text-xs outline-none focus:border-gold"
+          className="block w-full resize-y whitespace-pre-wrap rounded-md border border-border bg-background p-2 font-mono text-xs outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         />
       </label>
 

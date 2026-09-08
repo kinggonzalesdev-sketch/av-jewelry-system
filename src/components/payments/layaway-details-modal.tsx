@@ -133,7 +133,7 @@ export function LayawayDetailsModal({
                 onChange={setFinancerInput}
                 options={financers.map((f) => f.name)}
                 placeholder="Select a financer… or type a new name"
-                className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+                className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               />
               {financerError ? (
                 <p role="alert" className="mt-1 text-xs text-destructive">

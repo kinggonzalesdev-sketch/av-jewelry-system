@@ -102,7 +102,7 @@ const L = ({ children }: { children: React.ReactNode }) => (
 );
 
 const fieldClass =
-  'h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold';
+  'h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2';
 
 let rowSeq = 0;
 function newRow(): Row {

@@ -58,7 +58,7 @@ import { cn } from '@/lib/utils';
  */
 
 const SELECT_CLASS =
-  'h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold';
+  'h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2';
 
 const RANGE_LABEL: Record<AttendanceQuickRange, string> = {
   today: 'Today',
@@ -784,7 +784,7 @@ function ReviewRowCorrect({ row }: { row: AttendanceRow }) {
               rows={2}
               placeholder="e.g. Forgot to clock out; left at 6:00 PM per shift log."
               data-testid={`review-correct-reason-${row.id}`}
-              className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-gold"
+              className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             />
           </div>
           {state.error ? (

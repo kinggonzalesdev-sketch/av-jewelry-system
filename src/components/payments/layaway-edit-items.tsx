@@ -53,7 +53,7 @@ const L = ({ children }: { children: React.ReactNode }) => (
 );
 
 const fieldClass =
-  'h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold';
+  'h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2';
 
 /** Today in the USER'S LOCAL date (never the UTC date, which rolls a day early in PH). */
 const todayLocal = (): string => {

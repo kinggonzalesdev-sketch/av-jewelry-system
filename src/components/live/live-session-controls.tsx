@@ -151,7 +151,7 @@ export function LiveSessionControls({ data }: { data: LiveSessionFormData }) {
   const label =
     'mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground';
   const field =
-    'h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold';
+    'h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2';
 
   return (
     <div className="space-y-3" data-testid="live-session-start">

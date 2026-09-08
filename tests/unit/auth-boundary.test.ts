@@ -132,8 +132,12 @@ describe('protected route boundary (ADR §7, Invariant #3)', () => {
     // /privacy, /terms, /refund-policy, /cookie-policy (Owner 2026-09-08 compliance pass) are the
     // PUBLIC legal/policy pages — a privacy notice etc. must be readable by anyone; they render
     // static text, read no database, and make no authorization decision.
+    // '/m' (Owner 2026-09-09) is the Route B customer screenshot share link, /m/{opaque_token}.
+    // It is opened by a customer with NO session; authorization is the hashed capability token
+    // validated server-side, not the staff session. It exposes one signed screenshot, is noindex,
+    // and carries no customer/order identifier in the URL.
     expect(middleware).toMatch(
-      /PUBLIC_ROUTES\s*=\s*\[\s*'\/',\s*'\/sign-in',\s*'\/account-disabled',\s*'\/reset-password',\s*'\/offline',\s*'\/privacy',\s*'\/terms',\s*'\/refund-policy',\s*'\/cookie-policy',?\s*\]/,
+      /PUBLIC_ROUTES\s*=\s*\[[\s\S]*'\/',[\s\S]*'\/sign-in',[\s\S]*'\/account-disabled',[\s\S]*'\/reset-password',[\s\S]*'\/offline',[\s\S]*'\/privacy',[\s\S]*'\/terms',[\s\S]*'\/refund-policy',[\s\S]*'\/cookie-policy',[\s\S]*'\/m',?\s*\]/,
     );
   });
 });

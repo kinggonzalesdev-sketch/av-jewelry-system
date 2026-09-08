@@ -146,7 +146,7 @@ function DraftCard({
                           name="reason"
                           required
                           placeholder="Reason for removing"
-                          className="h-7 flex-1 rounded border border-border bg-background px-2 text-[11px] outline-none focus:border-gold"
+                          className="h-7 flex-1 rounded border border-border bg-background px-2 text-[11px] outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         />
                         <Button
                           type="submit"

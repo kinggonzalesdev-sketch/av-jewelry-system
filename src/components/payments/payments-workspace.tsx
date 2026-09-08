@@ -760,14 +760,14 @@ export function PaymentsWorkspace({
                 placeholder="Search customer, account no., remarks…"
                 aria-label="Search layaways"
                 data-testid="layaway-search"
-                className="h-9 flex-1 min-w-[12rem] rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+                className="h-9 flex-1 min-w-[12rem] rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               />
               <select
                 value={layFinancer}
                 onChange={(e) => changeFinancer(e.target.value)}
                 aria-label="Filter by financer"
                 data-testid="layaway-filter-financer"
-                className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+                className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 <option value={FINANCER_ALL}>All Financers</option>
                 {financerOptions.map((f) => (

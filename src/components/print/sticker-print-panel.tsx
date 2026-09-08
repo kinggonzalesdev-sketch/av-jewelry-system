@@ -221,7 +221,7 @@ export function StickerPrintPanel() {
               value={channelIdx}
               onChange={(e) => setChannelIdx(Number(e.target.value))}
               disabled={!printer || printer.channels.length === 0}
-              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-gold disabled:opacity-50"
+              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
             >
               {printer && printer.channels.length > 0 ? (
                 printer.channels.map((c, i) => (
@@ -289,7 +289,7 @@ export function StickerPrintPanel() {
                   value={pricePerGram}
                   onChange={(e) => changePricePerGram(e.target.value)}
                   data-testid="sticker-price-per-gram"
-                  className="h-9 w-40 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-gold"
+                  className="h-9 w-40 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 />
               </label>
             </FieldRow>

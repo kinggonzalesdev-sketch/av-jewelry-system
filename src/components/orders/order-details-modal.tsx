@@ -866,7 +866,7 @@ function ForInvoiceView({
                 disabled={!canManage}
                 data-testid="order-message-edit"
                 placeholder="Type the invoice message to copy or send on Facebook…"
-                className="block w-full resize-y rounded-md border border-border bg-background p-2 text-xs outline-none focus:border-gold disabled:opacity-70"
+                className="block w-full resize-y rounded-md border border-border bg-background p-2 text-xs outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-70"
               />
               <div className="flex flex-wrap items-center gap-2">
                 <CopyButton

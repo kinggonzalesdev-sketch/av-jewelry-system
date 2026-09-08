@@ -250,7 +250,7 @@ function ConversationsCard({
               type="button"
               onClick={() => setLinkedOpen((o) => !o)}
               aria-expanded={linkedOpen}
-              className="flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-left text-sm outline-none focus:border-gold"
+              className="flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-left text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               data-testid="pancake-linked-toggle"
             >
               <span className="text-muted-foreground">
@@ -265,7 +265,7 @@ function ConversationsCard({
                     value={linkedQuery}
                     onChange={(e) => setLinkedQuery(e.target.value)}
                     placeholder="Search linked customers…"
-                    className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+                    className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     data-testid="pancake-linked-search"
                   />
                 </div>
@@ -354,7 +354,7 @@ function ConversationsCard({
               type="button"
               onClick={() => setOpen((o) => !o)}
               aria-expanded={open}
-              className="flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-left text-sm outline-none focus:border-gold"
+              className="flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-left text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               data-testid="pancake-conversations-toggle"
             >
               <span className="text-muted-foreground">
@@ -370,7 +370,7 @@ function ConversationsCard({
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Search by name, message, or ID…"
-                    className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+                    className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     data-testid="pancake-conversations-search"
                   />
                 </div>
@@ -431,7 +431,7 @@ function TestSendCard() {
   );
 
   const inputClass =
-    'h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold';
+    'h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2';
 
   return (
     <Card>
@@ -624,7 +624,7 @@ function ManagedPagesCard({
                 Select Page
               </span>
               <select
-                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 value={selectedId}
                 onChange={(e) => {
                   setSelectedId(e.target.value);
@@ -832,7 +832,7 @@ function PancakeSenderCard({
                 Select Sender (active users only)
               </span>
               <select
-                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 value={selectedId}
                 onChange={(e) => setSelectedId(e.target.value)}
                 data-testid="pancake-sender-select"
@@ -1086,7 +1086,7 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
               if (e.key === 'Enter') void fetchCandidates(search.trim());
             }}
             placeholder="Find the exact comment text (e.g. TESTB-AV-817)…"
-            className="h-9 min-w-[220px] flex-1 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+            className="h-9 min-w-[220px] flex-1 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             data-testid="pr-test-search"
           />
           <Button
@@ -1128,7 +1128,7 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
                 one)
               </span>
               <select
-                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 value={selectedId}
                 onChange={(e) => setSelectedId(e.target.value)}
                 data-testid="pr-test-candidate"
@@ -1228,7 +1228,7 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
               </span>
               <textarea
                 rows={2}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
               />
@@ -1278,7 +1278,7 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
               </span>
               <input
                 type="text"
-                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+                className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 value={captureId}
                 onChange={(e) => setCaptureId(e.target.value)}
                 placeholder="e.g. 5543c409-21d6-4a04-9610-da3b3b2e3e71"
@@ -1324,7 +1324,7 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
                 Screenshot capture id
               </span>
               <input
-                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 placeholder="capture_records id whose screenshot to send"
                 value={captureId}
                 onChange={(e) => setCaptureId(e.target.value)}

@@ -220,7 +220,7 @@ export function AttendanceClock({
               }}
               data-testid="clock-staff-select"
               aria-label="Select who is signing in"
-              className="mx-auto block h-10 w-full max-w-md rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+              className="mx-auto block h-10 w-full max-w-md rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <option value="">Select a team member</option>
               {/* Name only (Owner request). The role told the person clocking in

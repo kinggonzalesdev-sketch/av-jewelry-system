@@ -218,7 +218,7 @@ export function TeamMembersPanel({
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search members…"
           aria-label="Search members"
-          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold sm:w-56"
+          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:w-56"
         />
       </div>
 

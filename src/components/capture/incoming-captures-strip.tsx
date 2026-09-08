@@ -883,7 +883,7 @@ export function IncomingCapturesStrip({
                               [r.captureRecordId]: e.target.value,
                             }))
                           }
-                          className="h-7 w-24 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-gold"
+                          className="h-7 w-24 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                           data-testid={`incoming-grams-${r.captureRecordId}`}
                         />
                       </label>

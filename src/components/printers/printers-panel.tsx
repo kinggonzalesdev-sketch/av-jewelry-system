@@ -206,7 +206,7 @@ export function PrintersPanel({
               id="printer-transport"
               value={transport}
               onChange={(e) => setTransport(e.target.value)}
-              className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+              className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               {TRANSPORTS.map((t) => (
                 <option key={t} value={t}>

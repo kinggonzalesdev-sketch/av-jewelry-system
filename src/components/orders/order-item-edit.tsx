@@ -675,7 +675,7 @@ export function AddItemSearchRow({
                   const v = e.target.value;
                   if (GRAMS_RE.test(v)) onPatch({ grams: v });
                 }}
-                className="h-8 w-full rounded-md border border-border bg-background px-2 text-right text-sm tabular-nums outline-none focus:border-gold"
+                className="h-8 w-full rounded-md border border-border bg-background px-2 text-right text-sm tabular-nums outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               />
             </label>
             <label className="block">
@@ -720,7 +720,7 @@ export function AddItemSearchRow({
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search Active Inventory (code / name)…"
             data-testid={searchTestId ?? `add-item-search-${index}`}
-            className="h-8 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+            className="h-8 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           />
           {results.length > 0 ? (
             <ul className="absolute z-30 mt-1 max-h-48 w-full overflow-auto rounded-md border border-border bg-background shadow-lg">

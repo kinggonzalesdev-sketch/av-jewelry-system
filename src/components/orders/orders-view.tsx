@@ -701,7 +701,7 @@ export function OrdersView({
               placeholder="Search waybill, invoice no., or customer"
               aria-label="Search orders"
               data-testid="orders-search"
-              className="h-9 flex-1 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+              className="h-9 flex-1 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             />
             {/* Order flow — the SAME state the status cards drive, so the dropdown
               and the highlighted card can never disagree. Its options are derived
@@ -713,7 +713,7 @@ export function OrdersView({
               onChange={(e) => setCard(e.target.value as CardKey)}
               aria-label="Filter by order flow"
               data-testid="orders-filter-flow"
-              className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+              className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               {CARD_DEFS.map((def) => (
                 <option key={def.key} value={def.key}>
@@ -737,7 +737,7 @@ export function OrdersView({
                 aria-label="Orders from date"
                 data-testid="orders-filter-date-from"
                 title="Orders from (order date)"
-                className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+                className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               />
             </label>
             <span className="text-xs text-muted-foreground" aria-hidden="true">
@@ -753,7 +753,7 @@ export function OrdersView({
                 aria-label="Orders to date"
                 data-testid="orders-filter-date-to"
                 title="Orders to (order date)"
-                className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold"
+                className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               />
             </label>
           </div>

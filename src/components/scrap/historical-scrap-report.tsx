@@ -186,7 +186,7 @@ export function HistoricalScrapReport({
             placeholder="Search by customer name or contact number"
             aria-label="Search historical scrap sales"
             data-testid="scrap-historical-search"
-            className="mb-3 h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+            className="mb-3 h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           />
           <DataTable
             minWidth="900px"
