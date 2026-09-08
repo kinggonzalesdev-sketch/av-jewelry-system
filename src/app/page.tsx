@@ -41,7 +41,9 @@ const TRUST: string[] = [
   'DTI Registered',
   'BIR Registered',
   'AMLC Compliant',
-  'Best Price Gold Buyers',
+  // Softened from "Best Price Gold Buyers" (Owner 2026-09-08): an unqualified superlative is an
+  // unsubstantiated-claim risk under RA 7394. "Fair" matches the brand tagline and is defensible.
+  'Fair Gold Buying Prices',
   'Store Pick-Up Available',
 ];
 

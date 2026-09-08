@@ -39,7 +39,7 @@ private; no secrets are shipped to the client.
 
 | # | Risk | Location | Reason | Fix | Status |
 |---|---|---|---|---|---|
-| M1 | Unsubstantiated superlative price claim | `src/app/page.tsx:42` — "Best Price Gold Buyers" | Unqualified "Best Price" is a deceptive-claim risk under RA 7394 / DTI rules unless provable. | Flagged; offered a conservative rewrite ("Fair/Competitive Gold Buying"). Awaiting owner decision. | **OWNER INPUT REQUIRED** |
+| M1 | Unsubstantiated superlative price claim | `src/app/page.tsx` — was "Best Price Gold Buyers" | Unqualified "Best Price" is a deceptive-claim risk under RA 7394 / DTI rules unless provable. | Softened to "Fair Gold Buying Prices" (defensible, matches the brand tagline) at Owner's request. Owner may restore "Best Price" only with proof. | **FIXED** |
 | M2 | No privacy notice / terms / refund policy existed for a business processing significant personal data | (whole site) | DPA expects a reachable privacy notice; the business runs consumer transactions (layaway, custom orders, gold buying). | Added accurate `/privacy` + `/cookie-policy`, and `/terms` + `/refund-policy` skeletons with owner placeholders; added a site footer linking them. | **PARTIALLY FIXED** (content drafted; owner facts + lawyer review pending) |
 | M3 | Stored images retained indefinitely; deleting an attendance record orphans its selfie | `src/lib/hr/attendance.ts`; `supabase/migrations/20260716300000_attachments_storage.sql` | No storage retention/erasure schedule; a deleted attendance row leaves the facial selfie in the bucket. DPA data-minimization/retention concern (selfies are facial images). | Flagged; recommend a retention schedule + cascade selfie deletion. Not auto-implemented (data-affecting; owner policy needed). | **OWNER INPUT REQUIRED** |
 | M4 | `/m/[token]` customer screenshot link may be unreachable (or its public intent unclear) | `src/app/m/[token]/page.tsx` vs `PUBLIC_ROUTES` in `src/lib/supabase/proxy.ts` | The page is documented as a public customer link but is **not** in `PUBLIC_ROUTES`, so an unauthenticated visitor is redirected to sign-in. Either a functional bug or the doc is stale. | Flagged for owner/dev to confirm intended behavior (do customers actually open these links unauthenticated?). Not changed blind. | **OWNER INPUT REQUIRED** |
@@ -102,7 +102,7 @@ self-hosted PNGs (`hero`, `logo`, `signinbg`) with **UNKNOWN** provenance → ow
 ownership/license (hero is MEDIUM; replace anything unlicensed). **Status: OWNER INPUT REQUIRED.**
 
 ## Marketing Claim Risks
-- H2 (DTI/BIR/AMLC) and M1 ("Best Price") above.
+- H2 (DTI/BIR/AMLC) above still needs owner verification. M1 "Best Price" was **softened to "Fair Gold Buying Prices"**.
 - "Trusted", "honest transactions", "Fine Jewelry. Fair Value." — acceptable puffery. **OK.**
 - **No** fake reviews, testimonials, star ratings, customer counts, countdown timers, "people
   viewing", or fake scarcity exist anywhere. **Nothing to remove.**

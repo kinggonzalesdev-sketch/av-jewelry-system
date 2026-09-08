@@ -13,9 +13,9 @@ provable**, or it should be removed:
 - [ ] **"BIR Registered"** — true? Provide the BIR registration / TIN (do not publish more than needed).
 - [ ] **"AMLC Compliant"** — confirm whether you are a "covered person" (dealers in precious
       metals/stones can be) and are actually registered/compliant. If unsure, remove until confirmed.
-- [ ] **"Best Price Gold Buyers"** — can you substantiate "Best Price"? An unqualified superlative is
-      a deceptive-claim risk under RA 7394. **Decision:** keep (with proof), or let me soften it to
-      something defensible (e.g. "Fair Gold Buying Prices" / "Competitive Gold Buying").
+- [x] **"Best Price Gold Buyers"** — DONE: softened to **"Fair Gold Buying Prices"** (defensible,
+      matches your tagline). Only restore "Best Price" if you can actually substantiate the
+      superlative.
 
 ## B. Business identity (for the footer + legal pages + Internet Transactions Act)
 - [ ] Registered/trade business name (exact).
