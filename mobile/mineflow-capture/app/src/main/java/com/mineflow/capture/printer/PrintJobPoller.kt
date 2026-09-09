@@ -25,12 +25,31 @@ object PrintJobPoller {
     private const val POLL_MS = 2500L
 
     @Volatile private var running = false
-    private var worker: Thread? = null
+    @Volatile private var worker: Thread? = null
 
-    val isRunning: Boolean get() = running
+    /**
+     * Bumped by every start(). Each worker captures its own value and exits as soon as it no
+     * longer matches, so a superseded thread can never keep claiming print jobs alongside its
+     * replacement. stop() interrupts but does NOT join, so without this a thread whose interrupt
+     * was swallowed by an in-flight network call could survive a stop()/start() pair and two
+     * threads would claim jobs concurrently.
+     */
+    @Volatile private var epoch = 0
 
+    val isRunning: Boolean get() = running && worker?.isAlive == true
+
+    /**
+     * Idempotent. Safe to call from anywhere; only ever one live worker.
+     *
+     * ⚠️ The guard checks the THREAD, not just the flag (Owner 2026-09-09). It used to be
+     * `if (running) return`, with nothing that ever cleared `running` when the thread died — so a
+     * worker killed by an Error left `running == true` forever and every later start() became a
+     * permanent silent no-op. Printing could not be revived short of restarting the service.
+     */
+    @Synchronized
     fun start(context: Context) {
-        if (running) return
+        if (running && worker?.isAlive == true) return
+        val myEpoch = ++epoch
         running = true
         val app = context.applicationContext
         // Hold the printer socket warm for the whole session so a capture sticker never pays
@@ -39,7 +58,8 @@ object PrintJobPoller {
         worker = thread(name = "mineflow-print-poll", isDaemon = true) {
             val api = ApiClient(app)
             val store = SecureStore.get(app)
-            while (running) {
+            try {
+            while (running && myEpoch == epoch) {
                 var drainedOne = false
                 try {
                     // printerEnabled gate: when the toggle is OFF the phone claims/prints NOTHING
@@ -69,7 +89,16 @@ object PrintJobPoller {
                         }
                     }
                 } catch (e: Exception) {
+                    // Network / JSON / Bluetooth trouble: log and keep pumping. These are normal.
                     Log.w(TAG, "poll error: ${e.javaClass.simpleName}")
+                } catch (t: Throwable) {
+                    // An Error (OutOfMemory, LinkageError, a failed class-init in ApiClient or
+                    // StickerEncoder) is not something a retry loop can recover from. Leave
+                    // deliberately, so `finally` clears `running` and a later start() can build a
+                    // FRESH thread. Previously this escaped the loop with `running` still true,
+                    // wedging the poller permanently — no printing and no way back.
+                    Log.e(TAG, "poll fatal, stopping loop: ${t.javaClass.simpleName}")
+                    break
                 }
                 // Drain the queue fast on success; otherwise wait before the next poll. The
                 // dedicated keep-alive (BluetoothPrinterManager) now holds the socket warm, so
@@ -78,11 +107,22 @@ object PrintJobPoller {
                     try { Thread.sleep(POLL_MS) } catch (_: InterruptedException) { break }
                 }
             }
+            } finally {
+                // Whatever ended this worker — stop(), a superseding start(), an interrupt, or an
+                // Error — the flag must reflect reality, or start() can never revive printing.
+                // Only the CURRENT generation may clear it: a superseded thread finishing late
+                // must not switch off its replacement.
+                if (myEpoch == epoch) running = false
+            }
         }
     }
 
+    @Synchronized
     fun stop() {
         running = false
+        // Bump the generation too: if the interrupt is swallowed by an in-flight network call,
+        // the epoch check at the top of the loop still retires the thread on its next pass.
+        epoch++
         worker?.interrupt()
         worker = null
         BluetoothPrinterManager.stopKeepAlive()

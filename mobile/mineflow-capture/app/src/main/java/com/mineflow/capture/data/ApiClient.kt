@@ -25,9 +25,30 @@ class ApiClient(context: Context) {
     private val http = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
+        // Hard ceiling on a WHOLE call. connect/read timeouts bound individual phases, so a
+        // request that keeps trickling bytes (captive portal, dying signal) can outlive both and
+        // block the single print-poll thread indefinitely — no printing, no heartbeat, and from
+        // the server it looks exactly like a dead phone.
+        .callTimeout(45, TimeUnit.SECONDS)
         .build()
 
     private val json = "application/json; charset=utf-8".toMediaType()
+
+    /**
+     * What a refresh attempt established. The distinction is the whole point: only REJECTED may
+     * end a session. Collapsing REJECTED and UNAVAILABLE into one "false" is the bug that signed
+     * the Capture phone out mid-shift on 2026-09-09 and stopped all printing for 58 minutes.
+     */
+    enum class RefreshOutcome {
+        /** A usable access token is now stored. */
+        REFRESHED,
+
+        /** The SERVER refused the refresh token (or there is none). The session is genuinely over. */
+        REJECTED,
+
+        /** Could not get an answer — offline, timeout, 5xx, captive portal. Session KEPT, retry later. */
+        UNAVAILABLE,
+    }
 
     data class Result(val ok: Boolean, val code: Int, val body: JSONObject)
 
@@ -133,20 +154,31 @@ class ApiClient(context: Context) {
      * Mint a fresh access token from the stored refresh token (Supabase refresh grant).
      * A live runs longer than the ~1h access-token lifetime, so this keeps the operator
      * signed in without a manual re-login. Stores the new access + rotated refresh
-     * token. Returns true on success. Never throws; diagnostics go to Logcat, sanitized.
+     * token. Never throws; diagnostics go to Logcat, sanitized.
      *
      * Serialized on a PROCESS-WIDE lock (the store is a singleton) so two concurrent
      * 401s can't both spend the same refresh token — Supabase rotates refresh tokens
      * and rejects a reused one, which would log the operator out. `usedToken` is the
      * access token the failing request carried: if the stored token already differs,
      * another thread refreshed first, so we reuse that instead of spending again.
+     *
+     * ⚠️ RETURNS A TRI-STATE, NOT A BOOLEAN (Owner 2026-09-09). It used to return false for
+     * BOTH "Supabase rejected this refresh token" and "the network hiccuped", and the caller
+     * wiped the session either way. On 2026-09-09 that silently signed the Capture phone out
+     * mid-shift: the poller's `store.isLoggedIn` gate then failed forever, so it stopped
+     * polling, stopped heartbeating, and 16 real customer stickers were queued to a phone that
+     * would never ask for them again. Nothing recovers that but a manual sign-in.
+     *
+     * Losing a session must require the SERVER to say so. Anything else keeps the tokens and
+     * retries on the next poll.
      */
-    fun refreshAccessToken(usedToken: String? = null): Boolean = synchronized(REFRESH_LOCK) {
+    fun refreshAccessToken(usedToken: String? = null): RefreshOutcome = synchronized(REFRESH_LOCK) {
         if (usedToken != null && !store.accessToken.isNullOrBlank() && store.accessToken != usedToken) {
-            return@synchronized true
+            return@synchronized RefreshOutcome.REFRESHED
         }
+        // No refresh token at all: there is genuinely nothing to refresh, so this IS terminal.
         val refresh = store.refreshToken?.trim().orEmpty()
-        if (refresh.isEmpty()) return@synchronized false
+        if (refresh.isEmpty()) return@synchronized RefreshOutcome.REJECTED
         val path = "/auth/v1/token?grant_type=refresh_token"
         val payload = JSONObject().put("refresh_token", refresh)
         val req = Request.Builder()
@@ -160,19 +192,22 @@ class ApiClient(context: Context) {
             http.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) {
                     Log.i(TAG, "refresh POST /auth/v1/token -> HTTP ${resp.code}")
-                    return@synchronized false
+                    return@synchronized classifyRefreshStatus(resp.code)
                 }
                 val body = parseJson(resp.body?.string())
                 val access = body.optString("access_token").trim()
-                if (access.isEmpty()) return@synchronized false
+                // 200 with no token is a malformed/proxied response (captive portal, CDN error
+                // page). NOT a rejection — never destroy a good session over it.
+                if (access.isEmpty()) return@synchronized RefreshOutcome.UNAVAILABLE
                 store.accessToken = access
                 body.optString("refresh_token").trim().ifEmpty { null }
                     ?.let { store.refreshToken = it }
-                return@synchronized true
+                return@synchronized RefreshOutcome.REFRESHED
             }
         } catch (e: Exception) {
-            Log.w(TAG, "refresh network failure: ${e.javaClass.simpleName}")
-            return@synchronized false
+            // Timeout, DNS, no signal, TLS. The session is almost certainly still valid.
+            Log.w(TAG, "refresh network failure (session KEPT): ${e.javaClass.simpleName}")
+            return@synchronized RefreshOutcome.UNAVAILABLE
         }
     }
 
@@ -414,11 +449,19 @@ class ApiClient(context: Context) {
             // before treating it as logged out — so a long live never forces a re-login.
             if (resp.code == 401 && allowRefresh) {
                 resp.close()
-                return if (refreshAccessToken(used)) {
-                    execute(base, allowRefresh = false)
-                } else {
-                    store.clearSession()
-                    Result(false, 401, JSONObject().put("error", "Session expired. Please sign in again."))
+                return when (refreshAccessToken(used)) {
+                    RefreshOutcome.REFRESHED -> execute(base, allowRefresh = false)
+                    // The server refused the refresh token itself — the session really is dead.
+                    RefreshOutcome.REJECTED -> {
+                        Log.i(TAG, "refresh REJECTED by server — clearing session")
+                        store.clearSession()
+                        Result(false, 401, JSONObject().put("error", "Session expired. Please sign in again."))
+                    }
+                    // Could not reach the auth server. KEEP the session and fail this ONE call;
+                    // the poller retries in 2.5s. Wiping here is what silently killed printing
+                    // for 58 minutes on 2026-09-09.
+                    RefreshOutcome.UNAVAILABLE ->
+                        Result(false, 0, JSONObject().put("error", "Network unavailable."))
                 }
             }
             resp.use {
@@ -429,9 +472,18 @@ class ApiClient(context: Context) {
                     Log.i(TAG, "${req.method} $path -> HTTP ${it.code}" +
                         if (code != null) " code=$code" else "")
                 }
-                // A 401 that survived the refresh+retry means the account itself is
-                // rejected (deactivated / permission revoked) — clear the dead session.
-                if (it.code == 401) store.clearSession()
+                // A 401 that survived a SUCCESSFUL refresh used to clear the session here, on the
+                // theory that the account must be deactivated. But the backend collapses every
+                // auth failure into a bare 401 with no distinguishing code (authenticateMobile in
+                // src/lib/mobile/auth.ts returns null for missing/invalid/expired token AND for an
+                // inactive account alike), so this cannot tell "you were removed" from "Supabase
+                // auth is degraded right now" — and this project has a documented history of
+                // exactly that degradation. Guessing wrong signs the phone out for the rest of the
+                // shift and stops all printing, which is far worse than keeping a token the server
+                // will simply keep refusing. Holding a stale token grants nothing: every request is
+                // re-authorized server-side by RLS. So log it and keep the session; only Supabase
+                // refusing the REFRESH token (above) ends it.
+                if (it.code == 401) Log.i(TAG, "401 after refresh on $path — session KEPT")
                 Result(ok, it.code, body)
             }
         } catch (e: Exception) {
@@ -452,11 +504,31 @@ class ApiClient(context: Context) {
         return null
     }
 
-    private companion object {
+    companion object {
         private const val TAG = "MineFlowAuth"
 
         /** Process-wide lock so token refresh is serialized across ApiClient instances
          *  (the SecureStore is a singleton, so the refresh token is shared state). */
         private val REFRESH_LOCK = Any()
+
+        /**
+         * Does an HTTP status from the Supabase token endpoint mean "this refresh token is dead"?
+         *
+         * PURE and unit-tested — it decides whether the operator stays signed in, and getting it
+         * wrong in the permissive direction stops every sticker printing until someone notices.
+         *
+         * GoTrue answers a bad / expired / already-rotated refresh token with 4xx (400 invalid_grant
+         * is the usual one). Everything else — 5xx, 429, 408, a gateway's 502/503, or any status we
+         * do not recognise — says nothing about the token's validity, only that we could not get an
+         * answer. Those must NOT end the session.
+         *
+         * FAIL-SAFE DIRECTION: when in doubt, keep the session. A kept-but-dead session costs a few
+         * futile retries that resolve themselves at the next real 401; a wrongly-cleared session
+         * costs the whole shift's printing and needs a human to fix.
+         */
+        internal fun classifyRefreshStatus(code: Int): RefreshOutcome =
+            // 408 Request Timeout and 429 Too Many Requests are 4xx but are explicitly transient.
+            if (code in 400..499 && code != 408 && code != 429) RefreshOutcome.REJECTED
+            else RefreshOutcome.UNAVAILABLE
     }
 }
