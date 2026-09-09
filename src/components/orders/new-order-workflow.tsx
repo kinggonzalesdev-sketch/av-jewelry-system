@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { CaptureItem, WalkInItem } from '@/lib/orders/service';
 import {
@@ -37,8 +37,12 @@ import {
 import { readStickerFields } from '@/lib/print/sticker-fields';
 import {
   enqueueOrderStickersAction,
+  getPrintJobsStatusAction,
+  retryPrintJobAction,
+  type OrderPrintJobStatus,
   type OrderStickerPayload,
 } from '@/lib/print/order-print-queue';
+import { isDeadOutcome } from '@/lib/print/print-outcome';
 import { linkCaptureToOrderAction } from '@/lib/capture/pending-actions';
 import { CustomerMatchHint } from '@/components/customers/customer-match-hint';
 import { PhotoCapture } from '@/components/attachments/photo-capture';
@@ -730,10 +734,25 @@ export function NewOrderModal({
     /** Walk-In only: the DB-authoritative remaining balance. */
     balance?: string;
   } | null>(null);
+  // 'failed' here means the ENQUEUE failed (the job never reached the queue). Whether the sticker
+  // physically PRINTED is a separate question the jobs below answer — conflating the two is what
+  // let 19 real stickers die behind a cheerful "sent to the printer" message.
   const [printState, setPrintState] = useState<
     'idle' | 'sending' | 'queued' | 'failed'
   >(
     'idle',
+  );
+  /** Jobs from the last enqueue, polled until each one printed or died. */
+  const [printJobIds, setPrintJobIds] = useState<string[]>([]);
+  const [printJobs, setPrintJobs] = useState<OrderPrintJobStatus[]>([]);
+  const [retrying, setRetrying] = useState(false);
+
+  // Derived during render (never via setState in an effect — that trips react-hooks/set-state-in-effect).
+  // 'expired' and 'failed' both mean the same thing to the person at the counter: it did NOT print.
+  const deadPrintJobs = printJobs.filter((j) => isDeadOutcome(j.outcome));
+  const printedJobCount = printJobs.filter((j) => j.outcome === 'printed').length;
+  const printJobsInFlight = printJobs.some(
+    (j) => j.outcome === 'queued' || j.outcome === 'printing',
   );
   const submittingRef = useRef(false);
 
@@ -890,14 +909,63 @@ export function NewOrderModal({
   ) => {
     if (!orderId) return;
     setPrintState('sending');
+    setPrintJobs([]);
     const res = await enqueueOrderStickersAction(orderId, buildStickerPayloads(stickers), {
       reprint: kind === 'reprint',
     });
     setPrintState(res.ok ? 'queued' : 'failed');
+    // Watch the jobs we just created. Enqueuing is NOT printing (Owner 2026-09-09) — the phone can
+    // still fail with Bluetooth off, and the operator must learn that here, not from a customer.
+    setPrintJobIds(res.ok ? res.jobIds : []);
     void recordOrderPrintAction(
       orderId,
       res.ok ? (kind === 'reprint' ? 'reprinted' : 'printed') : 'failed',
     );
+  };
+
+  // Poll the real fate of the enqueued stickers. Stops as soon as every job reaches a settled
+  // outcome, and gives up after PRINT_WATCH_MS — past the DB's 60s eligibility window, by which
+  // point an unclaimed job is 'expired' and reported as such rather than left looking pending.
+  useEffect(() => {
+    if (printJobIds.length === 0) return;
+    let cancelled = false;
+    const startedAt = Date.now();
+    const PRINT_WATCH_MS = 95_000;
+
+    const tick = async () => {
+      const jobs = await getPrintJobsStatusAction(printJobIds);
+      if (cancelled) return;
+      setPrintJobs(jobs);
+      const settled =
+        jobs.length > 0 &&
+        jobs.every((j) => j.outcome !== 'queued' && j.outcome !== 'printing');
+      if (settled || Date.now() - startedAt > PRINT_WATCH_MS) {
+        window.clearInterval(timer);
+      }
+    };
+
+    const timer = window.setInterval(() => void tick(), 2000);
+    void tick();
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [printJobIds]);
+
+  // Explicit Retry — the ONLY way a sticker reprints. Nothing in the system revives a job on its
+  // own (Owner: "nothing more nothing less"), so re-arming is always a deliberate click.
+  const handleRetryJob = async (jobId: string) => {
+    if (retrying) return;
+    setRetrying(true);
+    const res = await retryPrintJobAction(jobId);
+    setRetrying(false);
+    if (res.ok) {
+      // Re-arm the watcher so the retry's outcome is reported too, not assumed.
+      setPrintJobIds((ids) => [...ids]);
+      setPrintJobs((jobs) =>
+        jobs.map((j) => (j.id === jobId ? { ...j, outcome: 'queued', reason: null } : j)),
+      );
+    }
   };
 
   // New Entry: SAVE FIRST, then print. A single guarded DB call saves the parent
@@ -1166,11 +1234,50 @@ export function NewOrderModal({
             <p className="text-xs text-muted-foreground" data-testid="print-sending">
               Sending the sticker{saved.itemCount === 1 ? '' : 's'} to the printer…
             </p>
+          ) : printState === 'queued' && deadPrintJobs.length > 0 ? (
+            /* IT DID NOT PRINT. The whole point of this block: never let a sticker die quietly.
+               The device's own reason is shown verbatim because it names the fix. */
+            <div
+              className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-3"
+              role="alert"
+              data-testid="print-did-not-print"
+            >
+              <p className="text-sm font-semibold text-destructive">
+                {deadPrintJobs.length === 1
+                  ? 'This sticker did NOT print.'
+                  : `${deadPrintJobs.length} stickers did NOT print.`}
+              </p>
+              <ul className="mt-1.5 space-y-1">
+                {deadPrintJobs.map((job) => (
+                  <li key={job.id} className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="text-muted-foreground">
+                      {job.customerName ?? 'Sticker'} —{' '}
+                      {job.outcome === 'expired'
+                        ? 'the printer never picked it up'
+                        : (job.reason ?? 'the printer reported a failure')}
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={retrying}
+                      onClick={() => void handleRetryJob(job.id)}
+                    >
+                      ⎙ Retry
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Check the printer is on and Bluetooth is enabled in A.V. Jewelry Capture, then
+                Retry. Nothing reprints on its own.
+              </p>
+            </div>
           ) : printState === 'queued' ? (
             <div className="space-y-1.5" data-testid="print-queued">
               <p className="text-xs text-muted-foreground">
-                Sticker{saved.itemCount === 1 ? '' : 's'} sent to the printer — MineFlow
-                Capture will print {saved.itemCount === 1 ? 'it' : 'them'}.
+                {printJobsInFlight || printJobs.length === 0
+                  ? `Sending the sticker${saved.itemCount === 1 ? '' : 's'} to A.V. Jewelry Capture…`
+                  : `Printed ${printedJobCount} sticker${printedJobCount === 1 ? '' : 's'}.`}
               </p>
               <div className="flex flex-wrap gap-3">
                 <button
