@@ -23,11 +23,19 @@
  *
  * USAGE (PowerShell) — set the two vars in YOUR shell, then run:
  *   $env:SUPABASE_URL = "https://eqfddwxsmzzojuasffjx.supabase.co"
- *   $env:SUPABASE_SERVICE_ROLE_KEY = "<paste your service_role key>"
+ *   $env:SUPABASE_SERVICE_ROLE_KEY = "<paste the SECRET key>"
  *   node scripts/purge-attendance-selfies.mjs             # dry run
  *   node scripts/purge-attendance-selfies.mjs --confirm   # actually delete
  *
- * Get the key from: Supabase Dashboard -> Project Settings -> API -> service_role.
+ * WHICH KEY (Supabase renamed these in 2025 — the dashboard no longer says "service_role"):
+ *   - "publishable" (sb_publishable_...) = the old ANON key. RLS applies. NOT this one — it
+ *     cannot delete these blobs, and the run would fail or silently no-op.
+ *   - "secret"      (sb_secret_...)      = the old SERVICE_ROLE key. Full admin, bypasses RLS.
+ *                                          ← USE THIS ONE.
+ * The env var keeps its old name so the script and any runbooks stay stable; only the dashboard
+ * label changed. Either key format works with @supabase/supabase-js v2.
+ *
+ * Dashboard path: Project Settings -> API Keys -> secret.
  * Close/clear the shell afterwards so the key does not linger in your session history.
  */
 
