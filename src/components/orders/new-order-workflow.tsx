@@ -754,6 +754,9 @@ export function NewOrderModal({
   const printJobsInFlight = printJobs.some(
     (j) => j.outcome === 'queued' || j.outcome === 'printing',
   );
+  // Nobody has picked the sticker up. Still printable — but the phone needs attention NOW, not in
+  // fifteen minutes when the window closes.
+  const printJobsAwaitingPickup = printJobs.some((j) => j.awaitingPickup);
   const submittingRef = useRef(false);
 
   const resolvedRows = () =>
@@ -930,7 +933,10 @@ export function NewOrderModal({
     if (printJobIds.length === 0) return;
     let cancelled = false;
     const startedAt = Date.now();
-    const PRINT_WATCH_MS = 95_000;
+    // Watch well past the pickup warning so a dozing phone is reported while the operator is still
+    // at the screen. Not the full 15-minute window — by then the warning has already been shown and
+    // polling on would be noise.
+    const PRINT_WATCH_MS = 180_000;
 
     const tick = async () => {
       const jobs = await getPrintJobsStatusAction(printJobIds);
@@ -1270,6 +1276,21 @@ export function NewOrderModal({
               <p className="mt-2 text-xs text-muted-foreground">
                 Check the printer is on and Bluetooth is enabled in A.V. Jewelry Capture, then
                 Retry. Nothing reprints on its own.
+              </p>
+            </div>
+          ) : printState === 'queued' && printJobsAwaitingPickup ? (
+            /* Accepted, but nothing has collected it. Almost always a sleeping/closed Capture app —
+               the cause of every sticker lost on 2026-09-09. Say so in seconds, not minutes. */
+            <div
+              className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-3"
+              role="status"
+              data-testid="print-awaiting-pickup"
+            >
+              <p className="text-sm font-semibold">The printer has not picked this up.</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Open <strong>A.V. Jewelry Capture</strong> on the phone and check the Printer
+                toggle is ON. The sticker still prints by itself once the app is awake — no need to
+                click again.
               </p>
             </div>
           ) : printState === 'queued' ? (

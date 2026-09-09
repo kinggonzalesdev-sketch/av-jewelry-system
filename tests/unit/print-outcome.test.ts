@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  isAwaitingPickup,
   isDeadOutcome,
   ORDER_CLAIM_STALE_MS,
+  ORDER_PICKUP_WARN_MS,
   ORDER_PRINT_WINDOW_MS,
   printOutcome,
 } from '@/lib/print/print-outcome';
@@ -114,11 +116,50 @@ describe('isDeadOutcome — what the operator must be told about', () => {
   });
 });
 
-describe('window constants stay in sync with migration 20260909140000', () => {
-  it('matches the 60s claim window the DB enforces', () => {
+describe('isAwaitingPickup — nobody is listening', () => {
+  it('does not warn while the phone still has a fair chance to claim', () => {
+    // A polling phone claims within ~2.5s; a few seconds is normal, not alarming.
+    const row = { status: 'queued', queued_at: iso(5_000), claimed_at: null };
+    expect(isAwaitingPickup(row, NOW)).toBe(false);
+  });
+
+  it('warns once a job sits unclaimed past the threshold', () => {
+    const row = { status: 'queued', queued_at: iso(ORDER_PICKUP_WARN_MS + 1_000), claimed_at: null };
+    expect(isAwaitingPickup(row, NOW)).toBe(true);
+  });
+
+  it('warns LONG before the job actually expires — the whole point', () => {
+    // The 2026-09-09 incident: 15 stickers sat unclaimed for minutes with no signal to staff.
+    // The warning must land in seconds, not when the 15-minute window finally closes.
+    expect(ORDER_PICKUP_WARN_MS).toBeLessThan(ORDER_PRINT_WINDOW_MS);
+    const row = { status: 'queued', queued_at: iso(60_000), claimed_at: null };
+    expect(isAwaitingPickup(row, NOW)).toBe(true);
+    expect(printOutcome(row, NOW)).toBe('queued'); // still printable, just unattended
+  });
+
+  it('never warns for a job that is not waiting to be claimed', () => {
+    for (const status of ['printed', 'failed', 'voided', 'claimed', 'printing']) {
+      expect(isAwaitingPickup({ status, queued_at: iso(600_000), claimed_at: iso(1_000) }, NOW)).toBe(
+        false,
+      );
+    }
+  });
+
+  it('does not warn on an unparseable timestamp', () => {
+    expect(isAwaitingPickup({ status: 'queued', queued_at: 'nope', claimed_at: null }, NOW)).toBe(
+      false,
+    );
+  });
+});
+
+describe('window constants stay in sync with the migrations', () => {
+  it('matches the 15-minute claim window the DB enforces (20260909150000)', () => {
     // If this changes, claim_next_print_job's interval must change with it or the UI will label
     // jobs dead that the DB will still happily print.
-    expect(ORDER_PRINT_WINDOW_MS).toBe(60_000);
+    // Widened from 60s after the Capture app slept 32 minutes in production and 15 clicked
+    // stickers expired unprinted. Deliberately LONGER than the capture queue's 60s — an order
+    // sticker is an explicit click someone is waiting on, not an unattended auto-print.
+    expect(ORDER_PRINT_WINDOW_MS).toBe(900_000);
   });
 
   it('matches the 2-minute staleness floor requeue_print_job uses as its double-print guard', () => {

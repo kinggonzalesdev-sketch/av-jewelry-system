@@ -8,14 +8,25 @@
  * that cost 19 real stickers. Get it wrong in the other and a live job is declared dead, inviting a
  * retry that double-prints.
  *
- * The DB is authoritative: claim_next_print_job (migration 20260909140000) refuses to serve a job
- * outside ORDER_PRINT_WINDOW_MS. These constants only LABEL a job the DB has already abandoned, so
- * they must stay in sync with that migration.
+ * The DB is authoritative: claim_next_print_job refuses to serve a job outside
+ * ORDER_PRINT_WINDOW_MS (migration 20260909140000, widened to 15 minutes by 20260909150000).
+ * These constants only LABEL a job the DB has already abandoned, so they must stay in sync with
+ * those migrations — if they drift, the UI declares stickers dead that the DB will still print.
  */
 
-/** Eligibility window. Past this, claim_next_print_job will never serve the job again.
- *  Deliberately equal to the capture queue's AUTO_PRINT_WINDOW: one rule, one number. */
-export const ORDER_PRINT_WINDOW_MS = 60_000;
+/**
+ * Eligibility window. Past this, claim_next_print_job will never serve the job again.
+ *
+ * 15 minutes, and deliberately LONGER than the capture queue's 60s (Owner 2026-09-09, after this
+ * shipped at 60s and production disproved it the same afternoon: the Capture app slept for 32
+ * minutes and 15 clicked stickers expired with attempts = 0). The two queues differ because the
+ * risks differ — a capture sticker auto-prints with no per-sticker click, so anything late is
+ * unwanted paper; an order sticker is an explicit click by someone standing at the counter waiting
+ * for that exact sticker, so arriving late is the thing they asked for, not a surprise.
+ *
+ * Must equal the interval in migration 20260909150000.
+ */
+export const ORDER_PRINT_WINDOW_MS = 900_000;
 
 /** How long a claim may be held before we treat the claiming device as dead. A phone holds a claim
  *  for seconds; minutes means it crashed or was force-stopped mid-print. Matches the staleness
@@ -69,4 +80,22 @@ export function printOutcome(row: PrintJobTimings, nowMs: number): OrderPrintOut
 /** Did this sticker fail to reach paper? Both outcomes need the same thing from the operator. */
 export function isDeadOutcome(outcome: OrderPrintOutcome): boolean {
   return outcome === 'failed' || outcome === 'expired';
+}
+
+/**
+ * How long a job may sit unclaimed before we warn that nothing is listening.
+ *
+ * A polling phone claims within ~2.5s, so 30s unclaimed means the Capture app is asleep, closed,
+ * or its Printer toggle is off. Without this the 15-minute window would hand back the very silence
+ * it was meant to cure: on 2026-09-09 staff clicked Print 15 times over 13 minutes while the app
+ * was dozing and got no signal at all. The operator should hear about it in seconds, not minutes.
+ */
+export const ORDER_PICKUP_WARN_MS = 30_000;
+
+/** Job accepted but nobody has picked it up — still printable, but someone should check the phone.
+ *  Distinct from dead: this one may yet succeed on its own. */
+export function isAwaitingPickup(row: PrintJobTimings, nowMs: number): boolean {
+  if (row.status !== 'queued') return false;
+  const waited = ageMs(row.queued_at, nowMs);
+  return waited !== null && waited > ORDER_PICKUP_WARN_MS;
 }

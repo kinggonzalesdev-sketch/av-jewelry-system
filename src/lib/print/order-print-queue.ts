@@ -2,6 +2,7 @@
 
 import { requireActiveStaff } from '@/lib/authz/guard';
 import {
+  isAwaitingPickup,
   isDeadOutcome,
   printOutcome,
   type OrderPrintOutcome,
@@ -124,6 +125,8 @@ export type OrderPrintJobStatus = {
   outcome: OrderPrintOutcome;
   /** The device's own words, e.g. "Turn on Bluetooth first." — shown verbatim; it is the fix. */
   reason: string | null;
+  /** Accepted but unclaimed for too long: the phone is asleep/closed. Still printable. */
+  awaitingPickup: boolean;
   orderNumber: string | null;
   customerName: string | null;
 };
@@ -160,6 +163,7 @@ export async function getPrintJobsStatusAction(
     id: row.id,
     outcome: printOutcome(row, nowMs),
     reason: row.failed_reason,
+    awaitingPickup: isAwaitingPickup(row, nowMs),
     orderNumber: null,
     customerName: row.customer_display_name,
   }));
@@ -227,6 +231,7 @@ export async function listUnresolvedPrintJobsAction(): Promise<OrderPrintJobStat
       id: row.id,
       outcome: printOutcome(row, nowMs),
       reason: row.failed_reason,
+      awaitingPickup: isAwaitingPickup(row, nowMs),
       orderNumber: row.official_orders?.[0]?.order_number ?? null,
       customerName: row.customer_display_name,
     }))
