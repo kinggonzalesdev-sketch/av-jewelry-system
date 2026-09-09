@@ -76,6 +76,12 @@ function captureHeartbeatArgs(request: Request) {
     p_printer_enabled: bool('x-mineflow-printer-enabled'),
     p_printer_connection_state: str('x-mineflow-printer-conn'),
     p_printer_name: str('x-mineflow-printer-name'),
+    // WHICH HANDSET (Owner 2026-09-09). OEM battery managers that kill background apps are
+    // entirely manufacturer-specific, and during the 2026-09-09 outage we could not even evaluate
+    // that theory because nothing recorded the hardware. Identifies a device MODEL, not a person.
+    p_device_manufacturer: str('x-mineflow-manufacturer'),
+    p_device_model: str('x-mineflow-model'),
+    p_android_release: str('x-mineflow-android'),
   };
 }
 

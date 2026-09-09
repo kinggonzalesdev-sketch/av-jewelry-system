@@ -19,6 +19,12 @@
     <!-- The persistent capture notification (runtime-requested on Android 13+). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Restart order-sticker printing after a reboot. Before this, a phone that restarted
+         overnight polled nothing until someone reopened the app, and staff kept clicking Print
+         into a void. The receiver only restores a state the operator already chose (signed in +
+         printer configured) — it never signs in or starts a capture. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- Native Bluetooth for the thermal/label printer (Classic SPP/RFCOMM). Legacy
          permissions are capped at API 30; Android 12+ uses the runtime SCAN/CONNECT
          permissions. neverForLocation on SCAN means no location permission is needed. -->
@@ -77,6 +83,23 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Floating on-demand screen-capture button for A.V. Jewelry order encoding over the Facebook app." />
         </service>
+
+        <!-- Reboot survival. QUICKBOOT_POWERON is included because some OEM ROMs send only that.
+             The service is started as SPECIAL_USE (never mediaProjection, which Android 14+ forbids
+             starting from BOOT_COMPLETED); if the start is refused anyway the receiver degrades to
+             a tappable notification rather than crashing. -->
+        <receiver
+            android:name=".boot.BootReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <!-- Both of these are PROTECTED broadcasts: only the system can send them. An earlier
+                 draft also listed QUICKBOOT_POWERON, which is NOT protected — any app could have
+                 sent it here and started our foreground service. -->
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
     </application>
 </manifest>

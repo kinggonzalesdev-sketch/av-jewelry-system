@@ -430,6 +430,12 @@ class ApiClient(context: Context) {
         m["X-MineFlow-Printer-Enabled"] = if (store.printerEnabled) "1" else "0"
         m["X-MineFlow-Printer-Conn"] = conn
         store.printerName?.let { val c = clean(it); if (c.isNotEmpty()) m["X-MineFlow-Printer-Name"] = c }
+        // WHICH HANDSET (Owner 2026-09-09). OEM app-killers are manufacturer-specific, and during
+        // the 2026-09-09 outage that theory could not even be evaluated because nothing recorded
+        // the hardware. Identifies a MODEL, not a person — same class as the version headers above.
+        m["X-MineFlow-Manufacturer"] = clean(android.os.Build.MANUFACTURER)
+        m["X-MineFlow-Model"] = clean(android.os.Build.MODEL)
+        m["X-MineFlow-Android"] = clean(android.os.Build.VERSION.RELEASE)
         m
     } catch (e: Exception) {
         emptyMap()

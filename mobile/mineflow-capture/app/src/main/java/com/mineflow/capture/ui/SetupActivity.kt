@@ -393,11 +393,15 @@ class SetupActivity : AppCompatActivity() {
             refreshCaptureStatus()
             toast("Floating button shown. Switch to Facebook and tap the round camera button.")
         }
-        val stop = utilityChip(R.drawable.ic_power, "Stop", red) {
+        // Stops CAPTURE only — printing keeps running (Owner 2026-09-09). This chip used to take
+        // order-sticker printing down with it, silently and permanently.
+        val stop = utilityChip(R.drawable.ic_power, "Stop Capture", red) {
             OverlayCaptureService.stop(this); refreshCaptureStatus()
+            toast("Capture stopped. Order stickers still print.")
         }
         val logout = utilityChip(R.drawable.ic_logout, "Log out", white) {
-            OverlayCaptureService.stop(this)
+            // Logging out SHOULD end everything: without a session the poller can do nothing.
+            OverlayCaptureService.stopAll(this)
             store.clearSession()
             startActivity(Intent(this, LoginActivity::class.java))
             finish()
@@ -461,11 +465,24 @@ class SetupActivity : AppCompatActivity() {
         val overlay = Settings.canDrawOverlays(this)
         val notify = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        val running = OverlayCaptureService.isRunning
+        // Two DIFFERENT things since the stop-split (Owner 2026-09-09): `isRunning` means the
+        // service — and therefore PRINTING — is up; `captureActive` means the capture side is on.
+        // Reporting the service as "Capture: Active" would tell the operator capture is running
+        // right after they stopped it, and would leave the Start action disabled with no way back.
+        val serviceUp = OverlayCaptureService.isRunning
+        val running = OverlayCaptureService.captureActive
 
         setCell(cOverlay, if (overlay) "Granted" else "Required", if (overlay) green else amber)
         setCell(cNotify, if (notify) "Granted" else "Required", if (notify) green else amber)
-        setCell(cCapture, if (running) "Active" else "Stopped", if (running) green else gray)
+        setCell(
+            cCapture,
+            when {
+                running -> "Active"
+                serviceUp -> "Off (printing on)"
+                else -> "Stopped"
+            },
+            if (running) green else gray,
+        )
 
         setActionState(overlayAction, overlay, "Granted", "Grant Now") {
             startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
@@ -477,7 +494,11 @@ class SetupActivity : AppCompatActivity() {
         }
         setActionState(captureAction, running, "Active", "Start Now") {
             if (!Settings.canDrawOverlays(this)) { toast("Grant overlay permission first (Overlay → Grant Now)."); return@setActionState }
-            OverlayCaptureService.start(this); refreshCaptureStatus()
+            // If the service is already up for printing, the overlay comes back via SHOW — a plain
+            // start() delivers a null-action Intent that the service treats as "already running,
+            // capture stopped" and would leave the button hidden.
+            if (serviceUp) OverlayCaptureService.showButton(this) else OverlayCaptureService.start(this)
+            refreshCaptureStatus()
         }
     }
 

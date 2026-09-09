@@ -108,16 +108,32 @@ class OverlayCaptureService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    /**
+     * True while the CAPTURE side is off and only printing is running.
+     *
+     * PERSISTED in prefs, because the service is now START_STICKY: an OEM kill or a low-memory
+     * reclaim re-creates it with a null Intent, and in-memory-only state would put the floating
+     * button and Capture Box back on the operator's screen uninvited — precisely what
+     * "nothing more, nothing less" forbids.
+     */
+    private var overlayStopped = false
+
+    /** Bumped whenever capture is stopped, so a tap's delayed runnable — or a consent grant that
+     *  was already on screen — can tell it belongs to a generation the operator has cancelled. */
+    @Volatile private var captureEpoch = 0
+
     override fun onCreate() {
         super.onCreate()
         isRunning = true
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         prefs = getSharedPreferences("overlay", Context.MODE_PRIVATE)
+        // Seed from the persisted choice so a sticky re-creation honours it. The Intent (read in
+        // onStartCommand, which always runs straight after) can still force printing-only for boot.
+        overlayStopped = prefs.getBoolean(PREF_OVERLAY_STOPPED, false)
         // Start as a SPECIAL_USE foreground service. The button needs no projection,
         // and on Android 14 a mediaProjection FGS may NOT start before consent — so
         // starting as mediaProjection here is exactly what crashed the app.
         startAsForeground(mediaProjection = false)
-        addButton()
         // Keep the print pump alive with the always-on service, so label jobs print to
         // the Bluetooth printer even while the operator is in the Facebook app (idempotent;
         // only acts once a printer is selected + signed in).
@@ -125,7 +141,20 @@ class OverlayCaptureService : Service() {
         // Warm the OCR model so the first real capture doesn't pay the one-time load. Passing the
         // context ALSO loads the visual pin-badge template that gates automatic Capture.
         com.mineflow.capture.data.ScreenshotOcr.warmUp(this)
+        // NOTE: the floating button and Capture Box are NOT restored here any more — onStartCommand
+        // owns that, because only it can see whether this start was printing-only.
+    }
 
+    /**
+     * Put the capture overlays back exactly as the operator left them: the floating button, a saved
+     * Capture Box, and the hidden-controls layout.
+     *
+     * Factored out so "Show Floating Button" reinstates everything "Stop Capture" removed. When
+     * only addButton() was restored, Box Mode came back with the aiming rectangle INVISIBLE while
+     * still cropping and still printing — a capture aimed at something the operator cannot see.
+     */
+    private fun restoreOverlays() {
+        addButton()
         // Box Capture (Owner 2026-09-02): restore a saved box + the hidden-controls state across a
         // service restart, so the operator's setup survives (PHASE 16). Orientation/scale changes are
         // handled at capture time — an off-screen box fails safely there rather than cropping wrong.
@@ -136,6 +165,27 @@ class OverlayCaptureService : Service() {
             showCaptureBox()
         }
         if (store.controlsHidden) setControlsHidden(true)
+    }
+
+    /** Record the capture-side on/off choice so it survives a sticky restart. */
+    private fun setOverlayStopped(stopped: Boolean) {
+        overlayStopped = stopped
+        captureActive = !stopped
+        runCatching { prefs.edit().putBoolean(PREF_OVERLAY_STOPPED, stopped).apply() }
+    }
+
+    /**
+     * Update the ongoing notification WITHOUT re-entering the foreground.
+     *
+     * startForeground() would also change the service TYPE, and dropping to SPECIAL_USE while a
+     * MediaProjection is held is the illegal Android 14 state that has already crashed this app.
+     * Use this for every text/action refresh; call startAsForeground ONLY for a genuine type change.
+     */
+    private fun refreshNotification() {
+        runCatching {
+            androidx.core.app.NotificationManagerCompat.from(this)
+                .notify(App.CAPTURE_NOTIFICATION_ID, buildNotification())
+        }
     }
 
     /**
@@ -165,9 +215,42 @@ class OverlayCaptureService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_STOP -> { stopSelf(); return START_NOT_STICKY }
+            // "Stop Capture" now stops the CAPTURE side only and leaves printing running
+            // (Owner 2026-09-09). It used to stopSelf(), which also killed PrintJobPoller via
+            // onDestroy — so one button labelled "Stop Capture Service" silently ended order-sticker
+            // printing too, permanently (START_NOT_STICKY means Android never brings it back). Two
+            // unrelated features behind one control, with no hint that printing was one of them.
+            ACTION_STOP -> { stopOverlayKeepPrinting(); return START_STICKY }
+            // The real full stop, reachable from the notification and Log out, and labelled so the
+            // consequence is visible before it is tapped.
+            ACTION_STOP_ALL -> { stopSelf(); return START_NOT_STICKY }
+            // A plain start (null action): either the operator opening the overlay, or a printing-only
+            // boot start, or a sticky re-creation with a null Intent. The MODE TRAVELS IN THE INTENT
+            // rather than a companion flag — a static was only ever cleared inside onCreate, so on the
+            // two paths where onCreate does not run (the foreground start being refused, or a ROM
+            // sending two boot broadcasts) it stayed armed and silently suppressed the floating button
+            // on the operator's NEXT deliberate start.
+            null -> {
+                val printingOnly = intent?.getBooleanExtra(EXTRA_PRINTING_ONLY, false) ?: false
+                if (printingOnly) {
+                    setOverlayStopped(true)
+                    startAsForeground(mediaProjection = false)
+                } else if (!overlayStopped) {
+                    restoreOverlays()
+                }
+            }
             ACTION_HIDE -> hideButton()
-            ACTION_SHOW -> addButton()
+            ACTION_SHOW -> {
+                setOverlayStopped(false)
+                restoreOverlays()
+                // Clear any capture latch stranded by a Stop or a cancelled consent dialog,
+                // otherwise the restored button is inert and gives no feedback at all.
+                busy = false
+                // NOT startAsForeground: re-entering the foreground as SPECIAL_USE while a
+                // MediaProjection is still held is the illegal Android 14 state that crashed this
+                // app before. A plain notify() updates the same notification with no type change.
+                refreshNotification()
+            }
             ACTION_CAPTURE -> onCaptureTap()
             ACTION_SHOW_BOX -> showCaptureBox()
             ACTION_EDIT_BOX -> enterEditMode()
@@ -177,7 +260,13 @@ class OverlayCaptureService : Service() {
             ACTION_DELIVER_PROJECTION -> {
                 val code = intent.getIntExtra(EXTRA_CODE, 0)
                 val data = intent.getParcelableExtra<Intent>(EXTRA_DATA)
-                if (data != null) {
+                // The consent dialog can be granted AFTER "Stop Capture" (it was already on screen).
+                // Honour the stop: do not silently resume mirroring and print a sticker the operator
+                // did not ask for.
+                if (overlayStopped) {
+                    Log.i(TAG, "projection consent arrived after Stop Capture — ignoring")
+                    busy = false
+                } else if (data != null) {
                     try {
                         // Android 14+: the service MUST already be a mediaProjection-type
                         // foreground service BEFORE we obtain/use the projection, or
@@ -250,7 +339,16 @@ class OverlayCaptureService : Service() {
             setOnTouchListener(DragTapListener())
         }
         button = view
-        windowManager.addView(view, lp)
+        // GUARDED (Owner 2026-09-09): every other addView in this file already used runCatching;
+        // this one did not. Without the overlay permission it throws BadTokenException, and since
+        // addButton() runs from onCreate that killed the whole service — which, once a boot
+        // receiver restarts the service, would be a crash on every single reboot.
+        val added = runCatching { windowManager.addView(view, lp) }.isSuccess
+        if (!added) {
+            Log.w(TAG, "overlay button not added (permission revoked?) — printing continues")
+            button = null
+            overlayStopped = true
+        }
     }
 
     /**
@@ -310,7 +408,14 @@ class OverlayCaptureService : Service() {
         // can never appear in THIS screenshot (belt-and-braces: it is a top-centre window, well away
         // from the ROI, and messages are only shown AFTER a frame is grabbed).
         hideNotif()
+        val tapEpoch = captureEpoch
         handler.postDelayed({
+            // Bail if capture was stopped between the tap and this runnable — otherwise the consent
+            // dialog appears AFTER "Stop Capture" and, if granted, captures and prints unbidden.
+            if (tapEpoch != captureEpoch || overlayStopped) {
+                busy = false
+                return@postDelayed
+            }
             // Reuse the live mirror when we already have consent — no popup. Only the
             // FIRST capture of a session asks for permission.
             if (reader != null && projection != null) requestFrame()
@@ -338,7 +443,8 @@ class OverlayCaptureService : Service() {
         menu.addView(item("Capture Now") { onCaptureTap() })
         menu.addView(item("Hide Button") { hideButton() })
         menu.addView(item("Open A.V. Jewelry Capture") { openApp() })
-        menu.addView(item("Stop Capture Service") { stopSelf() })
+        // Overlay-only stop: this menu is a capture control, so it must not silently end printing.
+        menu.addView(item("Stop Capture (printing stays on)") { stopOverlayKeepPrinting() })
 
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -1207,25 +1313,84 @@ class OverlayCaptureService : Service() {
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        return NotificationCompat.Builder(this, App.CAPTURE_CHANNEL_ID)
-            .setContentText("A.V. Jewelry Capture is ready. Tap the floating button to capture a mined item.")
-            .setStyle(
-                NotificationCompat.BigTextStyle().bigText(
-                    "A.V. Jewelry Capture is ready. Tap the floating button to capture a mined item.",
-                ),
-            )
+        // The wording carries the safety information: whichever state we are in, the operator can
+        // see whether PRINTING is still on, and every action says what it will actually stop. The
+        // old single "Stop Capture Service" action ended printing too and said nothing about it.
+        val text =
+            if (overlayStopped) {
+                "Printing is ON. Capture is off — order stickers still print. " +
+                    "Tap Show Floating Button to capture again."
+            } else {
+                "A.V. Jewelry Capture is ready. Tap the floating button to capture a mined item. " +
+                    "Order stickers print automatically."
+            }
+        // AT MOST THREE ACTIONS. The platform templates render only three, so a fourth is simply
+        // invisible — and the fourth here was "Stop Everything", the one control whose whole purpose
+        // is to be findable. "Open App" is dropped instead: setContentIntent already makes the body
+        // tap-to-open, so it was the redundant one.
+        val builder = NotificationCompat.Builder(this, App.CAPTURE_CHANNEL_ID)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .setOngoing(true)
             .setContentIntent(open)
-            .addAction(0, "Open App", open)
-            .addAction(0, "Hide Floating Button", svc(2, ACTION_HIDE))
-            .addAction(0, "Stop Capture Service", svc(1, ACTION_STOP))
-            .build()
+        if (overlayStopped) {
+            builder.addAction(0, "Show Floating Button", svc(3, ACTION_SHOW))
+        } else {
+            builder.addAction(0, "Hide Floating Button", svc(2, ACTION_HIDE))
+            builder.addAction(0, "Stop Capture", svc(1, ACTION_STOP))
+        }
+        // Named for its consequence, not its mechanism. This is the only control that ends printing.
+        builder.addAction(0, "Stop Everything (printing too)", svc(4, ACTION_STOP_ALL))
+        return builder.build()
+    }
+
+    /**
+     * Tear the CAPTURE side down — floating button, box, quick menu, screen projection — while the
+     * service and PrintJobPoller keep running, so order stickers still print.
+     *
+     * The service must stay alive for that to be durable: the foreground service is the only thing
+     * standing between the poll thread and Android reclaiming the process (with Facebook in the
+     * foreground all day, that reclaim is the normal case, not an edge case).
+     *
+     * ORDER MATTERS. The projection is stopped BEFORE re-entering the foreground as SPECIAL_USE:
+     * dropping the FGS type to specialUse while a MediaProjection is still held is the illegal
+     * Android 14 state that has already crashed this app once.
+     */
+    private fun stopOverlayKeepPrinting() {
+        setOverlayStopped(true)
+        // CANCEL ANY CAPTURE IN FLIGHT. onCaptureTap posts a delayed runnable that can launch the
+        // screen-record consent dialog; without this, that dialog could appear AFTER the operator
+        // stopped capture and, if granted, silently resume mirroring, print a sticker and create a
+        // capture row while the notification reads "Capture is off" — the system acting unbidden.
+        // The epoch bump also makes a consent grant already on screen land on a stale generation.
+        captureEpoch++
+        handler.removeCallbacksAndMessages(null)
+        // Release the capture latch, or the button is permanently dead once it is shown again.
+        // Before this change ACTION_STOP destroyed the service, so the stuck flag died with it;
+        // making stop non-destructive removed the operator's only way to clear it.
+        busy = false
+        boxEditing = false
+        hideQuickMenu()
+        button?.let { runCatching { windowManager.removeView(it) } }
+        button = null
+        handler.removeCallbacks(notifDismiss)
+        notifView?.let { runCatching { windowManager.removeView(it) } }
+        notifView = null
+        cancelAutoHide()
+        hideCaptureBox()
+        removeRestoreHandle()
+        teardownCapture()
+        projection?.stop(); projection = null
+        // Back to SPECIAL_USE now that no projection is held, and refresh the notification so the
+        // operator can see printing is still on.
+        startAsForeground(mediaProjection = false)
     }
 
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
+        captureActive = false
         com.mineflow.capture.printer.PrintJobPoller.stop()
         hideQuickMenu()
         button?.let { runCatching { windowManager.removeView(it) } }
@@ -1243,13 +1408,27 @@ class OverlayCaptureService : Service() {
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
     companion object {
-        /** True while the capture service is alive — read by the Setup screen. */
+        /** True while the capture service is alive — read by the Setup screen. NOTE: since the
+         *  stop-split this means "the service (and printing) is up", NOT "capture is on". */
         @Volatile var isRunning: Boolean = false
             private set
+
+        /** True while the CAPTURE side is on. Distinct from [isRunning]: after "Stop Capture" the
+         *  service keeps running for printing, so the Setup screen must not keep reporting capture
+         *  as Active (and must keep offering Start). */
+        @Volatile var captureActive: Boolean = false
+            private set
+
+        /** Intent extra: start for printing only, no overlays. */
+        private const val EXTRA_PRINTING_ONLY = "printing_only"
+
+        /** Persisted capture-side choice, so a sticky restart cannot re-add a dismissed overlay. */
+        private const val PREF_OVERLAY_STOPPED = "overlay_stopped"
 
         private const val TAG = "MineFlowCapture"
 
         private const val ACTION_STOP = "com.mineflow.capture.STOP"
+        private const val ACTION_STOP_ALL = "com.mineflow.capture.STOP_ALL"
         private const val ACTION_HIDE = "com.mineflow.capture.HIDE"
         private const val ACTION_SHOW = "com.mineflow.capture.SHOW"
         private const val ACTION_CAPTURE = "com.mineflow.capture.CAPTURE"
@@ -1292,9 +1471,41 @@ class OverlayCaptureService : Service() {
             else context.startService(intent)
         }
 
+        /**
+         * Start the service for PRINTING ONLY — no floating button, no projection. Used by the
+         * boot receiver so a reboot restores order-sticker printing without putting an overlay on
+         * the operator's screen uninvited.
+         *
+         * The mode rides in the INTENT, not a companion flag. A static was only ever cleared inside
+         * onCreate, so on the two paths where onCreate never runs — the foreground start being
+         * refused (exactly what BootReceiver's fallback is for), or a ROM sending two boot
+         * broadcasts to an already-running service — it stayed armed and silently suppressed the
+         * floating button on the operator's next deliberate start.
+         *
+         * Throws if Android refuses a background foreground-service start; the caller decides how
+         * to degrade (BootReceiver posts a tap-to-resume notification rather than crashing).
+         */
+        fun startForPrinting(context: Context) {
+            val intent = Intent(context, OverlayCaptureService::class.java)
+                .putExtra(EXTRA_PRINTING_ONLY, true)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                context.startForegroundService(intent)
+            else context.startService(intent)
+        }
+
+        /** Stop the CAPTURE side only — the floating button and screen projection go away, the
+         *  service and the print poller keep running so order stickers still print. */
         fun stop(context: Context) {
             context.startService(
                 Intent(context, OverlayCaptureService::class.java).setAction(ACTION_STOP),
+            )
+        }
+
+        /** Stop EVERYTHING, printing included. Only for Log out and the explicitly-labelled
+         *  notification action — never for "I'm done capturing for now". */
+        fun stopAll(context: Context) {
+            context.startService(
+                Intent(context, OverlayCaptureService::class.java).setAction(ACTION_STOP_ALL),
             )
         }
 

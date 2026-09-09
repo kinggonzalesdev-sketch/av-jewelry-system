@@ -64,7 +64,22 @@ object PrintJobPoller {
                 try {
                     // printerEnabled gate: when the toggle is OFF the phone claims/prints NOTHING
                     // (the PC fallback handles stickers); no warm socket is held while OFF.
-                    if (store.isLoggedIn && !store.printerAddress.isNullOrBlank() && store.printerEnabled) {
+                    //
+                    // ⚠️ BLUETOOTH GATE (Owner 2026-09-09). Claiming while the adapter is OFF is
+                    // actively destructive, not merely futile: connectLocked returns
+                    // "Turn on Bluetooth first." immediately, printPrintJob reports printed=false,
+                    // and mark_print_job_failed makes that TERMINAL with no requeue. That single
+                    // path already destroyed 19 of 92 real customer stickers (see migration
+                    // 20260909140000). It matters most right after a reboot — the boot receiver
+                    // starts this poller within seconds, which is exactly when the adapter is still
+                    // coming up — so without this gate reboot survival would have automated the
+                    // very failure it was meant to prevent. While Bluetooth is down we claim
+                    // nothing: jobs stay 'queued' and print when it returns.
+                    if (store.isLoggedIn &&
+                        !store.printerAddress.isNullOrBlank() &&
+                        store.printerEnabled &&
+                        BluetoothPrinterManager.isBluetoothOn(app)
+                    ) {
                         // 1) Live capture stickers (shared PC+phone queue — exactly once).
                         val cap = api.claimCaptureSticker()
                         // Reconcile the sticker rate WITHOUT ever fighting an explicit local Save
