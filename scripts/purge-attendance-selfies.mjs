@@ -11,9 +11,13 @@
  * SAFETY DESIGN — read before running:
  *   - DRY RUN BY DEFAULT. It prints what it would delete and exits. Pass --confirm to delete.
  *   - HARD PREFIX GUARD. It refuses to delete any object whose path does not start with
- *     `attendance_record/`. The `captures/` folder (857 live files, still referenced by
+ *     `attendance_record/`. The `captures/` folder (975 live files, still referenced by
  *     capture_records.screenshot_path and capture_review_queue.screenshot_path) can never be
  *     touched by this script, even if the listing returns it.
+ *   - ORPHAN GUARD (added 2026-09-09). It re-reads `attachments.storage_path` at run time and
+ *     skips any blob a live row still points at. Staff have clocked in since the wipe, so the
+ *     prefix now holds a MIX of orphans and live selfies — deleting the whole prefix, which is
+ *     what this script originally did, would break current attendance records.
  *   - The service-role key is read from the environment. It is NEVER written to disk, logged,
  *     or printed by this script.
  *
@@ -70,10 +74,29 @@ async function collectPaths() {
   return paths;
 }
 
+/**
+ * Every attendance_record/ path still referenced by a LIVE attachments row.
+ *
+ * ADDED 2026-09-09 — WITHOUT THIS THE SCRIPT DESTROYS LIVE DATA. When this tool was written on
+ * 2026-09-07 the wipe had just run, so all 139 blobs were orphans and "delete the whole prefix"
+ * was correct. Staff have clocked in since: 3 of those files now belong to current attendance
+ * records, and deleting them would leave live records pointing at missing photos. The set of
+ * orphans is a moving target, so it must be recomputed at run time, never assumed.
+ */
+async function referencedPaths() {
+  const { data, error } = await supabase
+    .from('attachments')
+    .select('storage_path')
+    .like('storage_path', `${PREFIX}/%`);
+
+  if (error) throw new Error(`reading referenced attachments: ${error.message}`);
+  return new Set((data ?? []).map((r) => r.storage_path).filter(Boolean));
+}
+
 const all = await collectPaths();
 
 // HARD GUARD: nothing outside the attendance_record/ prefix may ever be deleted.
-const safe = all.filter((p) => p.startsWith(`${PREFIX}/`));
+const inPrefix = all.filter((p) => p.startsWith(`${PREFIX}/`));
 const rejected = all.filter((p) => !p.startsWith(`${PREFIX}/`));
 
 if (rejected.length) {
@@ -82,9 +105,21 @@ if (rejected.length) {
   process.exit(1);
 }
 
+// SECOND GUARD: only ORPHANS. A blob a live attachments row still points at is never deleted.
+const keep = await referencedPaths();
+const safe = inPrefix.filter((p) => !keep.has(p));
+const spared = inPrefix.length - safe.length;
+
 console.log(`Bucket:  ${BUCKET}`);
 console.log(`Prefix:  ${PREFIX}/`);
-console.log(`Found:   ${safe.length} file(s)`);
+console.log(`Found:   ${inPrefix.length} file(s) under the prefix`);
+console.log(`In use:  ${spared} still referenced by an attachments row — WILL NOT be touched`);
+console.log(`Orphans: ${safe.length} to delete`);
+
+if (safe.length === 0) {
+  console.log('\nNothing to purge — every blob under the prefix is still referenced.');
+  process.exit(0);
+}
 
 if (!CONFIRM) {
   console.log('\n--- DRY RUN (nothing deleted) ---');
