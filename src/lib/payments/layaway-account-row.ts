@@ -64,7 +64,10 @@ export function fromDerived(l: LayawayRow): LayawayAccountRow {
     grandTotal: l.totalAmountPayable,
     payment: l.verifiedNetPayments,
     balance: l.outstandingBalance,
-    accountNo: l.orderNumber,
+    // An order-derived layaway has no account number of its own; this used to fall back to the
+    // ORDER NUMBER, which then surfaced in the row tooltip and the CSV "Order / Account No."
+    // column — the retired identifier leaking back (Owner 2026-09-13). Show nothing instead.
+    accountNo: '—',
     uniqueCode: l.uniqueCode,
     sourceKind: null,
     facebookUrl: l.facebookUrl,

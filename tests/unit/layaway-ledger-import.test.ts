@@ -107,7 +107,7 @@ describe('layaway CSV analyzer', () => {
 describe('layaway workspace merge', () => {
   const ws = read('src', 'components', 'payments', 'payments-workspace.tsx');
 
-  it('renders the fixed 11-column Layaway Accounts order incl. Order/Account No.', () => {
+  it('renders the fixed 11-column Layaway Accounts order incl. Account No.', () => {
     for (const h of [
       'Customer Name',
       'Status',
@@ -118,10 +118,14 @@ describe('layaway workspace merge', () => {
       'Grand Total',
       'Payment',
       'Balance',
-      'Order / Account No.',
+      'Account No.',
     ]) {
       expect(ws).toContain(h);
     }
+    // Owner 2026-09-13: the "Order /" half is gone — the retired Order Number must not surface
+    // through this column (or its tooltip) for order-derived rows.
+    expect(ws).not.toContain('Order / Account No.');
+    expect(ws).not.toContain('Order/Account No.');
   });
 
   it('keeps the empty state and merges derived + imported ledger rows', () => {

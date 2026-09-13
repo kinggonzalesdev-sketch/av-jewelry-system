@@ -246,7 +246,7 @@ describe('Record Payment records evidence and never verifies (§16, approved §3
   it('renders the order facts a payment decision needs', () => {
     for (const field of [
       // Owner 2026-09-01: orderNumber is no longer shown on the payment form.
-      'invoiceNumber',
+      // Owner 2026-09-13: neither is invoiceNumber — the customer identifies the order.
       'customerDisplayName',
       'totalAmountPayable',
       'verifiedNetPayments',
@@ -254,6 +254,8 @@ describe('Record Payment records evidence and never verifies (§16, approved §3
     ]) {
       expect(form).toMatch(new RegExp(`\\b${field}\\b`));
     }
+    expect(form).not.toMatch(/\binvoiceNumber\b/);
+    expect(form).not.toMatch(/\borderNumber\b/);
   });
 
   it('computes no money in the browser — every figure arrives decided', () => {

@@ -176,9 +176,6 @@ export function RecordPaymentForm({
           className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-md border p-3 text-sm"
           data-testid="order-summary"
         >
-          <dt className="text-muted-foreground">Invoice</dt>
-          <dd className="font-medium">{selected.invoiceNumber}</dd>
-
           <dt className="text-muted-foreground">Customer</dt>
           <dd className="font-medium">{selected.customerDisplayName}</dd>
 

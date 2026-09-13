@@ -268,9 +268,10 @@ function OrderRow({
           {canManageOrders ? (
             <OrderDelete
               orderId={order.officialOrderId}
-              orderLabel={
-                order.invoiceNumber !== '—' ? order.invoiceNumber : order.orderNumber
-              }
+              // The label lands in the approval request's Reason text ("Delete order …"), which
+              // the Owner reads on /approvals. Both the invoice and order numbers are retired
+              // from everything user-facing, so identify the order the way staff do — by customer.
+              orderLabel={`for ${order.customerDisplayName}`}
               customerName={order.customerDisplayName}
               orderStatus={humanize(order.status)}
               isOwner={isOwner}
@@ -690,15 +691,16 @@ export function OrdersView({
           })}
         </div>
 
-        {/* Search + filters — operate on the loaded set (client-side), honestly
-          labelled. Search spans invoice no. and customer name. Part of
-          the sticky top section (Owner request) so it pins with the cards. */}
+        {/* Search + filters — server-side, honestly labelled. Search spans the waybill and
+          customer name ONLY (Owner 2026-09-13: the order and invoice numbers are retired and
+          are no longer matched, because a result must be explainable by a field the user can
+          see). Part of the sticky top section (Owner request) so it pins with the cards. */}
         <div className="rounded-xl border border-border bg-card p-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search waybill, invoice no., or customer"
+              placeholder="Search customer or waybill"
               aria-label="Search orders"
               data-testid="orders-search"
               className="h-9 flex-1 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"

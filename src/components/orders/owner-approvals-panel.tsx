@@ -100,18 +100,11 @@ export function OwnerApprovalsPanel({
                   <p className="truncate text-sm font-semibold capitalize">
                     {a.actionKind.replace(/_/g, ' ')}
                   </p>
-                  {/* WHAT is being approved: the order + customer, so the Owner decides
-                      with full context instead of a bare action name. */}
-                  {a.invoiceNumber || a.customerName ? (
+                  {/* WHAT is being approved: the customer, so the Owner decides with context
+                      instead of a bare action name. (Invoice number retired, Owner 2026-09-13.) */}
+                  {a.customerName ? (
                     <p className="break-words text-xs font-medium text-foreground">
-                      {[
-                        a.invoiceNumber && a.invoiceNumber !== '—'
-                          ? a.invoiceNumber
-                          : null,
-                        a.customerName || null,
-                      ]
-                        .filter(Boolean)
-                        .join(' — ')}
+                      {a.customerName}
                     </p>
                   ) : null}
                   {a.reason ? (

@@ -256,7 +256,13 @@ export async function renderOrderMessage(
 
   const values: Record<string, string> = {
     '{customer_name}': d.customer.displayName,
-    '{invoice_number}': d.invoiceNumber,
+    // Retired identifiers render as EMPTY (Owner 2026-09-13). The live 'invoice' body no longer
+    // uses either token, but the stored default_body still carries "Invoice No.: {invoice_number}"
+    // and "Order No.: {order_number}" — so a Reset to Default, or an old saved body, must not be
+    // able to put a number in front of a customer. Both tokens are also in INVOICE_OPTIONAL_TOKENS
+    // so their whole line drops out rather than leaving a blank "Invoice No.:" label.
+    '{invoice_number}': '',
+    '{order_number}': '',
     '{total_amount}': a.unavailable ? '' : formatPeso(a.totalAmountPayable),
     '{balance}': a.unavailable ? '' : formatPeso(a.outstandingBalance),
     '{due_date}': d.layaway?.finalDueDate ?? '',

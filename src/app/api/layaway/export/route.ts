@@ -35,7 +35,9 @@ const HEADERS = [
   'Payment',
   'Balance',
   'Unique Code',
-  'Order / Account No.',
+  // Was "Order / Account No." — the order half is retired (Owner 2026-09-13); only the
+  // imported ledger Account No. remains, and order-derived rows export blank.
+  'Account No.',
 ];
 
 /** RFC-4180 cell: quote when the value contains a comma, quote, CR, or LF. */

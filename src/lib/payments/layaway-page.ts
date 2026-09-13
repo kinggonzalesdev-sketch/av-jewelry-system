@@ -37,6 +37,14 @@ export type LayawaySectionCounts = {
   overdue: number;
   forfeited: number;
   completed: number;
+  /**
+   * Near Overdue under the CURRENT search + financer + date filters (Owner 2026-09-13). The
+   * "Near Overdue (30 Days)" card used to show only the global layaway_near_overdue_count(),
+   * so selecting a financer narrowed every list but left the card at the global figure — a
+   * financer's near-due accounts looked like they had vanished. Same canonical rule
+   * (date purchased + 3 calendar months, 1–30 days ahead), computed in the same RPC pass.
+   */
+  near_overdue: number;
 };
 
 /** The financial summary for the CURRENT section + search + financer filter. Peso STRINGS. */
@@ -80,6 +88,7 @@ const EMPTY_COUNTS: LayawaySectionCounts = {
   overdue: 0,
   forfeited: 0,
   completed: 0,
+  near_overdue: 0,
 };
 const EMPTY_SUMMARY: LayawaySummary = {
   qty: 0,

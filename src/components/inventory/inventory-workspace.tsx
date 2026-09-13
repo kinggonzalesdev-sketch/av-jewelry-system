@@ -703,7 +703,7 @@ export function InventoryWorkspace({
                   setInvSearch(v);
                   setInvPage(1);
                 }}
-                placeholder="Search code or item…"
+                placeholder="Search code, item, type, status…"
                 aria-label="Search inventory"
                 data-testid="inventory-search"
                 className="flex-1 min-w-[10rem]"
@@ -859,7 +859,7 @@ export function InventoryWorkspace({
                 setCompSearch(v);
                 setCompPage(1);
               }}
-              placeholder="Search code, item, customer, order…"
+              placeholder="Search code, type, customer, courier, stage…"
               aria-label="Search completed items"
               data-testid="completed-search"
               className="flex-1 min-w-[12rem]"
@@ -1047,7 +1047,6 @@ export function InventoryWorkspace({
                   ['Grams', rowGramsDisplay(compView.itemCode)],
                   ['Size', parseInventoryCode(compView.itemCode).size ?? '—'],
                   ['Customer', compView.customerName ?? '—'],
-                  ['Invoice Number', compView.invoiceNumber ?? '—'],
                   ['Current Stage', compView.currentStage],
                   ['Completion Type', compView.completionType],
                   ['Courier', compView.courier ?? '—'],
@@ -1188,7 +1187,7 @@ function CompletedItemReturn({ row }: { row: CompletedInventoryRow }) {
             deleted — it goes back to available stock.
           </p>
           <p className="text-xs text-muted-foreground">
-            {row.orderNumber ? (
+            {row.hasOrder ? (
               <>
                 If this order has no other items, the whole order is removed too;
                 otherwise only this item’s line is removed.{' '}

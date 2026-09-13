@@ -8,6 +8,11 @@ import {
   loadLayawayLedgerDetailAction,
 } from '@/lib/payments/actions';
 import type { LayawayLedgerDetail } from '@/lib/payments/layaway-ledger';
+import {
+  countdownBadgeLabel,
+  layawayRowCountdown,
+  overdueColumnLabel,
+} from '@/lib/payments/layaway-overdue';
 import { LayawayEditItems } from '@/components/payments/layaway-edit-items';
 import { usePrivacyMoney } from '@/components/shell/privacy';
 import { Button } from '@/components/ui/button';
@@ -212,14 +217,23 @@ export function LayawayLedgerViewModal({
   };
 
   const isZero = detail?.interestType === 'zero';
-  // Overdue = active account past its Next Due Date that still owes a balance.
-  const overdue = ((): string => {
-    if (!detail || detail.status !== 'active' || !detail.nextDueDate) return '—';
-    const owes = Number((detail.balance ?? '0').replace(/[^\d.-]/g, '')) > 0;
-    return detail.nextDueDate < new Date().toISOString().slice(0, 10) && owes
-      ? 'Yes'
-      : 'No';
-  })();
+  // DUE STATUS — the SAME canonical rule as the table badges and the Near Overdue card
+  // (Owner 2026-09-13): due date = date purchased + 3 CALENDAR MONTHS, business day in
+  // Asia/Manila, states normal / near (≤30 days) / due today / overdue. This modal used to run
+  // its own rule — a Yes/No off the stored `next_due_date` (which disagrees with the canonical
+  // date on 263 live active accounts), against a UTC date, with no "near" or "due today" at all.
+  // So an account the table flagged "5 days left" opened to a modal saying "Overdue: No" and
+  // nothing else. Workflow status stays its own row; this is derived from dates and balance only,
+  // and it never reads Remarks / Financer — a financer account gets exactly the same treatment.
+  const todayManila = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(
+    new Date(),
+  );
+  const countdown = detail
+    ? layawayRowCountdown(
+        { status: detail.status, balance: detail.balance, datePurchased: detail.datePurchased },
+        todayManila,
+      )
+    : null;
 
   return (
     <>
@@ -347,14 +361,32 @@ export function LayawayLedgerViewModal({
                 <SummaryItem icon="▦" label="Date Purchased">
                   {fmtDate(detail.datePurchased)}
                 </SummaryItem>
-                <SummaryItem icon="◔" label="Next Due Date">
-                  {fmtDate(detail.nextDueDate)}
+                <SummaryItem icon="◔" label="Due Date">
+                  {countdown?.overdueDate ? fmtDate(countdown.overdueDate) : '—'}
                 </SummaryItem>
-                <SummaryItem icon="!" label="Overdue">
-                  {overdue === 'Yes' ? (
-                    <span className="text-destructive">Yes</span>
+                <SummaryItem icon="!" label="Due Status">
+                  {countdown ? (
+                    <span
+                      className={
+                        countdown.state === 'overdue'
+                          ? 'font-medium text-destructive'
+                          : countdown.state === 'due_today' || countdown.state === 'near'
+                            ? 'font-medium text-amber-700 dark:text-amber-400'
+                            : 'text-muted-foreground'
+                      }
+                      data-testid="ledger-due-status"
+                    >
+                      {countdown.state === 'normal' ? 'On Track' : overdueColumnLabel(countdown)}
+                      {countdown.state === 'normal'
+                        ? ` · ${countdown.daysLeft} days left`
+                        : countdown.state === 'due_today'
+                          ? ''
+                          : ` · ${countdownBadgeLabel(countdown)}`}
+                    </span>
                   ) : (
-                    <span className="text-muted-foreground">{overdue}</span>
+                    // Terminal (completed / cancelled / forfeited), fully paid, or no purchase date:
+                    // no obligation, so no due warning.
+                    <span className="text-muted-foreground">—</span>
                   )}
                 </SummaryItem>
                 <SummaryItem icon="Σ" label="Grand Total">

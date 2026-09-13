@@ -91,8 +91,12 @@ export type CompletedInventoryRow = {
   itemName: string | null;
   availabilityStatus: string;
   customerName: string | null;
-  orderNumber: string | null;
-  invoiceNumber: string | null;
+  /**
+   * Whether the item is linked to an order — PRESENCE ONLY (Owner 2026-09-13). The Order Number and
+   * Invoice Number are retired from the user-facing system and are no longer read at all; the one
+   * place that needs to know an order exists (the "whole order is removed too" hint) reads this.
+   */
+  hasOrder: boolean;
   /** Human label: Store Pickup / Rider Delivery / Delivered / Released. */
   completionType: string;
   courier: string | null;
@@ -342,8 +346,7 @@ export async function listCompletedInventoryPage(opts: {
       itemName: s(r.itemName),
       availabilityStatus: s(r.availabilityStatus) ?? '',
       customerName: s(r.customerName),
-      orderNumber: s(r.orderNumber),
-      invoiceNumber: s(r.invoiceNumber),
+      hasOrder: r.hasOrder === true,
       completionType: s(r.completionType) ?? 'Released',
       courier: s(r.courier),
       trackingNumber: s(r.trackingNumber),
@@ -417,7 +420,7 @@ export async function listCompletedInventory(): Promise<CompletedInventoryRow[]>
         `inventory_item_id,
        official_order_claims (
          official_orders (
-           order_number, invoice_number, status, fulfillment_destination, created_at,
+           status, fulfillment_destination, created_at,
            customers ( display_name ),
            fulfillment_records (
              status, method, courier, tracking_number, completed_at, collection_channel
@@ -429,8 +432,6 @@ export async function listCompletedInventory(): Promise<CompletedInventoryRow[]>
   )) as Array<Record<string, unknown>>;
 
   type OrderShape = {
-    order_number: string | null;
-    invoice_number: string | null;
     status: string | null;
     fulfillment_destination: string | null;
     customers: unknown;
@@ -467,8 +468,7 @@ export async function listCompletedInventory(): Promise<CompletedInventoryRow[]>
       itemName: i.item_name,
       availabilityStatus: i.availability_status,
       customerName: customer?.display_name ?? null,
-      orderNumber: order?.order_number ?? null,
-      invoiceNumber: order?.invoice_number ?? null,
+      hasOrder: order !== undefined,
       completionType: completionLabel(fulfillment),
       courier: fulfillment?.courier ?? null,
       trackingNumber: fulfillment?.tracking_number ?? null,

@@ -969,7 +969,8 @@ function WalkInsTable({
                       />
                       <OrderDelete
                         orderId={row.id}
-                        orderLabel={row.orderNumber}
+                        // Audit/approval label — never a retired order number (Owner 2026-09-13).
+                        orderLabel={`for ${row.name}`}
                         customerName={row.name}
                         onDone={onChanged}
                       />

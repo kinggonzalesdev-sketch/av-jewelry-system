@@ -23,8 +23,16 @@ describe('invoice token contract (Owner 2026-09-01)', () => {
   it('offers {price_per_gram}', () => {
     expect(SUPPORTED_TOKENS).toContain('{price_per_gram}');
   });
-  it('grams + price/g are the invoice optional (suppressible) tokens', () => {
-    expect(INVOICE_OPTIONAL_TOKENS).toEqual(['{price_per_gram}', '{grams}']);
+  it('grams + price/g are suppressible, and so are the two RETIRED number tokens', () => {
+    // {invoice_number} / {order_number} always render empty (Owner 2026-09-13), so they are
+    // optional too: their whole line drops out of an old or Reset-to-Default body instead of
+    // leaving a blank "Invoice No.:" label in a customer message.
+    expect(INVOICE_OPTIONAL_TOKENS).toEqual([
+      '{price_per_gram}',
+      '{grams}',
+      '{invoice_number}',
+      '{order_number}',
+    ]);
   });
 });
 

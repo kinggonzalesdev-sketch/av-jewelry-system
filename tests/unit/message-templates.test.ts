@@ -12,12 +12,13 @@ import {
 } from '@/lib/messaging/template-vars';
 
 describe('message template variables', () => {
-  it('supports exactly the eleven documented variables', () => {
+  it('supports exactly the ten documented variables', () => {
     // Owner 2026-09-01: {order_number} retired (order number no longer customer-facing);
-    // {price_per_gram} added for the grams-based invoice. Still eleven variables.
+    // {price_per_gram} added for the grams-based invoice.
+    // Owner 2026-09-13: {invoice_number} retired too — no internal reference number reaches
+    // a customer. Ten variables.
     expect(SUPPORTED_TOKENS).toEqual([
       '{customer_name}',
-      '{invoice_number}',
       '{total_amount}',
       '{balance}',
       '{due_date}',
@@ -29,6 +30,7 @@ describe('message template variables', () => {
       '{contact_number}',
     ]);
     expect(SUPPORTED_TOKENS).not.toContain('{order_number}');
+    expect(SUPPORTED_TOKENS).not.toContain('{invoice_number}');
   });
 
   it('covers invoice, the single reminder, and the AUTO TEXT template', () => {

@@ -85,9 +85,11 @@ export async function approveAndSendAction(
     order,
     messageBody: message.body,
     messageId: message.customerMessageId,
+    // No order/invoice numbers in user-facing text (Owner: both retired). The customer name
+    // is the identifier staff work with.
     success: result.deduplicated
-      ? `This draft was already sent as ${result.orderNumber}. No second Official Order was created.`
-      : `Official Order ${result.orderNumber} created (invoice ${result.invoiceNumber}). Copy the message and send it.`,
+      ? 'This draft was already sent. No second Official Order was created.'
+      : 'Official Order created. Copy the message and send it.',
   };
 }
 

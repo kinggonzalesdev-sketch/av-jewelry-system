@@ -36,8 +36,6 @@ export type MessageResult =
  */
 export function renderInvoiceMessage(input: {
   customerDisplayName: string;
-  orderNumber: string;
-  invoiceNumber: string;
   totalAmount: number;
   holdExpiresAt: string;
   /** Each line already formatted with item, grams, and price. */
@@ -58,7 +56,7 @@ export function renderInvoiceMessage(input: {
     ...input.itemLines.map((line) => `• ${line}`),
     '',
     `Total: PHP ${input.totalAmount.toFixed(2)}`,
-    `Invoice: ${input.invoiceNumber}`,
+    // "Invoice: INV-…" line removed (Owner 2026-09-13): never put a retired number in a message.
     '',
     'For your downpayment:',
     input.paymentDetails,
@@ -116,7 +114,7 @@ export async function prepareInvoiceMessage(
   const { data: order } = await supabase
     .from('official_orders')
     .select(
-      `id, order_number, invoice_number, hold_expires_at, customer_id,
+      `id, hold_expires_at, customer_id,
        customers ( display_name ),
        official_order_claims ( claim_id )`,
     )
@@ -178,8 +176,6 @@ export async function prepareInvoiceMessage(
 
   const body = renderInvoiceMessage({
     customerDisplayName: customer?.display_name ?? 'there',
-    orderNumber: o.order_number as string,
-    invoiceNumber: o.invoice_number as string,
     totalAmount: total,
     holdExpiresAt: o.hold_expires_at as string,
     itemLines,

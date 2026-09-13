@@ -31,7 +31,7 @@ const HEADERS = [
   'Grams',
   'Size',
   'Customer',
-  'Invoice Number',
+  // 'Invoice Number' removed (Owner 2026-09-13): retired from the entire user-facing system.
   'Sale Amount',
   'Payment',
   'Current Stage',
@@ -52,7 +52,7 @@ export async function GET(request: Request): Promise<Response> {
   // FUNCTION-LEVEL AUTHORIZATION (Owner 2026-09-08 security fix). Match the SAME page gate the
   // Inventory page enforces (`nav_inventory`). Without this, any active staff member who cannot
   // open the Completed Inventory page in the UI could still pull the FULL customer-PII CSV
-  // (names, invoice numbers, sale amounts, couriers, tracking) by requesting this URL directly —
+  // (names, sale amounts, couriers, tracking) by requesting this URL directly —
   // the RPC's `is_active_staff()` check alone is coarser than the page permission.
   if (!(await canOpenPage('nav_inventory'))) {
     return new Response('Forbidden', { status: 403 });
@@ -87,7 +87,6 @@ export async function GET(request: Request): Promise<Response> {
           parsed.grams ?? '',
           parsed.size ?? '',
           c.customerName ?? '',
-          c.invoiceNumber ?? '',
           c.finalSale ?? '',
           paymentLabel(c.paymentStatus),
           c.currentStage,

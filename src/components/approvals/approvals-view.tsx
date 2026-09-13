@@ -85,10 +85,6 @@ function matchesTab(a: ApprovalRow, tab: TabKey): boolean {
   }
 }
 
-function reference(a: ApprovalRow): string {
-  return a.invoiceNumber && a.invoiceNumber !== '—' ? a.invoiceNumber : '—';
-}
-
 export function ApprovalsView({
   approvals,
   isOwner,
@@ -153,7 +149,8 @@ export function ApprovalsView({
           <Thead>
             <Tr plain>
               <Th kind="center">Type</Th>
-              <Th>Reference</Th>
+              {/* "Reference" (the invoice number) removed — Owner 2026-09-13: no invoice or order
+                  numbers anywhere user-facing. Customer / Item is the identifier staff use. */}
               <Th>Customer / Item</Th>
               <Th>Requested By</Th>
               <Th>Reason</Th>
@@ -172,9 +169,6 @@ export function ApprovalsView({
                   className="font-medium capitalize"
                 >
                   {humanize(a.actionKind)}
-                </Td>
-                <Td clip className="font-mono text-xs">
-                  {reference(a)}
                 </Td>
                 <Td clip title={a.customerName ?? undefined}>
                   {a.customerName ?? '—'}
@@ -310,7 +304,6 @@ function ApprovalDetail({
           label="Type"
           value={<span className="capitalize">{humanize(a.actionKind)}</span>}
         />
-        <DetailRow label="Reference" value={reference(a)} />
         <DetailRow label="Customer / Item" value={a.customerName ?? '—'} />
         <DetailRow label="Reason" value={a.reason || '—'} />
         <DetailRow label="Requested by" value={a.requestedBy ?? '—'} />

@@ -846,10 +846,9 @@ export type ApprovalRow = {
   decidedAt: string | null;
   executedAt: string | null;
   /** Context so the Owner can see WHAT is being approved (when the entity is an order):
-   *  the order number, invoice number, customer name, and requester. Null when the
-   *  entity isn't an official order or the detail couldn't be read. */
-  orderNumber: string | null;
-  invoiceNumber: string | null;
+   *  the customer name and requester. Null when the entity isn't an official order or the
+   *  detail couldn't be read. The order/invoice numbers are retired from everything
+   *  user-facing (Owner 2026-09-13) and are no longer read here at all. */
   customerName: string | null;
   requestedBy: string | null;
   /** The request payload — inventory Edit carries { original, proposed, itemCode };
@@ -897,42 +896,28 @@ export async function listOwnerApprovals(): Promise<ApprovalRow[]> {
     requestedAt: r.requested_at as string,
     decidedAt: (r.decided_at as string | null) ?? null,
     executedAt: (r.executed_at as string | null) ?? null,
-    orderNumber: null,
-    invoiceNumber: null,
     customerName: null,
     requestedBy: null,
     payload: (r.payload as Record<string, unknown> | null) ?? null,
   }));
 
-  // Enrich with the order (number / invoice / customer) — the entity is an official
-  // order for most approval kinds. Best-effort; a failed read just leaves the fields null.
+  // Enrich with the order's customer — the entity is an official order for most approval
+  // kinds. Best-effort; a failed read just leaves the field null.
   const orderIds = [...new Set(rows.map((r) => r.entityId).filter(Boolean))];
   if (orderIds.length > 0) {
     const { data: orders } = await supabase
       .from('official_orders')
-      .select('id, order_number, invoice_number, customers ( display_name )')
+      .select('id, customers ( display_name )')
       .in('id', orderIds);
-    const byId = new Map<
-      string,
-      { on: string | null; inv: string | null; cust: string | null }
-    >();
+    const byId = new Map<string, string | null>();
     for (const o of (orders ?? []) as Record<string, unknown>[]) {
       const c = o.customers as
         { display_name?: string } | { display_name?: string }[] | null;
       const one = Array.isArray(c) ? c[0] : c;
-      byId.set(o.id as string, {
-        on: (o.order_number as string | null) ?? null,
-        inv: (o.invoice_number as string | null) ?? null,
-        cust: one?.display_name ?? null,
-      });
+      byId.set(o.id as string, one?.display_name ?? null);
     }
     for (const r of rows) {
-      const o = byId.get(r.entityId);
-      if (o) {
-        r.orderNumber = o.on;
-        r.invoiceNumber = o.inv;
-        r.customerName = o.cust;
-      }
+      if (byId.has(r.entityId)) r.customerName = byId.get(r.entityId) ?? null;
     }
   }
 

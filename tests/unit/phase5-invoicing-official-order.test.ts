@@ -19,8 +19,6 @@ const read = (...p: string[]) => readFileSync(join(projectRoot, ...p), 'utf8');
 describe('invoice message template', () => {
   const input = {
     customerDisplayName: 'Ana Reyes',
-    orderNumber: 'ORD-2026-000101',
-    invoiceNumber: 'INV-2026-000088',
     totalAmount: 12500,
     holdExpiresAt: '2026-07-18T00:00:00Z',
     itemLines: ['Ring 21K ×1 · 5.5g · PHP 12500.00'],
@@ -28,10 +26,13 @@ describe('invoice message template', () => {
   };
   const body = renderInvoiceMessage(input);
 
-  it('shows the invoice number and no longer exposes the order number', () => {
+  it('exposes neither the invoice number nor the order number', () => {
     // Owner 2026-09-01: the order number is no longer a customer-facing identifier.
-    expect(body).toContain('INV-2026-000088');
-    expect(body).not.toContain('ORD-2026-000101');
+    // Owner 2026-09-13: neither is the invoice number. A customer message carries no
+    // internal reference at all — the customer, the items, the total and the deadline.
+    expect(body).not.toMatch(/INV-/);
+    expect(body).not.toMatch(/ORD-/);
+    expect(body).not.toMatch(/Invoice/);
   });
 
   it('states the total and the hold deadline', () => {

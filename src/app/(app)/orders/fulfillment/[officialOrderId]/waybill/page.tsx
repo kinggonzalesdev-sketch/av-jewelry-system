@@ -74,7 +74,6 @@ export default async function WaybillPage({
         <div className="grid grid-cols-2 gap-3 py-3">
           <Field label="Recipient" value={w.customerName} />
           <Field label="Contact" value={w.customerContact ?? '—'} />
-          <Field label="Invoice" value={w.invoiceNumber ?? '—'} />
           <Field label="Method" value={w.method ? w.method.replace(/_/g, ' ') : '—'} />
           <Field label="Courier" value={w.courier ?? '—'} />
           <Field label="Tracking #" value={w.trackingNumber ?? '—'} />

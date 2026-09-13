@@ -60,12 +60,10 @@ function DraftCard({
               {draft.paymentArrangement?.replace('_', ' ') ?? 'unset'} ·{' '}
               {draft.fulfillmentArrangement ?? 'unset'}
             </p>
-            {draft.orderNumber ? (
-              <p className="truncate font-mono text-xs">
-                {draft.invoiceNumber}
-                {draft.holdExpiresAt
-                  ? ` · hold until ${new Date(draft.holdExpiresAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`
-                  : ''}
+            {draft.orderNumber && draft.holdExpiresAt ? (
+              <p className="truncate text-xs text-muted-foreground">
+                Hold until{' '}
+                {new Date(draft.holdExpiresAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
               </p>
             ) : null}
           </div>
@@ -295,9 +293,8 @@ export function InvoiceWorkspace({
               Official Order created — message sending failed
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Order (invoice{' '}
-              {approveState.order.invoiceNumber}) exists and its stock is committed. Only
-              the message failed: {approveState.messageProblem}
+              The order exists and its stock is committed. Only the message failed:{' '}
+              {approveState.messageProblem}
             </p>
             <form action={retryAction} className="mt-3">
               <input

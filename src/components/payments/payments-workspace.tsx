@@ -415,10 +415,13 @@ export function PaymentsWorkspace({
               </p>
             </div>
           ))}
-          {/* Near Overdue (30 Days) — GLOBAL count of ACTIVE accounts whose canonical overdue
-            date (date purchased + 3 calendar months) is 1–30 days away. DB-aggregated over the
-            whole active dataset (never the current page/filter); amber to match the row warnings.
-            Not a money figure, so it never masks under Privacy Mode. */}
+          {/* Near Overdue (30 Days) — count of ACTIVE accounts whose canonical overdue date
+            (date purchased + 3 calendar months) is 1–30 days away, under the CURRENT search +
+            financer + date filters (Owner 2026-09-13: it used to stay at the global figure while
+            every list narrowed to the selected financer, so a financer's near-due accounts looked
+            like they had disappeared). DB-aggregated over the full filtered set, never the page;
+            the server-rendered global count is only the seed before the first refetch. Amber to
+            match the row warnings. Not a money figure, so it never masks under Privacy Mode. */}
           <button
             type="button"
             onClick={() => changeSection('near_overdue')}
@@ -436,7 +439,7 @@ export function PaymentsWorkspace({
               Near Overdue (30 Days)
             </p>
             <p className="mt-1 text-xl font-bold tabular-nums text-amber-700 dark:text-amber-400">
-              {nearOverdueCount}
+              {srv.ok ? srv.sectionCounts.near_overdue : nearOverdueCount}
             </p>
           </button>
         </div>
@@ -570,7 +573,7 @@ export function PaymentsWorkspace({
                             label={p.customerDisplayName}
                             onOpen={setDetailOrderId}
                           />{' '}
-                          · {p.invoiceNumber} · {money(p.amount)} ·{' '}
+                          · {money(p.amount)} ·{' '}
                           {p.paymentMethod?.replace('_', ' ') ?? '—'}
                           {p.referenceNumber ? ` · ${p.referenceNumber}` : ''}
                           {p.provider ? ` · ${p.provider}` : ''}
@@ -1159,7 +1162,7 @@ function LayawayTable({
                   >
                     <td
                       className="truncate px-3 py-2 text-center font-mono text-[11px]"
-                      title={`Unique Code${r.uniqueCode ? `: ${r.uniqueCode}` : ' — not linked'} · Order/Account No. ${r.accountNo}`}
+                      title={`Unique Code${r.uniqueCode ? `: ${r.uniqueCode}` : ' — not linked'}${r.accountNo && r.accountNo !== '—' ? ` · Account No. ${r.accountNo}` : ''}`}
                     >
                       {r.officialOrderId ? (
                         <OrderNumberButton
@@ -1357,7 +1360,7 @@ function CompletedLayawayTable({
               <th className="px-3 py-2 text-right">Grand Total</th>
               <th className="px-3 py-2 text-right">Total Payment</th>
               <th className="px-3 py-2">Completion Date</th>
-              <th className="px-3 py-2">Order / Account No.</th>
+              <th className="px-3 py-2">Account No.</th>
               <th className="col-actions px-3 py-2">Actions</th>
             </tr>
           </thead>
@@ -1395,7 +1398,7 @@ function CompletedLayawayTable({
                   </td>
                   <td
                     className="px-3 py-2 font-mono text-[11px]"
-                    title={`Unique Code${r.uniqueCode ? `: ${r.uniqueCode}` : ' — not linked'} · Order/Account No. ${r.accountNo}`}
+                    title={`Unique Code${r.uniqueCode ? `: ${r.uniqueCode}` : ' — not linked'}${r.accountNo && r.accountNo !== '—' ? ` · Account No. ${r.accountNo}` : ''}`}
                   >
                     {r.officialOrderId ? (
                       <OrderNumberButton
@@ -1714,8 +1717,7 @@ function LayawayList({
                       orderId={l.officialOrderId}
                       label={l.customerDisplayName}
                       onOpen={onOpenOrder}
-                    />{' '}
-                    · {l.invoiceNumber}
+                    />
                   </p>
                 </div>
                 <StatusBadge

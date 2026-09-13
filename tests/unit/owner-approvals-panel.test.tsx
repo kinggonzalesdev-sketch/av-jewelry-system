@@ -22,8 +22,8 @@ function approval(over: Partial<ApprovalRow> = {}): ApprovalRow {
     requestedAt: '2026-07-28T00:00:00.000Z',
     decidedAt: null,
     executedAt: null,
-    orderNumber: 'ORD-2026-000137',
-    invoiceNumber: 'INV-000137',
+    // Order/Invoice numbers are retired from the user-facing system (Owner 2026-09-13);
+    // the row carries only the customer as its identifier.
     customerName: 'King Gonzales',
     requestedBy: 'Ana Cruz',
     payload: null,

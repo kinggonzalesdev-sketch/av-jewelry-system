@@ -31,7 +31,9 @@ export const TEMPLATE_VARIABLES: ReadonlyArray<{
   { token: '{customer_name}', description: "The customer's name", sample: 'Ana Cruz' },
   // Owner 2026-09-01: {order_number} retired — the order number is no longer a
   // customer-facing identifier, so it is no longer an insertable message variable.
-  { token: '{invoice_number}', description: 'Invoice number', sample: 'INV-2026-000013' },
+  // Owner 2026-09-13: {invoice_number} retired for the same reason. The renderer now blanks
+  // both tokens, so an old body (or a Reset to Default) can no longer put either number in
+  // front of a customer.
   { token: '{total_amount}', description: 'Total amount payable', sample: '₱34,660' },
   { token: '{balance}', description: 'Remaining balance', sample: '₱29,660' },
   { token: '{due_date}', description: 'Due date', sample: '2026-08-15' },
@@ -77,7 +79,15 @@ export function renderTemplate(body: string, values: Record<string, string>): st
  * grams/rate lines instead of sending "Price Per Gram:" / "Grams: g" blank. Mirrors the
  * proven auto_text suppression. `{total_amount}`/`{balance}` are NEVER drop-triggers.
  */
-export const INVOICE_OPTIONAL_TOKENS = ['{price_per_gram}', '{grams}'] as const;
+export const INVOICE_OPTIONAL_TOKENS = [
+  '{price_per_gram}',
+  '{grams}',
+  // Retired identifiers (Owner 2026-09-01 / 2026-09-13). They always render empty, so listing
+  // them here drops the WHOLE "Invoice No.: …" / "Order No.: …" line from an old body or a
+  // Reset-to-Default body, instead of sending a customer a blank label.
+  '{invoice_number}',
+  '{order_number}',
+] as const;
 
 /**
  * Substitute tokens, but first drop any line whose ONLY optional-token values are empty —

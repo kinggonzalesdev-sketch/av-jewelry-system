@@ -75,8 +75,9 @@ function completedRow(over: Partial<CompletedInventoryRow>): CompletedInventoryR
     itemName: null,
     availabilityStatus: 'released',
     customerName: 'Maria Santos',
-    orderNumber: 'ORD-9',
-    invoiceNumber: 'INV-9',
+    // Order/Invoice Number retired from the user-facing system (Owner 2026-09-13): the row carries
+    // only whether an order exists, never its number.
+    hasOrder: true,
     completionType: 'Delivered',
     courier: null,
     trackingNumber: null,
@@ -187,6 +188,45 @@ describe('Inventory — Active vs Completed', () => {
         'Actions',
       ]),
     );
+  });
+
+  it('TEST 6: the Completed Item detail has no Invoice Number row and no blank slot', async () => {
+    // Owner 2026-09-13: Invoice Number is retired from the entire user-facing system. The detail
+    // is a two-column grid on desktop and one column on phones (360/390/430 are all below the
+    // sm breakpoint); the row list must simply be one row shorter — no placeholder, no gap.
+    renderWorkspace();
+    openCompleted();
+    const table = await screen.findByTestId('completed-items');
+    await within(table).findByText('SBA-R-2222');
+    fireEvent.click(within(table).getAllByTestId(/^completed-view-/)[0]!);
+
+    const dl = (await screen.findByText('Final Location')).closest('dl');
+    expect(dl).not.toBeNull();
+    const labels = Array.from(dl!.querySelectorAll('span:first-child')).map((s) => s.textContent);
+    expect(labels).toEqual([
+      'Inventory Code',
+      'Item',
+      'Condition',
+      'Item Type',
+      'Grams',
+      'Size',
+      'Customer',
+      'Current Stage',
+      'Completion Type',
+      'Courier',
+      'Tracking Number',
+      'Completed Date',
+      'Final Holder',
+      'Final Location',
+      'Status',
+    ]);
+    expect(labels).not.toContain('Invoice Number');
+    expect(dl!.textContent).not.toMatch(/INV-|Invoice/);
+    // Every row carries a label AND a value — nothing renders as an empty pair.
+    for (const row of Array.from(dl!.children)) {
+      expect(row.querySelectorAll('span').length).toBe(2);
+      expect((row.querySelector('span:first-child')?.textContent ?? '').trim()).not.toBe('');
+    }
   });
 
   it('shows real Customer / Payment / Stage values (not — placeholders)', async () => {
