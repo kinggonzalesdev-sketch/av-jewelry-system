@@ -4,6 +4,11 @@ import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
+import {
+  classifySignInFailure,
+  redactEmail,
+  signInFailureMessage,
+} from '@/lib/auth/sign-in-error';
 import { createClient } from '@/lib/supabase/server';
 import { signInSchema } from '@/lib/validation/auth';
 
@@ -44,7 +49,22 @@ export async function signIn(
   });
 
   if (error) {
-    return { error: 'Invalid credentials, or this account cannot sign in.' };
+    // Say WHICH kind of failure this was (Owner 2026-09-14). The old single message —
+    // "Invalid credentials, or this account cannot sign in." — named two unrelated causes and
+    // proved neither: a rate-limited burst of attempts (HTTP 429), a blocked account, and a wrong
+    // password all read identically, and a Super Admin locked out on a second device could not be
+    // diagnosed without database access. A wrong password and an unknown email still share ONE
+    // message (Supabase folds both into invalid_credentials), so nothing here enumerates accounts.
+    const kind = classifySignInFailure(error);
+    // Server-side only, redacted: this is the line that makes the NEXT incident diagnosable from
+    // the runtime logs alone. Never the password, never the full email.
+    console.warn('[auth] sign-in rejected', {
+      email: redactEmail(parsed.data.email),
+      kind,
+      code: error.code ?? null,
+      status: error.status ?? null,
+    });
+    return { error: signInFailureMessage(kind) };
   }
 
   // MFA note (ADR §5): where a user has a verified TOTP factor, Supabase reports an
