@@ -36,6 +36,31 @@ const MIGRATION = readFileSync(
   'utf8',
 );
 
+describe('migration privileges — the index expression stays executable by writers', () => {
+  // inventory_code_number is the expression of inventory_items_code_number_idx. Postgres checks
+  // EXECUTE on an index expression as the role WRITING the row, and the apps write inventory_items
+  // as `authenticated` (RLS) and as service_role. Revoking PUBLIC without this grant made every new
+  // or re-coded item fail with "permission denied for function inventory_code_number".
+  const GRANT =
+    'grant execute on function app_private.inventory_code_number(text) to authenticated, service_role;';
+  const REVOKE = 'revoke all on function app_private.inventory_code_number(text) from public, anon;';
+
+  it('grants EXECUTE to authenticated and service_role after revoking PUBLIC/anon', () => {
+    expect(MIGRATION).toContain(REVOKE);
+    expect(MIGRATION).toContain(GRANT);
+    expect(MIGRATION.indexOf(GRANT)).toBeGreaterThan(MIGRATION.indexOf(REVOKE));
+  });
+
+  it('never revokes it from authenticated or service_role afterwards', () => {
+    const after = MIGRATION.slice(MIGRATION.indexOf(GRANT) + GRANT.length).toLowerCase();
+    for (const line of after.split('\n')) {
+      if (line.includes('revoke') && line.includes('inventory_code_number')) {
+        expect(line).not.toMatch(/authenticated|service_role/);
+      }
+    }
+  });
+});
+
 describe('inventoryCodeNumber — the numeric identity', () => {
   it('extracts the sequence from a canonical code, with or without grams/size', () => {
     expect(inventoryCodeNumber('SBA-E-8413')).toBe('8413');

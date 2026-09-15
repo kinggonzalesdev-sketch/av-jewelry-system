@@ -64,6 +64,12 @@ $function$;
 
 revoke all on function app_private.inventory_code_number(text) from public, anon;
 revoke all on function app_private.inventory_code_canonical(text) from public, anon;
+-- inventory_code_number is the EXPRESSION of inventory_items_code_number_idx below, and Postgres
+-- checks EXECUTE on an index expression as the role WRITING the row. The web and mobile apps insert
+-- and update inventory_items directly as `authenticated` (RLS-gated) and through the service-role
+-- admin client, so both roles need it; without this grant every new or re-coded item fails with
+-- "permission denied for function inventory_code_number". (Pre-apply review 2026-09-16.)
+grant execute on function app_private.inventory_code_number(text) to authenticated, service_role;
 
 -- Fast lookup by sequence number (duplicate check + exact-numeric search rank). NOT unique:
 -- production already holds duplicates, which are grandfathered — the trigger below stops NEW ones.
