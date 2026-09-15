@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 
 import { CapabilitiesView } from '@/components/capabilities/capabilities-view';
+import { notFound } from 'next/navigation';
+
 import { requireActiveStaff } from '@/lib/authz/guard';
 import { listCapabilities } from '@/lib/capabilities/service';
 
@@ -18,10 +20,10 @@ export const metadata: Metadata = {};
  * passing real-device validation regardless of what renders here.
  */
 export default async function CapabilitiesPage() {
-  const [staff, capabilities] = await Promise.all([
-    requireActiveStaff(),
-    listCapabilities(),
-  ]);
+  const staff = await requireActiveStaff();
+  // An admin surface: Owner / Selected Admin only (system audit 2026-09-16).
+  if (staff.roleKey !== 'owner' && staff.roleKey !== 'selected_admin') notFound();
+  const capabilities = await listCapabilities();
 
   return (
     <div className="space-y-4">

@@ -1,6 +1,9 @@
 import { canOpenPage } from '@/lib/authz/guard';
 import { parseInventoryCode } from '@/lib/inventory/code-parser';
-import { listCompletedInventoryPage } from '@/lib/inventory/completed';
+import {
+  COMPLETED_PAGE_MAX_SIZE,
+  listCompletedInventoryPage,
+} from '@/lib/inventory/completed';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,13 +66,15 @@ export async function GET(request: Request): Promise<Response> {
   const type = (url.searchParams.get('type') ?? 'all').trim() || 'all';
 
   const lines: string[] = [HEADERS.map(cell).join(',')];
-  const SIZE = 1000;
+  // MUST equal the reader's clamp: a bigger request is silently shrunk, and the short-page
+  // exit below then ends the export after one chunk (system audit 2026-09-16).
+  const SIZE = COMPLETED_PAGE_MAX_SIZE;
   let page = 1;
   let total = 0;
 
-  // Chunked server-side read. Bounded to 200 pages (200k rows) as a runaway guard; the
+  // Chunked server-side read. Bounded to 1,000 pages (200k rows) as a runaway guard; the
   // loop stops as soon as a short page or the known total is reached.
-  for (let guard = 0; guard < 200; guard += 1) {
+  for (let guard = 0; guard < 1000; guard += 1) {
     const res = await listCompletedInventoryPage({ search, type, page, size: SIZE });
     if (!res.ok) {
       const status = /not authorized/i.test(res.reason) ? 403 : 500;
@@ -95,7 +100,9 @@ export async function GET(request: Request): Promise<Response> {
           c.trackingNumber ?? '',
           c.completedDate ? c.completedDate.slice(0, 10) : '',
           c.currentHolder ?? '',
-        ].map(cell).join(','),
+        ]
+          .map(cell)
+          .join(','),
       );
     }
     if (res.rows.length < SIZE || page * SIZE >= total) break;

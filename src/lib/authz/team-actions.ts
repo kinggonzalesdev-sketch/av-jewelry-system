@@ -64,10 +64,13 @@ export async function addTeamMemberAction(
   if (!result.ok) return { error: result.error, success: null, reveal: null };
 
   revalidatePath('/settings');
+  // The generated temporary password is deliberately NOT returned: the panel never renders it,
+  // and a secret that reaches the browser for nothing is a leak waiting to happen (system audit
+  // 2026-09-16). The Owner hands over access with the per-row "Set password" control.
   return {
     error: null,
-    success: `Added ${result.email}. Give them the temporary password below.`,
-    reveal: { email: result.email, tempPassword: result.tempPassword },
+    success: `Added ${result.email}. Use "Set password" on their row to give them access.`,
+    reveal: null,
   };
 }
 

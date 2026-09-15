@@ -26,5 +26,11 @@ export function toPersistentCookie<T extends object>(options: T | undefined): T 
   if (next.maxAge == null && next.expires == null) {
     next.maxAge = PERSISTENT_MAX_AGE_SECONDS;
   }
+  // A 400-day refresh token must never travel over plain HTTP. `@supabase/ssr` does not set
+  // `Secure` itself; production is HTTPS-only (Vercel), so pin it there (system audit
+  // 2026-09-16). Left unset in development so `http://localhost` keeps working.
+  if (next.secure == null && process.env.NODE_ENV === 'production') {
+    next.secure = true;
+  }
   return next as T;
 }

@@ -10,6 +10,7 @@ import {
 } from '@/lib/live/live-ops-actions';
 import type { LiveMode, LiveSessionFormData } from '@/lib/live/live-session-types';
 import { Button } from '@/components/ui/button';
+import { Modal } from '@/components/ui/modal';
 
 /**
  * Start / End Live Session (Super Admin). One active session at a time; its id is
@@ -25,6 +26,10 @@ export function LiveSessionControls({ data }: { data: LiveSessionFormData }) {
   const [isTest, setIsTest] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Ending a session is not undoable (a new one must be started), so it asks first — the
+  // button sits beside Pause/Resume and a mis-tap mid-live was one tap from stopping intake
+  // (system audit 2026-09-16).
+  const [confirmEnd, setConfirmEnd] = useState(false);
 
   const start = async () => {
     if (pending) return;
@@ -57,6 +62,7 @@ export function LiveSessionControls({ data }: { data: LiveSessionFormData }) {
         setError(res.error);
         return;
       }
+      setConfirmEnd(false);
       router.refresh();
     } finally {
       setPending(false);
@@ -132,13 +138,43 @@ export function LiveSessionControls({ data }: { data: LiveSessionFormData }) {
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => void end()}
+            onClick={() => setConfirmEnd(true)}
             disabled={pending}
             data-testid="end-live-session"
           >
             {pending ? 'Ending…' : 'End Live Session'}
           </Button>
         </div>
+        <Modal
+          open={confirmEnd}
+          onClose={() => setConfirmEnd(false)}
+          critical
+          size="sm"
+          title="End this live session?"
+          description="Intake stops for this session. Captures already recorded are kept; a new session must be started to continue."
+          footer={
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setConfirmEnd(false)}
+              >
+                Back
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => void end()}
+                disabled={pending}
+                data-testid="end-live-session-confirm"
+              >
+                {pending ? 'Ending…' : 'End Session'}
+              </Button>
+            </>
+          }
+        >
+          <p className="text-sm text-muted-foreground">This cannot be undone.</p>
+        </Modal>
         {error ? (
           <p role="alert" className="text-sm text-destructive">
             {error}

@@ -3,7 +3,9 @@ import Link from 'next/link';
 
 import { PrintButton } from '@/components/fulfillment/print-button';
 import { ReadError } from '@/components/ui/page-primitives';
-import { requireActiveStaff } from '@/lib/authz/guard';
+import { notFound } from 'next/navigation';
+
+import { canOpenPage, requireActiveStaff } from '@/lib/authz/guard';
 import { channelLabel } from '@/lib/fulfillment/format';
 import { getWaybill } from '@/lib/fulfillment/waybill';
 import { formatPeso } from '@/lib/payments/format';
@@ -34,6 +36,8 @@ export default async function WaybillPage({
   params: Promise<{ officialOrderId: string }>;
 }) {
   await requireActiveStaff();
+  // A waybill is an Orders document: same page key as /orders (system audit 2026-09-16).
+  if (!(await canOpenPage('nav_orders'))) notFound();
   const { officialOrderId } = await params;
   const result = await getWaybill(officialOrderId);
 

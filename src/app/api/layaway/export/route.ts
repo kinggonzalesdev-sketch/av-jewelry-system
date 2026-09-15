@@ -1,5 +1,9 @@
 import { canOpenPage } from '@/lib/authz/guard';
-import { listLayawayPage, type LayawaySection } from '@/lib/payments/layaway-page';
+import {
+  LAYAWAY_PAGE_MAX_SIZE,
+  listLayawayPage,
+  type LayawaySection,
+} from '@/lib/payments/layaway-page';
 import { uniqueCodeLabel } from '@/lib/payments/layaway-account-row';
 
 export const dynamic = 'force-dynamic';
@@ -63,13 +67,15 @@ export async function GET(request: Request): Promise<Response> {
   const section = (SECTIONS.has(sectionParam) ? sectionParam : 'all') as LayawaySection;
 
   const lines: string[] = [HEADERS.map(cell).join(',')];
-  const SIZE = 1000;
+  // MUST equal the reader's clamp: a bigger request is silently shrunk, and the short-page
+  // exit below then ends the export after one chunk (system audit 2026-09-16).
+  const SIZE = LAYAWAY_PAGE_MAX_SIZE;
   let page = 1;
   let total = 0;
 
-  // Chunked server-side read. Bounded to 200 pages (200k rows) as a runaway guard; the loop
+  // Chunked server-side read. Bounded to 2,000 pages (200k rows) as a runaway guard; the loop
   // stops as soon as a short page or the known total is reached.
-  for (let guard = 0; guard < 200; guard += 1) {
+  for (let guard = 0; guard < 2000; guard += 1) {
     const res = await listLayawayPage({ search, section, financer, page, size: SIZE });
     if (!res.ok) {
       const status = /not authorized/i.test(res.reason) ? 403 : 500;
@@ -96,7 +102,17 @@ export async function GET(request: Request): Promise<Response> {
           .join(','),
       );
     }
-    if (res.rows.length < SIZE || page * SIZE >= total) break;
+    // Rows are re-read by id after the page RPC, so a short page does NOT mean "last page" — a
+    // row the by-id read could not return would otherwise end the export early and ship a
+    // silently truncated file. Stop on the server's total; fail LOUDLY on a short page.
+    const expected = Math.min(SIZE, Math.max(0, total - (page - 1) * SIZE));
+    if (res.rows.length < expected) {
+      return new Response(
+        'Export incomplete: some layaway rows could not be read. Nothing was downloaded — please try again.',
+        { status: 500 },
+      );
+    }
+    if (page * SIZE >= total) break;
     page += 1;
   }
 

@@ -1,6 +1,12 @@
 import 'server-only';
 
-import { AuthorizationError, requireOwner, type StaffContext } from '@/lib/authz/guard';
+import { recordAuditEvent } from '@/lib/audit/log';
+import {
+  AuthorizationError,
+  isPrimarySuperAdmin,
+  requireOwner,
+  type StaffContext,
+} from '@/lib/authz/guard';
 import type { PermissionKey, RoleKey } from '@/lib/authz/permissions';
 import { createClient } from '@/lib/supabase/server';
 
@@ -43,9 +49,23 @@ export async function grantPermission(
   );
 
   if (error) {
+    await recordAuditEvent({
+      action: 'team_member.permission_grant',
+      entityType: 'staff_profile',
+      entityId: staffProfileId,
+      outcome: 'failed',
+      reason: error.message,
+      context: { permission },
+    });
     return { ok: false, error: 'The permission could not be granted.' };
   }
 
+  await recordAuditEvent({
+    action: 'team_member.permission_grant',
+    entityType: 'staff_profile',
+    entityId: staffProfileId,
+    context: { permission },
+  });
   return { ok: true };
 }
 
@@ -68,9 +88,23 @@ export async function revokePermission(
     .eq('permission_key', permission);
 
   if (error) {
+    await recordAuditEvent({
+      action: 'team_member.permission_revoke',
+      entityType: 'staff_profile',
+      entityId: staffProfileId,
+      outcome: 'failed',
+      reason: error.message,
+      context: { permission },
+    });
     return { ok: false, error: 'The permission could not be revoked.' };
   }
 
+  await recordAuditEvent({
+    action: 'team_member.permission_revoke',
+    entityType: 'staff_profile',
+    entityId: staffProfileId,
+    context: { permission },
+  });
   return { ok: true };
 }
 
@@ -97,6 +131,22 @@ export async function deactivateAccount(
   }
 
   const supabase = await createClient();
+  const { data: target } = await supabase
+    .from('staff_profiles')
+    .select('full_name, role_key, auth_user_id, is_active')
+    .eq('id', staffProfileId)
+    .maybeSingle();
+  if (!target) return { ok: false, error: 'That account could not be found.' };
+  // Another Owner is deactivated only by the Owner who is the Primary Super Admin — never
+  // quietly by a peer (system audit 2026-09-16). The database also refuses to remove the
+  // LAST active Owner regardless of who asks.
+  if (target.role_key === 'owner' && !(await isPrimarySuperAdmin())) {
+    return {
+      ok: false,
+      error: 'Only the Primary Super Admin can deactivate another Owner account.',
+    };
+  }
+
   const { error } = await supabase
     .from('staff_profiles')
     .update({
@@ -107,10 +157,62 @@ export async function deactivateAccount(
     .eq('id', staffProfileId);
 
   if (error) {
+    await recordAuditEvent({
+      action: 'team_member.deactivate',
+      entityType: 'staff_profile',
+      entityId: staffProfileId,
+      outcome: 'failed',
+      reason: error.message.replace(/^ERROR:\s*/i, '').trim(),
+      context: { member: target.full_name, role: target.role_key },
+    });
+    if (/active Owner must remain/i.test(error.message)) {
+      return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+    }
     return { ok: false, error: 'The account could not be deactivated.' };
   }
 
+  // Access ends NOW, not at the next token refresh: revoke every session the account holds.
+  // Best-effort — RLS + the per-request is_active check already refuse a deactivated account.
+  await revokeStaffSessions(staffProfileId);
+
+  await recordAuditEvent({
+    action: 'team_member.deactivate',
+    entityType: 'staff_profile',
+    entityId: staffProfileId,
+    reason: reason.trim(),
+    context: {
+      member: target.full_name,
+      role: target.role_key,
+      previous_is_active: target.is_active,
+    },
+  });
   return { ok: true };
+}
+
+/**
+ * End every session a staff member holds, on every device, so a deactivation or an
+ * Owner-set password takes effect immediately.
+ *
+ * Runs the Owner-gated `revoke_staff_sessions` database function (migration 20260916120000
+ * §9) through the Owner's OWN session — no service-role key involved. (Supabase's admin
+ * `signOut` needs the MEMBER's JWT, which the Owner never holds, so it cannot do this.)
+ * Best-effort by design: the per-request `is_active` checks in the web guard, the mobile
+ * resolver, and RLS already refuse a deactivated account, so a failed revoke is logged, not
+ * surfaced as a failed deactivation. The Owner's own sessions are never touched.
+ */
+export async function revokeStaffSessions(staffProfileId: string): Promise<void> {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.rpc('revoke_staff_sessions', {
+      p_staff_profile_id: staffProfileId,
+    });
+    if (error) console.warn('[accounts] session revoke failed', error.message);
+  } catch (cause) {
+    console.warn(
+      '[accounts] session revoke skipped',
+      cause instanceof Error ? cause.message : '',
+    );
+  }
 }
 
 /**
@@ -128,9 +230,21 @@ export async function reactivateAccount(
     .eq('id', staffProfileId);
 
   if (error) {
+    await recordAuditEvent({
+      action: 'team_member.reactivate',
+      entityType: 'staff_profile',
+      entityId: staffProfileId,
+      outcome: 'failed',
+      reason: error.message,
+    });
     return { ok: false, error: 'The account could not be reactivated.' };
   }
 
+  await recordAuditEvent({
+    action: 'team_member.reactivate',
+    entityType: 'staff_profile',
+    entityId: staffProfileId,
+  });
   return { ok: true };
 }
 
@@ -151,12 +265,44 @@ export async function setSelectedAdminStatus(
 
   const nextRole: RoleKey = makeSelectedAdmin ? 'selected_admin' : 'staff';
 
+  const { data: before } = await supabase
+    .from('staff_profiles')
+    .select('role_key, full_name')
+    .eq('id', staffProfileId)
+    .maybeSingle();
+  // This toggle only moves between Selected Admin and Staff. An Owner account is never
+  // silently demoted here (system audit 2026-09-16).
+  if (before?.role_key === 'owner') {
+    return { ok: false, error: 'An Owner account cannot be changed from this screen.' };
+  }
+
   const { error } = await supabase
     .from('staff_profiles')
     .update({ role_key: nextRole })
     .eq('id', staffProfileId);
 
+  if (!error) {
+    await recordAuditEvent({
+      action: 'team_member.role_change',
+      entityType: 'staff_profile',
+      entityId: staffProfileId,
+      context: {
+        member: before?.full_name ?? null,
+        previous: before?.role_key ?? null,
+        new: nextRole,
+      },
+    });
+  }
+
   if (error) {
+    await recordAuditEvent({
+      action: 'team_member.role_change',
+      entityType: 'staff_profile',
+      entityId: staffProfileId,
+      outcome: 'failed',
+      reason: error.message,
+      context: { previous: before?.role_key ?? null, new: nextRole },
+    });
     // 23514 = the check_violation raised by the max-two trigger.
     if (error.code === '23514') {
       return {
@@ -194,6 +340,12 @@ export async function assignScope(
     return { ok: false, error: 'The scope could not be assigned.' };
   }
 
+  await recordAuditEvent({
+    action: 'team_member.scope_assign',
+    entityType: 'staff_profile',
+    entityId: staffProfileId,
+    context: { scope_id: scopeId },
+  });
   return { ok: true };
 }
 
@@ -214,6 +366,12 @@ export async function removeScope(
     return { ok: false, error: 'The scope could not be removed.' };
   }
 
+  await recordAuditEvent({
+    action: 'team_member.scope_remove',
+    entityType: 'staff_profile',
+    entityId: staffProfileId,
+    context: { scope_id: scopeId },
+  });
   return { ok: true };
 }
 

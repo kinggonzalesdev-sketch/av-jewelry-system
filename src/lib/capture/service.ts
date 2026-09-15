@@ -258,8 +258,9 @@ export async function createPendingCapture(
 
 const CAPTURE_BUCKET = 'attachments';
 const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
-/** 12 MB — a generous cap for a high-quality still, blocking abuse. */
-const MAX_SCREENSHOT_BYTES = 12 * 1024 * 1024;
+/** 10 MiB — MUST equal the attachments bucket's file_size_limit (20260716300000); a larger
+ *  cap here let a 10–12 MB screenshot pass validation and then fail at Storage. */
+const MAX_SCREENSHOT_BYTES = 10 * 1024 * 1024;
 
 export type UploadScreenshotResult =
   { ok: true; path: string } | { ok: false; error: string };
@@ -300,7 +301,7 @@ export async function uploadCaptureScreenshot(
   }
   if (bytes.length === 0) return { ok: false, error: 'The image is empty.' };
   if (bytes.length > MAX_SCREENSHOT_BYTES) {
-    return { ok: false, error: 'The image is too large (max 12 MB).' };
+    return { ok: false, error: 'The image is too large (max 10 MB).' };
   }
 
   const ext =

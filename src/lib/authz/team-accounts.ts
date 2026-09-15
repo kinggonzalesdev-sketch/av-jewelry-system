@@ -2,6 +2,7 @@ import 'server-only';
 
 import { recordAuditEvent } from '@/lib/audit/log';
 import { ALL_ACCESS_KEYS, applyModuleCascade } from '@/lib/authz/access-catalogue';
+import { revokeStaffSessions } from '@/lib/authz/account-management';
 import {
   AuthorizationError,
   PRIMARY_SUPER_ADMIN_EMAIL,
@@ -415,6 +416,11 @@ export async function setTeamMemberPassword(
 
   const self = authUserId === owner.authUserId;
 
+  // An Owner-set password ends the member's existing sessions on every device — otherwise a
+  // compromised session survives the reset (system audit 2026-09-16). The Owner's own
+  // password change keeps their current session.
+  if (!self) await revokeStaffSessions(staffProfileId);
+
   // Owner client updates the flag (RLS: Owner may update staff_profiles).
   await supabase
     .from('staff_profiles')
@@ -454,6 +460,21 @@ export async function deleteTeamMember(
   }
 
   const supabase = await createClient();
+  // Capture WHO is being deleted before the row is gone, so the audit line names them.
+  const { data: target } = await supabase
+    .from('staff_profiles')
+    .select('full_name, role_key, auth_user_id')
+    .eq('id', staffProfileId)
+    .maybeSingle();
+  if (!target) return { ok: false, error: 'That team member could not be found.' };
+  if (target.role_key === 'owner') {
+    return {
+      ok: false,
+      error: 'An Owner account cannot be deleted. Change its role first.',
+    };
+  }
+  const targetEmail = await emailForAuthUser(target.auth_user_id as string);
+
   const { error } = await supabase.rpc('delete_team_member', {
     p_staff_profile_id: staffProfileId,
   });
@@ -467,6 +488,20 @@ export async function deleteTeamMember(
     if (/not found/i.test(msg)) {
       return { ok: false, error: 'That team member could not be found.' };
     }
+    if (/owner account/i.test(msg)) {
+      return {
+        ok: false,
+        error: 'An Owner account cannot be deleted. Change its role first.',
+      };
+    }
+    await recordAuditEvent({
+      action: 'team.delete_member',
+      entityType: 'staff_profile',
+      entityId: staffProfileId,
+      outcome: 'failed',
+      reason: msg.replace(/^ERROR:\s*/i, '').trim(),
+      context: { member: target.full_name, email: targetEmail, role: target.role_key },
+    });
     if (/foreign key|violates|restrict/i.test(msg)) {
       return {
         ok: false,
@@ -481,10 +516,23 @@ export async function deleteTeamMember(
     action: 'team.delete_member',
     entityType: 'staff_profile',
     entityId: staffProfileId,
-    context: { deleted_by: owner.authUserId },
+    context: {
+      member: target.full_name,
+      email: targetEmail,
+      role: target.role_key,
+      deleted_by: owner.authUserId,
+    },
   });
 
   return { ok: true };
+}
+
+/** The auth email of a user, via the privileged client (Owner-gated callers only). */
+async function emailForAuthUser(authUserId: string): Promise<string | null> {
+  const admin = adminOrNull();
+  if (!admin) return null;
+  const { data } = await admin.auth.admin.getUserById(authUserId);
+  return data?.user?.email ?? null;
 }
 
 /**

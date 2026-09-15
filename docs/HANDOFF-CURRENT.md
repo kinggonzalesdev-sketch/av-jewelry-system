@@ -18,7 +18,8 @@ each linked note) — this doc is the short "what matters right now" on top of i
   deploy `av-jewelry-6v19gycmy` → READY.
 - Migrations apply via Supabase MCP `apply_migration` (NOT `supabase db push` —
   blocked by pre-existing migration drift).
-- Public demo: `av-jewelry.vercel.app` (demo login `UatPass123!`). Local
+- Public demo: `av-jewelry.vercel.app` (demo login uses the seeded UAT accounts; the password
+  lives ONLY in the demo deployment's `DEMO_LOGIN_PASSWORD` env var — never in this repo). Local
   "Invalid credentials" almost always = Docker/Supabase down, not a bad password.
 
 ## 🔖 Latest save point (rollback target)
@@ -56,6 +57,7 @@ order by captured_at desc limit 1;
 ```
 
 Classify `final_print_source`:
+
 - `print_diag->>'result' = 'success'` → **direct-local** (phone printed; poller + PC
   correctly skipped). Sub-second local print confirmed.
 - `sticker_claimed_by = 'pc-web'` → **pc-web** (PC fallback printed).

@@ -10,6 +10,7 @@ import {
 import type { CaptureReviewRow } from '@/lib/capture/review-types';
 import { Money } from '@/components/shell/privacy';
 import { Button } from '@/components/ui/button';
+import { Modal } from '@/components/ui/modal';
 
 /**
  * Review Mode queue (live-readiness). While a live session runs in Review Mode,
@@ -22,8 +23,27 @@ export function CaptureReviewPanel({ rows }: { rows: CaptureReviewRow[] }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Reject DISCARDS the capture and sits next to Approve, so it asks first (system audit
+  // 2026-09-16). The optional reason lands in the audit trail.
+  const [rejecting, setRejecting] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   if (rows.length === 0) return null;
+
+  // The dialog only ever points at a capture that is STILL in the queue: if another reviewer
+  // (or realtime) removed it, the dialog closes instead of rejecting a vanished row.
+  const target = rejecting ? (rows.find((r) => r.id === rejecting) ?? null) : null;
+
+  const openReject = (id: string) => {
+    setError(null);
+    setRejectReason('');
+    setRejecting(id);
+  };
+  const closeReject = () => {
+    setRejecting(null);
+    setRejectReason('');
+    setError(null);
+  };
 
   const act = async (id: string, kind: 'approve' | 'reject') => {
     if (busy) return;
@@ -32,12 +52,13 @@ export function CaptureReviewPanel({ rows }: { rows: CaptureReviewRow[] }) {
     const res =
       kind === 'approve'
         ? await approveCaptureReviewAction(id)
-        : await rejectCaptureReviewAction(id, null);
+        : await rejectCaptureReviewAction(id, rejectReason.trim() || null);
     setBusy(null);
     if (!res.ok) {
       setError(res.error);
       return;
     }
+    closeReject();
     router.refresh();
   };
 
@@ -54,7 +75,7 @@ export function CaptureReviewPanel({ rows }: { rows: CaptureReviewRow[] }) {
         Review Mode is on — captures wait here until approved. Approve to create the order
         (it lands in For Invoice), or reject to discard.
       </p>
-      {error ? (
+      {error && !target ? (
         <p role="alert" className="mb-2 text-sm text-destructive">
           {error}
         </p>
@@ -93,7 +114,7 @@ export function CaptureReviewPanel({ rows }: { rows: CaptureReviewRow[] }) {
                 type="button"
                 size="sm"
                 variant="outline"
-                onClick={() => void act(r.id, 'reject')}
+                onClick={() => openReject(r.id)}
                 disabled={busy === r.id}
                 data-testid={`capture-review-reject-${r.id}`}
               >
@@ -103,6 +124,52 @@ export function CaptureReviewPanel({ rows }: { rows: CaptureReviewRow[] }) {
           </li>
         ))}
       </ul>
+      <Modal
+        open={target !== null}
+        onClose={closeReject}
+        critical
+        size="sm"
+        title="Reject this capture?"
+        description="The capture is discarded and no order is created. This cannot be undone."
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={closeReject}>
+              Back
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => target && void act(target.id, 'reject')}
+              disabled={busy !== null}
+              data-testid="capture-review-reject-confirm"
+            >
+              {busy ? 'Working…' : 'Reject Capture'}
+            </Button>
+          </>
+        }
+      >
+        {target ? (
+          <p className="mb-3 text-sm" data-testid="capture-review-reject-target">
+            <span className="font-medium">{target.customerName}</span> ·{' '}
+            {target.itemCode ?? target.itemName ?? 'Item'}
+          </p>
+        ) : null}
+        {error && target ? (
+          <p role="alert" className="mb-2 text-sm text-destructive">
+            {error}
+          </p>
+        ) : null}
+        <label className="block space-y-1 text-sm">
+          <span className="text-muted-foreground">Reason (optional)</span>
+          <input
+            type="text"
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            className="h-10 w-full rounded-md border border-border bg-background px-3"
+            maxLength={200}
+          />
+        </label>
+      </Modal>
     </section>
   );
 }

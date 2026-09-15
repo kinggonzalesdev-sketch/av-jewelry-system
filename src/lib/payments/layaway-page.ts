@@ -24,12 +24,7 @@ import { arrangementRowsByIds } from '@/lib/payments/workspace';
 // 'near_overdue' is a HIDDEN section (no tab) reached only by clicking the "Near Overdue
 // (30 Days)" card — it lists exactly the accounts layaway_near_overdue_count counts.
 export type LayawaySection =
-  | 'active'
-  | 'overdue'
-  | 'forfeited'
-  | 'completed'
-  | 'all'
-  | 'near_overdue';
+  'active' | 'overdue' | 'forfeited' | 'completed' | 'all' | 'near_overdue';
 
 export type LayawaySectionCounts = {
   all: number;
@@ -68,6 +63,13 @@ export type LayawayPageResult =
       financerOptions: LayawayFinancerOption[];
     }
   | { ok: false; reason: string };
+
+/**
+ * The largest page the paginated reader serves. Exported so the CSV export route chunks by
+ * EXACTLY this size — a larger request was silently clamped, which ended the export after the
+ * first 100 rows (system audit 2026-09-16).
+ */
+export const LAYAWAY_PAGE_MAX_SIZE = 100;
 
 export type LayawayPageOpts = {
   search?: string;
@@ -120,7 +122,7 @@ export async function listLayawayPage(
   opts: LayawayPageOpts = {},
 ): Promise<LayawayPageResult> {
   const page = Math.max(1, opts.page ?? 1);
-  const size = Math.min(100, Math.max(1, opts.size ?? 25));
+  const size = Math.min(LAYAWAY_PAGE_MAX_SIZE, Math.max(1, opts.size ?? 25));
   const supabase = await createClient();
 
   const resp = await supabase.rpc('layaway_page', {

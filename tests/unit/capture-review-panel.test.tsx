@@ -48,9 +48,46 @@ describe('CaptureReviewPanel', () => {
     await waitFor(() => expect(approveMock).toHaveBeenCalledWith('r1'));
   });
 
-  it('rejects a pending capture', async () => {
+  it('rejects a pending capture only after the confirmation', async () => {
     render(<CaptureReviewPanel rows={[row()]} />);
     fireEvent.click(screen.getByTestId('capture-review-reject-r1'));
+    // Reject DISCARDS the capture, so the first tap only opens the confirmation.
+    expect(rejectMock).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByTestId('capture-review-reject-confirm'));
     await waitFor(() => expect(rejectMock).toHaveBeenCalledWith('r1', null));
+  });
+
+  it('sends the optional reject reason', async () => {
+    rejectMock.mockClear();
+    render(<CaptureReviewPanel rows={[row()]} />);
+    fireEvent.click(screen.getByTestId('capture-review-reject-r1'));
+    fireEvent.change(await screen.findByLabelText('Reason (optional)'), {
+      target: { value: 'Wrong item' },
+    });
+    fireEvent.click(screen.getByTestId('capture-review-reject-confirm'));
+    await waitFor(() => expect(rejectMock).toHaveBeenCalledWith('r1', 'Wrong item'));
+  });
+
+  it('never carries a reason typed for one capture into the next, and names the target', async () => {
+    rejectMock.mockClear();
+    render(
+      <CaptureReviewPanel
+        rows={[row(), row({ id: 'r2', customerName: 'Bea Cruz', itemCode: 'BN-A-2002' })]}
+      />,
+    );
+    // Type a reason for r1, then back out.
+    fireEvent.click(screen.getByTestId('capture-review-reject-r1'));
+    fireEvent.change(await screen.findByLabelText('Reason (optional)'), {
+      target: { value: 'Typed for r1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    // Open r2: the dialog names r2 and the reason field is empty.
+    fireEvent.click(screen.getByTestId('capture-review-reject-r2'));
+    expect(await screen.findByTestId('capture-review-reject-target')).toHaveTextContent(
+      'Bea Cruz',
+    );
+    expect(screen.getByLabelText('Reason (optional)')).toHaveValue('');
+    fireEvent.click(screen.getByTestId('capture-review-reject-confirm'));
+    await waitFor(() => expect(rejectMock).toHaveBeenCalledWith('r2', null));
   });
 });

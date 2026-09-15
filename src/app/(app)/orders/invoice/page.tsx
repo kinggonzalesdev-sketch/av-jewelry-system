@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
 
 import { InvoiceWorkspace } from '@/components/invoicing/invoice-workspace';
-import { getGrantedPermissions } from '@/lib/authz/guard';
+import { notFound } from 'next/navigation';
+
+import { canOpenPage, getGrantedPermissions } from '@/lib/authz/guard';
 import { listInvoiceDrafts } from '@/lib/invoicing/drafts';
 import { PageHeader } from '@/components/ui/page-primitives';
 
@@ -17,6 +19,8 @@ export const dynamic = 'force-dynamic';
  * the Orders list.
  */
 export default async function InvoicePage() {
+  // Same key the sidebar uses for this route (PAGE_PERMISSION['/orders/invoice']).
+  if (!(await canOpenPage('nav_orders'))) notFound();
   const [drafts, permissions] = await Promise.all([
     listInvoiceDrafts(),
     getGrantedPermissions(),

@@ -79,6 +79,44 @@ export async function recordAuditEvent(entry: AuditEntry): Promise<void> {
 }
 
 /**
+ * Writes one audit event as the SYSTEM actor — for events that happen with NO session to
+ * attribute them to (a rejected sign-in, a sign-in that has not yet produced cookies). The
+ * table allows `actor_kind = 'system'` with a null uid; RLS binds staff inserts to
+ * `auth.uid()`, so this path uses the server-only privileged client and is therefore usable
+ * only from server code. Best-effort like `recordAuditEvent`: never throws, never carries a
+ * secret (callers pass a REDACTED email, never a password).
+ */
+export async function recordSystemAuditEvent(
+  entry: AuditEntry & { actorLabel?: string },
+): Promise<void> {
+  try {
+    const { createAdminClient } = await import('@/lib/supabase/admin');
+    const admin = createAdminClient();
+    const { error } = await admin.from('audit_events').insert({
+      actor_auth_uid: null,
+      actor_kind: 'system',
+      actor_label: entry.actorLabel ?? 'system',
+      action: entry.action,
+      entity_type: entry.entityType,
+      entity_id: entry.entityId ?? null,
+      outcome: entry.outcome ?? 'succeeded',
+      reason: entry.reason ?? null,
+      context: entry.context ?? {},
+    });
+    if (error) {
+      console.error('audit: failed to record system event', entry.action, error.message);
+    }
+  } catch (cause) {
+    // The service-role key may be absent locally; a missing audit line is a logging problem.
+    console.error(
+      'audit: failed to record system event',
+      entry.action,
+      cause instanceof Error ? cause.message : cause,
+    );
+  }
+}
+
+/**
  * Records a refused action (§31 r7).
  *
  * A denial is a real event: it proves the boundary held. Call this from the

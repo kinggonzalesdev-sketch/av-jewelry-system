@@ -131,7 +131,7 @@ export async function updateTrade(
   if (!amount) return { ok: false, error: 'Enter a valid amount.' };
   if (!input.name.trim()) return { ok: false, error: 'A name is required.' };
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data: touched, error } = await supabase
     .from('daily_cash_trades')
     .update({
       trade_date: input.date,
@@ -141,8 +141,10 @@ export async function updateTrade(
       remarks: input.remarks?.trim() || null,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', id);
+    .eq('id', id)
+    .select('id');
   if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  if (!touched || touched.length === 0) return { ok: false, error: STALE_ROW };
   await recordAuditEvent({
     action: 'daily_cash.trade.update',
     entityType: 'daily_cash_trade',
@@ -227,7 +229,7 @@ export async function updateExpense(
   if (!amount) return { ok: false, error: 'Enter a valid amount.' };
   if (!input.payee.trim()) return { ok: false, error: 'A name / payee is required.' };
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data: touched, error } = await supabase
     .from('daily_cash_expenses')
     .update({
       expense_date: input.date,
@@ -237,8 +239,10 @@ export async function updateExpense(
       remarks: input.remarks?.trim() || null,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', id);
+    .eq('id', id)
+    .select('id');
   if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  if (!touched || touched.length === 0) return { ok: false, error: STALE_ROW };
   await recordAuditEvent({
     action: 'daily_cash.expense.update',
     entityType: 'daily_cash_expense',
@@ -263,7 +267,7 @@ export async function updateRemittance(
   if (!id) return { ok: false, error: 'Missing record.' };
   if (!amount) return { ok: false, error: 'Enter a valid amount.' };
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data: touched, error } = await supabase
     .from('daily_cash_remittances')
     .update({
       remit_date: input.date,
@@ -272,8 +276,10 @@ export async function updateRemittance(
       remarks: input.remarks?.trim() || null,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', id);
+    .eq('id', id)
+    .select('id');
   if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  if (!touched || touched.length === 0) return { ok: false, error: STALE_ROW };
   await recordAuditEvent({
     action: 'daily_cash.remittance.update',
     entityType: 'daily_cash_remittance',
@@ -298,7 +304,7 @@ export async function updateCashMovement(
   if (!id) return { ok: false, error: 'Missing record.' };
   if (!amount) return { ok: false, error: 'Enter a valid amount.' };
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data: touched, error } = await supabase
     .from('daily_cash_movements')
     .update({
       movement_date: input.date,
@@ -307,8 +313,10 @@ export async function updateCashMovement(
       remarks: input.remarks?.trim() || null,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', id);
+    .eq('id', id)
+    .select('id');
   if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  if (!touched || touched.length === 0) return { ok: false, error: STALE_ROW };
   await recordAuditEvent({
     action: 'daily_cash.movement.update',
     entityType: 'daily_cash_movement',
@@ -325,6 +333,10 @@ const DELETABLE = new Set([
   'daily_cash_movements',
 ]);
 
+/** The row no longer exists (deleted in another tab) — never report a phantom success. */
+const STALE_ROW =
+  'That record no longer exists — it may have been deleted in another tab. Refresh and try again.';
+
 export async function deleteCashRecord(
   table: string,
   id: string,
@@ -334,8 +346,13 @@ export async function deleteCashRecord(
   if (!DELETABLE.has(table) || !id)
     return { ok: false, error: 'That record cannot be deleted here.' };
   const supabase = await createClient();
-  const { error } = await supabase.from(table).delete().eq('id', id);
+  const { data: touched, error } = await supabase
+    .from(table)
+    .delete()
+    .eq('id', id)
+    .select('id');
   if (error) return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+  if (!touched || touched.length === 0) return { ok: false, error: STALE_ROW };
   await recordAuditEvent({
     action: 'daily_cash.record.delete',
     entityType: table,

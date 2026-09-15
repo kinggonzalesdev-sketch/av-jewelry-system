@@ -85,6 +85,13 @@ function stageFromOrder(
       : '—';
 }
 
+/**
+ * The largest page the paginated reader serves. Exported so the CSV export route chunks by
+ * EXACTLY this size — asking for more was silently clamped, which ended the export after the
+ * first 200 rows (system audit 2026-09-16).
+ */
+export const COMPLETED_PAGE_MAX_SIZE = 200;
+
 export type CompletedInventoryRow = {
   inventoryItemId: string;
   itemCode: string;
@@ -322,7 +329,7 @@ export async function listCompletedInventoryPage(opts: {
   size?: number;
 }): Promise<CompletedInventoryPageResult> {
   const supabase = await createClient();
-  const size = Math.min(Math.max(opts.size ?? 25, 1), 200);
+  const size = Math.min(Math.max(opts.size ?? 25, 1), COMPLETED_PAGE_MAX_SIZE);
   const page = Math.max(opts.page ?? 1, 1);
 
   const res = (await supabase.rpc('completed_inventory_page', {

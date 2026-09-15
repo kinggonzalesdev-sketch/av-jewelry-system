@@ -5,6 +5,7 @@ import { cache } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { redirect } from 'next/navigation';
 
+import { isDemoLoginEnabled } from '@/lib/auth/demo.server';
 import { getAuthState } from '@/lib/auth/session';
 import {
   permissionsForRole,
@@ -126,7 +127,7 @@ export const requireActiveStaff = cache(async (): Promise<StaffContext> => {
 
   const { data, error } = await supabase
     .from('staff_profiles')
-    .select('id, auth_user_id, role_key, is_active, mfa_enrolled')
+    .select('id, auth_user_id, role_key, is_active, mfa_enrolled, is_demo')
     .eq('auth_user_id', user.id)
     .maybeSingle();
 
@@ -142,6 +143,13 @@ export const requireActiveStaff = cache(async (): Promise<StaffContext> => {
   }
 
   if (!data.is_active) {
+    redirect('/account-disabled');
+  }
+
+  // The seeded demo/UAT accounts (`is_demo`) are valid Supabase users whose password is written
+  // in setup docs. They may sign in ONLY on a deployment where the Owner deliberately enabled
+  // demo login; on the live tenant they are treated as disabled (system audit 2026-09-16).
+  if (data.is_demo === true && !isDemoLoginEnabled()) {
     redirect('/account-disabled');
   }
 
@@ -272,15 +280,15 @@ export async function requireOwner(): Promise<StaffContext> {
  */
 export const PRIMARY_SUPER_ADMIN_EMAIL = 'kingfmgonzales@gmail.com';
 
-/** True when the signed-in user IS the Primary Super Admin (case/space-insensitive). */
-export async function isPrimarySuperAdmin(): Promise<boolean> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+/**
+ * True when the signed-in user IS the Primary Super Admin (case/space-insensitive).
+ * Reads the per-request cached auth state — no second Auth-server round trip.
+ */
+export const isPrimarySuperAdmin = cache(async (): Promise<boolean> => {
+  const { user } = await getAuthState();
   const email = user?.email?.trim().toLowerCase() ?? '';
   return email === PRIMARY_SUPER_ADMIN_EMAIL;
-}
+});
 
 /**
  * Gate for a PAGE. Returns true when the caller may open it.

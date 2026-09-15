@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { PageHeader } from '@/components/ui/page-primitives';
 
 import { LiveBatchesView } from '@/components/live/live-batches-view';
+import { notFound } from 'next/navigation';
+
 import { getGrantedPermissions } from '@/lib/authz/guard';
 import {
   listCaptureCustomers,
@@ -24,10 +26,21 @@ export const metadata: Metadata = {};
  * (ADR §7, Bible §29.8).
  */
 export default async function LivePage() {
-  const [batches, customers, permissions] = await Promise.all([
+  // Page gate (system audit 2026-09-16): live batches are for members in the live flow.
+  const permissions = await getGrantedPermissions();
+  if (
+    ![
+      'live_batch_operation',
+      'live_batch_closure',
+      'current_flex_item_control',
+      'claim_capture',
+    ].some((k) => permissions.has(k as never))
+  ) {
+    notFound();
+  }
+  const [batches, customers] = await Promise.all([
     listLiveBatches(),
     listCaptureCustomers(),
-    getGrantedPermissions(),
   ]);
 
   // Items are loaded for the batches that can still be captured against — a

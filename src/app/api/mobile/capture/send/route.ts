@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { sendCaptureMessage } from '@/lib/capture/service';
-import { authenticateMobile } from '@/lib/mobile/auth';
+import { authenticateMobile, mobileHasPermission } from '@/lib/mobile/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +22,20 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json(
       { ok: false, error: 'Session invalid or expired.' },
       { status: 401 },
+    );
+  }
+
+  // Sending a message AS THE SHOP to a customer is a capture-flow action: it needs the same
+  // `claim_capture` grant the web send path requires (src/lib/capture/pc-send.ts). Any signed-in
+  // account could previously reach Pancake here (system audit 2026-09-16).
+  if (!(await mobileHasPermission(staff, 'claim_capture'))) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: 'forbidden',
+        error: 'Your account cannot send capture messages.',
+      },
+      { status: 403 },
     );
   }
 

@@ -5,6 +5,7 @@ import {
   routePendingCapturesSystem,
 } from '@/lib/capture/auto-router';
 import { isGenuineInboxDmEvent } from '@/lib/capture/media-window';
+import { secretMatchesAny } from '@/lib/security/secret-compare';
 import {
   logLiveCommentReceipt,
   parsePancakeLiveComment,
@@ -52,7 +53,7 @@ function checkSecret(
     url.searchParams.get('secret') ??
     ''
   ).trim();
-  if (provided.length === 0 || !secrets.includes(provided)) {
+  if (provided.length === 0 || !secretMatchesAny(provided, secrets)) {
     return { ok: false, status: 401, error: 'Unauthorized.' };
   }
   return { ok: true };

@@ -18,7 +18,7 @@ import 'server-only';
  *
  * Enable it with, e.g. in `.env.local` or the demo deployment's env:
  *   DEMO_LOGIN_ENABLED=true
- *   DEMO_LOGIN_PASSWORD=UatPass123!
+ *   DEMO_LOGIN_PASSWORD=<the seeded demo password — set it in the env, never write it here>
  *   # optional email overrides (defaults are the seeded UAT accounts):
  *   DEMO_OWNER_EMAIL=uat-owner@uat.local
  *   DEMO_ADMIN_EMAIL=uat-admin@uat.local

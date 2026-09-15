@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+import { secretMatches } from '@/lib/security/secret-compare';
+
 import { routePendingCapturesSystem } from '@/lib/capture/auto-router';
 
 export const dynamic = 'force-dynamic';
@@ -24,7 +26,7 @@ export async function GET(request: Request): Promise<Response> {
     );
   }
   const auth = request.headers.get('authorization');
-  if (auth !== `Bearer ${secret}`) {
+  if (!secretMatches(auth ?? '', `Bearer ${secret}`)) {
     return NextResponse.json({ ok: false, error: 'Unauthorized.' }, { status: 401 });
   }
 

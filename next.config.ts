@@ -11,10 +11,16 @@ import type { NextConfig } from 'next';
  * Empty only when none is available → the app then shows "local".
  */
 function resolveAppCommit(): string {
-  const fromEnv = (process.env.APP_COMMIT ?? process.env.VERCEL_GIT_COMMIT_SHA ?? '').trim();
+  const fromEnv = (
+    process.env.APP_COMMIT ??
+    process.env.VERCEL_GIT_COMMIT_SHA ??
+    ''
+  ).trim();
   if (fromEnv) return fromEnv.slice(0, 7);
   try {
-    return execSync('git rev-parse --short=7 HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+    return execSync('git rev-parse --short=7 HEAD', {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
       .toString()
       .trim();
   } catch {
@@ -22,8 +28,33 @@ function resolveAppCommit(): string {
   }
 }
 
+/**
+ * Baseline security headers on every response (system audit 2026-09-16). Deliberately NO
+ * Content-Security-Policy yet: the theme bootstrap script and the print/waybill documents use
+ * inline script/style, so a CSP needs nonces first — tracked as a follow-up, not silently
+ * shipped in report-only mode either. Everything below is safe for this app as built:
+ *   - framing denied except by the app itself (print previews are same-origin iframes);
+ *   - MIME sniffing off; referrer trimmed to the origin cross-site;
+ *   - camera stays available to the app (attendance selfies / capture photos), the rest of the
+ *     powerful features are switched off.
+ */
+const SECURITY_HEADERS = [
+  { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+  { key: 'X-Content-Type-Options', value: 'nosniff' },
+  { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+  {
+    key: 'Permissions-Policy',
+    value: 'camera=(self), microphone=(), geolocation=(), payment=(), usb=()',
+  },
+  { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains' },
+];
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+
+  async headers() {
+    return [{ source: '/(.*)', headers: SECURITY_HEADERS }];
+  },
 
   // Build-time commit, inlined for server + client (see resolveAppCommit above).
   env: {

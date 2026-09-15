@@ -21,5 +21,13 @@ export function createClient() {
   return createBrowserClient(
     env.NEXT_PUBLIC_SUPABASE_URL,
     env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    {
+      // The browser client rewrites the sb-* cookies on a client-side token refresh; keep them
+      // HTTPS-only wherever the page itself is served over HTTPS (production), matching the
+      // server-side writes (system audit 2026-09-16). Plain-http localhost keeps working.
+      cookieOptions: {
+        secure: typeof window !== 'undefined' && window.location.protocol === 'https:',
+      },
+    },
   );
 }

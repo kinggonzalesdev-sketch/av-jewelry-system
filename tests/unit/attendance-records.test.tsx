@@ -26,14 +26,22 @@ function lastCall(): [AttendanceFilters, number, number] {
   return loadMock.mock.calls.at(-1) as unknown as [AttendanceFilters, number, number];
 }
 
+/**
+ * Fixture day = YESTERDAY in the shop's timezone, so the rows always fall inside the component's
+ * default "Last 7 days" window (the fixtures were hard-coded to 2026-09-05 and expired).
+ */
+const FIX_DAY = new Date(Date.now() - 24 * 60 * 60 * 1000).toLocaleDateString('en-CA', {
+  timeZone: 'Asia/Manila',
+});
+
 function row(over: Partial<AttendanceRow>): AttendanceRow {
   return {
     id: crypto.randomUUID(),
     staffProfileId: 's1',
     staffName: 'Lalyn Penaranda',
-    workDate: '2026-09-05',
-    timeIn: '2026-09-05T01:00:00.000Z',
-    timeOut: '2026-09-05T13:00:00.000Z',
+    workDate: FIX_DAY,
+    timeIn: `${FIX_DAY}T01:00:00.000Z`,
+    timeOut: `${FIX_DAY}T13:00:00.000Z`,
     note: null,
     isOvertime: false,
     overtimeAmount: '0',
@@ -92,8 +100,8 @@ describe('AttendanceRecords', () => {
 
   it('has no Sessions column; a multi-session day shows a count marker instead', () => {
     const day = [
-      row({ id: 'a', timeIn: '2026-09-05T01:00:00Z', timeOut: '2026-09-05T09:00:00Z' }),
-      row({ id: 'b', timeIn: '2026-09-05T11:00:00Z', timeOut: '2026-09-05T13:00:00Z' }),
+      row({ id: 'a', timeIn: `${FIX_DAY}T01:00:00Z`, timeOut: `${FIX_DAY}T09:00:00Z` }),
+      row({ id: 'b', timeIn: `${FIX_DAY}T11:00:00Z`, timeOut: `${FIX_DAY}T13:00:00Z` }),
     ];
     renderRecords({ initialPage: page([day[1]!], { completion: [day[0]!], total: 2 }) });
     const heads = within(screen.getByTestId('attendance-days'))
@@ -108,7 +116,7 @@ describe('AttendanceRecords', () => {
       'Status',
       'Details',
     ]);
-    expect(screen.getByTestId('attendance-sessions-s1__2026-09-05')).toHaveTextContent(
+    expect(screen.getByTestId(`attendance-sessions-s1__${FIX_DAY}`)).toHaveTextContent(
       '2×',
     );
   });

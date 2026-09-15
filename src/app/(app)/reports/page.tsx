@@ -45,11 +45,16 @@ export default async function ReportsPage({
 
   // Viewing is broad: any active staff may run the on-screen summary. Only
   // export/download is gated by export_data_reports (canExport, passed through).
+  // The picker gives Manila calendar days. `new Date('YYYY-MM-DD')` is UTC midnight = 08:00
+  // Manila, which made a one-day report an empty instant and clipped every range by 8 hours
+  // on both ends (system audit 2026-09-16). Bound the range to full Manila days instead, and
+  // refuse malformed params rather than throwing a RangeError into the error boundary.
+  const isDay = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v);
   let result: ReportsResult | null = null;
-  if (from && to) {
+  if (from && to && isDay(from) && isDay(to)) {
     result = await getSalesSummary(
-      new Date(from).toISOString(),
-      new Date(to).toISOString(),
+      `${from}T00:00:00.000+08:00`,
+      `${to}T23:59:59.999+08:00`,
     );
   }
 

@@ -5,8 +5,9 @@ import {
   type SupabaseClient,
 } from '@supabase/supabase-js';
 
+import { isDemoLoginEnabled } from '@/lib/auth/demo.server';
+import type { PermissionKey, RoleKey } from '@/lib/authz/permissions';
 import { getClientEnv } from '@/lib/env';
-import type { RoleKey } from '@/lib/authz/permissions';
 
 /**
  * Mobile (MineFlow Capture app) authentication.
@@ -125,12 +126,17 @@ export async function resolveMobileStaff(request: Request): Promise<MobileAuthRe
 
   const { data } = await supabase
     .from('staff_profiles')
-    .select('id, auth_user_id, role_key, is_active, full_name')
+    .select('id, auth_user_id, role_key, is_active, full_name, is_demo')
     .eq('auth_user_id', user.id)
     .maybeSingle();
 
   if (!data) return { ok: false, reason: 'account_not_found' };
   if (data.is_active !== true) return { ok: false, reason: 'account_inactive' };
+  // Seeded demo/UAT accounts are usable only where demo login is deliberately enabled
+  // (same rule as the web guard — system audit 2026-09-16).
+  if (data.is_demo === true && !isDemoLoginEnabled()) {
+    return { ok: false, reason: 'account_inactive' };
+  }
 
   // Record a lightweight heartbeat so the web System Check can show a signed-in
   // capture device + active app. Best-effort AND throttled: skipped when this user was
@@ -165,4 +171,25 @@ export async function resolveMobileStaff(request: Request): Promise<MobileAuthRe
 export async function authenticateMobile(request: Request): Promise<MobileStaff | null> {
   const result = await resolveMobileStaff(request);
   return result.ok ? result.staff : null;
+}
+
+/**
+ * Whether the mobile caller holds `permission` — the SAME rule as the web guard
+ * (`app_private.has_permission`): the Owner holds everything, everyone else only an explicit
+ * grant. Read through the caller's own RLS-scoped client (a member can read their own grants),
+ * so nothing here trusts the device. Fails closed on any read error.
+ */
+export async function mobileHasPermission(
+  staff: MobileStaff,
+  permission: PermissionKey,
+): Promise<boolean> {
+  if (staff.roleKey === 'owner') return true;
+  const { data, error } = await staff.supabase
+    .from('staff_permission_grants')
+    .select('permission_key')
+    .eq('staff_profile_id', staff.staffProfileId)
+    .eq('permission_key', permission)
+    .limit(1);
+  if (error || !data) return false;
+  return data.length > 0;
 }

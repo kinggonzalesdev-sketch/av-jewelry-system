@@ -84,6 +84,35 @@ function addSheet(
   ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: cols.length } };
 }
 
+/**
+ * Read EVERY matching row, 1,000 at a time. PostgREST answers at most `max_rows` (1,000) per
+ * request, so a plain `select` silently truncated every sheet of the "Export All Data"
+ * workbook at 1,000 rows (system audit 2026-09-16). The builder is re-created per page because
+ * a PostgREST builder is single-use. Throws on a read error: a partial workbook presented as
+ * complete is worse than a failed export, and the route records the failure.
+ */
+const EXPORT_PAGE = 1000;
+async function allRows<T = Record<string, unknown>>(
+  build: (lo: number, hi: number) => PromiseLike<{ data: unknown; error: unknown }>,
+  max = 200_000,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let lo = 0; lo < max; lo += EXPORT_PAGE) {
+    const { data, error } = await build(lo, Math.min(lo + EXPORT_PAGE, max) - 1);
+    if (error) {
+      const message =
+        typeof error === 'object' && error && 'message' in error
+          ? String(error.message)
+          : 'export read failed';
+      throw new Error(message);
+    }
+    const rows = (data ?? []) as T[];
+    out.push(...rows);
+    if (rows.length < EXPORT_PAGE) break;
+  }
+  return out;
+}
+
 /** Apply an inclusive date-range filter on a column when a range is active. */
 function rangeFilter<T>(query: T, column: string, opts: ExportOptions): T {
   if (!opts.applyRange) return query;
@@ -133,17 +162,20 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
 
   // ---- Inventory ----------------------------------------------------------
   if (want('inventory')) {
-    const { data } = await rangeFilter(
-      supabase
-        .from('inventory_items')
-        .select(
-          'item_code, facebook_name, availability_status, grams_per_piece, created_at',
-        )
-        .order('created_at', { ascending: false }),
-      'created_at',
-      opts,
+    const data = await allRows((lo, hi) =>
+      rangeFilter(
+        supabase
+          .from('inventory_items')
+          .select(
+            'item_code, facebook_name, availability_status, grams_per_piece, created_at',
+          )
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false }),
+        'created_at',
+        opts,
+      ).range(lo, hi),
     );
-    const rows = ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    const rows = data.map((r) => ({
       code: (r.item_code as string) ?? '—',
       fb: (r.facebook_name as string) ?? '—',
       status: humanize(r.availability_status as string),
@@ -181,17 +213,20 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
     { header: 'Order / Account No.', key: 'account', width: 20 },
   ];
   if (want('active_layaways') || want('completed_layaways') || want('all_layaways')) {
-    const { data } = await rangeFilter(
-      supabase
-        .from('layaway_ledger')
-        .select(
-          'layaway_code, customer_name, status, remarks, date_purchased, item_amount, interest, grand_total, payment, balance, account_no',
-        )
-        .order('created_at', { ascending: false }),
-      'date_purchased',
-      opts,
+    const data = await allRows((lo, hi) =>
+      rangeFilter(
+        supabase
+          .from('layaway_ledger')
+          .select(
+            'layaway_code, customer_name, status, remarks, date_purchased, item_amount, interest, grand_total, payment, balance, account_no',
+          )
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false }),
+        'date_purchased',
+        opts,
+      ).range(lo, hi),
     );
-    const all = ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    const all = data.map((r) => ({
       status_raw: (r.status as string) ?? 'active',
       row: {
         code: (r.layaway_code as string) ?? '—',
@@ -238,17 +273,21 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
   // (layaway_ledger_payments), which those totals are built from. Owner + Selected Admin.
   if (want('layaway_payments')) {
     await loadStaffNames();
-    const { data } = await rangeFilter(
-      supabase
-        .from('layaway_ledger_payments')
-        .select(
-          'sequence, payment_date, amount, mode_of_payment, reference, received_by, recorded_at, ledger:layaway_ledger!layaway_ledger_payments_ledger_id_fkey ( layaway_code, customer_name )',
-        )
-        .order('payment_date', { ascending: false }),
-      'payment_date',
-      opts,
+    const data = await allRows((lo, hi) =>
+      rangeFilter(
+        supabase
+          .from('layaway_ledger_payments')
+          .select(
+            'sequence, payment_date, amount, mode_of_payment, reference, received_by, recorded_at, ledger:layaway_ledger!layaway_ledger_payments_ledger_id_fkey ( layaway_code, customer_name )',
+          )
+          .order('payment_date', { ascending: false })
+          .order('ledger_id', { ascending: false })
+          .order('sequence', { ascending: false }),
+        'payment_date',
+        opts,
+      ).range(lo, hi),
     );
-    const rows = ((data ?? []) as Array<Record<string, unknown>>).map((r) => {
+    const rows = data.map((r) => {
       const ledger = one<{ layaway_code: string; customer_name: string }>(r.ledger);
       return {
         code: ledger?.layaway_code ?? '—',
@@ -282,15 +321,18 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
 
   // ---- Scrap Sales --------------------------------------------------------
   if (want('scrap')) {
-    const { data } = await rangeFilter(
-      supabase
-        .from('scrap_sales')
-        .select('material, grams, amount, buyer, sold_on, note')
-        .order('sold_on', { ascending: false }),
-      'sold_on',
-      opts,
+    const data = await allRows((lo, hi) =>
+      rangeFilter(
+        supabase
+          .from('scrap_sales')
+          .select('material, grams, amount, buyer, sold_on, note')
+          .order('sold_on', { ascending: false })
+          .order('id', { ascending: false }),
+        'sold_on',
+        opts,
+      ).range(lo, hi),
     );
-    const rows = ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    const rows = data.map((r) => ({
       material: humanize(r.material as string),
       grams: num(r.grams),
       amount: num(r.amount),
@@ -326,10 +368,15 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
       string,
       { destination: string | null; courier: string | null; completed: string | null }
     >();
-    const { data: ordersMeta } = await supabase
-      .from('official_orders')
-      .select('order_number, fulfillment_destination, courier, completed_at');
-    for (const o of (ordersMeta ?? []) as Array<Record<string, unknown>>) {
+    const ordersMeta = await allRows((lo, hi) =>
+      supabase
+        .from('official_orders')
+        .select('order_number, fulfillment_destination, courier, completed_at')
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(lo, hi),
+    );
+    for (const o of ordersMeta) {
       const key = o.order_number as string | null;
       if (key) {
         fulfilByOrderNo.set(key, {
@@ -398,17 +445,20 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
 
   // ---- Payments -----------------------------------------------------------
   if (want('payments')) {
-    const { data } = await rangeFilter(
-      supabase
-        .from('payments')
-        .select(
-          'amount, payment_method, status, reference_number, recorded_at, official_orders!payments_official_order_id_fkey ( order_number, customers ( display_name ) )',
-        )
-        .order('recorded_at', { ascending: false }),
-      'recorded_at',
-      opts,
+    const data = await allRows((lo, hi) =>
+      rangeFilter(
+        supabase
+          .from('payments')
+          .select(
+            'amount, payment_method, status, reference_number, recorded_at, official_orders!payments_official_order_id_fkey ( order_number, customers ( display_name ) )',
+          )
+          .order('recorded_at', { ascending: false })
+          .order('id', { ascending: false }),
+        'recorded_at',
+        opts,
+      ).range(lo, hi),
     );
-    const rows = ((data ?? []) as Array<Record<string, unknown>>).map((r) => {
+    const rows = data.map((r) => {
       const order = one<{ order_number: string; customers: unknown }>(r.official_orders);
       const customer = one<{ display_name: string }>(order?.customers);
       return {
@@ -437,15 +487,18 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
 
   // ---- Customers ----------------------------------------------------------
   if (want('customers')) {
-    const { data } = await rangeFilter(
-      supabase
-        .from('customers')
-        .select('display_name, contact_number, address, is_active, created_at')
-        .order('display_name', { ascending: true }),
-      'created_at',
-      opts,
+    const data = await allRows((lo, hi) =>
+      rangeFilter(
+        supabase
+          .from('customers')
+          .select('display_name, contact_number, address, is_active, created_at')
+          .order('display_name', { ascending: true })
+          .order('id', { ascending: true }),
+        'created_at',
+        opts,
+      ).range(lo, hi),
     );
-    const rows = ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    const rows = data.map((r) => ({
       name: (r.display_name as string) ?? '—',
       contact: (r.contact_number as string) ?? '—',
       address: (r.address as string) ?? '—',
@@ -468,17 +521,20 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
 
   // ---- Attendance ---------------------------------------------------------
   if (want('attendance')) {
-    const { data } = await rangeFilter(
-      supabase
-        .from('attendance_records')
-        .select(
-          'work_date, time_in, time_out, is_overtime, overtime_amount, staff:staff_profiles!staff_profile_id ( full_name )',
-        )
-        .order('time_in', { ascending: false }),
-      'work_date',
-      opts,
+    const data = await allRows((lo, hi) =>
+      rangeFilter(
+        supabase
+          .from('attendance_records')
+          .select(
+            'work_date, time_in, time_out, is_overtime, overtime_amount, staff:staff_profiles!staff_profile_id ( full_name )',
+          )
+          .order('time_in', { ascending: false })
+          .order('id', { ascending: false }),
+        'work_date',
+        opts,
+      ).range(lo, hi),
     );
-    const rows = ((data ?? []) as Array<Record<string, unknown>>).map((r) => {
+    const rows = data.map((r) => {
       const staff = one<{ full_name: string }>(r.staff);
       return {
         employee: staff?.full_name ?? '—',
@@ -553,49 +609,65 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
   if (want('daily_cash')) {
     await loadStaffNames();
     const [exp, rem, mov, trd, closes] = await Promise.all([
-      rangeFilter(
-        supabase
-          .from('daily_cash_expenses')
-          .select('expense_date, payee, category, amount, remarks, is_test, created_by')
-          .order('expense_date', { ascending: false }),
-        'expense_date',
-        opts,
+      allRows((lo, hi) =>
+        rangeFilter(
+          supabase
+            .from('daily_cash_expenses')
+            .select('expense_date, payee, category, amount, remarks, is_test, created_by')
+            .order('expense_date', { ascending: false })
+            .order('id', { ascending: false }),
+          'expense_date',
+          opts,
+        ).range(lo, hi),
       ),
-      rangeFilter(
-        supabase
-          .from('daily_cash_remittances')
-          .select('remit_date, reference, amount, remarks, is_test, created_by')
-          .order('remit_date', { ascending: false }),
-        'remit_date',
-        opts,
+      allRows((lo, hi) =>
+        rangeFilter(
+          supabase
+            .from('daily_cash_remittances')
+            .select('remit_date, reference, amount, remarks, is_test, created_by')
+            .order('remit_date', { ascending: false })
+            .order('id', { ascending: false }),
+          'remit_date',
+          opts,
+        ).range(lo, hi),
       ),
-      rangeFilter(
-        supabase
-          .from('daily_cash_movements')
-          .select(
-            'movement_date, direction, movement_type, amount, remarks, is_test, created_by',
-          )
-          .order('movement_date', { ascending: false }),
-        'movement_date',
-        opts,
+      allRows((lo, hi) =>
+        rangeFilter(
+          supabase
+            .from('daily_cash_movements')
+            .select(
+              'movement_date, direction, movement_type, amount, remarks, is_test, created_by',
+            )
+            .order('movement_date', { ascending: false })
+            .order('id', { ascending: false }),
+          'movement_date',
+          opts,
+        ).range(lo, hi),
       ),
-      rangeFilter(
-        supabase
-          .from('daily_cash_trades')
-          .select('trade_date, name, related_sale, amount, remarks, is_test, created_by')
-          .order('trade_date', { ascending: false }),
-        'trade_date',
-        opts,
+      allRows((lo, hi) =>
+        rangeFilter(
+          supabase
+            .from('daily_cash_trades')
+            .select(
+              'trade_date, name, related_sale, amount, remarks, is_test, created_by',
+            )
+            .order('trade_date', { ascending: false })
+            .order('id', { ascending: false }),
+          'trade_date',
+          opts,
+        ).range(lo, hi),
       ),
-      rangeFilter(
-        supabase
-          .from('daily_cash_closes')
-          .select(
-            'close_date, status, expected_cash, actual_cash_count, difference, notes, closed_by, closed_at',
-          )
-          .order('close_date', { ascending: false }),
-        'close_date',
-        opts,
+      allRows((lo, hi) =>
+        rangeFilter(
+          supabase
+            .from('daily_cash_closes')
+            .select(
+              'close_date, status, expected_cash, actual_cash_count, difference, notes, closed_by, closed_at',
+            )
+            .order('close_date', { ascending: false }),
+          'close_date',
+          opts,
+        ).range(lo, hi),
       ),
     ]);
 
@@ -630,7 +702,7 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
         test: r.is_test === true ? 'Yes' : 'No',
       });
     };
-    for (const r of (exp.data ?? []) as Array<Record<string, unknown>>) {
+    for (const r of exp) {
       push(
         r.expense_date,
         'Expense',
@@ -639,14 +711,14 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
         r,
       );
     }
-    for (const r of (rem.data ?? []) as Array<Record<string, unknown>>) {
+    for (const r of rem) {
       push(r.remit_date, 'Remittance', (r.reference as string) ?? '', 'Out', r);
     }
-    for (const r of (mov.data ?? []) as Array<Record<string, unknown>>) {
+    for (const r of mov) {
       const dir = (r.direction as string) === 'in' ? 'In' : 'Out';
       push(r.movement_date, 'Cash Movement', humanize(r.movement_type as string), dir, r);
     }
-    for (const r of (trd.data ?? []) as Array<Record<string, unknown>>) {
+    for (const r of trd) {
       push(
         r.trade_date,
         'Trade-in',
@@ -672,18 +744,16 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
       detail,
     );
 
-    const closeRows = ((closes.data ?? []) as Array<Record<string, unknown>>).map(
-      (r) => ({
-        date: dateVal(r.close_date),
-        status: humanize(r.status as string),
-        expected: num(r.expected_cash),
-        actual: num(r.actual_cash_count),
-        difference: num(r.difference),
-        notes: (r.notes as string) ?? '—',
-        closedBy: nameOf(r.closed_by),
-        closedAt: dateVal(r.closed_at),
-      }),
-    );
+    const closeRows = closes.map((r) => ({
+      date: dateVal(r.close_date),
+      status: humanize(r.status as string),
+      expected: num(r.expected_cash),
+      actual: num(r.actual_cash_count),
+      difference: num(r.difference),
+      notes: (r.notes as string) ?? '—',
+      closedBy: nameOf(r.closed_by),
+      closedAt: dateVal(r.closed_at),
+    }));
     addSheet(
       wb,
       'Daily Cash Close',
@@ -814,17 +884,20 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
   // layaway delete, etc. Cancelled/returned/removed history lives in the Audit Log below.
   if (want('approvals')) {
     await loadStaffNames();
-    const { data } = await rangeFilter(
-      supabase
-        .from('owner_approval_requests')
-        .select(
-          'action_kind, status, entity_type, entity_id, reason, evidence_note, requested_at, requested_by, decided_at, decided_by, decision_note, executed_at',
-        )
-        .order('requested_at', { ascending: false }),
-      'requested_at',
-      opts,
+    const data = await allRows((lo, hi) =>
+      rangeFilter(
+        supabase
+          .from('owner_approval_requests')
+          .select(
+            'action_kind, status, entity_type, entity_id, reason, evidence_note, requested_at, requested_by, decided_at, decided_by, decision_note, executed_at',
+          )
+          .order('requested_at', { ascending: false })
+          .order('id', { ascending: false }),
+        'requested_at',
+        opts,
+      ).range(lo, hi),
     );
-    const rows = ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    const rows = data.map((r) => ({
       action: humanize(r.action_kind as string),
       status: humanize(r.status as string),
       entityType: humanize(r.entity_type as string),
@@ -863,18 +936,22 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
   // The accountability trail (audit_events): staff actions, deletions, restocks, returns,
   // cancellations, exports. Large — capped at the most recent 20,000 when no range is set.
   if (want('audit')) {
-    const { data } = await rangeFilter(
-      supabase
-        .from('audit_events')
-        .select(
-          'occurred_at, action, entity_type, entity_id, outcome, actor_label, reason, context',
-        )
-        .order('occurred_at', { ascending: false })
-        .limit(20000),
-      'occurred_at',
-      opts,
+    const data = await allRows(
+      (lo, hi) =>
+        rangeFilter(
+          supabase
+            .from('audit_events')
+            .select(
+              'occurred_at, action, entity_type, entity_id, outcome, actor_label, reason, context',
+            )
+            .order('occurred_at', { ascending: false })
+            .order('id', { ascending: false }),
+          'occurred_at',
+          opts,
+        ).range(lo, hi),
+      20_000,
     );
-    const rows = ((data ?? []) as Array<Record<string, unknown>>).map((r) => {
+    const rows = data.map((r) => {
       let details = '';
       try {
         details = r.context ? JSON.stringify(r.context) : '';
@@ -913,17 +990,20 @@ export async function buildDataExport(opts: ExportOptions): Promise<Buffer> {
   // Incoming-capture records — METADATA ONLY. Deliberately excludes the screenshot path and
   // every jsonb column (ocr / confirmed / print_diag) so no image or comment text is exported.
   if (want('capture_meta')) {
-    const { data } = await rangeFilter(
-      supabase
-        .from('capture_records')
-        .select(
-          'captured_at, capture_id, source, message_status, print_status, link_status, route_reason, is_test, official_order_id, customer_id, inventory_item_id, canonical_grams',
-        )
-        .order('captured_at', { ascending: false }),
-      'captured_at',
-      opts,
+    const data = await allRows((lo, hi) =>
+      rangeFilter(
+        supabase
+          .from('capture_records')
+          .select(
+            'captured_at, capture_id, source, message_status, print_status, link_status, route_reason, is_test, official_order_id, customer_id, inventory_item_id, canonical_grams',
+          )
+          .order('captured_at', { ascending: false })
+          .order('id', { ascending: false }),
+        'captured_at',
+        opts,
+      ).range(lo, hi),
     );
-    const rows = ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    const rows = data.map((r) => ({
       capturedAt: dateVal(r.captured_at),
       captureId: (r.capture_id as string) ?? '—',
       source: humanize(r.source as string) || '—',

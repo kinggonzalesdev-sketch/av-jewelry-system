@@ -18,6 +18,9 @@ export const signInSchema = z.object({
   email: z
     .string()
     .min(1, 'Email is required')
+    // RFC 5321 caps an address at 254 characters; this also bounds what a failed attempt can
+    // write to the audit trail (system audit 2026-09-16).
+    .max(254, 'Enter a valid email address')
     .email('Enter a valid email address')
     .transform((value) => value.trim().toLowerCase()),
   // Sign-in validates only that a password was supplied. It must NOT apply the

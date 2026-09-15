@@ -82,9 +82,23 @@ export function money(raw: string | undefined): string | null {
 export function toDate(raw: string | undefined): string | null {
   const s = (raw ?? '').trim();
   if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    // Reject impossible calendar dates (2026-02-31) here, as the non-ISO path does, instead of
+    // letting Postgres fail the whole import on one bad cell.
+    const [y, m, d] = s.split('-').map(Number) as [number, number, number];
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    const real =
+      dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+    return real ? s : null;
+  }
   const t = Date.parse(s);
   if (Number.isNaN(t)) return null;
-  return new Date(t).toISOString().slice(0, 10);
+  // `Date.parse` of a date-only text yields LOCAL midnight; formatting it through UTC
+  // (`toISOString`) shifted every Manila date one day EARLY. Format the local calendar date
+  // instead (system audit 2026-09-16).
+  const d = new Date(t);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 /**

@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
+import { recordAuditEvent, recordSystemAuditEvent } from '@/lib/audit/log';
 import {
   classifySignInFailure,
   redactEmail,
@@ -24,6 +25,27 @@ import { signInSchema } from '@/lib/validation/auth';
 export type SignInState = {
   error: string | null;
 };
+
+// ---- Failed-sign-in audit throttle -----------------------------------------------------------
+// Per-process sliding window, same pattern as the password-reset limiter. It bounds how many
+// permanent audit rows an unauthenticated caller can create; it is NOT a sign-in rate limit
+// (Supabase Auth still refuses bursts itself). The map is capped so it can never grow unbounded.
+const AUDIT_WINDOW_MS = 15 * 60_000;
+const AUDIT_MAX_PER_KEY = 5;
+const AUDIT_MAX_KEYS = 5_000;
+const auditHits = new Map<string, number[]>();
+
+function auditThrottled(key: string, now = Date.now()): boolean {
+  if (auditHits.size > AUDIT_MAX_KEYS) auditHits.clear();
+  const hits = (auditHits.get(key) ?? []).filter((t) => now - t < AUDIT_WINDOW_MS);
+  if (hits.length >= AUDIT_MAX_PER_KEY) {
+    auditHits.set(key, hits);
+    return true;
+  }
+  hits.push(now);
+  auditHits.set(key, hits);
+  return false;
+}
 
 export async function signIn(
   _prevState: SignInState,
@@ -64,8 +86,35 @@ export async function signIn(
       code: error.code ?? null,
       status: error.status ?? null,
     });
+    // Login attempts are audited (system audit 2026-09-16). No session exists yet, so this is a
+    // SYSTEM-actor event carrying only the redacted email + the failure class — never the
+    // password, never the full address. sign-in is a PUBLIC endpoint and audit_events is
+    // append-only forever, so the write is bounded: attempts Supabase already refused
+    // (rate-limited) or could not judge (Auth down) are console-only, and each redacted
+    // email + failure kind writes at most a few rows per window.
+    const key = `${redactEmail(parsed.data.email)}:${kind}`;
+    if (
+      kind !== 'rate_limited' &&
+      kind !== 'server_unavailable' &&
+      !auditThrottled(key)
+    ) {
+      await recordSystemAuditEvent({
+        action: 'auth.sign_in_failed',
+        entityType: 'auth_session',
+        outcome: 'denied',
+        reason: kind,
+        context: { email: redactEmail(parsed.data.email), code: error.code ?? null },
+      });
+    }
     return { error: signInFailureMessage(kind) };
   }
+
+  // The session cookies are set now, so this one is attributed to the signed-in user.
+  await recordAuditEvent({
+    action: 'auth.sign_in_succeeded',
+    entityType: 'auth_session',
+    context: { email: redactEmail(parsed.data.email) },
+  });
 
   // MFA note (ADR §5): where a user has a verified TOTP factor, Supabase reports an
   // Authenticator Assurance Level of aal1 with a target of aal2 after this step, and
@@ -88,10 +137,16 @@ export async function signOut(): Promise<never> {
   // instead of a browser-session one. We therefore always clear the local `sb-*` auth cookies
   // ourselves as well, so Logout ends the session ON THIS DEVICE even when the network call
   // fails. Server-side revocation still happens whenever Auth is reachable.
+  // Audited BEFORE the session is revoked, while it can still be attributed.
+  await recordAuditEvent({ action: 'auth.sign_out', entityType: 'auth_session' });
+
   const { error } = await supabase.auth.signOut();
 
   if (error) {
-    console.error('[auth] signOut failed; clearing session cookies locally', error);
+    console.error(
+      '[auth] signOut failed; clearing session cookies locally',
+      error.message,
+    );
   }
 
   const cookieStore = await cookies();
