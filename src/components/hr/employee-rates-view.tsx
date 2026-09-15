@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState } from 'react';
 
 import { useRouter } from 'next/navigation';
 
+import { manilaToday } from '@/lib/format/manila-date';
 import { setHourlyRateAction } from '@/lib/hr/actions';
 import { EMPTY_HR_STATE, type HrActionState } from '@/lib/hr/action-state';
 import type { EmployeeRateRow } from '@/lib/hr/rate';
@@ -39,7 +40,7 @@ function EditRate({ row }: { row: EmployeeRateRow }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [rate, setRate] = useState(row.hourlyRate ?? '');
-  const [effective, setEffective] = useState(new Date().toISOString().slice(0, 10));
+  const [effective, setEffective] = useState(manilaToday());
   const [state, submit, saving] = useActionState<HrActionState, FormData>(
     setHourlyRateAction,
     EMPTY_HR_STATE,
@@ -62,7 +63,7 @@ function EditRate({ row }: { row: EmployeeRateRow }) {
         type="button"
         onClick={() => {
           setRate(row.hourlyRate ?? '');
-          setEffective(new Date().toISOString().slice(0, 10));
+          setEffective(manilaToday());
           setOpen(true);
         }}
         data-testid={`edit-rate-${row.staffProfileId}`}

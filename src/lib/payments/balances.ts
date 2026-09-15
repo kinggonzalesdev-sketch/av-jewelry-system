@@ -133,6 +133,29 @@ export async function getOrderBalances(
   officialOrderIds: string[],
 ): Promise<Map<string, OrderBalanceResult>> {
   const out = new Map<string, OrderBalanceResult>();
+  // A whole-call failure leaves the map empty; every caller then renders each
+  // row as "unavailable" (the map.get() miss), never as a fabricated ₱0.00.
+  for (const [orderId, payload] of await getOrderBalancePayloads(officialOrderIds)) {
+    out.set(orderId, parseBalanceJson(payload));
+  }
+  return out;
+}
+
+/**
+ * The RAW order_balance() jsonb payloads for many orders, in the SAME single
+ * order_balances() round-trip getOrderBalances() makes (it delegates here).
+ *
+ * For the Layaway arrangement mapper only, whose LayawayRow has no "unavailable"
+ * field and which has always coerced each raw figure with moneyString(). Handing
+ * it the parsed OrderBalance instead would change what it renders for a null
+ * figure (String(null) === 'null'), so it gets exactly what the old per-row
+ * order_balance() call returned. An id absent from the map (whole-call failure,
+ * or not returned) is the same as the old per-row read failing: no payload.
+ */
+export async function getOrderBalancePayloads(
+  officialOrderIds: string[],
+): Promise<Map<string, unknown>> {
+  const out = new Map<string, unknown>();
   if (officialOrderIds.length === 0) return out;
 
   const supabase = await createClient();
@@ -140,13 +163,19 @@ export async function getOrderBalances(
     p_order_ids: officialOrderIds,
   });
 
-  // A whole-call failure leaves the map empty; every caller then renders each
-  // row as "unavailable" (the map.get() miss), never as a fabricated ₱0.00.
-  if (response.error || !Array.isArray(response.data)) return out;
+  if (response.error || !Array.isArray(response.data)) {
+    // One failed batch now affects every row on the page; say so in the server log so a page of
+    // unreadable balances is diagnosable rather than silently shown as zeros.
+    console.error(
+      '[balances] order_balances failed',
+      response.error?.message ?? 'unexpected response',
+    );
+    return out;
+  }
 
   for (const entry of response.data as Array<{ order_id: string; balance: unknown }>) {
     if (typeof entry?.order_id !== 'string') continue;
-    out.set(entry.order_id, parseBalanceJson(entry.balance));
+    out.set(entry.order_id, entry.balance);
   }
   return out;
 }

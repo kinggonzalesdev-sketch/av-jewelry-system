@@ -56,6 +56,31 @@ function one<T>(value: T | T[] | null): T | null {
 }
 
 /**
+ * Most ids per `.in()` filter. The ids travel in the request URL, so a long list
+ * is split into several requests. At ≤300 ids the URL stays short (~11 KB of
+ * UUIDs). Each of these tables is UNIQUE per claim/id, so a 300-id chunk can
+ * never reach PostgREST's 1,000-row response cap.
+ */
+const IN_CHUNK = 300;
+
+function chunked<T>(values: T[], size = IN_CHUNK): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < values.length; i += size) out.push(values.slice(i, i + size));
+  return out;
+}
+
+/** Runs `query` once per id chunk and returns every row, in response order.
+ *  A chunk that errors adds no rows, the same as the old per-row reads that
+ *  treated an error as "nothing found". */
+async function rowsForIds(
+  ids: string[],
+  query: (chunk: string[]) => PromiseLike<{ data: unknown[] | null }>,
+): Promise<Array<Record<string, unknown>>> {
+  const pages = await Promise.all(chunked(ids).map((chunk) => query(chunk)));
+  return pages.flatMap((page) => (page.data ?? []) as Array<Record<string, unknown>>);
+}
+
+/**
  * Computes eligibility and grouping from STORED state.
  *
  * Every exclusion carries a reason — nothing is silently dropped. A claim the
@@ -83,18 +108,35 @@ export async function computeEligibility(): Promise<EligibilityReport> {
   const groups = new Map<string, EligibleGroup>();
 
   // Which claims already sit in an active draft, or already reached an order.
+  //
+  // Every read is scoped to THIS run's candidate claim ids. Unscoped, each read
+  // pulled the whole table, and PostgREST caps a response at 1,000 rows. On a
+  // large store an ordered claim could fall outside the capped page, and the
+  // "already ordered" exclusion would silently let it through.
+  const candidateIds = claims.map((c) => c.id);
   const [inDraft, inOrder, reserved] = await Promise.all([
-    supabase.from('invoice_draft_claims').select('claim_id').eq('is_active', true),
-    supabase.from('official_order_claims').select('claim_id'),
-    supabase
-      .from('inventory_reservations')
-      .select('claim_id, state')
-      .in('state', ['provisional', 'committed']),
+    rowsForIds(candidateIds, (ids) =>
+      supabase
+        .from('invoice_draft_claims')
+        .select('claim_id')
+        .eq('is_active', true)
+        .in('claim_id', ids),
+    ),
+    rowsForIds(candidateIds, (ids) =>
+      supabase.from('official_order_claims').select('claim_id').in('claim_id', ids),
+    ),
+    rowsForIds(candidateIds, (ids) =>
+      supabase
+        .from('inventory_reservations')
+        .select('claim_id, state')
+        .in('state', ['provisional', 'committed'])
+        .in('claim_id', ids),
+    ),
   ]);
 
-  const draftedIds = new Set((inDraft.data ?? []).map((r) => r.claim_id as string));
-  const orderedIds = new Set((inOrder.data ?? []).map((r) => r.claim_id as string));
-  const reservedIds = new Set((reserved.data ?? []).map((r) => r.claim_id as string));
+  const draftedIds = new Set(inDraft.map((r) => r.claim_id as string));
+  const orderedIds = new Set(inOrder.map((r) => r.claim_id as string));
+  const reservedIds = new Set(reserved.map((r) => r.claim_id as string));
 
   for (const claim of claims) {
     if (draftedIds.has(claim.id)) {
@@ -399,57 +441,70 @@ export async function listInvoiceDrafts(): Promise<DraftSummary[]> {
 
   if (error || !data) return [];
 
-  return Promise.all(
-    data.map(async (row) => {
-      const r = row as Record<string, unknown>;
-      const links =
-        (r.invoice_draft_claims as Array<{ claim_id: string; is_active: boolean }>) ?? [];
-      const active = links.filter((l) => l.is_active);
-      const order = one(
-        r.official_orders as
-          | { order_number: string; invoice_number: string; hold_expires_at: string }
-          | { order_number: string; invoice_number: string; hold_expires_at: string }[]
-          | null,
-      );
+  const drafts = data.map((row) => {
+    const r = row as Record<string, unknown>;
+    const links =
+      (r.invoice_draft_claims as Array<{ claim_id: string; is_active: boolean }>) ?? [];
+    return { r, activeClaimIds: links.filter((l) => l.is_active).map((l) => l.claim_id) };
+  });
 
-      const lineItems = await draftLineItems(active.map((l) => l.claim_id));
+  // Line items for EVERY draft in one read, grouped per draft below. This was one
+  // claims query per draft, so the page cost grew with the number of drafts.
+  const allLineItems = await lineItemsForClaims(supabase, [
+    ...new Set(drafts.flatMap((d) => d.activeClaimIds)),
+  ]);
 
-      return {
-        id: r.id as string,
-        status: r.status as string,
-        customerDisplayName:
-          one(r.customers as { display_name: string } | { display_name: string }[] | null)
-            ?.display_name ?? 'Unknown',
-        paymentArrangement: (r.payment_arrangement as string | null) ?? null,
-        fulfillmentArrangement: (r.fulfillment_arrangement as string | null) ?? null,
-        claimCount: lineItems.length,
-        totalAmount: lineItems.reduce((sum, li) => sum + li.lineTotal, 0),
-        claims: lineItems,
-        orderNumber: order?.order_number ?? null,
-        invoiceNumber: order?.invoice_number ?? null,
-        holdExpiresAt: order?.hold_expires_at ?? null,
-      };
-    }),
-  );
+  return drafts.map(({ r, activeClaimIds }) => {
+    const order = one(
+      r.official_orders as
+        | { order_number: string; invoice_number: string; hold_expires_at: string }
+        | { order_number: string; invoice_number: string; hold_expires_at: string }[]
+        | null,
+    );
+
+    // Keep the response order, as the per-draft `.in('id', …)` read did. A
+    // duplicated link still yields one line, because a claims row is unique by id.
+    const mine = new Set(activeClaimIds);
+    const lineItems = allLineItems.filter((li) => mine.has(li.claimId));
+
+    return {
+      id: r.id as string,
+      status: r.status as string,
+      customerDisplayName:
+        one(r.customers as { display_name: string } | { display_name: string }[] | null)
+          ?.display_name ?? 'Unknown',
+      paymentArrangement: (r.payment_arrangement as string | null) ?? null,
+      fulfillmentArrangement: (r.fulfillment_arrangement as string | null) ?? null,
+      claimCount: lineItems.length,
+      totalAmount: lineItems.reduce((sum, li) => sum + li.lineTotal, 0),
+      claims: lineItems,
+      orderNumber: order?.order_number ?? null,
+      invoiceNumber: order?.invoice_number ?? null,
+      holdExpiresAt: order?.hold_expires_at ?? null,
+    };
+  });
 }
 
 /**
- * Line items for a draft — claim reference, item, quantity, and price — read from
- * stored claim/item data, never the client. The line total is quantity × the
- * item's stored per-piece price (the same basis the eligibility total uses).
+ * Line items (claim reference, item, quantity, price) for every given claim, read
+ * from stored claim/item data, never the client. One read covers all drafts on
+ * the page; the caller groups the lines per draft. The line total is quantity ×
+ * the item's stored per-piece price (the same basis the eligibility total uses).
  */
-async function draftLineItems(claimIds: string[]): Promise<DraftLineItem[]> {
+async function lineItemsForClaims(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  claimIds: string[],
+): Promise<DraftLineItem[]> {
   if (claimIds.length === 0) return [];
 
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from('claims')
-    .select(
-      'id, claim_reference, quantity, inventory_items ( item_name, item_code, total_price_per_piece )',
-    )
-    .in('id', claimIds);
-
-  if (!data) return [];
+  const data = await rowsForIds(claimIds, (ids) =>
+    supabase
+      .from('claims')
+      .select(
+        'id, claim_reference, quantity, inventory_items ( item_name, item_code, total_price_per_piece )',
+      )
+      .in('id', ids),
+  );
 
   return (
     data as unknown as Array<{

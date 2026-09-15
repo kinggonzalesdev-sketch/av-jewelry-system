@@ -13,6 +13,7 @@ import {
   getDashboardMetricsRanged,
   getSalesByChannel,
 } from '@/lib/dashboard/service';
+import { manilaToday } from '@/lib/format/manila-date';
 import { getLayawayDashboard } from '@/lib/payments/layaway-ledger';
 import { getScrapIncome, getScrapTotal } from '@/lib/scrap/service';
 
@@ -49,7 +50,7 @@ export default async function DashboardPage({
   // to the view so it can show "all time" vs an explicit range.
   const rangeFrom = typeof params.from === 'string' ? params.from : undefined;
   const rangeTo = typeof params.to === 'string' ? params.to : undefined;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = manilaToday();
   const effFrom = rangeFrom ?? '2000-01-01';
   const effTo = rangeTo ?? today;
 

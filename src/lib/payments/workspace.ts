@@ -1,6 +1,9 @@
 import 'server-only';
 
-import { getOrderBalances } from '@/lib/payments/balances';
+import { cache } from 'react';
+
+import { manilaToday } from '@/lib/format/manila-date';
+import { getOrderBalancePayloads, getOrderBalances } from '@/lib/payments/balances';
 import { moneyString, type DateRangeKey } from '@/lib/payments/format';
 import { createClient } from '@/lib/supabase/server';
 
@@ -122,12 +125,14 @@ export async function layawayStatusBreakdown(): Promise<LayawayStatusBreakdown> 
   const count = (status: string) => rows.filter((r) => r.status === status).length;
 
   // "Installment Due" is a readiness condition, not a stored status: an active
-  // layaway with an unpaid installment now due.
+  // layaway with an unpaid installment now due. "Now" is the Asia/Manila business
+  // date — a UTC date is still yesterday until 08:00 Manila, which hid every
+  // installment falling due today for the first eight hours of the day.
   const { data: due } = await supabase
     .from('layaway_installments')
     .select('id, layaway_arrangement_id, due_date, payment_id')
     .is('payment_id', null)
-    .lte('due_date', new Date().toISOString().slice(0, 10));
+    .lte('due_date', manilaToday());
 
   const dueIds = new Set(
     ((due ?? []) as Array<{ layaway_arrangement_id: string }>).map(
@@ -574,145 +579,231 @@ export async function arrangementRowsByIds(ids: string[]): Promise<LayawayRow[]>
   return mapArrangementRows(supabase, data);
 }
 
+type ServerClient = Awaited<ReturnType<typeof createClient>>;
+
+type ArrangementInstallment = {
+  installment_number: number;
+  due_date: string;
+  amount_due: string;
+  payment_id: string | null;
+};
+
+function installmentsOf(r: Record<string, unknown>): ArrangementInstallment[] {
+  return ((r.layaway_installments as unknown[]) ?? []) as ArrangementInstallment[];
+}
+
+/**
+ * Most ids one `.in()` filter carries. A read puts the list in its URL, so a batch
+ * across every row must never grow past what the API gateway accepts — a refused
+ * read here would silently mark every installment "unverified". 100 uuids ≈ 3.7 KB,
+ * the same size as this page's other by-id reads (the page itself is capped at 100).
+ */
+const IN_CHUNK = 100;
+
+function chunks<T>(items: T[]): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += IN_CHUNK) out.push(items.slice(i, i + IN_CHUNK));
+  return out;
+}
+
+/**
+ * order_item_total() for ONE order, memoised for the request with React cache(): the
+ * Layaway page renders two arrangement lists in the same request (listLayaways and
+ * the server-rendered first page), and an order in both now costs one call, not two.
+ * Still per order — no batch reader returns the item total (order_balance()'s jsonb
+ * does not include it) and adding one would be a new RPC — but every order's call is
+ * issued at once instead of queued behind that row's other reads.
+ */
+const orderItemTotal = cache(async (orderId: string): Promise<unknown> => {
+  const supabase = await createClient();
+  const response = await supabase.rpc('order_item_total', { p_order_id: orderId });
+  const data: unknown = response.data;
+  return data;
+});
+
+/**
+ * Each order's linked inventory Unique Code(s) in ONE guarded query (order → claims
+ * → inventory items). Isolated on purpose: if the embed can't be resolved it simply
+ * yields no codes ("Not linked") and never breaks the list.
+ */
+async function linkedCodesByOrder(
+  supabase: ServerClient,
+  orderIds: string[],
+): Promise<Map<string, string>> {
+  const codeByOrder = new Map<string, string>();
+  if (orderIds.length === 0) return codeByOrder;
+  const { data: claimRows } = await supabase
+    .from('official_order_claims')
+    .select('official_order_id, claims ( inventory_items ( item_code ) )')
+    .in('official_order_id', orderIds);
+  for (const cr of (claimRows ?? []) as Array<Record<string, unknown>>) {
+    const oid = cr.official_order_id as string;
+    const claim = one<{ inventory_items: unknown }>(cr.claims);
+    const inv = one<{ item_code: string }>(claim?.inventory_items);
+    const code = inv?.item_code;
+    if (code) {
+      const existing = codeByOrder.get(oid);
+      // Multiple items → comma-separated codes (e.g. "AV001, AV014"), deduped.
+      if (!existing) codeByOrder.set(oid, code);
+      else if (!existing.split(', ').includes(code)) {
+        codeByOrder.set(oid, `${existing}, ${code}`);
+      }
+    }
+  }
+  return codeByOrder;
+}
+
+/**
+ * Which of these payments are actually VERIFIED. Recording an installment against a
+ * payment does not verify that payment (§17). One read for every row's installment
+ * payments: a payment id belongs to one installment, so one shared set answers each
+ * row exactly as that row's own lookup did.
+ */
+async function verifiedPaymentIds(
+  supabase: ServerClient,
+  paymentIds: string[],
+): Promise<Set<string>> {
+  const reads = await Promise.all(
+    chunks(paymentIds).map((ids) =>
+      supabase.from('payments').select('id').in('id', ids).eq('status', 'verified'),
+    ),
+  );
+  const out = new Set<string>();
+  for (const { data } of reads) {
+    for (const v of (data ?? []) as Array<{ id: string }>) out.add(v.id);
+  }
+  return out;
+}
+
+/** Orders with at least one payment under an unresolved correction — one read for all rows. */
+async function ordersWithPendingCorrection(
+  supabase: ServerClient,
+  orderIds: string[],
+): Promise<Set<string>> {
+  const reads = await Promise.all(
+    chunks(orderIds).map((ids) =>
+      supabase
+        .from('payments')
+        .select('official_order_id')
+        .in('official_order_id', ids)
+        .eq('correction_pending', true),
+    ),
+  );
+  const out = new Set<string>();
+  for (const { data } of reads) {
+    for (const p of (data ?? []) as Array<{ official_order_id: string }>) {
+      out.add(p.official_order_id);
+    }
+  }
+  return out;
+}
+
 async function mapArrangementRows(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ServerClient,
   data: unknown[],
 ): Promise<LayawayRow[]> {
-  // Resolve each order's linked inventory Unique Code(s) in ONE guarded query
-  // (order → claims → inventory items). Isolated on purpose: if the embed can't be
-  // resolved it simply yields no codes ("Not linked") and never breaks the list.
+  const rows = data as Array<Record<string, unknown>>;
   const orderIds = [
     ...new Set(
-      (data as Array<Record<string, unknown>>)
+      rows
         .map((r) => r.official_order_id as string)
         .filter((v): v is string => Boolean(v)),
     ),
   ];
-  const codeByOrder = new Map<string, string>();
-  if (orderIds.length > 0) {
-    const { data: claimRows } = await supabase
-      .from('official_order_claims')
-      .select('official_order_id, claims ( inventory_items ( item_code ) )')
-      .in('official_order_id', orderIds);
-    for (const cr of (claimRows ?? []) as Array<Record<string, unknown>>) {
-      const oid = cr.official_order_id as string;
-      const claim = one<{ inventory_items: unknown }>(cr.claims);
-      const inv = one<{ item_code: string }>(claim?.inventory_items);
-      const code = inv?.item_code;
-      if (code) {
-        const existing = codeByOrder.get(oid);
-        // Multiple items → comma-separated codes (e.g. "AV001, AV014"), deduped.
-        if (!existing) codeByOrder.set(oid, code);
-        else if (!existing.split(', ').includes(code)) {
-          codeByOrder.set(oid, `${existing}, ${code}`);
-        }
-      }
-    }
-  }
+  const paidPaymentIds = [
+    ...new Set(
+      rows.flatMap((r) =>
+        installmentsOf(r)
+          .map((i) => i.payment_id)
+          .filter((id): id is string => id !== null),
+      ),
+    ),
+  ];
 
-  return Promise.all(
-    data.map(async (row) => {
-      const r = row as Record<string, unknown>;
-      const orderId = r.official_order_id as string;
-      const order = one<{
-        order_number: string;
-        invoice_number: string;
-        customers: unknown;
-      }>(r.official_orders);
-      const customer = one<{
-        display_name: string;
-        facebook_conversation_url: string | null;
-      }>(order?.customers);
-      const financer = one<{ name: string }>(r.financers);
+  // Every lookup is issued at once, and each is ONE read across all rows (chunked
+  // only past IN_CHUNK ids). This used to be four awaited reads PER ROW —
+  // order_balance, order_item_total, verified payments, corrections — so a 50-row
+  // list cost ~200 round-trips. Only the per-order item total still scales with the
+  // rows, and those run concurrently.
+  const [codeByOrder, balanceByOrder, itemTotalByOrder, verifiedIds, correctionOrders] =
+    await Promise.all([
+      linkedCodesByOrder(supabase, orderIds),
+      // The SAME order_balance() figures via its batch wrapper order_balances(), raw,
+      // so each figure is coerced exactly as the per-row read's payload was.
+      getOrderBalancePayloads(orderIds),
+      Promise.all(
+        orderIds.map(async (id) => [id, await orderItemTotal(id)] as const),
+      ).then((entries) => new Map(entries)),
+      verifiedPaymentIds(supabase, paidPaymentIds),
+      ordersWithPendingCorrection(supabase, orderIds),
+    ]);
 
-      const balanceResponse = await supabase.rpc('order_balance', {
-        p_order_id: orderId,
-      });
-      const b = (balanceResponse.data ?? {}) as Record<string, unknown>;
+  return rows.map((r) => {
+    const orderId = r.official_order_id as string;
+    const order = one<{
+      order_number: string;
+      invoice_number: string;
+      customers: unknown;
+    }>(r.official_orders);
+    const customer = one<{
+      display_name: string;
+      facebook_conversation_url: string | null;
+    }>(order?.customers);
+    const financer = one<{ name: string }>(r.financers);
 
-      // Item principal, authoritative from SQL (Grand Total = item + interest fee).
-      // Never derived by subtracting money strings in JS.
-      const itemTotalResponse = await supabase.rpc('order_item_total', {
-        p_order_id: orderId,
-      });
+    // An order missing from the batch (its balance could not be read) maps exactly
+    // as the old per-row read that failed did: no payload.
+    const b = (balanceByOrder.get(orderId) ?? {}) as Record<string, unknown>;
 
-      const installmentRows = ((r.layaway_installments as unknown[]) ?? []) as Array<{
-        installment_number: number;
-        due_date: string;
-        amount_due: string;
-        payment_id: string | null;
-      }>;
+    const installmentRows = installmentsOf(r);
 
-      // Which installment payments are actually VERIFIED. Recording an
-      // installment against a payment does not verify that payment (§17).
-      const paymentIds = installmentRows
-        .map((i) => i.payment_id)
-        .filter((id): id is string => id !== null);
+    const graceDays = (r.grace_period_days as number) ?? 10;
+    const finalDue = (r.final_due_date as string | null) ?? null;
 
-      const verifiedIds = new Set<string>();
-      if (paymentIds.length > 0) {
-        const { data: verified } = await supabase
-          .from('payments')
-          .select('id')
-          .in('id', paymentIds)
-          .eq('status', 'verified');
-        for (const v of (verified ?? []) as Array<{ id: string }>) verifiedIds.add(v.id);
-      }
-
-      const { data: corrections } = await supabase
-        .from('payments')
-        .select('id')
-        .eq('official_order_id', orderId)
-        .eq('correction_pending', true)
-        .limit(1);
-
-      const graceDays = (r.grace_period_days as number) ?? 10;
-      const finalDue = (r.final_due_date as string | null) ?? null;
-
-      return {
-        layawayId: r.id as string,
-        code: (r.layaway_code as string | null) ?? null,
-        officialOrderId: orderId,
-        orderNumber: order?.order_number ?? '—',
-        invoiceNumber: order?.invoice_number ?? '—',
-        uniqueCode: codeByOrder.get(orderId) ?? null,
-        customerDisplayName: customer?.display_name ?? 'Unknown',
-        facebookUrl: customer?.facebook_conversation_url ?? null,
-        status: r.status as string,
-        financer: financer?.name ?? null,
-        financerId: (r.financer_id as string | null) ?? null,
-        currentHolder: (r.current_holder as string | null) ?? null,
-        currentLocation: (r.current_location as string | null) ?? null,
-        remarks: (r.remarks as string | null) ?? null,
-        months: (r.months as number | null) ?? null,
-        totalGrams: r.total_grams !== null ? moneyString(r.total_grams, '0') : null,
-        layawayFee: r.layaway_fee !== null ? moneyString(r.layaway_fee) : null,
-        // Item principal (authoritative) + the layaway/order creation date, for the
-        // Excel-first Layaway table (spec §4).
-        itemAmount: moneyString(itemTotalResponse.data ?? 0),
-        datePurchased: (r.created_at as string | null) ?? null,
-        finalDueDate: finalDue,
-        graceEndsOn: finalDue ? addDays(finalDue, graceDays) : null,
-        completedAt: (r.completed_at as string | null) ?? null,
-        totalAmountPayable: moneyString(b.total_amount_payable),
-        verifiedNetPayments: moneyString(b.verified_net_payments),
-        outstandingBalance: moneyString(b.outstanding_balance),
-        overpaymentCredit: moneyString(b.overpayment_credit),
-        requiredDownPayment: moneyString(b.required_down_payment),
-        paidInFull: b.paid_in_full === true,
-        hasUnresolvedCorrection: (corrections?.length ?? 0) > 0,
-        installments: installmentRows
-          .sort((a, z) => a.installment_number - z.installment_number)
-          .map((i) => ({
-            number: i.installment_number,
-            dueDate: i.due_date,
-            amountDue: String(i.amount_due),
-            paid: i.payment_id !== null,
-            verified: i.payment_id !== null && verifiedIds.has(i.payment_id),
-          })),
-      };
-    }),
-  );
+    return {
+      layawayId: r.id as string,
+      code: (r.layaway_code as string | null) ?? null,
+      officialOrderId: orderId,
+      orderNumber: order?.order_number ?? '—',
+      invoiceNumber: order?.invoice_number ?? '—',
+      uniqueCode: codeByOrder.get(orderId) ?? null,
+      customerDisplayName: customer?.display_name ?? 'Unknown',
+      facebookUrl: customer?.facebook_conversation_url ?? null,
+      status: r.status as string,
+      financer: financer?.name ?? null,
+      financerId: (r.financer_id as string | null) ?? null,
+      currentHolder: (r.current_holder as string | null) ?? null,
+      currentLocation: (r.current_location as string | null) ?? null,
+      remarks: (r.remarks as string | null) ?? null,
+      months: (r.months as number | null) ?? null,
+      totalGrams: r.total_grams !== null ? moneyString(r.total_grams, '0') : null,
+      layawayFee: r.layaway_fee !== null ? moneyString(r.layaway_fee) : null,
+      // Item principal (authoritative) + the layaway/order creation date, for the
+      // Excel-first Layaway table (spec §4). Authoritative from SQL (Grand Total =
+      // item + interest fee) — never derived by subtracting money strings in JS.
+      itemAmount: moneyString(itemTotalByOrder.get(orderId) ?? 0),
+      datePurchased: (r.created_at as string | null) ?? null,
+      finalDueDate: finalDue,
+      graceEndsOn: finalDue ? addDays(finalDue, graceDays) : null,
+      completedAt: (r.completed_at as string | null) ?? null,
+      totalAmountPayable: moneyString(b.total_amount_payable),
+      verifiedNetPayments: moneyString(b.verified_net_payments),
+      outstandingBalance: moneyString(b.outstanding_balance),
+      overpaymentCredit: moneyString(b.overpayment_credit),
+      requiredDownPayment: moneyString(b.required_down_payment),
+      paidInFull: b.paid_in_full === true,
+      hasUnresolvedCorrection: correctionOrders.has(orderId),
+      installments: installmentRows
+        .sort((a, z) => a.installment_number - z.installment_number)
+        .map((i) => ({
+          number: i.installment_number,
+          dueDate: i.due_date,
+          amountDue: String(i.amount_due),
+          paid: i.payment_id !== null,
+          verified: i.payment_id !== null && verifiedIds.has(i.payment_id),
+        })),
+    };
+  });
 }
 
 /** Grace ends N calendar days after the final due date (approved decision §6). */

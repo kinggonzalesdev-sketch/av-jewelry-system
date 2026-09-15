@@ -1,0 +1,45 @@
+# Continuous verification (system audit 2026-09-16: there was no CI; every gate ran by hand on one PC).
+#
+# Runs the same gates as `npm run verify` on every push and pull request, EXCEPT `format:check`:
+# ~120 files carry pre-existing Prettier drift that the Owner parked (see the parked-items note), so
+# that step would fail every run until the drift is cleaned up in its own change.
+#
+# No secret is needed or used. The two NEXT_PUBLIC_* values are placeholders that only satisfy the
+# env schema at build time; tests never reach a real Supabase project.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-public-anon-key
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Unit + integration tests
+        run: npm test
+      - name: Production build
+        run: npm run build

@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 
 import { recordAuditEvent } from '@/lib/audit/log';
 import { AuthorizationError, requireOwner, requireOwnerOrAdmin } from '@/lib/authz/guard';
+import { manilaToday } from '@/lib/format/manila-date';
 import { mapSnapshotRow } from '@/lib/hr/payslip';
 import type { PayslipActionState } from '@/lib/hr/payslip-types';
 import { createClient } from '@/lib/supabase/server';
@@ -111,8 +112,8 @@ export async function markPayslipPaidAction(
   }
 
   const snapshotId = text(formData, 'snapshotId');
-  const paymentDate =
-    text(formData, 'paymentDate') ?? new Date().toISOString().slice(0, 10);
+  // Default: the shop's (Manila) day — the UTC date is still yesterday before 08:00.
+  const paymentDate = text(formData, 'paymentDate') ?? manilaToday();
   if (!snapshotId) {
     return { error: 'Missing payslip.', success: null, snapshot: null };
   }

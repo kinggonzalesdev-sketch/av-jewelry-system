@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 
+import { manilaToday } from '@/lib/format/manila-date';
 import { generatePayslipAction, markPayslipPaidAction } from '@/lib/hr/payslip-actions';
 import { downloadPayslipPdf } from '@/lib/hr/payslip-pdf';
 import { EMPTY_PAYSLIP_STATE, type PayslipSnapshot } from '@/lib/hr/payslip-types';
@@ -206,7 +207,7 @@ export function PayslipButton({
       setSnapshot({
         ...snapshot,
         paymentStatus: 'paid',
-        paymentDate: new Date().toISOString().slice(0, 10),
+        paymentDate: manilaToday(),
       });
       router.refresh();
     } finally {

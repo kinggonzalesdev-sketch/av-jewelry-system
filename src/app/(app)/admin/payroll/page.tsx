@@ -7,18 +7,11 @@ import { PageHeader } from '@/components/ui/page-primitives';
 import { getPayroll } from '@/lib/hr/payroll';
 import { listPayslipsForPeriod } from '@/lib/hr/payslip';
 import { listEmployeeRates, type EmployeeRateRow } from '@/lib/hr/rate';
+import { manilaMonthStart, manilaToday } from '@/lib/format/manila-date';
 
 export const metadata: Metadata = {};
 
 export const dynamic = 'force-dynamic';
-
-function firstOfMonth(): string {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
-}
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 /**
  * Team Management → Payroll (Bible §F). Split out of the old combined Attendance
@@ -36,8 +29,9 @@ export default async function PayrollPage({
   // the page — by link OR by typing the URL. A Super Admin holds it implicitly.
   if (!(await canOpenPage('hr_payroll'))) notFound();
   const params = await searchParams;
-  const from = typeof params.from === 'string' ? params.from : firstOfMonth();
-  const to = typeof params.to === 'string' ? params.to : today();
+  // Default: the current Manila month so far (the shop's business day, not UTC).
+  const from = typeof params.from === 'string' ? params.from : manilaMonthStart();
+  const to = typeof params.to === 'string' ? params.to : manilaToday();
 
   const [staff, payroll, payslips] = await Promise.all([
     requireActiveStaff(),

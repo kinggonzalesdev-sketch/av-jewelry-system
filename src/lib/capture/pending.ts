@@ -2,12 +2,44 @@ import 'server-only';
 
 import { requirePermission } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
-import { isConversationMediaEligible } from '@/lib/capture/media-window';
+import { conversationsMediaEligibility } from '@/lib/capture/media-window';
 import { sanitizeCaptureName } from '@/lib/capture/name-sanitize';
 import { normalizeGrams } from '@/lib/print/order-receipt';
 import type { PendingCaptureRow } from '@/lib/capture/pending-types';
 
 const CAPTURE_BUCKET = 'attachments';
+/** Lifetime (seconds) of each screenshot's signed URL. */
+const SCREENSHOT_URL_TTL = 600;
+
+/**
+ * Sign every screenshot with ONE Storage request (`createSignedUrls`) instead of one
+ * `createSignedUrl` per row — the strip re-reads this list every 5 seconds. Returns a Map
+ * keyed by the path AS STORED. A path that fails to sign (missing object, no access) or a
+ * request that fails outright maps to null — exactly what the per-row call yielded.
+ */
+async function signScreenshotPaths(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  paths: ReadonlyArray<string>,
+): Promise<Map<string, string | null>> {
+  // The single-object endpoint strips leading slashes (storage-js `_getFinalPath`); the batch
+  // endpoint does not, so normalise here to sign exactly the object the per-row call signed.
+  const keyOf = (p: string) => p.replace(/^\/+/, '');
+  const keys = [...new Set(paths.map(keyOf))].filter(Boolean);
+  const signedByKey = new Map<string, string | null>();
+  if (keys.length > 0) {
+    try {
+      const { data } = await supabase.storage
+        .from(CAPTURE_BUCKET)
+        .createSignedUrls(keys, SCREENSHOT_URL_TTL);
+      for (const d of data ?? []) {
+        if (d.path != null) signedByKey.set(d.path, d.signedUrl ?? null);
+      }
+    } catch {
+      // Whole request failed → every screenshot is null, as each per-row call's .catch gave.
+    }
+  }
+  return new Map(paths.map((p) => [p, signedByKey.get(keyOf(p)) ?? null]));
+}
 
 /** Read one string field off the (untyped) OCR JSON, tolerating shape/casing. */
 function ocrStr(ocr: unknown, ...keys: string[]): string | null {
@@ -82,30 +114,25 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
     customers: CustJoin | CustJoin[] | null;
   }>;
 
-  const signed = await Promise.all(
-    rows.map((r) =>
-      r.screenshot_path
-        ? supabase.storage
-            .from(CAPTURE_BUCKET)
-            .createSignedUrl(r.screenshot_path, 600)
-            .then((res) => res.data?.signedUrl ?? null)
-            .catch(() => null)
-        : Promise.resolve(null),
-    ),
-  );
-
   // Photo eligibility per row: only a `linked` capture whose conversation has a GENUINE
   // customer-initiated Inbox DM in the media window is "Photo ready". A comment-only `linked`
   // customer is NOT (the Bavelyn P0). Computed only for linked+conversation rows (fail-safe false
   // otherwise) so the strip can show "Photo waiting" without firing a doomed send.
-  const eligible = await Promise.all(
-    rows.map((r) => {
-      const conv = (r.pancake_conversation_id ?? '').trim();
-      return r.link_status === 'linked' && conv
-        ? isConversationMediaEligible(supabase, conv).catch(() => false)
-        : Promise.resolve(false);
-    }),
+  const linkedConv = rows.map((r) =>
+    r.link_status === 'linked' ? (r.pancake_conversation_id ?? '').trim() : '',
   );
+
+  // ONE signing request + ONE webhook-events query for the whole list (was 2 remote calls per
+  // row, every poll) — same bucket/TTL, same eligibility rules, same fail-safe null/false.
+  const [signedByPath, eligibleByConv] = await Promise.all([
+    signScreenshotPaths(
+      supabase,
+      rows.map((r) => r.screenshot_path).filter((p): p is string => Boolean(p)),
+    ),
+    conversationsMediaEligibility(supabase, linkedConv.filter(Boolean)).catch(
+      () => new Map<string, boolean>(),
+    ),
+  ]);
 
   return rows.map((r, i) => {
     const cust = Array.isArray(r.customers) ? r.customers[0] : r.customers;
@@ -122,7 +149,9 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
     return {
       captureRecordId: r.id,
       capturedAt: r.captured_at,
-      screenshotUrl: signed[i] ?? null,
+      screenshotUrl: r.screenshot_path
+        ? (signedByPath.get(r.screenshot_path) ?? null)
+        : null,
       fbName,
       itemQuery: ocrStr(r.ocr, 'itemQuery', 'item_query', 'item'),
       // Prefer the dedicated grams field; fall back to the mined number (older builds
@@ -145,7 +174,7 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
       // (Owner 2026-08-24, Issue 2). Identity/messaging still key off the conversation id, not the name.
       linkedCustomerName: (cust?.display_name ?? '').trim() || fbName,
       conversationAvailable: Boolean((r.pancake_conversation_id ?? '').trim()),
-      photoEligible: eligible[i] === true,
+      photoEligible: linkedConv[i] ? eligibleByConv.get(linkedConv[i]) === true : false,
       fbUrl: (cust?.facebook_conversation_url ?? '').trim() || null,
       messageStatus: r.message_status ?? null,
       routeReason: (r.route_reason ?? '').trim() || null,

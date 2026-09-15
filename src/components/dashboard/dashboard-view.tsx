@@ -14,6 +14,7 @@ import type {
 import type { ScrapIncomeRow, ScrapTotal } from '@/lib/scrap/service';
 import type { LayawayDashboard } from '@/lib/payments/layaway-ledger';
 import { formatPeso } from '@/lib/payments/format';
+import { manilaAddDays, manilaMonthStart, manilaToday } from '@/lib/format/manila-date';
 import { ExportAllButton } from '@/components/export/export-all-button';
 import { usePrivacy } from '@/components/shell/privacy';
 import { useDashboardSync } from '@/components/shell/dashboard-sync';
@@ -63,23 +64,21 @@ const RANGE_PRESETS = [
   { key: 'month', label: 'This Month', days: 0 },
 ] as const;
 
-function isoDay(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-/** Resolve a preset to concrete inclusive {from, to}, or null for all time. */
+/**
+ * Resolve a preset to concrete inclusive {from, to}, or null for all time.
+ *
+ * Days are MANILA business days, matching how the server buckets every figure. The
+ * old UTC derivation made "Today" still yesterday before 08:00 Manila, and "This
+ * Month" (a local-midnight Date sent through toISOString) always began on the
+ * previous month's last day.
+ */
 function presetRange(key: string): { from: string; to: string } | null {
   if (key === 'all') return null;
-  const today = new Date();
-  const to = isoDay(today);
-  if (key === 'month') {
-    const first = new Date(today.getFullYear(), today.getMonth(), 1);
-    return { from: isoDay(first), to };
-  }
+  const now = new Date();
+  const to = manilaToday(now);
+  if (key === 'month') return { from: manilaMonthStart(now), to };
   const days = RANGE_PRESETS.find((r) => r.key === key)?.days ?? 30;
-  const start = new Date(today);
-  start.setDate(start.getDate() - ((days ?? 30) - 1));
-  return { from: isoDay(start), to };
+  return { from: manilaAddDays(to, -(days - 1)), to };
 }
 
 /**

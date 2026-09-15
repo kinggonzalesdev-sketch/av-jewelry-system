@@ -1,3 +1,4 @@
+import { manilaToday } from '@/lib/format/manila-date';
 import { parseCsvGrid } from '@/lib/import/parse-csv';
 
 /**
@@ -260,7 +261,8 @@ export function analyzeLayawayCsv(text: string): LayawayCsvAnalysis {
   ].filter(Boolean);
 
   const cell = (row: string[], i: number) => (i >= 0 ? (row[i] ?? '').trim() : '');
-  const today = new Date().toISOString().slice(0, 10);
+  // The shop's (Manila) day, for picking the next upcoming installment.
+  const today = manilaToday();
 
   const records: LayawayImportRecord[] = [];
   for (let r = headerRowIndex + 1; r < grid.length; r++) {

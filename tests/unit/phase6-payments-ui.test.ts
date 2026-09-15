@@ -121,7 +121,11 @@ describe('the screen never contradicts the approved financial rules', () => {
   const workspace = read('src', 'lib', 'payments', 'workspace.ts');
 
   it('reads every balance from the approved SQL', () => {
-    expect(workspace).toContain("rpc('order_balance'");
+    // Balances are read in ONE batch (order_balances calls order_balance() per id in SQL), never
+    // computed here and never one RPC per row (system audit 2026-09-16, Layaway N+1 fix).
+    expect(workspace).toContain('getOrderBalancePayloads(');
+    const balances = read('src', 'lib', 'payments', 'balances.ts');
+    expect(balances).toContain("rpc('order_balances'");
   });
 
   it('counts only verified, non-void, non-reversed payments as collected', () => {

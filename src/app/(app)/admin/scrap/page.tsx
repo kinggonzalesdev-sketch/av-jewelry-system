@@ -3,19 +3,12 @@ import { notFound } from 'next/navigation';
 import { canOpenPage, getCurrentStaffProfile } from '@/lib/authz/guard';
 
 import { ScrapView } from '@/components/scrap/scrap-view';
+import { manilaMonthStart, manilaToday } from '@/lib/format/manila-date';
 import { getScrapIncome, listScrapSales } from '@/lib/scrap/service';
 
 export const metadata: Metadata = {};
 
 export const dynamic = 'force-dynamic';
-
-function firstOfMonth(): string {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
-}
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 /**
  * Scrap Income (Bible §G) — a separate income report for scrap gold/silver, kept
@@ -30,8 +23,9 @@ export default async function ScrapPage({
   // the page — by link OR by typing the URL. A Super Admin holds it implicitly.
   if (!(await canOpenPage('nav_scrap'))) notFound();
   const params = await searchParams;
-  const from = typeof params.from === 'string' ? params.from : firstOfMonth();
-  const to = typeof params.to === 'string' ? params.to : today();
+  // Default: the current Manila month so far (the shop's business day, not UTC).
+  const from = typeof params.from === 'string' ? params.from : manilaMonthStart();
+  const to = typeof params.to === 'string' ? params.to : manilaToday();
 
   // Scope the sales to the SELECTED range so the table and the CSV export show
   // exactly the same rows — an export must never include a record outside it.

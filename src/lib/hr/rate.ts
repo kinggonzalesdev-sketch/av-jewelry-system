@@ -2,6 +2,7 @@ import 'server-only';
 
 import { recordAuditEvent } from '@/lib/audit/log';
 import { requireActiveStaff } from '@/lib/authz/guard';
+import { manilaToday } from '@/lib/format/manila-date';
 import { normalizeHourlyRate } from '@/lib/hr/format';
 import { createClient } from '@/lib/supabase/server';
 
@@ -82,7 +83,8 @@ export async function setHourlyRate(
   const { error } = await supabase.rpc('set_staff_hourly_rate', {
     p_staff: staffProfileId,
     p_rate: normalized.rate,
-    p_effective: effectiveDate?.trim() || new Date().toISOString().slice(0, 10),
+    // Default: the shop's (Manila) day — the UTC date is still yesterday before 08:00.
+    p_effective: effectiveDate?.trim() || manilaToday(),
   });
 
   if (error) {

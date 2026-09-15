@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 
+import { manilaToday } from '@/lib/format/manila-date';
 import { addOrderPaymentAction } from '@/lib/orders/actions';
 import { formatPeso } from '@/lib/payments/format';
 import { DEFAULT_PAYMENT_METHOD, PAYMENT_METHOD_OPTIONS } from '@/lib/payments/methods';
@@ -26,7 +27,8 @@ import { Modal } from '@/components/ui/modal';
  */
 
 const PRICE_RE = /^\d{1,12}(\.\d{1,2})?$/;
-const today = () => new Date().toISOString().slice(0, 10);
+// The default payment date is the shop's (Manila) day, not the UTC date.
+const today = () => manilaToday();
 
 /** Raw price string → exact centavos. '' / invalid → 0. */
 function centavos(raw: string): bigint {

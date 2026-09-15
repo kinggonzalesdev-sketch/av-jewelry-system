@@ -88,7 +88,7 @@ export async function listClaimReviewQueue(limit = 50): Promise<ClaimReviewRow[]
 
   if (error || !data) return [];
 
-  return Promise.all(data.map((row) => hydrate(row as Record<string, unknown>)));
+  return hydrateAll(supabase, data);
 }
 
 /** Loads one claim for the review detail screen. */
@@ -112,7 +112,8 @@ export async function getClaimForReview(claimId: string): Promise<ClaimReviewRow
 
   if (error || !data) return null;
 
-  return hydrate(data);
+  const [row] = await hydrateAll(supabase, [data]);
+  return row ?? null;
 }
 
 function one<T>(value: unknown): T | null {
@@ -122,9 +123,171 @@ function one<T>(value: unknown): T | null {
   return (value as T) ?? null;
 }
 
-async function hydrate(row: Record<string, unknown>): Promise<ClaimReviewRow> {
-  const supabase = await createClient();
+type Client = Awaited<ReturnType<typeof createClient>>;
+type Row = Record<string, unknown>;
 
+/**
+ * Most ids per `.in()` filter. The ids travel in the request URL, so a long list
+ * is split into several requests. At ≤300 ids the URL stays short.
+ */
+const IN_CHUNK = 300;
+
+/** The page size requested while counting evidence. When the server's cap is
+ *  lower, the loop below still reaches the exact count. */
+const EVIDENCE_PAGE = 1000;
+
+function chunked<T>(values: T[], size = IN_CHUNK): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < values.length; i += size) out.push(values.slice(i, i + size));
+  return out;
+}
+
+function distinctIds(values: unknown[]): string[] {
+  return [...new Set(values.filter((v): v is string => typeof v === 'string'))];
+}
+
+/** Runs `query` once per id chunk and returns every row, in response order.
+ *  A chunk that errors adds no rows, the same as the old per-claim reads that
+ *  treated an error as "nothing found". */
+async function rowsForIds(
+  ids: string[],
+  query: (chunk: string[]) => PromiseLike<{ data: unknown[] | null }>,
+): Promise<Row[]> {
+  const pages = await Promise.all(chunked(ids).map((chunk) => query(chunk)));
+  return pages.flatMap((page) => (page.data ?? []) as Row[]);
+}
+
+/**
+ * One row per claim, with `.maybeSingle()` semantics: a claim with two rows maps
+ * to null, just as maybeSingle() errored and left `data` null. miner_positions
+ * and waitlist_entries are UNIQUE(claim_id), so in practice this never happens.
+ */
+function singleByClaim(rows: Row[]): Map<string, Row | null> {
+  const out = new Map<string, Row | null>();
+  for (const r of rows) {
+    const id = r.claim_id as string;
+    out.set(id, out.has(id) ? null : r);
+  }
+  return out;
+}
+
+/**
+ * Evidence rows per claim, counted exactly. Evidence is the one table here with
+ * no bound on rows per claim, so each chunk pages (stable order by id) until it
+ * has read the `count` PostgREST reports. The usual case is one request per
+ * chunk, and a 1,000-row response cap can never under-count.
+ */
+async function evidenceCounts(
+  supabase: Client,
+  claimIds: string[],
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  await Promise.all(
+    chunked(claimIds).map(async (ids) => {
+      for (let from = 0; ;) {
+        const { data, count, error } = await supabase
+          .from('claim_evidence')
+          .select('claim_id', { count: 'exact' })
+          .in('claim_id', ids)
+          .order('id', { ascending: true })
+          .range(from, from + EVIDENCE_PAGE - 1);
+        if (error || !data || data.length === 0) return;
+        for (const r of data as Row[]) {
+          const id = r.claim_id as string;
+          counts.set(id, (counts.get(id) ?? 0) + 1);
+        }
+        from += data.length;
+        if (typeof count !== 'number' || from >= count) return;
+      }
+    }),
+  );
+  return counts;
+}
+
+/**
+ * Hydrates every claim with a FIXED number of reads, whatever the claim count:
+ * one query each for aliases, miner positions, waitlist entries and evidence
+ * (chunked by id), plus one batch stock RPC. The old path ran five reads PER
+ * claim, including one available_quantity_for() RPC each.
+ */
+async function hydrateAll(supabase: Client, rows: Row[]): Promise<ClaimReviewRow[]> {
+  if (rows.length === 0) return [];
+
+  const claimIds = distinctIds(rows.map((r) => r.id));
+  const customerIds = distinctIds(rows.map((r) => r.customer_id));
+  const itemIds = distinctIds(rows.map((r) => r.inventory_item_id));
+
+  const [aliasRows, minerRows, waitRows, evidence, availableRes] = await Promise.all([
+    rowsForIds(customerIds, (ids) =>
+      supabase
+        .from('customer_aliases')
+        .select('customer_id, alias')
+        .eq('alias_kind', 'facebook_name')
+        .in('customer_id', ids),
+    ),
+    rowsForIds(claimIds, (ids) =>
+      supabase
+        .from('miner_positions')
+        .select('claim_id, position, assigned_at')
+        .in('claim_id', ids),
+    ),
+    rowsForIds(claimIds, (ids) =>
+      supabase.from('waitlist_entries').select('claim_id, status').in('claim_id', ids),
+    ),
+    evidenceCounts(supabase, claimIds),
+    // Same computation as available_quantity_for() (it calls the same
+    // app_private.available_quantity), one round-trip for every item.
+    itemIds.length > 0
+      ? supabase.rpc('available_quantities_for', { p_item_ids: itemIds })
+      : Promise.resolve({ data: [] as unknown }),
+  ]);
+
+  // First facebook_name alias per customer in response order. That is the row
+  // the old `.limit(1)` read returned.
+  const aliasByCustomer = new Map<string, string>();
+  for (const a of aliasRows) {
+    const id = a.customer_id as string;
+    if (!aliasByCustomer.has(id)) aliasByCustomer.set(id, a.alias as string);
+  }
+
+  const minerByClaim = singleByClaim(minerRows);
+  const waitByClaim = singleByClaim(waitRows);
+
+  // An item whose quantity could not be computed comes back null, or not at
+  // all. Either way it reads as 0, as a failed per-item RPC did.
+  const availableByItem = new Map<string, number>();
+  if (Array.isArray(availableRes.data)) {
+    for (const a of availableRes.data as Array<{
+      item_id: unknown;
+      available_quantity: unknown;
+    }>) {
+      if (typeof a?.item_id === 'string' && typeof a.available_quantity === 'number') {
+        availableByItem.set(a.item_id, a.available_quantity);
+      }
+    }
+  }
+
+  return rows.map((row) =>
+    buildRow(row, {
+      facebookName: aliasByCustomer.get(row.customer_id as string) ?? null,
+      miner: minerByClaim.get(row.id as string) ?? null,
+      wait: waitByClaim.get(row.id as string) ?? null,
+      evidenceCount: evidence.get(row.id as string) ?? 0,
+      availableQuantity: availableByItem.get(row.inventory_item_id as string) ?? 0,
+    }),
+  );
+}
+
+function buildRow(
+  row: Row,
+  related: {
+    facebookName: string | null;
+    miner: Row | null;
+    wait: Row | null;
+    evidenceCount: number;
+    availableQuantity: number;
+  },
+): ClaimReviewRow {
   const batch = one<{ batch_reference: string; title: string }>(row.live_batches);
   const customer = one<{ display_name: string }>(row.customers);
   const item = one<{
@@ -141,30 +304,9 @@ async function hydrate(row: Record<string, unknown>): Promise<ClaimReviewRow> {
   const itemId = row.inventory_item_id as string;
   const quantity = row.quantity as number;
 
-  const [aliasRes, minerRes, waitRes, evidenceRes, availableRes] = await Promise.all([
-    supabase
-      .from('customer_aliases')
-      .select('alias')
-      .eq('customer_id', row.customer_id as string)
-      .eq('alias_kind', 'facebook_name')
-      .limit(1),
-    supabase
-      .from('miner_positions')
-      .select('position, assigned_at')
-      .eq('claim_id', claimId)
-      .maybeSingle(),
-    supabase
-      .from('waitlist_entries')
-      .select('status')
-      .eq('claim_id', claimId)
-      .maybeSingle(),
-    supabase.from('claim_evidence').select('id').eq('claim_id', claimId),
-    supabase.rpc('available_quantity_for', { p_item_id: itemId }),
-  ]);
-
-  const availableQuantity = typeof availableRes.data === 'number' ? availableRes.data : 0;
+  const { availableQuantity, evidenceCount, miner, wait } = related;
   const isUnique = item?.is_unique_item ?? true;
-  const minerPosition = (minerRes.data?.position as number | undefined) ?? null;
+  const minerPosition = (miner?.position as number | undefined) ?? null;
 
   const warnings: ClaimReviewWarning[] = [];
 
@@ -183,7 +325,7 @@ async function hydrate(row: Record<string, unknown>): Promise<ClaimReviewRow> {
     });
   }
 
-  if (waitRes.data) {
+  if (wait) {
     warnings.push({
       severity: 'advisory',
       message:
@@ -191,7 +333,7 @@ async function hydrate(row: Record<string, unknown>): Promise<ClaimReviewRow> {
     });
   }
 
-  if ((evidenceRes.data?.length ?? 0) === 0) {
+  if (evidenceCount === 0) {
     warnings.push({
       severity: 'advisory',
       message: 'No capture evidence is attached. Check the details against the Live.',
@@ -215,7 +357,7 @@ async function hydrate(row: Record<string, unknown>): Promise<ClaimReviewRow> {
 
     customerId: row.customer_id as string,
     customerDisplayName: customer?.display_name ?? 'Unknown',
-    customerFacebookName: (aliasRes.data?.[0]?.alias as string | undefined) ?? null,
+    customerFacebookName: related.facebookName,
 
     inventoryItemId: itemId,
     itemCode: item?.item_code ?? null,
@@ -226,11 +368,11 @@ async function hydrate(row: Record<string, unknown>): Promise<ClaimReviewRow> {
     quantityTotal: item?.quantity_total ?? 0,
 
     quantity,
-    evidenceCount: evidenceRes.data?.length ?? 0,
+    evidenceCount,
 
     minerPosition,
-    minerAssignedAt: (minerRes.data?.assigned_at as string | undefined) ?? null,
-    waitlistStatus: (waitRes.data?.status as string | undefined) ?? null,
+    minerAssignedAt: (miner?.assigned_at as string | undefined) ?? null,
+    waitlistStatus: (wait?.status as string | undefined) ?? null,
 
     availableQuantity,
     reservationImpact: quantity,

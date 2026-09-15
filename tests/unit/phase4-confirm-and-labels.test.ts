@@ -237,7 +237,9 @@ describe('Claim Review module', () => {
   it('derives availability from the single source of truth', () => {
     // A second implementation of "available" could drift, and drift here means
     // double-selling.
-    expect(review).toContain('available_quantity_for');
+    // The batched RPC wraps the same app_private.available_quantity used by
+    // available_quantity_for — assert the real CALL, not a comment.
+    expect(review).toContain("rpc('available_quantities_for'");
   });
 
   it('warns rather than blocks — authority is checked server-side', () => {

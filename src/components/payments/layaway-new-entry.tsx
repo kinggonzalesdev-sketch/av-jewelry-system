@@ -1,8 +1,9 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useEffectEvent, useMemo, useState } from 'react';
 
+import { manilaToday } from '@/lib/format/manila-date';
 import {
   createLayawayAccountAction,
   loadLayawayNewEntryDataAction,
@@ -158,7 +159,8 @@ function EntryForm({
   onClose: () => void;
 }) {
   const router = useRouter();
-  const today = new Date().toISOString().slice(0, 10);
+  // Default dates are the shop's (Manila) day — the UTC date is yesterday before 08:00.
+  const today = manilaToday();
 
   const rows: Row[] = useMemo(
     () =>
@@ -223,18 +225,20 @@ function EntryForm({
     letter: string;
     code: string | null;
   } | null>(null);
+  // The code depends only on the FIRST letter, so the preview RPC fires once per letter
+  // change, not on every keystroke. The name sent is the one typed at that moment,
+  // read through an effect event so later keystrokes don't re-run the effect.
+  const currentName = useEffectEvent(() => customer.trim());
   useEffect(() => {
-    const name = customer.trim();
-    const l = letterOf(name);
-    if (!l) return;
+    if (!letter) return;
     let cancelled = false;
-    void previewLayawayCodeAction(name).then((res) => {
-      if (!cancelled) setFetchedCode({ letter: l, code: res.code });
+    void previewLayawayCodeAction(currentName()).then((res) => {
+      if (!cancelled) setFetchedCode({ letter, code: res.code });
     });
     return () => {
       cancelled = true;
     };
-  }, [customer]);
+  }, [letter]);
   const assigned = {
     letter,
     code: fetchedCode && fetchedCode.letter === letter ? fetchedCode.code : null,
