@@ -140,3 +140,55 @@ describe('detectInventory — headers, blocks, HK, duplicates', () => {
     expect(candidates[0]?.duplicate).toBe(true);
   });
 });
+
+describe('NUMERIC code identity in the import preview (Owner 2026-09-15)', () => {
+  const sheet = (name: string, rows: string[][]): SheetInput => ({ name, rows });
+
+  it('rejects a row whose NUMBER already exists in inventory under a different prefix', () => {
+    // 8413 lives as SBA-E-8413 — importing SBA-P-8413 must be flagged with the exact message.
+    const { candidates } = detectInventory(
+      [
+        sheet('APRIL', [
+          ['CODE', 'GRAMS'],
+          ['SBA-P-8413', '2.07'],
+        ]),
+      ],
+      ['SBA-E-8413 1.30g'],
+    );
+    expect(candidates[0]?.validation).toBe('duplicate');
+    expect(candidates[0]?.duplicate).toBe(true);
+    expect(candidates[0]?.issues[0]).toBe(
+      'Code 8413 is already assigned to SBA-E-8413. Please use another code.',
+    );
+  });
+
+  it('flags cross-prefix reuse of one number INSIDE the same file (every occurrence)', () => {
+    const { candidates } = detectInventory(
+      [
+        sheet('APRIL', [
+          ['CODE', 'GRAMS'],
+          ['SBA-P-8413', '2.07'],
+          ['BNA-E-8413', '1.10'],
+        ]),
+      ],
+      [],
+    );
+    expect(candidates).toHaveLength(2);
+    expect(candidates.every((c) => c.validation === 'duplicate')).toBe(true);
+    expect(candidates[0]?.issues[0]).toContain('appears under different prefixes');
+  });
+
+  it('leaves rows with distinct numbers untouched', () => {
+    const { candidates } = detectInventory(
+      [
+        sheet('APRIL', [
+          ['CODE', 'GRAMS'],
+          ['SBA-P-8413', '2.07'],
+          ['SBA-E-8414', '1.10'],
+        ]),
+      ],
+      ['SBA-N-1630'],
+    );
+    expect(candidates.every((c) => c.validation === 'valid')).toBe(true);
+  });
+});

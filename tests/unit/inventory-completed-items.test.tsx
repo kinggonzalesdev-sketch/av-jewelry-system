@@ -87,6 +87,9 @@ function completedRow(over: Partial<CompletedInventoryRow>): CompletedInventoryR
     finalSale: '8000.00',
     paymentStatus: 'paid_in_full',
     currentStage: 'Completed',
+    // Layaway payment-due state (Owner 2026-09-15): null = not on a live layaway.
+    layawayDueStatus: null,
+    layawayDueDate: null,
     ...over,
   };
 }
@@ -106,6 +109,18 @@ const completed: CompletedInventoryRow[] = [
     finalSale: '5000.00',
     paymentStatus: 'unpaid',
     currentStage: 'For Invoice',
+  }),
+  // Financed on layaway and PAST DUE (Owner 2026-09-15): Overdue is an ADDITIONAL flag —
+  // the stage stays For Layaway and the payment stays Partial; it never replaces either.
+  completedRow({
+    itemCode: 'SBA-L-5555',
+    availabilityStatus: 'committed',
+    customerName: 'Nez Financer',
+    finalSale: '15000.00',
+    paymentStatus: 'partial',
+    currentStage: 'For Layaway',
+    layawayDueStatus: 'Overdue',
+    layawayDueDate: '2026-08-30',
   }),
 ];
 
@@ -260,6 +275,67 @@ describe('Inventory — Active vs Completed', () => {
     expect(screen.getByText(/goes back to available stock/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText('DELETE')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Delete info & return' })).toBeInTheDocument();
+  });
+});
+
+describe('Layaway Overdue flag (Owner 2026-09-15) — additional, never a replacement', () => {
+  it('shows an Overdue badge beside the payment status for a past-due layaway item', async () => {
+    renderWorkspace();
+    openCompleted();
+    const table = await screen.findByTestId('completed-items');
+    await within(table).findByText('SBA-L-5555');
+    // The Overdue flag appears WITH the main statuses, not instead of them — all three
+    // sit in the SAME row (SBA-E-3333 also shows Partial, hence the row scoping).
+    const row = within(table).getByText('SBA-L-5555').closest('tr') as HTMLElement;
+    expect(within(row).getByText('Overdue')).toBeInTheDocument();
+    expect(within(row).getByText('For Layaway')).toBeInTheDocument();
+    expect(within(row).getByText('Partial')).toBeInTheDocument();
+  });
+
+  it('shows NO Overdue badge for items that are not past due', async () => {
+    serveCompleted([
+      completedRow({ itemCode: 'SBA-R-2222' }),
+      // On a live layaway but inside its term — flagged On Track, never Overdue.
+      completedRow({
+        itemCode: 'SBA-L-6666',
+        currentStage: 'For Layaway',
+        paymentStatus: 'partial',
+        layawayDueStatus: 'On Track',
+        layawayDueDate: '2026-12-01',
+      }),
+    ]);
+    renderWorkspace();
+    openCompleted();
+    const table = await screen.findByTestId('completed-items');
+    await within(table).findByText('SBA-L-6666');
+    expect(within(table).queryByText('Overdue')).not.toBeInTheDocument();
+  });
+
+  it('the item detail shows the Payment Due state with its due date', async () => {
+    renderWorkspace();
+    openCompleted();
+    const table = await screen.findByTestId('completed-items');
+    await within(table).findByText('SBA-L-5555');
+    fireEvent.click(
+      within(table).getByTestId(`completed-view-${completed[3]!.inventoryItemId}`),
+    );
+
+    const dl = (await screen.findByText('Final Location')).closest('dl');
+    expect(dl).not.toBeNull();
+    expect(within(dl! as HTMLElement).getByText('Payment Due')).toBeInTheDocument();
+    expect(within(dl! as HTMLElement).getByText('Overdue — due 2026-08-30')).toBeInTheDocument();
+  });
+
+  it('a settled/off-layaway item has NO Payment Due row in its detail', async () => {
+    renderWorkspace();
+    openCompleted();
+    const table = await screen.findByTestId('completed-items');
+    await within(table).findByText('SBA-R-2222');
+    fireEvent.click(
+      within(table).getByTestId(`completed-view-${completed[0]!.inventoryItemId}`),
+    );
+    const dl = (await screen.findByText('Final Location')).closest('dl');
+    expect(within(dl! as HTMLElement).queryByText('Payment Due')).not.toBeInTheDocument();
   });
 });
 

@@ -6,6 +6,10 @@ import {
   requireOwner,
   requirePermission,
 } from '@/lib/authz/guard';
+import {
+  duplicateCodeNumberMessage,
+  inventoryCodeNumber,
+} from '@/lib/inventory/code-number';
 import { detectInventoryCodeIssues } from '@/lib/inventory/code-parser';
 import { createClient } from '@/lib/supabase/server';
 
@@ -555,6 +559,29 @@ export async function editInventoryItemDetails(input: {
           return { ok: false, error: `Please check the code — ${issues.join(' ')}` };
         }
       }
+      // NUMERIC identity check (Owner 2026-09-15) — a corrected code must not TAKE another
+      // live item's sequence number. Mirrors the DB trigger exactly: a correction that keeps
+      // the item's own number (fixing a typo around it, or retagging a grandfathered
+      // duplicate's prefix) stays allowed — only a CHANGED number is checked for a clash.
+      const newNumber = inventoryCodeNumber(newCode);
+      if (newNumber && inventoryCodeNumber(currentCode) !== newNumber) {
+        const { data: numHits } = await supabase
+          .from('inventory_items')
+          .select('id, item_code')
+          .eq('is_archived', false)
+          .neq('id', input.inventoryItemId)
+          .like('item_code', `%${newNumber}%`)
+          .limit(25);
+        const clash = ((numHits ?? []) as Array<{ item_code: string }>).find(
+          (r) => inventoryCodeNumber(r.item_code) === newNumber,
+        );
+        if (clash) {
+          return {
+            ok: false,
+            error: duplicateCodeNumberMessage(newNumber, clash.item_code),
+          };
+        }
+      }
       const pattern = newCode.replace(/[%_\\]/g, (c) => `\\${c}`);
       const { data: dup } = await supabase
         .from('inventory_items')
@@ -586,6 +613,9 @@ export async function editInventoryItemDetails(input: {
     });
     // Uniqueness backstop even if the visible check missed a race.
     if (error.code === '23505' || /duplicate key|unique/i.test(error.message)) {
+      if (/already assigned to/.test(error.message)) {
+        return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+      }
       return { ok: false, error: 'That item code is already used by another item.' };
     }
     return { ok: false, error: 'The correction could not be saved.' };

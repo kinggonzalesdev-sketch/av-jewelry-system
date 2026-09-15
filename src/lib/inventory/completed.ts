@@ -110,6 +110,17 @@ export type CompletedInventoryRow = {
   paymentStatus: string | null;
   /** Where the item is in the workflow right now — derived from its order. */
   currentStage: string;
+  /**
+   * DERIVED payment-due state for a layaway-financed item (Owner 2026-09-15):
+   * 'Overdue' | 'Due Today' | 'Near Due' | 'On Track', or null when the item is not on a live
+   * layaway (or the account is closed / paid off — a recorded payment clears it). Computed in SQL
+   * from the ledger's date_purchased + 3 calendar months and live balance, never in the browser.
+   * An ADDITIONAL condition beside currentStage, never a replacement. Null until the
+   * 20260915120000 migration is applied (the UI then simply shows no badge).
+   */
+  layawayDueStatus: string | null;
+  /** The layaway due date (date purchased + 3 calendar months), when known. */
+  layawayDueDate: string | null;
 };
 
 function one<T>(value: unknown): T | undefined {
@@ -356,6 +367,8 @@ export async function listCompletedInventoryPage(opts: {
       finalSale: money?.finalSale ?? null,
       paymentStatus: money?.paymentStatus ?? null,
       currentStage: s(r.currentStage) ?? '—',
+      layawayDueStatus: s(r.layawayDueStatus),
+      layawayDueDate: s(r.layawayDueDate),
     };
   });
 
@@ -480,6 +493,9 @@ export async function listCompletedInventory(): Promise<CompletedInventoryRow[]>
         order?.fulfillment_destination ?? null,
         i.availability_status,
       ),
+      // The legacy full-list reader has no layaway join; only the paginated RPC derives this.
+      layawayDueStatus: null,
+      layawayDueDate: null,
       finalSale: moneyByItem.get(i.id)?.finalSale ?? null,
       paymentStatus: moneyByItem.get(i.id)?.paymentStatus ?? null,
     };

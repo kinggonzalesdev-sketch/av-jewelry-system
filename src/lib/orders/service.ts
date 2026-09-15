@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { sortByCodeRank } from '@/lib/inventory/code-number';
 import { listInventory } from '@/lib/inventory/service';
 import { getOrderBalances } from '@/lib/payments/balances';
 import { createClient } from '@/lib/supabase/server';
@@ -356,19 +357,10 @@ export async function searchCaptureItems(
     availabilityStatus: (r.availability_status as string | null) ?? 'unknown',
   }));
 
-  const q = safe.toLowerCase();
-  const rank = (it: CaptureItem): number => {
-    const code = it.itemCode.toLowerCase();
-    const name = (it.itemName ?? '').toLowerCase();
-    if (code === q) return 0;
-    if (code.startsWith(q)) return 1;
-    if (code.includes(q)) return 2;
-    if (name.includes(q)) return 3;
-    return 4;
-  };
-  return mapped
-    .sort((a, b) => rank(a) - rank(b) || a.itemCode.localeCompare(b.itemCode))
-    .slice(0, limit);
+  // Code-first ranking via the SHARED ranker (Owner 2026-09-15): exact full code, exact NUMERIC
+  // code ("8413" surfaces SBA-E-8413 above codes merely containing 8413), prefix, contains —
+  // name-only matches last. One implementation for every picker + the SQL RPCs.
+  return sortByCodeRank(mapped, safe, (it) => it.itemCode).slice(0, limit);
 }
 
 /** A single Active-Inventory item the Walk-In selector may sell — its permanent

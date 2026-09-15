@@ -1,3 +1,4 @@
+import { duplicateCodeNumberMessage, inventoryCodeNumber } from '@/lib/inventory/code-number';
 import {
   detectInventoryCodeIssues,
   normalizeInventoryCode,
@@ -376,7 +377,11 @@ function buildCandidate(
  * repeated code as Duplicate (not just the 2nd). Also flags codes already in
  * inventory, and explains conflicting details across occurrences.
  */
-function markDuplicates(candidates: ImportCandidate[], existing: Set<string>): void {
+function markDuplicates(
+  candidates: ImportCandidate[],
+  existing: Set<string>,
+  existingNumbers: Map<string, string>,
+): void {
   const groups = new Map<string, ImportCandidate[]>();
   for (const c of candidates) {
     if (!c.inventoryCode) continue;
@@ -423,6 +428,45 @@ function markDuplicates(candidates: ImportCandidate[], existing: Set<string>): v
     }
     // Prepend the duplicate reason; keep any parsing/HK issues after it.
     c.issues = [reason, ...c.issues];
+  }
+
+  // NUMERIC-IDENTITY pass (Owner 2026-09-15): the sequence number is unique across prefixes, so a
+  // row whose number already belongs to a DIFFERENT code — in inventory or elsewhere in this same
+  // file — is flagged too, even though its full code is new. The DB trigger would refuse it at
+  // insert; flagging it here rejects that specific row in the preview instead of mid-import.
+  // Only rows with a canonical code are considered: they are the only IMPORTABLE rows (the
+  // modal sends c.inventoryCode), so flagging free-text rows would be pure noise.
+  const codeTextOf = (c: ImportCandidate): string => c.inventoryCode ?? '';
+  const numberOf = (c: ImportCandidate): string | null =>
+    c.inventoryCode ? inventoryCodeNumber(c.inventoryCode) : null;
+  const numberGroups = new Map<string, ImportCandidate[]>();
+  for (const c of candidates) {
+    const n = numberOf(c);
+    if (!n) continue;
+    const arr = numberGroups.get(n);
+    if (arr) arr.push(c);
+    else numberGroups.set(n, [c]);
+  }
+  for (const c of candidates) {
+    if (c.duplicate) continue;
+    const n = numberOf(c);
+    if (!n) continue;
+    const inInventory = existingNumbers.get(n);
+    const group = (numberGroups.get(n) ?? []).filter(
+      (g) => g !== c && codeTextOf(g) !== codeTextOf(c),
+    );
+    if (inInventory && inInventory !== c.inventoryCode) {
+      c.duplicate = true;
+      c.validation = 'duplicate';
+      c.issues = [duplicateCodeNumberMessage(n, inInventory), ...c.issues];
+    } else if (group.length > 0) {
+      c.duplicate = true;
+      c.validation = 'duplicate';
+      c.issues = [
+        `Code number ${n} appears under different prefixes in this file (${[codeTextOf(c), ...group.map(codeTextOf)].slice(0, 3).join(', ')}). Each number may exist only once.`,
+        ...c.issues,
+      ];
+    }
   }
 }
 
@@ -574,7 +618,15 @@ export function detectInventory(
   }
 
   // Workbook-wide duplicate pass — ALL sheets/blocks together, every occurrence.
-  markDuplicates(candidates, existing);
+  // The numeric index maps each existing sequence number to one example code, so a NEW prefix
+  // reusing an existing number is caught even though its full code is unseen.
+  const existingNumbers = new Map<string, string>();
+  for (const raw of existingCodes) {
+    const n = inventoryCodeNumber(raw);
+    if (!n || existingNumbers.has(n)) continue;
+    existingNumbers.set(n, normalizeInventoryCode(raw) ?? raw.trim());
+  }
+  markDuplicates(candidates, existing, existingNumbers);
 
   // Per-sheet + overall counts (after duplicates are marked).
   for (const c of candidates) {

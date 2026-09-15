@@ -2,6 +2,10 @@ import 'server-only';
 
 import { recordAuditEvent } from '@/lib/audit/log';
 import { AuthorizationError, requirePermission } from '@/lib/authz/guard';
+import {
+  duplicateCodeNumberMessage,
+  inventoryCodeNumber,
+} from '@/lib/inventory/code-number';
 import { detectInventoryCodeIssues } from '@/lib/inventory/code-parser';
 import { createClient } from '@/lib/supabase/server';
 
@@ -92,7 +96,11 @@ export async function createManualItem(
   }
 
   const supabase = await createClient();
-  const { data, error } = await supabase
+  // Auto-generated code. PL- codes carry no parseable sequence, so the numeric-identity rule does
+  // not apply — only full-code uniqueness. On the (theoretical) collision, retry once with a
+  // fresh value instead of failing the save (Owner: auto codes must self-heal, never duplicate).
+  const autoCode = () => `PL-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  let { data, error } = await supabase
     .from('inventory_items')
     .insert({
       item_code: `PL-${Date.now()}`,
@@ -110,6 +118,28 @@ export async function createManualItem(
     })
     .select('id')
     .single();
+
+  if (error && (error.code === '23505' || /duplicate key|unique/i.test(error.message))) {
+    const retry = await supabase
+      .from('inventory_items')
+      .insert({
+        item_code: autoCode(),
+        item_name: itemName,
+        is_unique_item: true,
+        quantity_total: 1,
+        total_price_per_piece: normalized.price,
+        grams_per_piece: grams.grams,
+        supplier_name: supplierName,
+        size,
+        availability_status: 'available',
+        source_kind: 'native',
+        created_by: staff.staffProfileId,
+      })
+      .select('id')
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
 
   if (error || !data) {
     await recordAuditEvent({
@@ -216,6 +246,26 @@ export async function createInventoryEntry(
     };
   }
 
+  // NUMERIC identity check (Owner 2026-09-15): once 8413 exists as SBA-E-8413, no other prefix
+  // may reuse 8413. Friendly pre-check here; the DB trigger (20260915120000) is the authoritative
+  // backstop for any path that skips this form. The trigram index keeps the candidate fetch
+  // cheap; the exact sequence comparison runs on the few candidates it returns.
+  const codeNumber = inventoryCodeNumber(itemCode);
+  if (codeNumber) {
+    const { data: numHits } = await supabase
+      .from('inventory_items')
+      .select('item_code')
+      .eq('is_archived', false)
+      .like('item_code', `%${codeNumber}%`)
+      .limit(25);
+    const clash = ((numHits ?? []) as Array<{ item_code: string }>).find(
+      (r) => inventoryCodeNumber(r.item_code) === codeNumber,
+    );
+    if (clash) {
+      return { ok: false, error: duplicateCodeNumberMessage(codeNumber, clash.item_code) };
+    }
+  }
+
   const insert: Record<string, unknown> = {
     item_code: itemCode,
     item_name: null,
@@ -244,6 +294,10 @@ export async function createInventoryEntry(
     // The DB's unique lower(item_code) index is the final backstop — even a code
     // the visible check missed (e.g. an archived item) is refused here, never saved.
     if (error?.code === '23505' || /duplicate key|unique/i.test(error?.message ?? '')) {
+      // The numeric-identity trigger names the exact conflicting item — surface it verbatim.
+      if (error?.message && /already assigned to/.test(error.message)) {
+        return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
+      }
       return {
         ok: false,
         error: `The code “${itemCode}” is already used. Enter a unique code.`,

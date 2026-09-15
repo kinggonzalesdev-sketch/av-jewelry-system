@@ -2,6 +2,7 @@ import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { sortByCodeRank } from '@/lib/inventory/code-number';
 import { parseInventoryCode } from '@/lib/inventory/code-parser';
 import { sendPancakeConversationMessage } from '@/lib/integrations/pancake';
 
@@ -59,7 +60,7 @@ export async function searchActiveInventory(
   };
   if (error || !data) return [];
 
-  return data.map((r) => {
+  const hits = data.map((r) => {
     const itemCode = (r.item_code as string) ?? '';
     const grams = numText(r.grams_per_piece) ?? parseInventoryCode(itemCode).grams;
     return {
@@ -71,6 +72,9 @@ export async function searchActiveInventory(
       size: (r.size as string | null) ?? null,
     };
   });
+  // Code-first ranking (Owner 2026-09-15): exact code, then exact NUMBER ("8413" surfaces
+  // SBA-E-8413 above codes merely containing 8413), then prefix/contains, name-only last.
+  return q.length > 0 ? sortByCodeRank(hits, q, (h) => h.itemCode) : hits;
 }
 
 export type CreateCaptureOrderInput = {

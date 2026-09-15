@@ -963,14 +963,22 @@ export function InventoryWorkspace({
                           {c.finalSale ? <Money amount={c.finalSale} /> : '—'}
                         </td>
                         <td className="px-3 py-2.5 text-center">
-                          {c.paymentStatus ? (
-                            (() => {
-                              const p = paymentMeta(c.paymentStatus);
-                              return <StatusBadge label={p.label} tone={p.tone} />;
-                            })()
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
+                          <div className="inline-flex flex-wrap items-center justify-center gap-1">
+                            {c.paymentStatus ? (
+                              (() => {
+                                const p = paymentMeta(c.paymentStatus);
+                                return <StatusBadge label={p.label} tone={p.tone} />;
+                              })()
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                            {/* Layaway payment past due (Owner 2026-09-15): an ADDITIONAL flag
+                                beside the payment status, never a replacement — clears itself
+                                when a recorded payment settles the balance. */}
+                            {c.layawayDueStatus === 'Overdue' ? (
+                              <StatusBadge label="Overdue" tone="danger" icon="!" />
+                            ) : null}
+                          </div>
                         </td>
                         {/* Current Stage — derived live from the linked order. */}
                         <td className="px-3 py-2.5 text-center">
@@ -1065,6 +1073,30 @@ export function InventoryWorkspace({
                   <span className="text-right font-medium">{value}</span>
                 </div>
               ))}
+              {/* Layaway payment-due state (Owner 2026-09-15) — shown only for an item on a
+                  live layaway that still owes money; a settling payment removes the row. */}
+              {compView.layawayDueStatus ? (
+                <div className="flex justify-between gap-3 border-b border-border py-1.5">
+                  <span className="text-muted-foreground">Payment Due</span>
+                  <span className="text-right font-medium">
+                    <StatusBadge
+                      label={
+                        compView.layawayDueDate
+                          ? `${compView.layawayDueStatus} — due ${compView.layawayDueDate.slice(0, 10)}`
+                          : compView.layawayDueStatus
+                      }
+                      tone={
+                        compView.layawayDueStatus === 'Overdue'
+                          ? 'danger'
+                          : compView.layawayDueStatus === 'On Track'
+                            ? 'success'
+                            : 'warning'
+                      }
+                      {...(compView.layawayDueStatus === 'Overdue' ? { icon: '!' } : {})}
+                    />
+                  </span>
+                </div>
+              ) : null}
             </dl>
 
             {/* Return to Stock Review (§10) — never marks the item available; opens
