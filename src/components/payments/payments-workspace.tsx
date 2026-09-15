@@ -760,7 +760,7 @@ export function PaymentsWorkspace({
               <input
                 value={laySearch}
                 onChange={(e) => setLaySearch(e.target.value)}
-                placeholder="Search customer, account no., remarks…"
+                placeholder="Search unique code, customer, code, account no., remarks…"
                 aria-label="Search layaways"
                 data-testid="layaway-search"
                 className="h-9 flex-1 min-w-[12rem] rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -797,6 +797,7 @@ export function PaymentsWorkspace({
           ) : section === 'completed' ? (
             <CompletedLayawayTable
               rows={accountRows}
+              search={debSearch}
               onOpenOrder={setDetailOrderId}
               canDeleteLayaway={canDeleteLayaway}
               isSuperAdmin={canDeleteAllLedger}
@@ -813,6 +814,7 @@ export function PaymentsWorkspace({
           ) : (
             <LayawayTable
               rows={accountRows}
+              search={debSearch}
               onOpenOrder={setDetailOrderId}
               financers={financers}
               canManage={canMonitorLayaway}
@@ -1070,9 +1072,12 @@ function LayawayTable({
   loading,
   onPageChange,
   onPageSizeChange,
+  search,
 }: {
   /** The CURRENT server page (already the right slice) — never re-sliced here. */
   rows: LayawayAccountRow[];
+  /** The active (debounced) search term — the Unique Code cell shows the matched code first. */
+  search: string;
   onOpenOrder: (orderId: string) => void;
   financers: Financer[];
   canManage: boolean;
@@ -1167,14 +1172,14 @@ function LayawayTable({
                       {r.officialOrderId ? (
                         <OrderNumberButton
                           orderId={r.officialOrderId}
-                          label={uniqueCodeLabel(r)}
+                          label={uniqueCodeLabel(r, search)}
                           onOpen={onOpenOrder}
                         />
                       ) : r.uniqueCode ? (
-                        uniqueCodeLabel(r)
+                        uniqueCodeLabel(r, search)
                       ) : (
                         <span className="text-muted-foreground">
-                          {uniqueCodeLabel(r)}
+                          {uniqueCodeLabel(r, search)}
                         </span>
                       )}
                     </td>
@@ -1325,9 +1330,12 @@ function CompletedLayawayTable({
   loading,
   onPageChange,
   onPageSizeChange,
+  search,
 }: {
   /** The CURRENT server page of completed accounts (already windowed by the DB). */
   rows: LayawayAccountRow[];
+  /** The active (debounced) search term — the Unique Code cell shows the matched code first. */
+  search: string;
   onOpenOrder: (orderId: string) => void;
   /** Manage Access `layaway_delete` — shows the per-row Delete action. */
   canDeleteLayaway: boolean;
@@ -1403,13 +1411,15 @@ function CompletedLayawayTable({
                     {r.officialOrderId ? (
                       <OrderNumberButton
                         orderId={r.officialOrderId}
-                        label={uniqueCodeLabel(r)}
+                        label={uniqueCodeLabel(r, search)}
                         onOpen={onOpenOrder}
                       />
                     ) : r.uniqueCode ? (
-                      uniqueCodeLabel(r)
+                      uniqueCodeLabel(r, search)
                     ) : (
-                      <span className="text-muted-foreground">{uniqueCodeLabel(r)}</span>
+                      <span className="text-muted-foreground">
+                        {uniqueCodeLabel(r, search)}
+                      </span>
                     )}
                   </td>
                   <td className="col-actions px-3 py-2">

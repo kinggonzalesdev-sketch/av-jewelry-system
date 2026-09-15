@@ -1,5 +1,6 @@
 import type { LayawayRow } from '@/lib/payments/workspace';
 import type { LayawayLedgerRow } from '@/lib/payments/layaway-ledger';
+import { codesMatchedFirst, splitUniqueCodes } from '@/lib/payments/layaway-search';
 
 /**
  * ONE unified shape for every Layaway Accounts row — order-derived arrangements and
@@ -116,13 +117,17 @@ export function financerKey(name: string): string {
 /** Unique-Code cell label: the linked item code, else a legacy-aware placeholder.
  *  Imported balance-only accounts never carried an item Unique Code, so we say
  *  "Imported (no item)" rather than "Not linked" (which reads like a broken link). */
-export function uniqueCodeLabel(r: LayawayAccountRow): string {
+export function uniqueCodeLabel(r: LayawayAccountRow, search = ''): string {
   if (r.uniqueCode) {
     // A multi-item account resolves to several codes ("CODE1, CODE2, CODE3"). Show only the
     // FIRST in the column so it stays readable — with a "+N" hint that more exist. The full
-    // list still lives in `r.uniqueCode` for SEARCH and in the cell's title tooltip.
-    const codes = r.uniqueCode.split(/,\s*/).filter(Boolean);
-    return codes.length > 1 ? `${codes[0]} +${codes.length - 1}` : r.uniqueCode;
+    // list still lives in `r.uniqueCode` for the cell's title tooltip. While a search is active
+    // the code that MATCHED is shown first, so a row found by its second item names that item
+    // (Owner 2026-09-17: a search result must show why it matched). Codes are joined with ", ",
+    // so a comma inside one code (an HK price such as "37,500") is never split.
+    const codes = codesMatchedFirst(splitUniqueCodes(r.uniqueCode), search);
+    const first = codes[0] ?? r.uniqueCode;
+    return codes.length > 1 ? `${first} +${codes.length - 1}` : first;
   }
   return r.sourceKind === 'imported' ? 'Imported (no item)' : 'Not linked';
 }

@@ -318,6 +318,53 @@ async function fillLedgerOrderCodes(
   }
 }
 
+/**
+ * Multi-item New Entry accounts keep their items in layaway_ledger_items; the ledger's own link
+ * holds only the FIRST item (create_layaway_account stores v_first_iid). Append every item's code
+ * — its linked item's CURRENT code, else the code stored on the item row — so the list shows
+ * "CODE1 +N" and a search that matched a second item visibly names it. These are the same codes
+ * layaway_page searches (migration 20260917120000). ONE read for the page's ids (≤ 100); any
+ * failure leaves the row exactly as it was.
+ */
+async function fillLedgerItemCodes(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  rows: Array<{ id: string; uniqueCode: string | null }>,
+): Promise<void> {
+  if (rows.length === 0) return;
+  const { data, error } = await supabase
+    .from('layaway_ledger_items')
+    .select('ledger_id, item_code, created_at, inventory:inventory_items ( item_code )')
+    .in(
+      'ledger_id',
+      rows.map((r) => r.id),
+    )
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true });
+  if (error || !data) return;
+  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  const byLedger = new Map<string, string[]>();
+  for (const it of data as Array<Record<string, unknown>>) {
+    const lid = it.ledger_id as string;
+    const inv = one<{ item_code?: string | null }>(it.inventory);
+    const code = (inv?.item_code ?? (it.item_code as string | null) ?? '').trim();
+    if (!lid || !code) continue;
+    const list = byLedger.get(lid) ?? [];
+    if (!list.some((c) => same(c, code))) list.push(code);
+    byLedger.set(lid, list);
+  }
+  for (const r of rows) {
+    const extra = byLedger.get(r.id);
+    if (!extra || extra.length === 0) continue;
+    // Codes are joined with ", " — split the same way so an HK price comma stays inside its code.
+    const merged = (r.uniqueCode ?? '')
+      .split(/,\s+/)
+      .map((c) => c.trim())
+      .filter(Boolean);
+    for (const c of extra) if (!merged.some((m) => same(m, c))) merged.push(c);
+    r.uniqueCode = merged.join(', ');
+  }
+}
+
 /** All imported ledger rows the caller may read (RLS: any active staff). */
 export async function listLayawayLedger(): Promise<LayawayLedgerRow[]> {
   const supabase = await createClient();
@@ -350,6 +397,7 @@ export async function ledgerRowsByIds(ids: string[]): Promise<LayawayLedgerRow[]
   if (error || !data) return [];
   const rows = (data as Array<Record<string, unknown>>).map(mapLedgerRow);
   await fillLedgerOrderCodes(supabase, rows);
+  await fillLedgerItemCodes(supabase, rows);
   return rows;
 }
 
@@ -810,7 +858,8 @@ export async function getLayawayLedgerDetail(
       .from('layaway_ledger_items')
       .select('id, item_code, item_name, grams, unit_price, item_amount')
       .eq('ledger_id', id)
-      .order('created_at', { ascending: true }),
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true }),
   ]);
 
   const r = acct.data as Record<string, unknown> | null;
@@ -823,6 +872,10 @@ export async function getLayawayLedgerDetail(
     const oc = await resolveLedgerOrderCodes(supabase, [r.id as string]);
     resolvedUnique = oc.get(r.id as string) ?? null;
   }
+  // Multi-item accounts: every item code, exactly as the table row and its tooltip show it.
+  const codeHolder = [{ id: r.id as string, uniqueCode: resolvedUnique }];
+  await fillLedgerItemCodes(supabase, codeHolder);
+  resolvedUnique = codeHolder[0]?.uniqueCode ?? resolvedUnique;
 
   // Per-gram interest summary — authoritative figures from SQL, computed from the
   // real posted charges. Legacy/imported accounts return basis null → no summary.
