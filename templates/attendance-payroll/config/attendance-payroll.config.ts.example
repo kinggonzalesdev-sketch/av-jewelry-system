@@ -1,0 +1,290 @@
+// Attendance and payroll client configuration: TEMPLATE. Self-contained, zero imports.
+// The shape mirrors CONFIGURATION.md section 2 key for key (its HrConfig type); validation implements its section 2.9
+// rules 1 to 15, plus "engine" and "store" checks for what the SQL in ../migrations does not build or refuses.
+// Literal types (1, true, 'append_only') are engine decisions kept visible. Money is a decimal string, never a number.
+// hrSettingsSeedRows() produces the rows of app_private.hr_settings (CONFIGURATION.md section 2.8) from the same object,
+// so a file-content test can compare the seed migration with this configuration (CONFIGURATION.md section 1.3).
+
+export type RoleKey = 'owner' | 'selected_admin' | 'staff';
+export type PermissionKey = string;
+export type Money = string;      // digits, optionally a dot and one or two digits
+export type ClockTime = string;  // "HH:MM", 24-hour, business timezone
+export type Frequency = 'weekly' | 'bi_weekly' | 'semi_monthly' | 'monthly';
+
+export type AttendancePayrollConfig = {
+  branding: {
+    companyName: string; payslipHeader: string; summaryHeader: string; logoText: string; logoUrl: string | null;
+    brandColor: string; documentFilePrefix: string; cookieNamePrefix: string;
+    address: string | null; taxId: string | null; contact: string | null;
+  };
+  locale: {
+    timezone: string; currencyCode: string; currencySymbol: string;
+    moneyDisplay: { minorUnits: 2; hideZeroMinorUnits: boolean; groupSeparator: string; decimalSeparator: string; pdfUsesCode: boolean };
+    dateLocale: string; showTimesInBusinessTimezone: boolean;
+  };
+  permissions: { defaultGrants: { selected_admin: PermissionKey[]; staff: PermissionKey[] } };
+  exclusions: { excludedRoles: RoleKey[]; excludeDemoAccounts: true };
+  attendance: {
+    clockMode: 'kiosk' | 'self_service' | null; selfView: boolean; allowMultipleSessionsPerDay: boolean;
+    maxOpenSessionsPerEmployee: 1; sessionCrossesMidnightPolicy: 'clock_in_date'; maxSessionHours: number | null;
+    device: { mode: 'off' | 'auto' | 'required'; failMode: 'open' | 'closed'; maxActiveDevices: number; cookieMaxAgeDays: number; defaultLabel: string };
+    selfie: { mode: 'off' | 'optional' | 'required'; facingMode: 'user' | 'environment'; maxEdgePx: number; jpegQuality: number };
+    correction: { allowClockInCorrection: false; requireReason: true; maxWindowDays: number | null };
+    deletion: {
+      mode: 'hard' | 'soft'; requireReason: true; requireTypedConfirmation: boolean; confirmationPhrase: string; requestApprovalPath: boolean;
+    };
+  };
+  review: {
+    defaultRangeDays: number; quickRanges: Array<'today' | '7d' | 'month' | 'custom'>; pageSizes: number[]; defaultPageSize: number;
+    defaultStatus: 'open' | 'completed' | 'all'; dateFilterBasis: 'time_in' | 'work_date'; statusLabels: { open: string; completed: string };
+  };
+  payroll: {
+    selfView: boolean; rateBasis: 'daily' | 'hourly' | 'monthly' | null; payFrequencies: Frequency[];
+    payFrequencyLabels: Partial<Record<Frequency, string>>; defaultFrequency: Frequency | null; frequencyDrivesPeriod: boolean;
+    rateEffectiveDating: 'append_only'; rateSelection: 'period_end' | 'per_day'; prorationPolicy: 'none';
+    currentRateLookup: 'newest_row' | 'effective_today';
+    periodPresets: Array<{ key: string; label: string; fromDay: number; toDay: number | 'month_end' }>;
+    periodDefault: 'month_to_date' | 'current_preset'; minHoursForDay: number;
+    nightRule: {
+      enabled: boolean; anchor: 'clock_in' | 'clock_out' | null; thresholdTime: ClockTime | null; windowEnd: ClockTime | null;
+      bonusAmount: Money; oncePerDay: boolean;
+    };
+    overtimeDisplayThresholdHours: number | null; overtimeBasis: 'session' | 'day'; overtimePayMultiplier: number;
+    deductionsModel: 'lump_sum' | 'itemized'; allowNegativeNet: boolean;
+    rounding: { moneyScale: 2; hoursScale: 2; roundOnce: true };
+    snapshot: { immutable: true; uniquePerPeriod: true };
+    statuses: ['pending', 'paid', 'void'];
+    statusLabels: { notGenerated: string; pending: string; paid: string; void: string };
+    paidDateEditable: boolean; approvalRequired: boolean; lockPeriodAfterPayslip: 'off' | 'generated' | 'paid';
+    payslip: { pageSize: 'a4' | 'a5' | 'letter'; fileNamePattern: string; labels: Record<string, string> };
+  };
+  audit: { payloadIncludesAmounts: boolean };
+  retention: { selfieRetentionDays: number | null; signedUrlTtlSeconds: number; deleteSelfieWithRecord: boolean };
+};
+
+// Optional modules a build may add; rules 8, 10 and 11 and the engine check refuse a setting whose module is absent.
+// The SQL in this template ships none of them (its settings store refuses those values too).
+export type EngineSupport = {
+  selfieRequired: boolean; itemizedDeductions: boolean; dayReviewModule: boolean; periodLock: boolean; approvalsModule: boolean;
+  selfServiceClock: boolean;
+};
+export const TEMPLATE_ENGINE_SUPPORT: EngineSupport = {
+  selfieRequired: false, itemizedDeductions: false, dayReviewModule: false, periodLock: false, approvalsModule: false,
+  selfServiceClock: false,
+};
+export type ValidationResult = { ok: true } | { ok: false; errors: string[] };
+
+// PERMISSIONS.md section 4.2 (eleven keys) and the section 4.3 grant dependencies.
+const PERMISSION_KEYS: readonly string[] = [
+  'attendance.clock_operate', 'attendance.view_team', 'attendance.review', 'attendance.correct', 'attendance.delete',
+  'attendance.devices.manage', 'payroll.view_all', 'payroll.rates.edit', 'payroll.payslip.generate',
+  'payroll.payslip.mark_paid', 'payroll.export',
+];
+const OPTIONAL_REQUEST_KEY = 'attendance.delete.request';
+const KEY_REQUIRES: Record<string, string> = {
+  'attendance.devices.manage': 'attendance.clock_operate', 'attendance.review': 'attendance.view_team',
+  'attendance.correct': 'attendance.review', 'attendance.delete': 'attendance.review',
+  'payroll.rates.edit': 'payroll.view_all', 'payroll.payslip.generate': 'payroll.view_all',
+  'payroll.payslip.mark_paid': 'payroll.view_all',
+};
+const CLOCK_TIME = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
+const MONEY = /^[0-9]+([.][0-9]{1,2})?$/;
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+const COOKIE_PREFIX = /^[a-z0-9_]+$/;
+const FILE_PREFIX = /^[A-Za-z0-9-]+$/;
+// ES5-safe helpers, so the file compiles under any lib setting.
+const isInteger = (n: number): boolean => typeof n === 'number' && isFinite(n) && Math.floor(n) === n;
+const isPositiveInteger = (n: number): boolean => isInteger(n) && n > 0;
+const has = <T>(list: readonly T[], item: T): boolean => list.indexOf(item) !== -1;
+
+export function validateAttendancePayrollConfig(
+  config: AttendancePayrollConfig, engine: EngineSupport = TEMPLATE_ENGINE_SUPPORT,
+): ValidationResult {
+  const errors: string[] = [];
+  const fail = (rule: number | 'engine' | 'store', message: string): void => {
+    errors.push(typeof rule === 'number' ? `rule ${rule}: ${message}` : `${rule}: ${message}`);
+  };
+  const { branding, locale, permissions, attendance, review, payroll, retention } = config;
+  const night = payroll.nightRule;
+  // Rule 1: the timezone is accepted by Intl.
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: locale.timezone }).format(0);
+  } catch {
+    fail(1, `locale.timezone "${locale.timezone}" is not a valid IANA zone`);
+  }
+  // Rule 2: HH:MM values. The window end must be earlier than the threshold (IMPLEMENTATION_PROMPT.md V4); the SQL night
+  // predicate refuses otherwise.
+  for (const [key, value] of [['thresholdTime', night.thresholdTime], ['windowEnd', night.windowEnd]] as const) {
+    if (value !== null && !CLOCK_TIME.test(value)) fail(2, `payroll.nightRule.${key} must be HH:MM (00:00 to 23:59)`);
+  }
+  if (night.windowEnd !== null && night.thresholdTime !== null && night.windowEnd >= night.thresholdTime) {
+    fail(2, 'payroll.nightRule.windowEnd must be earlier than payroll.nightRule.thresholdTime');
+  }
+  // Rule 3: money values.
+  if (!MONEY.test(night.bonusAmount)) fail(3, 'payroll.nightRule.bonusAmount must be digits with up to two decimals');
+  // Rule 4: frequencies.
+  if (payroll.payFrequencies.length === 0) fail(4, 'payroll.payFrequencies must not be empty');
+  if (payroll.defaultFrequency !== null && !has(payroll.payFrequencies, payroll.defaultFrequency)) {
+    fail(4, 'payroll.defaultFrequency must be one of payroll.payFrequencies');
+  }
+  for (const f of payroll.payFrequencies) {
+    if (!payroll.payFrequencyLabels[f]) fail(4, `payroll.payFrequencyLabels has no label for ${f}`);
+  }
+  // Rule 5: list paging.
+  if (review.pageSizes.length === 0 || !review.pageSizes.every(isPositiveInteger)) fail(5, 'review.pageSizes must be positive integers');
+  if (!has(review.pageSizes, review.defaultPageSize)) fail(5, 'review.defaultPageSize must be one of review.pageSizes');
+  if (!isInteger(review.defaultRangeDays) || review.defaultRangeDays < 1) fail(5, 'review.defaultRangeDays must be 1 or more');
+  // Rule 6: default grants use known keys and satisfy dependencies; owner is never listed.
+  if (has(Object.keys(permissions.defaultGrants), 'owner')) fail(6, 'permissions.defaultGrants must not list owner');
+  for (const role of ['selected_admin', 'staff'] as const) {
+    const grants = permissions.defaultGrants[role];
+    for (const key of grants) {
+      const known = has(PERMISSION_KEYS, key) || (key === OPTIONAL_REQUEST_KEY && attendance.deletion.requestApprovalPath);
+      if (!known) fail(6, `permissions.defaultGrants.${role} has unknown key ${key}`);
+      const needs = KEY_REQUIRES[key];
+      if (needs !== undefined && !has(grants, needs)) fail(6, `permissions.defaultGrants.${role}: ${key} requires ${needs}`);
+    }
+  }
+  // Rule 7: photos need a retention period.
+  if (attendance.selfie.mode !== 'off' && retention.selfieRetentionDays === null) {
+    fail(7, 'attendance.selfie.mode other than off requires retention.selfieRetentionDays');
+  }
+  // Rule 8: settings whose engine support is not built.
+  if (attendance.selfie.mode === 'required' && !engine.selfieRequired) fail(8, 'attendance.selfie.mode "required" is not supported');
+  if (payroll.deductionsModel === 'itemized' && !engine.itemizedDeductions) fail(8, 'payroll.deductionsModel "itemized" is not supported');
+  // Rule 9: overtime is never paid until a formula exists.
+  if (payroll.overtimePayMultiplier !== 0) fail(9, 'payroll.overtimePayMultiplier must be 0');
+  // Rule 10: approval and period lock need their modules.
+  if (payroll.approvalRequired && !engine.dayReviewModule) fail(10, 'payroll.approvalRequired needs the day-review module');
+  if (payroll.lockPeriodAfterPayslip !== 'off' && !engine.periodLock) fail(10, 'payroll.lockPeriodAfterPayslip needs the lock checks');
+  // Rule 11: the deletion request path needs the host approvals module.
+  if (attendance.deletion.requestApprovalPath && !engine.approvalsModule) fail(11, 'attendance.deletion.requestApprovalPath needs an approvals module');
+  // Rule 12: branding formats.
+  if (branding.logoText.length < 1 || branding.logoText.length > 3) fail(12, 'branding.logoText must have 1 to 3 characters');
+  if (!HEX_COLOR.test(branding.brandColor)) fail(12, 'branding.brandColor must be # followed by six hex digits');
+  if (!COOKIE_PREFIX.test(branding.cookieNamePrefix)) fail(12, 'branding.cookieNamePrefix allows lowercase letters, digits and underscore');
+  if (!FILE_PREFIX.test(branding.documentFilePrefix)) fail(12, 'branding.documentFilePrefix allows letters, digits and hyphen');
+  // Rule 13: a preset default needs presets.
+  if (payroll.periodDefault === 'current_preset' && payroll.periodPresets.length === 0) {
+    fail(13, 'payroll.periodDefault "current_preset" requires payroll.periodPresets');
+  }
+  // Rule 14: monthly has no defined formula.
+  if (payroll.rateBasis === 'monthly') fail(14, 'payroll.rateBasis "monthly" has no defined formula');
+  // Rule 15: onboarding decisions.
+  if (payroll.rateBasis === null) fail(15, 'payroll.rateBasis must be set');
+  if (payroll.defaultFrequency === null) fail(15, 'payroll.defaultFrequency must be set');
+  if (payroll.overtimeDisplayThresholdHours === null) fail(15, 'payroll.overtimeDisplayThresholdHours must be set');
+  if (attendance.clockMode === null) fail(15, 'attendance.clockMode must be set');
+  if (locale.dateLocale.trim() === '') fail(15, 'locale.dateLocale must be set');
+  if (Object.keys(payroll.payslip.labels).length === 0) fail(15, 'payroll.payslip.labels must be set');
+  if (night.enabled && (night.anchor === null || night.thresholdTime === null)) {
+    fail(15, 'payroll.nightRule.anchor and thresholdTime must be set while the night rule is enabled');
+  }
+  // Engine: a clock mode this build does not implement.
+  if (attendance.clockMode === 'self_service' && !engine.selfServiceClock) {
+    fail('engine', 'attendance.clockMode "self_service" needs self_clock_in and self_clock_out (DATABASE.md section 5.13)');
+  }
+  // Store: ranges app_private.hr_settings refuses (0001_settings.sql), so the seed migration never fails at install.
+  const threshold = payroll.overtimeDisplayThresholdHours;
+  if (threshold !== null && !(threshold > 0 && threshold <= 24)) fail('store', 'payroll.overtimeDisplayThresholdHours must be above 0 and at most 24');
+  if (!(payroll.minHoursForDay >= 0 && payroll.minHoursForDay <= 24)) fail('store', 'payroll.minHoursForDay must be 0 to 24');
+  const dot = night.bonusAmount.indexOf('.');
+  if ((dot === -1 ? night.bonusAmount.length : dot) > 10) fail('store', 'payroll.nightRule.bonusAmount allows at most ten integer digits');
+  const maxDevices = attendance.device.maxActiveDevices;
+  if (!isInteger(maxDevices) || maxDevices < 1 || maxDevices > 1000) fail('store', 'attendance.device.maxActiveDevices must be an integer from 1 to 1000');
+  const windowDays = attendance.correction.maxWindowDays;
+  if (windowDays !== null && (!isInteger(windowDays) || windowDays < 1 || windowDays > 3650)) {
+    fail('store', 'attendance.correction.maxWindowDays must be null or an integer from 1 to 3650');
+  }
+  const label = attendance.device.defaultLabel.trim();
+  if (label.length < 1 || label.length > 80) fail('store', 'attendance.device.defaultLabel must have 1 to 80 characters');
+  return errors.length === 0 ? { ok: true } : { ok: false, errors };
+}
+
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+export type HrSettingRow = { key: string; value: JsonValue };
+
+// CONFIGURATION.md section 2.8: the SQL-evaluated keys, one '-infinity' row each in app_private.hr_settings. A dated row
+// for a payroll.* key is a separate, reviewed migration (CONFIGURATION.md section 1.4). Validate the configuration first.
+export function hrSettingsSeedRows(config: AttendancePayrollConfig): HrSettingRow[] {
+  const { locale, attendance, review, payroll, exclusions, audit } = config;
+  const night = payroll.nightRule;
+  return [
+    { key: 'locale.timezone', value: locale.timezone },
+    { key: 'payroll.nightRule.enabled', value: night.enabled },
+    { key: 'payroll.nightRule.anchor', value: night.anchor },
+    { key: 'payroll.nightRule.thresholdTime', value: night.thresholdTime },
+    { key: 'payroll.nightRule.windowEnd', value: night.windowEnd },
+    { key: 'payroll.nightRule.bonusAmount', value: night.bonusAmount },
+    { key: 'payroll.nightRule.oncePerDay', value: night.oncePerDay },
+    { key: 'payroll.overtimeDisplayThresholdHours', value: payroll.overtimeDisplayThresholdHours },
+    { key: 'payroll.overtimeBasis', value: payroll.overtimeBasis },
+    { key: 'payroll.minHoursForDay', value: payroll.minHoursForDay },
+    { key: 'payroll.rateSelection', value: payroll.rateSelection },
+    { key: 'payroll.approvalRequired', value: payroll.approvalRequired },
+    { key: 'payroll.allowNegativeNet', value: payroll.allowNegativeNet },
+    { key: 'payroll.lockPeriodAfterPayslip', value: payroll.lockPeriodAfterPayslip },
+    { key: 'payroll.payFrequencies', value: payroll.payFrequencies },
+    { key: 'payroll.overtimePayMultiplier', value: payroll.overtimePayMultiplier },
+    { key: 'payroll.deductionsModel', value: payroll.deductionsModel },
+    { key: 'attendance.device.mode', value: attendance.device.mode },
+    { key: 'attendance.device.maxActiveDevices', value: attendance.device.maxActiveDevices },
+    { key: 'attendance.device.defaultLabel', value: attendance.device.defaultLabel },
+    { key: 'attendance.allowMultipleSessionsPerDay', value: attendance.allowMultipleSessionsPerDay },
+    { key: 'attendance.clockMode', value: attendance.clockMode },
+    { key: 'attendance.correction.maxWindowDays', value: attendance.correction.maxWindowDays },
+    { key: 'attendance.deletion.mode', value: attendance.deletion.mode },
+    { key: 'attendance.selfie.mode', value: attendance.selfie.mode },
+    { key: 'review.dateFilterBasis', value: review.dateFilterBasis },
+    { key: 'exclusions.excludedRoles', value: exclusions.excludedRoles },
+    { key: 'exclusions.excludeDemoAccounts', value: exclusions.excludeDemoAccounts },
+    { key: 'audit.payloadIncludesAmounts', value: audit.payloadIncludesAmounts },
+  ];
+}
+
+// Placeholder defaults. They deliberately FAIL rules 4 and 15 until the client's onboarding decisions are filled in, so
+// an unconfigured install cannot load. Values follow the recommended defaults of CONFIGURATION.md section 2.
+export const DEFAULT_ATTENDANCE_PAYROLL_CONFIG: AttendancePayrollConfig = {
+  branding: {
+    companyName: '<COMPANY>', payslipHeader: 'Payslip', summaryHeader: 'Payroll Summary', logoText: 'CO', logoUrl: null,
+    brandColor: '#000000', documentFilePrefix: 'Company', cookieNamePrefix: 'company_', address: null, taxId: null, contact: null,
+  },
+  locale: {
+    timezone: 'UTC', currencyCode: 'XXX', currencySymbol: '',
+    moneyDisplay: { minorUnits: 2, hideZeroMinorUnits: false, groupSeparator: ',', decimalSeparator: '.', pdfUsesCode: true },
+    dateLocale: '', showTimesInBusinessTimezone: true,
+  },
+  permissions: {
+    defaultGrants: {
+      selected_admin: ['attendance.view_team', 'attendance.review', 'attendance.correct', 'attendance.delete', 'payroll.export'],
+      staff: [],
+    },
+  },
+  exclusions: { excludedRoles: [], excludeDemoAccounts: true },
+  attendance: {
+    clockMode: null, selfView: false, allowMultipleSessionsPerDay: true, maxOpenSessionsPerEmployee: 1,
+    sessionCrossesMidnightPolicy: 'clock_in_date', maxSessionHours: null,
+    device: { mode: 'auto', failMode: 'closed', maxActiveDevices: 1, cookieMaxAgeDays: 365, defaultLabel: 'Time clock' },
+    selfie: { mode: 'off', facingMode: 'user', maxEdgePx: 1600, jpegQuality: 0.82 },
+    correction: { allowClockInCorrection: false, requireReason: true, maxWindowDays: null },
+    deletion: { mode: 'soft', requireReason: true, requireTypedConfirmation: true, confirmationPhrase: 'DELETE', requestApprovalPath: false },
+  },
+  review: {
+    defaultRangeDays: 7, quickRanges: ['today', '7d', 'month', 'custom'], pageSizes: [25, 50, 100], defaultPageSize: 25,
+    defaultStatus: 'all', dateFilterBasis: 'work_date', statusLabels: { open: 'Open', completed: 'Completed' },
+  },
+  payroll: {
+    selfView: false, rateBasis: null, payFrequencies: [], payFrequencyLabels: {}, defaultFrequency: null,
+    frequencyDrivesPeriod: false, rateEffectiveDating: 'append_only', rateSelection: 'period_end', prorationPolicy: 'none',
+    currentRateLookup: 'effective_today', periodPresets: [], periodDefault: 'month_to_date', minHoursForDay: 0,
+    nightRule: { enabled: false, anchor: null, thresholdTime: null, windowEnd: null, bonusAmount: '0.00', oncePerDay: true },
+    overtimeDisplayThresholdHours: null, overtimeBasis: 'session', overtimePayMultiplier: 0, deductionsModel: 'lump_sum',
+    allowNegativeNet: false, rounding: { moneyScale: 2, hoursScale: 2, roundOnce: true },
+    snapshot: { immutable: true, uniquePerPeriod: true }, statuses: ['pending', 'paid', 'void'],
+    statusLabels: { notGenerated: 'Not generated', pending: 'Pending', paid: 'Paid', void: 'Void' },
+    paidDateEditable: true, approvalRequired: false, lockPeriodAfterPayslip: 'off',
+    payslip: { pageSize: 'a5', fileNamePattern: '{prefix}-Payslip-{employee}-{start}_{end}.pdf', labels: {} },
+  },
+  audit: { payloadIncludesAmounts: false },
+  retention: { selfieRetentionDays: null, signedUrlTtlSeconds: 300, deleteSelfieWithRecord: true },
+};

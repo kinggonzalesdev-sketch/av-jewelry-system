@@ -1,0 +1,55 @@
+{
+  "branding": {
+    "companyName": "<Client Company Name>", "payslipHeader": "Payslip", "summaryHeader": "Payroll Summary", "logoText": "<XY>", "logoUrl": null,
+    "brandColor": "<#rrggbb>", "documentFilePrefix": "<ClientPrefix>", "cookieNamePrefix": "<client_prefix_>",
+    "address": "<street, city, country>", "taxId": "<tax-registration-number>", "contact": "<payroll-contact>"
+  },
+  "locale": {
+    "timezone": "<IANA-zone>", "currencyCode": "<CCY>", "currencySymbol": "<symbol>",
+    "moneyDisplay": { "minorUnits": 2, "hideZeroMinorUnits": false, "groupSeparator": ",", "decimalSeparator": ".", "pdfUsesCode": true },
+    "dateLocale": "<bcp47-tag>", "showTimesInBusinessTimezone": true
+  },
+  "permissions": {
+    "defaultGrants": {
+      "selected_admin": ["attendance.view_team", "attendance.review", "attendance.correct", "attendance.delete", "payroll.export"],
+      "staff": []
+    }
+  },
+  "exclusions": { "excludedRoles": ["owner"], "excludeDemoAccounts": true },
+  "attendance": {
+    "clockMode": "kiosk", "selfView": false, "allowMultipleSessionsPerDay": true, "maxOpenSessionsPerEmployee": 1,
+    "sessionCrossesMidnightPolicy": "clock_in_date", "maxSessionHours": null,
+    "device": { "mode": "auto", "failMode": "closed", "maxActiveDevices": 1, "cookieMaxAgeDays": 365, "defaultLabel": "Time clock" },
+    "selfie": { "mode": "off", "facingMode": "user", "maxEdgePx": 1600, "jpegQuality": 0.82 },
+    "correction": { "allowClockInCorrection": false, "requireReason": true, "maxWindowDays": null },
+    "deletion": { "mode": "soft", "requireReason": true, "requireTypedConfirmation": true, "confirmationPhrase": "DELETE", "requestApprovalPath": false }
+  },
+  "review": {
+    "defaultRangeDays": 7, "quickRanges": ["today", "7d", "month", "custom"], "pageSizes": [25, 50, 100], "defaultPageSize": 25,
+    "defaultStatus": "all", "dateFilterBasis": "work_date", "statusLabels": { "open": "Open", "completed": "Completed" }
+  },
+  "payroll": {
+    "selfView": false, "rateBasis": "daily", "payFrequencies": ["weekly", "monthly"],
+    "payFrequencyLabels": { "weekly": "Weekly", "monthly": "Monthly" }, "defaultFrequency": "weekly", "frequencyDrivesPeriod": false,
+    "rateEffectiveDating": "append_only", "rateSelection": "period_end", "prorationPolicy": "none", "currentRateLookup": "effective_today",
+    "periodPresets": [], "periodDefault": "month_to_date", "minHoursForDay": 0,
+    "nightRule": { "enabled": true, "anchor": "clock_out", "thresholdTime": "<HH:MM>", "windowEnd": null, "bonusAmount": "<amount>", "oncePerDay": true },
+    "overtimeDisplayThresholdHours": null, "overtimeBasis": "session", "overtimePayMultiplier": 0, "deductionsModel": "lump_sum",
+    "allowNegativeNet": false,
+    "rounding": { "moneyScale": 2, "hoursScale": 2, "roundOnce": true },
+    "snapshot": { "immutable": true, "uniquePerPeriod": true },
+    "statuses": ["pending", "paid", "void"],
+    "statusLabels": { "notGenerated": "Not generated", "pending": "Pending", "paid": "Paid", "void": "Void" },
+    "paidDateEditable": true, "approvalRequired": false, "lockPeriodAfterPayslip": "off",
+    "payslip": {
+      "pageSize": "a4", "fileNamePattern": "{prefix}-Payslip-{employee}-{start}_{end}.pdf",
+      "labels": {
+        "daysWorked": "Days worked", "totalHours": "Total hours", "nightShifts": "Night shifts ({bonusAmount} each)", "dailyRate": "Daily rate",
+        "regularSalary": "Regular salary", "nightBonus": "Night bonus", "grossSalary": "Gross salary", "deductions": "Deductions",
+        "netPay": "Net pay", "employeeSignature": "Employee signature", "approvedBy": "Approved by"
+      }
+    }
+  },
+  "audit": { "payloadIncludesAmounts": false },
+  "retention": { "selfieRetentionDays": null, "signedUrlTtlSeconds": 300, "deleteSelfieWithRecord": true }
+}
