@@ -33,9 +33,10 @@ import { Label } from '@/components/ui/label';
  */
 
 /**
- * The five canonical Mode-of-Payment choices (shared source of truth). The method
+ * The canonical Mode-of-Payment choices (shared source of truth). The method
  * name IS the channel, so only Cash needs an extra field (the collection location);
- * GCash / BPI / BDO / Credit Card need nothing beyond the reference number. No card
+ * every other method (GCash / BPI / BDO / Credit Card / Remittance …) needs nothing beyond
+ * the reference number. No card
  * number, CVV, or PIN is ever collected.
  */
 const METHODS = PAYMENT_METHODS.map((m) => ({
@@ -265,8 +266,8 @@ export function RecordPaymentForm({
         </div>
       </div>
 
-      {/* --- Note (optional). The method name (GCash / BPI / BDO / Credit Card)
-              is itself the channel, so there is no separate provider field. --- */}
+      {/* --- Note (optional). The method name (GCash / BPI / BDO / Credit Card /
+              Remittance …) is itself the channel, so there is no separate provider field. --- */}
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">
           <Label htmlFor="note">Note (optional)</Label>

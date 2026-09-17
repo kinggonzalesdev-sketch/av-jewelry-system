@@ -160,11 +160,12 @@ describe('payment recording (approved decision §3)', () => {
     expect(withoutLocation.success).toBe(false);
   });
 
-  it('accepts GCash / BPI / BDO / Credit Card without a separate provider', () => {
+  it('accepts GCash / BPI / BDO / Credit Card / Remittance without a separate provider', () => {
     // Standardized Mode of Payment (Owner request 2026-07-31): the method name IS
     // the channel, so no separate provider field is required — a reference number is
     // the attribution. Only Cash additionally needs a collection location.
-    for (const method of ['GCash', 'BPI', 'BDO', 'Credit Card'] as const) {
+    // Remittance (Owner 2026-08-13, re-applied 2026-09-17) follows the same non-cash rule.
+    for (const method of ['GCash', 'BPI', 'BDO', 'Credit Card', 'Remittance'] as const) {
       const result = recordPaymentSchema.safeParse({
         ...validBankTransfer,
         paymentMethod: method,

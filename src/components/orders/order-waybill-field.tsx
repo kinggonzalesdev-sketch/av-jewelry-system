@@ -8,8 +8,11 @@ import { Input } from '@/components/ui/input';
 
 /**
  * Waybill Number for the Ship Confirm view. Editable by authorized users; the
- * database refuses a blank or a duplicate (case-insensitive, among active orders)
- * and records who set it and when. A shipping order cannot be completed until this
+ * database refuses a blank value and records who set it and when. A waybill / tracking
+ * number identifies a SHIPMENT, not an order: several orders shipped together in one
+ * package may carry the same number (Owner 2026-09-17, migration 20260917130000), and
+ * each order still keeps its own items, payments and history. Saving updates this one
+ * order in place, so saving twice never creates a second record. A shipping order cannot be completed until this
  * is set — that gate lives in `order_completion_block`, so the button and the
  * server always agree.
  */

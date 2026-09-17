@@ -6,6 +6,12 @@
  * verbatim; historical records that still hold the legacy machine keys
  * (bank_transfer / e_wallet / cash / card / other) remain valid and readable —
  * the database CHECK constraint accepts BOTH sets so no past transaction breaks.
+ *
+ * Remittance (Owner request 2026-08-13, re-applied 2026-09-17): the database has accepted it
+ * since migration 20260813120000, but the matching edit to this list was lost, so no dropdown
+ * offered it and validation refused it. Every Mode of Payment dropdown and the payment Zod enum
+ * derive from this list, so this one entry is the whole frontend change.
+ * tests/unit/payment-methods.test.ts pins the list so it cannot silently disappear again.
  */
 export const PAYMENT_METHODS = [
   'Cash',
@@ -15,6 +21,7 @@ export const PAYMENT_METHODS = [
   'BDO NEW',
   'BDO UNIBANK',
   'Credit Card',
+  'Remittance',
 ] as const;
 
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];

@@ -28,10 +28,10 @@ export const money = z
   .refine((v) => Number(v) > 0, 'The amount must be greater than zero');
 
 /**
- * The methods the data layer accepts: the five canonical Mode-of-Payment values
- * (Cash / GCash / BPI / BDO / Credit Card) plus the legacy machine keys retained
- * so historical records still validate. The single source of truth lives in
- * `@/lib/payments/methods`.
+ * The methods the data layer accepts: every canonical Mode-of-Payment value
+ * (PAYMENT_METHODS, e.g. Cash / GCash / BPI / BDO / Credit Card / Remittance) plus the
+ * legacy machine keys retained so historical records still validate. The single source
+ * of truth lives in `@/lib/payments/methods`.
  */
 export const PAYMENT_METHODS = ACCEPTED_PAYMENT_METHODS;
 
@@ -81,7 +81,7 @@ export const recordPaymentSchema = z
     }
 
     // Cash (canonical "Cash" or legacy "cash") names WHERE it was collected. The
-    // channel for GCash / BPI / BDO / Credit Card is the method itself, so no
+    // channel for every non-cash method (GCash / BPI / BDO / Credit Card / Remittance …) is the method itself, so no
     // separate provider field is required. Evidence stays optional (Owner request
     // 2026-07-22). Historical "other" records still require a note.
     if (isCashMethod(value.paymentMethod) && !value.collectionLocation) {
