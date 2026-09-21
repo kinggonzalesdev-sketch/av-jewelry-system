@@ -128,6 +128,7 @@ export function LayawayLedgerViewModal({
   allowComplete = false,
   canAddPayment = false,
   canTransfer = false,
+  canForfeit = false,
 }: {
   ledgerId: string;
   /** Show a "Transfer to Completed" action (used from the Keep account view). The
@@ -142,6 +143,8 @@ export function LayawayLedgerViewModal({
    *  inside Add Payment. Kept manager-only (Owner/Admin) — plain Staff record a
    *  payment or cancel, but do not move accounts into the Orders flow. */
   canTransfer?: boolean;
+  /** Owner-only permission to forfeit the account and release its item and code. */
+  canForfeit?: boolean;
 }) {
   const router = useRouter();
   // Privacy Mode (batch 2): mask peso amounts on screen; '—' for a null/unavailable
@@ -225,12 +228,16 @@ export function LayawayLedgerViewModal({
   // So an account the table flagged "5 days left" opened to a modal saying "Overdue: No" and
   // nothing else. Workflow status stays its own row; this is derived from dates and balance only,
   // and it never reads Remarks / Financer — a financer account gets exactly the same treatment.
-  const todayManila = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(
-    new Date(),
-  );
+  const todayManila = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila',
+  }).format(new Date());
   const countdown = detail
     ? layawayRowCountdown(
-        { status: detail.status, balance: detail.balance, datePurchased: detail.datePurchased },
+        {
+          status: detail.status,
+          balance: detail.balance,
+          datePurchased: detail.datePurchased,
+        },
         todayManila,
       )
     : null;
@@ -266,6 +273,8 @@ export function LayawayLedgerViewModal({
                 nextDueDate={detail.nextDueDate}
                 code={detail.code}
                 canTransfer={canTransfer}
+                canForfeit={canForfeit}
+                onChanged={reload}
               />
               <LedgerCancelAccount
                 id={ledgerId}
@@ -376,7 +385,9 @@ export function LayawayLedgerViewModal({
                       }
                       data-testid="ledger-due-status"
                     >
-                      {countdown.state === 'normal' ? 'On Track' : overdueColumnLabel(countdown)}
+                      {countdown.state === 'normal'
+                        ? 'On Track'
+                        : overdueColumnLabel(countdown)}
                       {countdown.state === 'normal'
                         ? ` · ${countdown.daysLeft} days left`
                         : countdown.state === 'due_today'

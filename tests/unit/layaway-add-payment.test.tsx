@@ -1,22 +1,33 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LedgerAddPayment } from '@/components/payments/layaway-ledger-actions';
 
 // Server actions are transport; stub them so the client control renders in jsdom.
-const addPayment = vi.fn(() =>
-  Promise.resolve({ ok: true as const, payment: '0', balance: '0', status: 'active' }),
-);
+const mocks = vi.hoisted(() => ({
+  addPayment: vi.fn(() =>
+    Promise.resolve({ ok: true as const, payment: '0', balance: '0', status: 'active' }),
+  ),
+  addPaymentAndTransfer: vi.fn(),
+  forfeitLayaway: vi.fn((_id: string) =>
+    Promise.resolve({ ok: true as const, status: 'forfeited' as const }),
+  ),
+}));
 vi.mock('@/lib/payments/actions', () => ({
-  addLayawayLedgerPaymentAction: () => addPayment(),
-  addLayawayPaymentAndTransferAction: vi.fn(),
+  addLayawayLedgerPaymentAction: () => mocks.addPayment(),
+  addLayawayPaymentAndTransferAction: mocks.addPaymentAndTransfer,
+  forfeitLayawayLedgerAction: (id: string) => mocks.forfeitLayaway(id),
   transferLayawayToDestinationAction: vi.fn(),
   loadLayawayLedgerDetailAction: vi.fn(),
   updateLayawayLedgerAccountAction: vi.fn(),
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
-function renderControl(grandTotal: string | null, paidToDate: string | null) {
+function renderControl(
+  grandTotal: string | null,
+  paidToDate: string | null,
+  canForfeit = false,
+) {
   return render(
     <LedgerAddPayment
       id="lay-1"
@@ -24,6 +35,7 @@ function renderControl(grandTotal: string | null, paidToDate: string | null) {
       customerName="Ana Cruz"
       grandTotal={grandTotal}
       paidToDate={paidToDate}
+      canForfeit={canForfeit}
     />,
   );
 }
@@ -35,6 +47,10 @@ function openAndType(amount: string) {
 }
 
 describe('Layaway Add Payment — remaining balance', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('shows Remaining Balance as Grand Total minus Total Payments', () => {
     renderControl('20000.00', '13000.00');
     fireEvent.click(screen.getByTestId('ledger-add-payment-lay-1'));
@@ -82,10 +98,41 @@ describe('Layaway Add Payment — remaining balance', () => {
   });
 
   it('does not submit an invalid payment to the server', () => {
-    addPayment.mockClear();
     renderControl('20000.00', '13000.00');
     openAndType('9999');
     fireEvent.click(screen.getByRole('button', { name: /record payment/i }));
-    expect(addPayment).not.toHaveBeenCalled();
+    expect(mocks.addPayment).not.toHaveBeenCalled();
+  });
+
+  it('confirms FORFEITED through the dedicated action exactly once', async () => {
+    renderControl('20000.00', '20000.00', true);
+    fireEvent.click(screen.getByTestId('ledger-add-payment-lay-1'));
+
+    const destination = screen.getByTestId('ledger-pay-dest-lay-1');
+    const forfeitedOption = within(destination).getByRole('option', {
+      name: 'FORFEITED',
+    });
+    expect(forfeitedOption).toHaveValue('forfeited');
+
+    fireEvent.change(destination, { target: { value: 'forfeited' } });
+    fireEvent.click(screen.getByTestId('ledger-pay-save-lay-1'));
+
+    expect(
+      screen.getByRole('heading', { name: 'Mark this layaway as FORFEITED?' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'The item will return to Available Inventory and the Layaway Code will become available for reuse. This action will be recorded in the layaway history.',
+      ),
+    ).toBeInTheDocument();
+
+    const confirm = screen.getByRole('button', { name: 'Confirm Forfeiture' });
+    expect(confirm).toHaveClass('bg-destructive');
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(mocks.forfeitLayaway).toHaveBeenCalledTimes(1));
+    expect(mocks.forfeitLayaway).toHaveBeenCalledWith('lay-1');
+    expect(mocks.addPaymentAndTransfer).not.toHaveBeenCalled();
   });
 });

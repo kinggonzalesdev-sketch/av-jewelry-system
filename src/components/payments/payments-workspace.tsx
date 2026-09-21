@@ -190,6 +190,7 @@ export function PaymentsWorkspace({
   canVerify,
   canMonitorLayaway,
   canRequestForfeiture,
+  canForfeit,
   canImportLayaway,
   canEditLayaway,
   canDeleteLayaway,
@@ -227,6 +228,8 @@ export function PaymentsWorkspace({
   canVerify: boolean;
   canMonitorLayaway: boolean;
   canRequestForfeiture: boolean;
+  /** Owner-only controlled forfeiture for imported ledger accounts. */
+  canForfeit: boolean;
   canImportLayaway: boolean;
   /** Manage Access `layaway_edit` — gates the per-row Edit of a layaway account. */
   canEditLayaway: boolean;
@@ -819,6 +822,7 @@ export function PaymentsWorkspace({
               financers={financers}
               canManage={canMonitorLayaway}
               canDeleteLedger={canImportLayaway}
+              canForfeit={canForfeit}
               canEditLayaway={canEditLayaway}
               canDeleteLayaway={canDeleteLayaway}
               isSuperAdmin={canDeleteAllLedger}
@@ -1062,6 +1066,7 @@ function LayawayTable({
   financers,
   canManage,
   canDeleteLedger,
+  canForfeit,
   canEditLayaway,
   canDeleteLayaway,
   isSuperAdmin,
@@ -1083,6 +1088,8 @@ function LayawayTable({
   canManage: boolean;
   /** Owner/Admin: whether the View modal offers Add Payment (non-terminal rows). */
   canDeleteLedger: boolean;
+  /** Owner-only: whether the View modal offers the controlled FORFEITED transfer. */
+  canForfeit: boolean;
   /** Manage Access `layaway_edit` — shows the per-row Edit action. */
   canEditLayaway: boolean;
   /** Manage Access `layaway_delete` — shows the per-row Delete action. */
@@ -1273,9 +1280,14 @@ function LayawayTable({
                             ledgerId={r.ledgerId}
                             canAddPayment={!TERMINAL_STATUSES.has(normStatus(r.status))}
                             canTransfer={canDeleteLedger}
+                            canForfeit={canForfeit}
                           />
                           {canEditLayaway ? (
-                            <LedgerEditAccount id={r.ledgerId} accountNo={r.accountNo} />
+                            <LedgerEditAccount
+                              id={r.ledgerId}
+                              accountNo={r.accountNo}
+                              canTransfer={canDeleteLedger}
+                            />
                           ) : null}
                           {canDeleteLayaway ? (
                             <LedgerRowDelete

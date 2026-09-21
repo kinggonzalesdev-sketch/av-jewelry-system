@@ -95,11 +95,10 @@ export function LayawayNewEntry({
   canCreate: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  // Everything the picker needs — the Active-Inventory item list (~3k rows), the customer
-  // names, and the detected financers — is LAZY-loaded the first time New Entry is opened, so
-  // the Payments/Layaway page no longer pays any of those reads on every load. Cached after the
-  // first fetch. The modal opens only AFTER the data arrives, so its pickers are never empty
-  // mid-load (the button shows "Loading…" meanwhile).
+  // Everything the picker needs is lazy-loaded only when New Entry is opened. Refresh on EVERY
+  // open: a forfeiture can return an item to Active Inventory while this page remains mounted,
+  // and a cached picker would incorrectly keep that item unavailable. The modal opens only after
+  // the fresh data arrives, so its pickers are never empty mid-load.
   const [data, setData] = useState<{
     items: CaptureItem[];
     customers: string[];
@@ -107,10 +106,7 @@ export function LayawayNewEntry({
   } | null>(null);
   const [loading, setLoading] = useState(false);
   const openEntry = () => {
-    if (data) {
-      setOpen(true);
-      return;
-    }
+    if (loading) return;
     setLoading(true);
     void loadLayawayNewEntryDataAction()
       .then((res) => {

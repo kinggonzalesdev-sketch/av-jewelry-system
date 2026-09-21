@@ -48,6 +48,7 @@ import {
   completeLayawayLedger,
   deleteAllLayawayLedger,
   deleteLayawayLedgerRow,
+  forfeitLayawayLedger,
   getLayawayLedgerDetail,
   importLayawayLedger,
   listLayawayDedupKeys,
@@ -61,6 +62,7 @@ import {
   type LayawayLedgerDetail,
   type LayawayLedgerInput,
   type LedgerDeleteResult,
+  type LedgerForfeitResult,
   type LedgerImportResult,
   type LedgerPaymentResult,
   type LedgerUpdateResult,
@@ -357,6 +359,23 @@ export async function cancelLayawayLedgerAction(
   const result = await cancelLayawayLedger(ledgerId);
   if (result.ok) {
     revalidatePath('/orders/payments');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+/**
+ * Owner-confirmed Layaway forfeiture. The database performs status, inventory,
+ * reservation, code-release and success-audit changes in one idempotent transaction.
+ */
+export async function forfeitLayawayLedgerAction(
+  ledgerId: string,
+): Promise<LedgerForfeitResult> {
+  const result = await forfeitLayawayLedger(ledgerId);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/payments');
+    revalidatePath('/orders/inventory');
     revalidatePath('/dashboard');
   }
   return result;

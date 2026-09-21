@@ -63,6 +63,7 @@ const admins: AdminNameContext = {
 };
 
 beforeEach(() => {
+  vi.clearAllMocks();
   // The lazy fetch resolves to the New Entry data bundle (items + customers + financers).
   h.loadLayawayNewEntryDataAction.mockResolvedValue({
     items,
@@ -100,6 +101,19 @@ describe('Layaway New Entry — lazy item load', () => {
     fireEvent.click(screen.getByTestId('layaway-new-entry'));
     await screen.findByTestId('layaway-save');
     expect(h.loadLayawayNewEntryDataAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes Active Inventory every time New Entry is reopened', async () => {
+    render(<LayawayNewEntry admins={admins} canCreate />);
+
+    fireEvent.click(screen.getByTestId('layaway-new-entry'));
+    await screen.findByTestId('layaway-save');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    fireEvent.click(screen.getByTestId('layaway-new-entry'));
+    await screen.findByTestId('layaway-save');
+
+    expect(h.loadLayawayNewEntryDataAction).toHaveBeenCalledTimes(2);
   });
 });
 

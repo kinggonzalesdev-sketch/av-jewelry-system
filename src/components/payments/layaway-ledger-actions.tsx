@@ -7,6 +7,7 @@ import {
   addLayawayLedgerPaymentAction,
   addLayawayPaymentAndTransferAction,
   cancelLayawayLedgerAction,
+  forfeitLayawayLedgerAction,
   loadLayawayLedgerDetailAction,
   transferLayawayToDestinationAction,
   updateLayawayLedgerAccountAction,
@@ -62,6 +63,8 @@ export function LedgerAddPayment({
   nextDueDate = null,
   code = null,
   canTransfer = true,
+  canForfeit = false,
+  onChanged,
 }: {
   id: string;
   accountNo: string;
@@ -74,6 +77,10 @@ export function LedgerAddPayment({
   code?: string | null;
   /** Whether this user may transfer to a destination (else only "No transfer"). */
   canTransfer?: boolean;
+  /** Owner-only terminal status transfer. The database repeats this authority check. */
+  canForfeit?: boolean;
+  /** Refresh an already-open parent detail view after a terminal status change. */
+  onChanged?: () => void | Promise<void>;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -97,6 +104,7 @@ export function LedgerAddPayment({
   const fullyPaid = remainingCents <= 0n;
   const amountCents = centavos(amount);
   const exceeds = amountCents > remainingCents;
+  const isForfeiture = dest === 'forfeited';
   // Live, client-side validation mirroring the database's rules verbatim.
   const validationError = !amount.trim()
     ? null
@@ -125,6 +133,7 @@ export function LedgerAddPayment({
     delivery: 'For Delivery',
     shipping: 'For Shipping',
     keep: 'Keep',
+    forfeited: 'FORFEITED',
   };
 
   const run = async () => {
@@ -155,7 +164,10 @@ export function LedgerAddPayment({
 
   // Combined action: record the payment AND transfer, atomically (one RPC).
   const runCombined = async () => {
-    if (!canSubmit || !dest || submittingRef.current) return;
+    // Forfeiture has its own atomic RPC. Never let it enter the payment + Orders
+    // destination RPC, even if a stale client dispatches this handler directly.
+    if (!canSubmit || !dest || !canTransfer || isForfeiture || submittingRef.current)
+      return;
     submittingRef.current = true;
     setPending(true);
     setError(null);
@@ -187,12 +199,16 @@ export function LedgerAddPayment({
 
   // "Save" = transfer ONLY (no payment). Uses the standalone transfer RPC.
   const runTransferOnly = async () => {
-    if (!dest || submittingRef.current) return;
+    if (!dest || (isForfeiture ? !canForfeit : !canTransfer) || submittingRef.current)
+      return;
     submittingRef.current = true;
     setPending(true);
     setError(null);
     try {
-      const res = await transferLayawayToDestinationAction(id, dest);
+      const res =
+        dest === 'forfeited'
+          ? await forfeitLayawayLedgerAction(id)
+          : await transferLayawayToDestinationAction(id, dest);
       if (!res.ok) {
         setError(res.error);
         setConfirming(false);
@@ -200,6 +216,7 @@ export function LedgerAddPayment({
       }
       setConfirming(false);
       setOpen(false);
+      if (isForfeiture) await onChanged?.();
       router.refresh();
     } finally {
       setPending(false);
@@ -261,8 +278,9 @@ export function LedgerAddPayment({
                   Save
                 </Button>
               ) : null}
-              {/* No "Record payment" for a fully-paid account — only Save (transfer). */}
-              {fullyPaid ? null : (
+              {/* Forfeiture is status-only and has its own atomic RPC. It must never
+                  be combined with a payment through the Orders transfer action. */}
+              {fullyPaid || isForfeiture ? null : (
                 <Button
                   type="button"
                   onClick={() => {
@@ -308,7 +326,7 @@ export function LedgerAddPayment({
               <span aria-hidden="true">✓</span> This account is already fully paid. It
               stays here — transfer it to a destination when you&apos;re ready.
             </p>
-            {canTransfer ? (
+            {canTransfer || canForfeit ? (
               <div>
                 <Label htmlFor={`ledger-pay-dest-${id}`} className="text-xs">
                   Transfer to Destination
@@ -321,10 +339,15 @@ export function LedgerAddPayment({
                   data-testid={`ledger-pay-dest-${id}`}
                 >
                   <option value="">Choose destination…</option>
-                  <option value="pickup">For Pickup</option>
-                  <option value="delivery">For Delivery</option>
-                  <option value="shipping">For Shipping</option>
-                  <option value="keep">Keep</option>
+                  {canTransfer ? (
+                    <>
+                      <option value="pickup">For Pickup</option>
+                      <option value="delivery">For Delivery</option>
+                      <option value="shipping">For Shipping</option>
+                      <option value="keep">Keep</option>
+                    </>
+                  ) : null}
+                  {canForfeit ? <option value="forfeited">FORFEITED</option> : null}
                 </select>
               </div>
             ) : null}
@@ -442,9 +465,9 @@ export function LedgerAddPayment({
               />
             </div>
 
-            {/* Transfer to Destination — OPTIONAL. Selecting a destination turns the
-                one footer action into "Record Payment & Transfer" (one atomic step). */}
-            {canTransfer ? (
+            {/* Transfer to Destination — OPTIONAL. Ordinary destinations may be
+                combined with payment. FORFEITED remains a status-only operation. */}
+            {canTransfer || canForfeit ? (
               <div>
                 <Label htmlFor={`ledger-pay-dest-${id}`} className="text-xs">
                   Transfer to Destination
@@ -457,10 +480,15 @@ export function LedgerAddPayment({
                   data-testid={`ledger-pay-dest-${id}`}
                 >
                   <option value="">No transfer</option>
-                  <option value="pickup">For Pickup</option>
-                  <option value="delivery">For Delivery</option>
-                  <option value="shipping">For Shipping</option>
-                  <option value="keep">Keep</option>
+                  {canTransfer ? (
+                    <>
+                      <option value="pickup">For Pickup</option>
+                      <option value="delivery">For Delivery</option>
+                      <option value="shipping">For Shipping</option>
+                      <option value="keep">Keep</option>
+                    </>
+                  ) : null}
+                  {canForfeit ? <option value="forfeited">FORFEITED</option> : null}
                 </select>
               </div>
             ) : null}
@@ -479,9 +507,11 @@ export function LedgerAddPayment({
         open={confirming}
         onClose={() => (pending ? undefined : setConfirming(false))}
         title={
-          transferOnly
-            ? `Transfer this Layaway account to ${DEST_LABELS[dest] ?? dest}?`
-            : `Record this payment and transfer the Layaway account to ${DEST_LABELS[dest] ?? dest}?`
+          isForfeiture
+            ? 'Mark this layaway as FORFEITED?'
+            : transferOnly
+              ? `Transfer this Layaway account to ${DEST_LABELS[dest] ?? dest}?`
+              : `Record this payment and transfer the Layaway account to ${DEST_LABELS[dest] ?? dest}?`
         }
         size="sm"
         critical
@@ -497,23 +527,36 @@ export function LedgerAddPayment({
             </Button>
             <Button
               type="button"
-              onClick={() => void (transferOnly ? runTransferOnly() : runCombined())}
+              variant={isForfeiture ? 'destructive' : undefined}
+              onClick={() =>
+                void (isForfeiture || transferOnly ? runTransferOnly() : runCombined())
+              }
               disabled={pending}
               data-testid={`ledger-pay-transfer-confirm-${id}`}
             >
               {pending
-                ? 'Processing…'
-                : transferOnly
-                  ? 'Confirm Transfer'
-                  : 'Confirm Payment & Transfer'}
+                ? isForfeiture
+                  ? 'Forfeiting…'
+                  : 'Processing…'
+                : isForfeiture
+                  ? 'Confirm Forfeiture'
+                  : transferOnly
+                    ? 'Confirm Transfer'
+                    : 'Confirm Payment & Transfer'}
             </Button>
           </>
         }
       >
+        {isForfeiture ? (
+          <p className="mb-3 text-sm text-muted-foreground">
+            The item will return to Available Inventory and the Layaway Code will become
+            available for reuse. This action will be recorded in the layaway history.
+          </p>
+        ) : null}
         <dl className="space-y-1.5 text-sm" data-testid="ledger-pay-transfer-review">
           <ConfirmLine label="Customer" value={customerName || '—'} />
           <ConfirmLine label="Layaway Code" value={code ?? '—'} />
-          {transferOnly ? null : (
+          {transferOnly || isForfeiture ? null : (
             <>
               <ConfirmLine
                 label="Payment Amount"
@@ -525,7 +568,9 @@ export function LedgerAddPayment({
           <ConfirmLine
             label="Remaining Balance"
             value={formatPeso(
-              pesoString(transferOnly ? remainingCents : remainingAfterCents),
+              pesoString(
+                transferOnly || isForfeiture ? remainingCents : remainingAfterCents,
+              ),
             )}
             strong
           />

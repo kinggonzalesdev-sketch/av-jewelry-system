@@ -144,6 +144,7 @@ export default async function PaymentsPage({
         canVerify={permissions.has('payment_verification')}
         canMonitorLayaway={permissions.has('layaway_monitoring')}
         canRequestForfeiture={permissions.has('initiate_high_risk_action')}
+        canForfeit={isOwner}
         canImportLayaway={canImportLayaway}
         canEditLayaway={canEditLayaway}
         canDeleteLayaway={canDeleteLayaway}
