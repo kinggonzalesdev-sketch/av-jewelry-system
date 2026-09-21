@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   update: vi.fn(),
   transfer: vi.fn(),
   overdue: vi.fn(),
+  forfeit: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: mocks.refresh }) }));
@@ -20,6 +21,7 @@ vi.mock('@/lib/payments/actions', () => ({
   loadLayawayLedgerDetailAction: mocks.load,
   transferLayawayToDestinationAction: mocks.transfer,
   updateLayawayLedgerAccountAction: mocks.update,
+  updateLayawayLedgerAndForfeitAction: mocks.forfeit,
   updateLayawayLedgerAndTransferOverdueAction: mocks.overdue,
 }));
 
@@ -33,8 +35,15 @@ const detail = {
   notes: 'Original note',
 };
 
-async function openEdit() {
-  render(<LedgerEditAccount id="ledger-1" accountNo="LAY-2026-005635" canTransfer />);
+async function openEdit({ canForfeit = false } = {}) {
+  render(
+    <LedgerEditAccount
+      id="ledger-1"
+      accountNo="LAY-2026-005635"
+      canTransfer
+      canForfeit={canForfeit}
+    />,
+  );
   fireEvent.click(screen.getByTestId('ledger-edit-ledger-1'));
   return screen.findByLabelText('Transfer to Destination');
 }
@@ -60,6 +69,12 @@ describe('Edit Layaway — manual Overdue destination', () => {
       layawayCode: 'E34',
       layawayCodeReleased: true,
       status: 'overdue',
+    });
+    mocks.forfeit.mockResolvedValue({
+      ok: true,
+      changed: true,
+      releasedItems: 1,
+      layawayCode: 'E34',
     });
   });
 
@@ -142,5 +157,43 @@ describe('Edit Layaway — manual Overdue destination', () => {
     await screen.findByDisplayValue('ERICKA DE DIOS');
 
     expect(screen.queryByLabelText('Transfer to Destination')).not.toBeInTheDocument();
+  });
+
+  it('lets the Owner save edits and forfeit through one atomic action', async () => {
+    const destination = await openEdit({ canForfeit: true });
+    expect(within(destination).getByRole('option', { name: 'FORFEITED' })).toHaveValue(
+      'forfeited',
+    );
+
+    fireEvent.change(destination, { target: { value: 'forfeited' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save and Transfer' }));
+
+    expect(
+      screen.getByRole('heading', { name: 'Mark this layaway as FORFEITED?' }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Forfeiture' }));
+
+    await waitFor(() => expect(mocks.forfeit).toHaveBeenCalledTimes(1));
+    expect(mocks.forfeit).toHaveBeenCalledWith({
+      id: 'ledger-1',
+      customerName: 'ERICKA DE DIOS',
+      remarks: 'OK',
+      datePurchased: '2026-06-01',
+      itemAmount: '7000.00',
+      interest: '450.00',
+      nextDueDate: '2026-09-01',
+      notes: 'Original note',
+    });
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.overdue).not.toHaveBeenCalled();
+    expect(mocks.transfer).not.toHaveBeenCalled();
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not expose FORFEITED to a user without Owner authority', async () => {
+    const destination = await openEdit();
+    expect(
+      within(destination).queryByRole('option', { name: 'FORFEITED' }),
+    ).not.toBeInTheDocument();
   });
 });

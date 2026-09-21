@@ -11,6 +11,7 @@ import {
   loadLayawayLedgerDetailAction,
   transferLayawayToDestinationAction,
   updateLayawayLedgerAccountAction,
+  updateLayawayLedgerAndForfeitAction,
   updateLayawayLedgerAndTransferOverdueAction,
 } from '@/lib/payments/actions';
 import { formatPeso } from '@/lib/payments/format';
@@ -596,17 +597,21 @@ export function LedgerEditAccount({
   id,
   accountNo,
   canTransfer = true,
+  canForfeit = false,
 }: {
   id: string;
   accountNo: string;
   /** Whether this user may transfer to a destination (else the control is hidden). */
   canTransfer?: boolean;
+  /** Owner-only terminal destination. The database repeats this authority check. */
+  canForfeit?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState(false);
   const [confirmingOverdue, setConfirmingOverdue] = useState(false);
+  const [confirmingForfeited, setConfirmingForfeited] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const submittingRef = useRef(false);
 
@@ -625,6 +630,7 @@ export function LedgerEditAccount({
     setError(null);
     setDest('');
     setConfirmingOverdue(false);
+    setConfirmingForfeited(false);
     setLoading(true);
     try {
       const d = await loadLayawayLedgerDetailAction(id);
@@ -649,14 +655,20 @@ export function LedgerEditAccount({
   const closeEdit = () => {
     if (pending) return;
     setConfirmingOverdue(false);
+    setConfirmingForfeited(false);
     setOpen(false);
   };
 
-  const run = async (overdueConfirmed = false) => {
+  const run = async (destinationConfirmed = false) => {
     if (pending || submittingRef.current || !customerName.trim()) return;
-    if (dest === 'overdue' && !overdueConfirmed) {
+    if (dest === 'overdue' && !destinationConfirmed) {
       setError(null);
       setConfirmingOverdue(true);
+      return;
+    }
+    if (dest === 'forfeited' && !destinationConfirmed) {
+      setError(null);
+      setConfirmingForfeited(true);
       return;
     }
 
@@ -678,14 +690,16 @@ export function LedgerEditAccount({
       const res =
         dest === 'overdue'
           ? await updateLayawayLedgerAndTransferOverdueAction(input)
-          : await updateLayawayLedgerAccountAction(input);
+          : dest === 'forfeited'
+            ? await updateLayawayLedgerAndForfeitAction(input)
+            : await updateLayawayLedgerAccountAction(input);
       if (!res.ok) {
         setError(res.error);
         return;
       }
-      // Existing destinations retain their current two-step behavior. Overdue is
-      // different: the action above saves + releases inventory in one DB transaction.
-      if (dest && dest !== 'overdue') {
+      // Existing fulfillment destinations retain their current two-step behavior.
+      // Terminal destinations save + release inventory in one DB transaction.
+      if (dest && dest !== 'overdue' && dest !== 'forfeited') {
         const t = await transferLayawayToDestinationAction(id, dest);
         if (!t.ok) {
           setError(t.error);
@@ -693,13 +707,16 @@ export function LedgerEditAccount({
         }
       }
       setConfirmingOverdue(false);
+      setConfirmingForfeited(false);
       setOpen(false);
       router.refresh();
     } catch {
       setError(
         dest === 'overdue'
           ? 'The Overdue transfer could not be confirmed. Refresh and retry; repeated requests are safe.'
-          : 'The Layaway account could not be saved. Please try again.',
+          : dest === 'forfeited'
+            ? 'The forfeiture could not be confirmed. Refresh and retry; repeated requests are safe.'
+            : 'The Layaway account could not be saved. Please try again.',
       );
     } finally {
       submittingRef.current = false;
@@ -833,7 +850,7 @@ export function LedgerEditAccount({
 
             {/* Transfer to Destination — OPTIONAL. Choosing one moves the account to
                 that Orders destination when you Save (after the field edits). */}
-            {canTransfer ? (
+            {canTransfer || canForfeit ? (
               <div>
                 <Label htmlFor={`ledger-edit-dest-${id}`} className="text-xs">
                   Transfer to Destination
@@ -846,11 +863,12 @@ export function LedgerEditAccount({
                   data-testid={`ledger-edit-dest-${id}`}
                 >
                   <option value="">No transfer</option>
-                  <option value="pickup">For Pickup</option>
-                  <option value="delivery">For Delivery</option>
-                  <option value="shipping">For Shipping</option>
-                  <option value="keep">Keep</option>
-                  <option value="overdue">Overdue</option>
+                  {canTransfer ? <option value="pickup">For Pickup</option> : null}
+                  {canTransfer ? <option value="delivery">For Delivery</option> : null}
+                  {canTransfer ? <option value="shipping">For Shipping</option> : null}
+                  {canTransfer ? <option value="keep">Keep</option> : null}
+                  {canTransfer ? <option value="overdue">Overdue</option> : null}
+                  {canForfeit ? <option value="forfeited">FORFEITED</option> : null}
                 </select>
               </div>
             ) : null}
@@ -899,6 +917,50 @@ export function LedgerEditAccount({
             to Available Inventory.
           </p>
           <p>Payment history will be preserved.</p>
+          {error ? (
+            <p role="alert" className="text-destructive">
+              {error}
+            </p>
+          ) : null}
+        </div>
+      </Modal>
+
+      <Modal
+        open={confirmingForfeited}
+        onClose={() => {
+          if (!pending) setConfirmingForfeited(false);
+        }}
+        title="Mark this layaway as FORFEITED?"
+        size="sm"
+        critical
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmingForfeited(false)}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void run(true)}
+              disabled={pending}
+              data-testid={`ledger-edit-forfeited-confirm-${id}`}
+            >
+              {pending ? 'Forfeiting…' : 'Confirm Forfeiture'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-sm text-foreground">
+          <p>
+            The Layaway will move to Forfeited history and the linked item(s) will return
+            to Available Inventory.
+          </p>
+          <p>Payment history and the original Layaway Code will be preserved.</p>
           {error ? (
             <p role="alert" className="text-destructive">
               {error}

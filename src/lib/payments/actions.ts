@@ -56,6 +56,7 @@ import {
   splitLayawayItemToOrder,
   transferLayawayToDestination,
   updateLayawayLedgerAccount,
+  updateLayawayLedgerAndForfeit,
   updateLayawayLedgerAndTransferOverdue,
   type AddLedgerPaymentInput,
   type LayawayItemResult,
@@ -422,6 +423,20 @@ export async function updateLayawayLedgerAndTransferOverdueAction(
   input: UpdateLedgerAccountInput,
 ): Promise<LedgerManualOverdueResult> {
   const result = await updateLayawayLedgerAndTransferOverdue(input);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/payments');
+    revalidatePath('/orders/inventory');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+/** Edit + Owner-confirmed forfeiture in one database transaction. */
+export async function updateLayawayLedgerAndForfeitAction(
+  input: UpdateLedgerAccountInput,
+): Promise<LedgerForfeitResult> {
+  const result = await updateLayawayLedgerAndForfeit(input);
   if (result.ok) {
     revalidatePath('/orders');
     revalidatePath('/orders/payments');

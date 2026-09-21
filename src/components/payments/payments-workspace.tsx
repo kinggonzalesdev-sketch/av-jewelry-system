@@ -1288,6 +1288,7 @@ function LayawayTable({
                               id={r.ledgerId}
                               accountNo={r.accountNo}
                               canTransfer={canTransferLayaway}
+                              canForfeit={canForfeit}
                             />
                           ) : null}
                           {canDeleteLayaway ? (

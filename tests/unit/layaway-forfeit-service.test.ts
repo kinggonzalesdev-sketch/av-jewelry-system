@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
   return {
     AuthorizationError: TestAuthorizationError,
     requireOwner: vi.fn(),
+    requirePermission: vi.fn(),
     audit: vi.fn(),
     rpc: vi.fn(),
     createClient: vi.fn(),
@@ -17,19 +18,23 @@ vi.mock('@/lib/authz/guard', () => ({
   requireActiveStaff: vi.fn(),
   requireOwner: mocks.requireOwner,
   requireOwnerOrAdmin: vi.fn(),
-  requirePermission: vi.fn(),
+  requirePermission: mocks.requirePermission,
 }));
 
 vi.mock('@/lib/audit/log', () => ({ recordAuditEvent: mocks.audit }));
 vi.mock('@/lib/supabase/server', () => ({ createClient: mocks.createClient }));
 vi.mock('@/lib/import/layaway-csv', () => ({ layawayDedupKey: vi.fn() }));
 
-import { forfeitLayawayLedger } from '@/lib/payments/layaway-ledger';
+import {
+  forfeitLayawayLedger,
+  updateLayawayLedgerAndForfeit,
+} from '@/lib/payments/layaway-ledger';
 
 describe('forfeitLayawayLedger', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.requireOwner.mockResolvedValue({ roleKey: 'owner' });
+    mocks.requirePermission.mockResolvedValue({ roleKey: 'owner' });
     mocks.createClient.mockResolvedValue({ rpc: mocks.rpc });
   });
 
@@ -118,5 +123,55 @@ describe('forfeitLayawayLedger', () => {
     expect(mocks.audit).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: 'denied' }),
     );
+  });
+});
+
+describe('updateLayawayLedgerAndForfeit', () => {
+  const input = {
+    id: 'ledger-1',
+    customerName: 'ERICKA DE DIOS',
+    remarks: 'OK',
+    datePurchased: '2026-06-01',
+    itemAmount: '7000.00',
+    interest: '450.00',
+    nextDueDate: '2026-09-01',
+    notes: 'Original note',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireOwner.mockResolvedValue({ roleKey: 'owner' });
+    mocks.requirePermission.mockResolvedValue({ roleKey: 'owner' });
+    mocks.createClient.mockResolvedValue({ rpc: mocks.rpc });
+  });
+
+  it('sends the edit fields to the atomic edit-and-forfeit RPC', async () => {
+    mocks.rpc.mockResolvedValue({
+      data: {
+        status: 'forfeited',
+        changed: true,
+        released_items: 1,
+        layaway_code: 'E34',
+      },
+      error: null,
+    });
+
+    await expect(updateLayawayLedgerAndForfeit(input)).resolves.toEqual({
+      ok: true,
+      changed: true,
+      releasedItems: 1,
+      layawayCode: 'E34',
+    });
+    expect(mocks.rpc).toHaveBeenCalledWith('update_layaway_ledger_and_forfeit', {
+      p_id: 'ledger-1',
+      p_customer_name: 'ERICKA DE DIOS',
+      p_remarks: 'OK',
+      p_date_purchased: '2026-06-01',
+      p_item_amount: '7000.00',
+      p_interest: '450.00',
+      p_next_due_date: '2026-09-01',
+      p_notes: 'Original note',
+    });
+    expect(mocks.audit).not.toHaveBeenCalled();
   });
 });

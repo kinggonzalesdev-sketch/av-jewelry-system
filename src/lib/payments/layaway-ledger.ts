@@ -1476,6 +1476,90 @@ export async function updateLayawayLedgerAndTransferOverdue(
 }
 
 /**
+ * Save the Edit Layaway fields and invoke the canonical Owner-only forfeiture
+ * workflow in one database call. A failed forfeiture rolls back the field edit.
+ */
+export async function updateLayawayLedgerAndForfeit(
+  input: UpdateLedgerAccountInput,
+): Promise<LedgerForfeitResult> {
+  if (!input.id) return { ok: false, error: 'A layaway account is required.' };
+  if (!input.customerName.trim())
+    return { ok: false, error: 'A customer name is required.' };
+
+  try {
+    await requirePermission('layaway_edit');
+    await requireOwner();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) {
+      await recordAuditEvent({
+        action: 'layaway.forfeit',
+        entityType: 'layaway_ledger',
+        entityId: input.id,
+        outcome: 'denied',
+        reason: cause.message,
+      });
+      return { ok: false, error: cause.message };
+    }
+    throw cause;
+  }
+
+  const supabase = await createClient();
+  const res = (await supabase.rpc('update_layaway_ledger_and_forfeit', {
+    p_id: input.id,
+    p_customer_name: input.customerName.trim(),
+    p_remarks: input.remarks,
+    p_date_purchased: input.datePurchased,
+    p_item_amount: input.itemAmount,
+    p_interest: input.interest,
+    p_next_due_date: input.nextDueDate,
+    p_notes: input.notes,
+  })) as {
+    data: Record<string, unknown> | null;
+    error: { message: string } | null;
+  };
+
+  if (res.error) {
+    const error = res.error.message.replace(/^ERROR:\s*/i, '').trim();
+    await recordAuditEvent({
+      action: 'layaway.forfeit',
+      entityType: 'layaway_ledger',
+      entityId: input.id,
+      outcome: 'failed',
+      reason: error,
+    });
+    return { ok: false, error };
+  }
+
+  const releasedItems = res.data?.released_items;
+  if (
+    !res.data ||
+    res.data.status !== 'forfeited' ||
+    typeof res.data.changed !== 'boolean' ||
+    typeof releasedItems !== 'number' ||
+    !Number.isSafeInteger(releasedItems) ||
+    releasedItems < 0
+  ) {
+    const error =
+      'The forfeiture response was incomplete. Refresh and verify the account before retrying.';
+    await recordAuditEvent({
+      action: 'layaway.forfeit',
+      entityType: 'layaway_ledger',
+      entityId: input.id,
+      outcome: 'failed',
+      reason: error,
+    });
+    return { ok: false, error };
+  }
+
+  return {
+    ok: true,
+    changed: res.data.changed,
+    releasedItems,
+    layawayCode: typeof res.data.layaway_code === 'string' ? res.data.layaway_code : null,
+  };
+}
+
+/**
  * Delete ALL imported layaway ledger accounts (Owner/Admin). Clears only the flat
  * imported ledger; the order-derived layaway machinery is untouched.
  */
