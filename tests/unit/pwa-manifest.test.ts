@@ -21,7 +21,7 @@ describe('web app manifest (Owner spec 2026-09-05)', () => {
     expect(m.scope).toBe('/');
     // Nothing in the manifest points at an API or a share link.
     for (const icon of m.icons ?? []) {
-      expect(icon.src.startsWith('/pwa-icon/')).toBe(true);
+      expect(icon.src).toMatch(/^\/icon-(?:192x192|512x512|maskable-512x512)\.png$/);
     }
   });
 

@@ -75,7 +75,7 @@ describe('service-worker cache policy — private data is never cacheable', () =
   it('serves only hashed build assets and brand images cache-first', () => {
     expect(d(`${ORIGIN}/_next/static/chunks/main-abc123.js`)).toBe('cache-first');
     expect(d(`${ORIGIN}/_next/static/css/app.css`)).toBe('cache-first');
-    expect(d(`${ORIGIN}/icon.svg`)).toBe('cache-first');
+    expect(d(`${ORIGIN}/favicon.ico`)).toBe('cache-first');
     expect(d(`${ORIGIN}/pwa-icon/192`)).toBe('cache-first');
     expect(d(`${ORIGIN}/manifest.webmanifest`)).toBe('cache-first');
     expect(d(`${ORIGIN}/av-jewelry-logo.png`)).toBe('cache-first');

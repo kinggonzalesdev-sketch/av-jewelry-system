@@ -14,7 +14,10 @@
 /** Same-origin paths the worker may serve cache-first. Hashed build assets + brand images only. */
 export const SW_STATIC_ALLOW: readonly RegExp[] = [
   /^\/_next\/static\//,
-  /^\/icon\.svg$/,
+  /^\/favicon\.ico$/,
+  /^\/favicon-(?:16x16|32x32|96x96)\.png$/,
+  /^\/apple-touch-icon\.png$/,
+  /^\/icon-(?:192x192|512x512|maskable-512x512)\.png$/,
   /^\/pwa-icon\//,
   /^\/manifest\.webmanifest$/,
   /^\/av-jewelry-(?:logo|hero|signinbg)\.png$/,
@@ -23,10 +26,10 @@ export const SW_STATIC_ALLOW: readonly RegExp[] = [
 /** Fetched into the cache at install so the offline fallback can render with no network. */
 export const SW_PRECACHE: readonly string[] = [
   '/offline',
-  '/icon.svg',
-  '/pwa-icon/192',
-  '/pwa-icon/512',
-  '/pwa-icon/maskable-512',
+  '/favicon.ico',
+  '/icon-192x192.png',
+  '/icon-512x512.png',
+  '/icon-maskable-512x512.png',
   '/manifest.webmanifest',
 ];
 

@@ -8,8 +8,8 @@ import type { MetadataRoute } from 'next';
  * is sent through the normal session proxy → /sign-in, exactly like the browser. The manifest
  * never bypasses authentication.
  *
- * Icons are rasterised on demand from the ONE official logo (public/av-jewelry-logo.png) by
- * /pwa-icon/[variant] — 192 / 512 (any) and a padded 512 (maskable) — so nothing is invented.
+ * Static icons are generated from public/av-jewelry-logo.png by scripts/generate-icons.mjs:
+ * 192 / 512 (any) and a padded 512 (maskable).
  *
  * The service worker (public/sw.js) caches only public static assets; see
  * src/lib/pwa/cache-policy.ts for the exact allowlist. MineFlow stays an online system.
@@ -29,10 +29,10 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: '#0c0f0d',
     theme_color: '#0c0f0d',
     icons: [
-      { src: '/pwa-icon/192', sizes: '192x192', type: 'image/png', purpose: 'any' },
-      { src: '/pwa-icon/512', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: '/icon-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/icon-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
       {
-        src: '/pwa-icon/maskable-512',
+        src: '/icon-maskable-512x512.png',
         sizes: '512x512',
         type: 'image/png',
         purpose: 'maskable',

@@ -18,13 +18,22 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
   // Installed-app identity (PWA, Owner 2026-09-05; renamed to the brand 2026-09-08). `appleWebApp`
   // is what makes iOS "Add to Home Screen" open A.V. Jewelry as a standalone app with the right
-  // title and status bar; the Apple touch icon is rasterised from the official logo by
-  // /pwa-icon/apple-180.
+  // title and status bar. All icons are generated from public/av-jewelry-logo.png.
   applicationName: 'A.V. Jewelry',
-  appleWebApp: { capable: true, title: 'A.V. Jewelry', statusBarStyle: 'black-translucent' },
-  icons: { apple: '/pwa-icon/apple-180' },
-  // Favicon: app/icon.svg is auto-served by Next on every route (no per-page
-  // override), so the tab icon is fixed everywhere too.
+  appleWebApp: {
+    capable: true,
+    title: 'A.V. Jewelry',
+    statusBarStyle: 'black-translucent',
+  },
+  // Next auto-links app/favicon.ico; metadata adds the named PNG alternatives.
+  icons: {
+    icon: [
+      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/favicon-96x96.png', sizes: '96x96', type: 'image/png' },
+    ],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
 };
 
 export const viewport: Viewport = {

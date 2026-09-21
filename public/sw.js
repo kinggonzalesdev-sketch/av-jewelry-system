@@ -22,7 +22,10 @@ const CACHE = `mineflow-static-${VERSION}`;
 
 const STATIC_ALLOW = [
   /^\/_next\/static\//,
-  /^\/icon\.svg$/,
+  /^\/favicon\.ico$/,
+  /^\/favicon-(?:16x16|32x32|96x96)\.png$/,
+  /^\/apple-touch-icon\.png$/,
+  /^\/icon-(?:192x192|512x512|maskable-512x512)\.png$/,
   /^\/pwa-icon\//,
   /^\/manifest\.webmanifest$/,
   /^\/av-jewelry-(?:logo|hero|signinbg)\.png$/,
@@ -30,10 +33,10 @@ const STATIC_ALLOW = [
 
 const PRECACHE = [
   '/offline',
-  '/icon.svg',
-  '/pwa-icon/192',
-  '/pwa-icon/512',
-  '/pwa-icon/maskable-512',
+  '/favicon.ico',
+  '/icon-192x192.png',
+  '/icon-512x512.png',
+  '/icon-maskable-512x512.png',
   '/manifest.webmanifest',
 ];
 

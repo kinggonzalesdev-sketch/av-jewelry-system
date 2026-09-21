@@ -20,7 +20,7 @@ export const config = {
     /*
      * Match every request path except:
      *  - _next/static, _next/image  (build assets)
-     *  - favicon.ico
+     *  - favicon.ico, robots.txt (public branding and crawl rules)
      *  - common static image files
      *  - preview/**  (the UI prototype)
      *  - api/mobile/**  (Bearer-token endpoints for the MineFlow Capture app —
@@ -47,6 +47,6 @@ export const config = {
     // `sw.js`, `offline` and `pwa-icon/*` are excluded for the same reason: the service worker
     // fetches them WITHOUT a session (install-time precache, offline fallback, launcher icons).
     // All three are static/public and carry no business data (Owner 2026-09-05).
-    '/((?!_next/static|_next/image|favicon.ico|manifest\\.webmanifest|sw\\.js|offline|pwa-icon|preview|api/mobile|api/cron|api/webhooks|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|robots\\.txt|manifest\\.webmanifest|sw\\.js|offline|pwa-icon|preview|api/mobile|api/cron|api/webhooks|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };
