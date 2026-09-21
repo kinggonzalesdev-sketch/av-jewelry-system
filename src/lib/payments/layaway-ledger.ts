@@ -189,6 +189,18 @@ export type LedgerUpdateResult =
   | { ok: true; grandTotal: string; balance: string; status: string }
   | { ok: false; error: string };
 
+export type LedgerManualOverdueResult =
+  | {
+      ok: true;
+      changed: boolean;
+      releasedItems: number;
+      itemUniqueCodes: string[];
+      grandTotal: string;
+      balance: string;
+      status: 'overdue';
+    }
+  | { ok: false; error: string };
+
 export type LedgerForfeitResult =
   | {
       ok: true;
@@ -1333,7 +1345,7 @@ export async function updateLayawayLedgerAccount(
     return { ok: false, error: 'A customer name is required.' };
 
   try {
-    await requireOwnerOrAdmin();
+    await requirePermission('layaway_edit');
   } catch (cause) {
     if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
     throw cause;
@@ -1365,6 +1377,95 @@ export async function updateLayawayLedgerAccount(
     grandTotal: toStr(d.grandTotal) ?? '0',
     balance: toStr(d.balance) ?? '0',
     status: toStr(d.status) ?? 'active',
+  };
+}
+
+/**
+ * Save the Edit Layaway fields and explicitly transfer the account to Overdue.
+ * The SECURITY DEFINER RPC owns the whole transaction: it serializes on the
+ * ledger, returns every distinct linked inventory row, writes the transition
+ * audit, and leaves payment/installment history untouched. Success is audited in
+ * that same transaction; this boundary records only denied/failed attempts.
+ */
+export async function updateLayawayLedgerAndTransferOverdue(
+  input: UpdateLedgerAccountInput,
+): Promise<LedgerManualOverdueResult> {
+  if (!input.id) return { ok: false, error: 'A layaway account is required.' };
+  if (!input.customerName.trim())
+    return { ok: false, error: 'A customer name is required.' };
+
+  try {
+    await requirePermission('layaway_edit');
+    await requirePermission('fulfillment_preparation');
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) {
+      await recordAuditEvent({
+        action: 'layaway.transfer_to_overdue',
+        entityType: 'layaway_ledger',
+        entityId: input.id,
+        outcome: 'denied',
+        reason: cause.message,
+      });
+      return { ok: false, error: cause.message };
+    }
+    throw cause;
+  }
+
+  const supabase = await createClient();
+  const res = (await supabase.rpc('update_layaway_ledger_and_transfer_overdue', {
+    p_id: input.id,
+    p_customer_name: input.customerName.trim(),
+    p_remarks: input.remarks,
+    p_date_purchased: input.datePurchased,
+    p_item_amount: input.itemAmount,
+    p_interest: input.interest,
+    p_next_due_date: input.nextDueDate,
+    p_notes: input.notes,
+  })) as { data: Record<string, unknown> | null; error: { message: string } | null };
+
+  if (res.error) {
+    await recordAuditEvent({
+      action: 'layaway.transfer_to_overdue',
+      entityType: 'layaway_ledger',
+      entityId: input.id,
+      outcome: 'failed',
+      reason: res.error.message,
+    });
+    return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };
+  }
+
+  const d = res.data;
+  const codes = d?.item_unique_codes;
+  if (
+    !d ||
+    d.status !== 'overdue' ||
+    typeof d.changed !== 'boolean' ||
+    typeof d.released_items !== 'number' ||
+    !Array.isArray(codes) ||
+    codes.some((code) => typeof code !== 'string') ||
+    (typeof d.grand_total !== 'number' && typeof d.grand_total !== 'string') ||
+    (typeof d.balance !== 'number' && typeof d.balance !== 'string')
+  ) {
+    const error =
+      'The Overdue transfer response was incomplete. Refresh and verify the account before retrying.';
+    await recordAuditEvent({
+      action: 'layaway.transfer_to_overdue',
+      entityType: 'layaway_ledger',
+      entityId: input.id,
+      outcome: 'failed',
+      reason: error,
+    });
+    return { ok: false, error };
+  }
+
+  return {
+    ok: true,
+    changed: d.changed,
+    releasedItems: d.released_items,
+    itemUniqueCodes: codes as string[],
+    grandTotal: String(d.grand_total),
+    balance: String(d.balance),
+    status: 'overdue',
   };
 }
 

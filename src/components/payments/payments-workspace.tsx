@@ -191,7 +191,7 @@ export function PaymentsWorkspace({
   canMonitorLayaway,
   canRequestForfeiture,
   canForfeit,
-  canImportLayaway,
+  canTransferLayaway,
   canEditLayaway,
   canDeleteLayaway,
   canDeleteAllLedger,
@@ -230,7 +230,8 @@ export function PaymentsWorkspace({
   canRequestForfeiture: boolean;
   /** Owner-only controlled forfeiture for imported ledger accounts. */
   canForfeit: boolean;
-  canImportLayaway: boolean;
+  /** Existing Transfer-to-Destination authorization. */
+  canTransferLayaway: boolean;
   /** Manage Access `layaway_edit` — gates the per-row Edit of a layaway account. */
   canEditLayaway: boolean;
   /** Manage Access `layaway_delete` — gates the per-row Delete of a layaway account. */
@@ -821,7 +822,7 @@ export function PaymentsWorkspace({
               onOpenOrder={setDetailOrderId}
               financers={financers}
               canManage={canMonitorLayaway}
-              canDeleteLedger={canImportLayaway}
+              canTransferLayaway={canTransferLayaway}
               canForfeit={canForfeit}
               canEditLayaway={canEditLayaway}
               canDeleteLayaway={canDeleteLayaway}
@@ -1065,7 +1066,7 @@ function LayawayTable({
   onOpenOrder,
   financers,
   canManage,
-  canDeleteLedger,
+  canTransferLayaway,
   canForfeit,
   canEditLayaway,
   canDeleteLayaway,
@@ -1086,8 +1087,8 @@ function LayawayTable({
   onOpenOrder: (orderId: string) => void;
   financers: Financer[];
   canManage: boolean;
-  /** Owner/Admin: whether the View modal offers Add Payment (non-terminal rows). */
-  canDeleteLedger: boolean;
+  /** Existing fulfillment_preparation gate for Transfer to Destination. */
+  canTransferLayaway: boolean;
   /** Owner-only: whether the View modal offers the controlled FORFEITED transfer. */
   canForfeit: boolean;
   /** Manage Access `layaway_edit` — shows the per-row Edit action. */
@@ -1273,20 +1274,20 @@ function LayawayTable({
                           now show for EVERY active account — Owner, Admin, and Staff
                           (Owner request: all Admin/Staff need them on a layaway
                           account) — on any non-terminal account. Transfer-to-a-
-                          destination stays manager-only (canDeleteLedger). Edit and
+                          destination uses the fulfillment permission. Edit and
                           Delete are each gated by their own Manage Access permission
                           (the Owner holds both implicitly). */}
                           <LayawayLedgerViewModal
                             ledgerId={r.ledgerId}
                             canAddPayment={!TERMINAL_STATUSES.has(normStatus(r.status))}
-                            canTransfer={canDeleteLedger}
+                            canTransfer={canTransferLayaway}
                             canForfeit={canForfeit}
                           />
                           {canEditLayaway ? (
                             <LedgerEditAccount
                               id={r.ledgerId}
                               accountNo={r.accountNo}
-                              canTransfer={canDeleteLedger}
+                              canTransfer={canTransferLayaway}
                             />
                           ) : null}
                           {canDeleteLayaway ? (

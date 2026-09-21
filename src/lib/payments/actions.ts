@@ -56,6 +56,7 @@ import {
   splitLayawayItemToOrder,
   transferLayawayToDestination,
   updateLayawayLedgerAccount,
+  updateLayawayLedgerAndTransferOverdue,
   type AddLedgerPaymentInput,
   type LayawayItemResult,
   type LayawaySplitResult,
@@ -64,6 +65,7 @@ import {
   type LedgerDeleteResult,
   type LedgerForfeitResult,
   type LedgerImportResult,
+  type LedgerManualOverdueResult,
   type LedgerPaymentResult,
   type LedgerUpdateResult,
   type UpdateLedgerAccountInput,
@@ -407,6 +409,23 @@ export async function updateLayawayLedgerAccountAction(
   const result = await updateLayawayLedgerAccount(input);
   if (result.ok) {
     revalidatePath('/orders/payments');
+    revalidatePath('/dashboard');
+  }
+  return result;
+}
+
+/**
+ * Edit + explicit Overdue transfer. The domain service invokes one database RPC,
+ * so the ledger edits, linked-inventory release and transition audit cannot split.
+ */
+export async function updateLayawayLedgerAndTransferOverdueAction(
+  input: UpdateLedgerAccountInput,
+): Promise<LedgerManualOverdueResult> {
+  const result = await updateLayawayLedgerAndTransferOverdue(input);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/payments');
+    revalidatePath('/orders/inventory');
     revalidatePath('/dashboard');
   }
   return result;

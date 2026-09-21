@@ -106,11 +106,9 @@ export default async function PaymentsPage({
     activeLayaways: cards.activeLayaways + ledgerCounts.active,
     completedLayaways: cards.completedLayaways + ledgerCounts.completed,
   };
-  // Owner and Selected Admin both manage the imported ledger (upload, add payment,
-  // edit, per-row delete). Clearing the WHOLE ledger is Owner-only — it is the one
-  // irreversible, everything-at-once action, so an admin never sees it.
+  // Clearing the WHOLE ledger is Owner-only — it is the one irreversible,
+  // everything-at-once action, so an admin never sees it.
   const isOwner = staff.roleKey === 'owner';
-  const canImportLayaway = isOwner || staff.roleKey === 'selected_admin';
   // Row-level Edit / Delete of a layaway account are now assignable in Manage
   // Access (Owner request). The Owner holds both implicitly; anyone else needs the
   // explicit grant. Gating each button by its own key means a member can be given
@@ -145,7 +143,7 @@ export default async function PaymentsPage({
         canMonitorLayaway={permissions.has('layaway_monitoring')}
         canRequestForfeiture={permissions.has('initiate_high_risk_action')}
         canForfeit={isOwner}
-        canImportLayaway={canImportLayaway}
+        canTransferLayaway={permissions.has('fulfillment_preparation')}
         canEditLayaway={canEditLayaway}
         canDeleteLayaway={canDeleteLayaway}
         canDeleteAllLedger={isOwner}

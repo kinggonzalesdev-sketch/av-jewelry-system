@@ -11,6 +11,7 @@ import {
   loadLayawayLedgerDetailAction,
   transferLayawayToDestinationAction,
   updateLayawayLedgerAccountAction,
+  updateLayawayLedgerAndTransferOverdueAction,
 } from '@/lib/payments/actions';
 import { formatPeso } from '@/lib/payments/format';
 import { DEFAULT_PAYMENT_METHOD, PAYMENT_METHOD_OPTIONS } from '@/lib/payments/methods';
@@ -587,9 +588,9 @@ export function LedgerAddPayment({
 }
 
 /**
- * Owner/Admin "Edit" for an imported layaway account. Corrects the descriptive +
- * money fields; the DB recomputes Grand Total (Item + Interest) and Balance and
- * auto-completes a fully-paid account. Payment history is never touched here.
+ * Manage Access "Edit Layaway" control. Corrects the descriptive + money fields;
+ * the DB recomputes Grand Total (Item + Interest) and Balance. Payment history is
+ * never touched here.
  */
 export function LedgerEditAccount({
   id,
@@ -605,7 +606,9 @@ export function LedgerEditAccount({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState(false);
+  const [confirmingOverdue, setConfirmingOverdue] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const submittingRef = useRef(false);
 
   const [customerName, setCustomerName] = useState('');
   const [remarks, setRemarks] = useState('');
@@ -621,6 +624,7 @@ export function LedgerEditAccount({
     setOpen(true);
     setError(null);
     setDest('');
+    setConfirmingOverdue(false);
     setLoading(true);
     try {
       const d = await loadLayawayLedgerDetailAction(id);
@@ -642,39 +646,65 @@ export function LedgerEditAccount({
     }
   };
 
-  const run = async () => {
-    if (pending || !customerName.trim()) return;
-    setPending(true);
-    setError(null);
-    const res = await updateLayawayLedgerAccountAction({
-      id,
-      customerName: customerName.trim(),
-      remarks: remarks.trim() || null,
-      datePurchased: datePurchased || null,
-      itemAmount: itemAmount.trim() || null,
-      interest: interest.trim() || null,
-      nextDueDate: nextDueDate || null,
-      notes: notes.trim() || null,
-    });
-    if (!res.ok) {
-      setPending(false);
-      setError(res.error);
+  const closeEdit = () => {
+    if (pending) return;
+    setConfirmingOverdue(false);
+    setOpen(false);
+  };
+
+  const run = async (overdueConfirmed = false) => {
+    if (pending || submittingRef.current || !customerName.trim()) return;
+    if (dest === 'overdue' && !overdueConfirmed) {
+      setError(null);
+      setConfirmingOverdue(true);
       return;
     }
-    // If a destination was chosen, transfer AFTER the edits are saved. A transfer
-    // failure (e.g. an imported account with no linked order) surfaces its own
-    // message but the field edits above are already persisted.
-    if (dest) {
-      const t = await transferLayawayToDestinationAction(id, dest);
-      if (!t.ok) {
-        setPending(false);
-        setError(t.error);
+
+    submittingRef.current = true;
+    setPending(true);
+    setError(null);
+    try {
+      const input = {
+        id,
+        customerName: customerName.trim(),
+        remarks: remarks.trim() || null,
+        datePurchased: datePurchased || null,
+        itemAmount: itemAmount.trim() || null,
+        interest: interest.trim() || null,
+        nextDueDate: nextDueDate || null,
+        notes: notes.trim() || null,
+      };
+
+      const res =
+        dest === 'overdue'
+          ? await updateLayawayLedgerAndTransferOverdueAction(input)
+          : await updateLayawayLedgerAccountAction(input);
+      if (!res.ok) {
+        setError(res.error);
         return;
       }
+      // Existing destinations retain their current two-step behavior. Overdue is
+      // different: the action above saves + releases inventory in one DB transaction.
+      if (dest && dest !== 'overdue') {
+        const t = await transferLayawayToDestinationAction(id, dest);
+        if (!t.ok) {
+          setError(t.error);
+          return;
+        }
+      }
+      setConfirmingOverdue(false);
+      setOpen(false);
+      router.refresh();
+    } catch {
+      setError(
+        dest === 'overdue'
+          ? 'The Overdue transfer could not be confirmed. Refresh and retry; repeated requests are safe.'
+          : 'The Layaway account could not be saved. Please try again.',
+      );
+    } finally {
+      submittingRef.current = false;
+      setPending(false);
     }
-    setOpen(false);
-    setPending(false);
-    router.refresh();
   };
 
   return (
@@ -690,13 +720,18 @@ export function LedgerEditAccount({
 
       <Modal
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={closeEdit}
         title="Edit layaway account"
         description={`Account ${accountNo}`}
         size="md"
         footer={
           <>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeEdit}
+              disabled={pending}
+            >
               Cancel
             </Button>
             <Button
@@ -704,7 +739,7 @@ export function LedgerEditAccount({
               onClick={() => void run()}
               disabled={pending || loading || !customerName.trim()}
             >
-              {pending ? 'Saving…' : dest ? 'Save & Transfer' : 'Save changes'}
+              {pending ? 'Saving…' : dest ? 'Save and Transfer' : 'Save changes'}
             </Button>
           </>
         }
@@ -815,6 +850,7 @@ export function LedgerEditAccount({
                   <option value="delivery">For Delivery</option>
                   <option value="shipping">For Shipping</option>
                   <option value="keep">Keep</option>
+                  <option value="overdue">Overdue</option>
                 </select>
               </div>
             ) : null}
@@ -826,6 +862,49 @@ export function LedgerEditAccount({
             ) : null}
           </div>
         )}
+      </Modal>
+
+      <Modal
+        open={confirmingOverdue}
+        onClose={() => {
+          if (!pending) setConfirmingOverdue(false);
+        }}
+        title="Transfer this Layaway to Overdue?"
+        size="sm"
+        critical
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmingOverdue(false)}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void run(true)}
+              disabled={pending}
+              data-testid={`ledger-edit-overdue-confirm-${id}`}
+            >
+              {pending ? 'Transferring…' : 'Confirm Transfer'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-sm text-foreground">
+          <p>
+            The Layaway will move to the Overdue list and the linked item(s) will return
+            to Available Inventory.
+          </p>
+          <p>Payment history will be preserved.</p>
+          {error ? (
+            <p role="alert" className="text-destructive">
+              {error}
+            </p>
+          ) : null}
+        </div>
       </Modal>
     </>
   );
