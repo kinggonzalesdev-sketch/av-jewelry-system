@@ -172,6 +172,9 @@ declare
   v_grand numeric;
   v_balance numeric;
   v_returned integer := 0;
+  v_assigned_code text;
+  v_assignment_found boolean := false;
+  v_code_assignments_deleted integer := 0;
   v_now timestamptz := now();
 begin
   -- This action edits the account and uses Transfer to Destination. Both existing
@@ -198,12 +201,36 @@ begin
   end if;
 
   -- The ledger row is the idempotency key. Concurrent tabs serialize here; after
-  -- the first commit every retry is a successful no-op and creates no RTS/audit row.
+  -- the first commit every retry creates no RTS/audit row. If a stale assignment
+  -- for this same historical ledger somehow survived, the retry safely repairs it.
   if v_ledger.manual_overdue_at is not null then
     if lower(coalesce(v_ledger.status, '')) <> 'overdue' then
       raise exception 'This Layaway already left the manual Overdue state. Nothing was changed.'
         using errcode = 'check_violation';
     end if;
+
+    perform pg_advisory_xact_lock(hashtext('layaway_code_pool'));
+    select p.code into v_assigned_code
+    from public.layaway_code_pool p
+    where p.ref = 'ledger:' || p_id::text
+    for update;
+    v_assignment_found := found;
+
+    if v_assignment_found and (
+      v_ledger.layaway_code is null
+      or lower(btrim(v_assigned_code)) is distinct from lower(btrim(v_ledger.layaway_code))
+    ) then
+      raise exception
+        'Layaway Code assignment mismatch for manually-overdue ledger %. Historical code is %, but its active pool ref holds %. Nothing was changed.',
+        p_id, coalesce(v_ledger.layaway_code, '(none)'), coalesce(v_assigned_code, '(none)')
+        using errcode = 'check_violation';
+    end if;
+
+    delete from public.layaway_code_pool
+    where ref = 'ledger:' || p_id::text
+      and lower(btrim(code)) = lower(btrim(v_ledger.layaway_code));
+    get diagnostics v_code_assignments_deleted = row_count;
+
     return jsonb_build_object(
       'ledger_id', p_id,
       'status', 'overdue',
@@ -213,7 +240,9 @@ begin
       'item_unique_codes', '[]'::jsonb,
       'grand_total', v_ledger.grand_total,
       'balance', v_ledger.balance,
-      'manual_overdue_at', v_ledger.manual_overdue_at
+      'manual_overdue_at', v_ledger.manual_overdue_at,
+      'layaway_code', v_ledger.layaway_code,
+      'layaway_code_released', v_code_assignments_deleted > 0
     );
   end if;
 
@@ -465,7 +494,8 @@ begin
   end loop;
 
   -- Descriptive edits, computed money and the explicit status marker commit with
-  -- the inventory release. Layaway Code and every payment/installment row remain.
+  -- the inventory release. Historical Layaway Code text and every payment/installment
+  -- row remain.
   update public.layaway_ledger set
     customer_name = trim(p_customer_name),
     remarks = nullif(trim(p_remarks), ''),
@@ -481,6 +511,40 @@ begin
     manual_overdue_at = v_now,
     manual_overdue_by = v_staff
   where id = p_id;
+
+  -- Reuse the canonical allocator's transaction-level lock. New Layaway creation
+  -- takes this same lock before next_layaway_code() and the pool insert, so a release
+  -- and concurrent allocations serialize. Delete only THIS ledger's matching active
+  -- assignment; layaway_ledger.layaway_code remains unchanged for Overdue history.
+  perform pg_advisory_xact_lock(hashtext('layaway_code_pool'));
+
+  select p.code into v_assigned_code
+  from public.layaway_code_pool p
+  where p.ref = 'ledger:' || p_id::text
+  for update;
+  v_assignment_found := found;
+
+  if v_assignment_found and (
+    v_ledger.layaway_code is null
+    or lower(btrim(v_assigned_code)) is distinct from lower(btrim(v_ledger.layaway_code))
+  ) then
+    raise exception
+      'Layaway Code assignment mismatch for ledger %. Historical code is %, but its active pool ref holds %. Nothing was changed.',
+      p_id, coalesce(v_ledger.layaway_code, '(none)'), coalesce(v_assigned_code, '(none)')
+      using errcode = 'check_violation';
+  end if;
+
+  if v_ledger.layaway_code is not null and not v_assignment_found then
+    raise exception
+      'Layaway Code assignment is missing for ledger % (historical code %). Nothing was changed.',
+      p_id, v_ledger.layaway_code
+      using errcode = 'check_violation';
+  end if;
+
+  delete from public.layaway_code_pool
+  where ref = 'ledger:' || p_id::text
+    and lower(btrim(code)) = lower(btrim(v_ledger.layaway_code));
+  get diagnostics v_code_assignments_deleted = row_count;
 
   insert into public.audit_events (
     actor_auth_uid, actor_kind, actor_label, action, entity_type, entity_id,
@@ -503,6 +567,8 @@ begin
       'already_available_item_ids', to_jsonb(v_already_available_item_ids),
       'released_reservation_ids', to_jsonb(v_released_reservation_ids),
       'preserved_order_ids', to_jsonb(v_order_ids),
+      'released_layaway_code_assignments', v_code_assignments_deleted,
+      'historical_layaway_code_preserved', true,
       'payment_history_preserved', true,
       'inventory_rows_created', 0,
       'automatic_overdue_rule_changed', false,
@@ -522,6 +588,7 @@ begin
     'grand_total', v_grand,
     'balance', v_balance,
     'layaway_code', v_ledger.layaway_code,
+    'layaway_code_released', v_code_assignments_deleted > 0,
     'manual_overdue_at', v_now
   );
 end;
@@ -530,7 +597,7 @@ $function$;
 comment on function public.update_layaway_ledger_and_transfer_overdue(
   uuid, text, text, date, numeric, numeric, date, text
 ) is
-  'Atomic, idempotent manual Layaway-to-Overdue transfer. Saves the Edit modal, preserves financial history and Layaway identity, returns all distinct linked inventory rows to Available, and audits the actor/date.';
+  'Atomic, idempotent manual Layaway-to-Overdue transfer. Saves the Edit modal, preserves financial history and historical code text, returns linked inventory to Available, releases the canonical active code assignment, and audits the actor/date.';
 
 revoke all on function public.update_layaway_ledger_and_transfer_overdue(
   uuid, text, text, date, numeric, numeric, date, text

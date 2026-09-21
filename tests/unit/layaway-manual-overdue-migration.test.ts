@@ -21,6 +21,14 @@ const LEDGER_SERVICE = readFileSync(
   join(ROOT, 'src', 'lib', 'payments', 'layaway-ledger.ts'),
   'utf8',
 );
+const CANONICAL_CREATE = readFileSync(
+  join(ROOT, 'supabase', 'migrations', '20260805140000_manage_access_redesign.sql'),
+  'utf8',
+);
+const CODE_POOL_HARDENING = readFileSync(
+  join(ROOT, 'supabase', 'migrations', '20260921120000_layaway_ledger_forfeiture.sql'),
+  'utf8',
+);
 
 function normalizedSql(raw: string): string {
   return raw
@@ -103,6 +111,7 @@ describe('migration 20260921130000 — manual Layaway Overdue destination', () =
     expect(RPC.indexOf("'changed', false")).toBeLessThan(
       RPC.indexOf('insert into public.audit_events'),
     );
+    expect(RPC).toContain("where p.ref = 'ledger:' || p_id::text for update");
   });
 
   it('resolves and locks direct, multi-item and converted-order inventory links', () => {
@@ -139,7 +148,33 @@ describe('migration 20260921130000 — manual Layaway Overdue destination', () =
     expect(RPC).toContain('a linked item is also held by another open layaway');
   });
 
-  it('preserves code and all payment/installment history', () => {
+  it('releases the canonical active code assignment while preserving historical code text', () => {
+    expect(CANONICAL_CREATE).toContain(
+      "perform pg_advisory_xact_lock(hashtext('layaway_code_pool'))",
+    );
+    expect(CANONICAL_CREATE).toContain('v_code := public.next_layaway_code(v_letter)');
+    expect(CANONICAL_CREATE).toContain(
+      "insert into public.layaway_code_pool (code, ref) values (v_code, 'ledger:' || v_ledger::text)",
+    );
+    expect(CODE_POOL_HARDENING).toContain(
+      'create unique index if not exists layaway_code_pool_code_ci_uidx',
+    );
+    expect(CODE_POOL_HARDENING).toContain(
+      'create unique index if not exists layaway_code_pool_ref_uidx',
+    );
+    expect(RPC).toContain("perform pg_advisory_xact_lock(hashtext('layaway_code_pool'))");
+    expect(RPC).toContain('layaway code assignment mismatch for ledger');
+    expect(RPC).toContain('layaway code assignment is missing for ledger');
+    expect(RPC).toContain(
+      "delete from public.layaway_code_pool where ref = 'ledger:' || p_id::text and lower(btrim(code)) = lower(btrim(v_ledger.layaway_code))",
+    );
+    expect(RPC).toContain("'layaway_code_released', v_code_assignments_deleted > 0");
+    expect(RPC).toContain("'historical_layaway_code_preserved', true");
+    expect(RPC).not.toContain('create or replace function public.next_layaway_code');
+    expect(RPC).not.toContain('set layaway_code =');
+  });
+
+  it('preserves all payment/installment history', () => {
     for (const forbidden of [
       'insert into public.layaway_ledger_payments',
       'update public.layaway_ledger_payments',
@@ -147,8 +182,6 @@ describe('migration 20260921130000 — manual Layaway Overdue destination', () =
       'insert into public.layaway_ledger_installments',
       'update public.layaway_ledger_installments',
       'delete from public.layaway_ledger_installments',
-      'delete from public.layaway_code_pool',
-      'set layaway_code =',
     ]) {
       expect(RPC).not.toContain(forbidden);
     }
@@ -159,11 +192,13 @@ describe('migration 20260921130000 — manual Layaway Overdue destination', () =
   it('writes one success audit after inventory and ledger mutations in the same transaction', () => {
     const inventoryMutation = RPC.indexOf("set availability_status = 'available'");
     const ledgerMutation = RPC.indexOf("status = 'overdue'");
+    const codeRelease = RPC.lastIndexOf('delete from public.layaway_code_pool');
     const auditInsert = RPC.indexOf('insert into public.audit_events');
 
     expect(inventoryMutation).toBeGreaterThan(-1);
     expect(ledgerMutation).toBeGreaterThan(inventoryMutation);
-    expect(auditInsert).toBeGreaterThan(ledgerMutation);
+    expect(codeRelease).toBeGreaterThan(ledgerMutation);
+    expect(auditInsert).toBeGreaterThan(codeRelease);
     expect(RPC.match(/insert into public\.audit_events/g)).toHaveLength(1);
     expect(RPC).toContain("'manual_overdue_at', v_now");
     expect(RPC).toContain("'performed_by_staff_id', v_staff");

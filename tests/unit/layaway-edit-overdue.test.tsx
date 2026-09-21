@@ -57,6 +57,8 @@ describe('Edit Layaway — manual Overdue destination', () => {
       itemUniqueCodes: ['SAMPLE CODE-SC-01 1.0g'],
       grandTotal: '7450.00',
       balance: '7450.00',
+      layawayCode: 'E34',
+      layawayCodeReleased: true,
       status: 'overdue',
     });
   });
@@ -125,6 +127,8 @@ describe('Edit Layaway — manual Overdue destination', () => {
       itemUniqueCodes: ['SAMPLE CODE-SC-01 1.0g'],
       grandTotal: '7450.00',
       balance: '7450.00',
+      layawayCode: 'E34',
+      layawayCodeReleased: true,
       status: 'overdue',
     });
     await waitFor(() => expect(mocks.refresh).toHaveBeenCalledTimes(1));

@@ -52,6 +52,8 @@ describe('updateLayawayLedgerAndTransferOverdue', () => {
         item_unique_codes: ['ITEM-1', 'ITEM-2'],
         grand_total: '7450.00',
         balance: '4450.00',
+        layaway_code: 'E34',
+        layaway_code_released: true,
       },
       error: null,
     });
@@ -63,6 +65,8 @@ describe('updateLayawayLedgerAndTransferOverdue', () => {
       itemUniqueCodes: ['ITEM-1', 'ITEM-2'],
       grandTotal: '7450.00',
       balance: '4450.00',
+      layawayCode: 'E34',
+      layawayCodeReleased: true,
       status: 'overdue',
     });
     expect(mocks.requirePermission.mock.calls).toEqual([
@@ -92,6 +96,8 @@ describe('updateLayawayLedgerAndTransferOverdue', () => {
         item_unique_codes: [],
         grand_total: 7450,
         balance: 4450,
+        layaway_code: 'E34',
+        layaway_code_released: false,
       },
       error: null,
     });
@@ -133,6 +139,8 @@ describe('updateLayawayLedgerAndTransferOverdue', () => {
         item_unique_codes: ['ITEM-1', 'ITEM-2'],
         grand_total: '7450.00',
         balance: '4450.00',
+        layaway_code: 'E34',
+        layaway_code_released: true,
       },
       error: null,
     });

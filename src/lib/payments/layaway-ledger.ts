@@ -197,6 +197,8 @@ export type LedgerManualOverdueResult =
       itemUniqueCodes: string[];
       grandTotal: string;
       balance: string;
+      layawayCode: string | null;
+      layawayCodeReleased: boolean;
       status: 'overdue';
     }
   | { ok: false; error: string };
@@ -1443,6 +1445,8 @@ export async function updateLayawayLedgerAndTransferOverdue(
     typeof d.released_items !== 'number' ||
     !Array.isArray(codes) ||
     codes.some((code) => typeof code !== 'string') ||
+    (d.layaway_code !== null && typeof d.layaway_code !== 'string') ||
+    typeof d.layaway_code_released !== 'boolean' ||
     (typeof d.grand_total !== 'number' && typeof d.grand_total !== 'string') ||
     (typeof d.balance !== 'number' && typeof d.balance !== 'string')
   ) {
@@ -1465,6 +1469,8 @@ export async function updateLayawayLedgerAndTransferOverdue(
     itemUniqueCodes: codes as string[],
     grandTotal: String(d.grand_total),
     balance: String(d.balance),
+    layawayCode: d.layaway_code,
+    layawayCodeReleased: d.layaway_code_released,
     status: 'overdue',
   };
 }
