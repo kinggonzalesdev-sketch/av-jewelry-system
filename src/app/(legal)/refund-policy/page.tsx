@@ -2,11 +2,13 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { LegalArticle } from '@/components/legal/legal-article';
+import { LegalBusinessDetails } from '@/components/legal/legal-business-details';
+import { LEGAL_BUSINESS, LEGAL_POLICY } from '@/lib/legal/legal-info';
 
 export const metadata: Metadata = {
   title: 'Refund & Cancellation Policy',
   description:
-    'When and how A.V. Jewelry handles cancellations, returns, and refunds, consistent with Philippine consumer law.',
+    'How A.V. Jewelry handles reports of defective items, cancellations, and refunds, consistent with Philippine consumer law.',
   robots: { index: true, follow: true },
 };
 
@@ -14,76 +16,93 @@ export default function RefundPolicyPage() {
   return (
     <LegalArticle title="Refund & Cancellation Policy">
       <p>
-        This policy explains cancellations, returns, and refunds for products and services from{' '}
-        <strong>A.V. Jewelry</strong>. It is written to respect your rights under the Philippine{' '}
-        <strong>Consumer Act (RA 7394)</strong> — nothing here removes a right the law gives you.
-        Different situations are treated differently, so please read the section that applies.
+        This policy explains how <strong>{LEGAL_BUSINESS.brand}</strong>, the trading name
+        of <strong>{LEGAL_BUSINESS.registeredName}</strong>, handles reports of defective
+        items, cancellations, and refunds. Nothing in this policy removes any right you
+        have under Philippine law, including the{' '}
+        <strong>Consumer Act of the Philippines (Republic Act No. 7394)</strong>. Please
+        read the section that applies to your transaction, together with our{' '}
+        <Link href="/terms">Terms &amp; Conditions</Link>.
       </p>
 
-      <h2>1. Defective, misrepresented, or non-conforming items</h2>
+      <h2>1. Defective, damaged, or problem items</h2>
       <p>
-        If an item is defective, not as described, or not the agreed weight/purity, you are entitled
-        to a remedy under the Consumer Act — repair, replacement, or refund as appropriate. Bring
-        the item and your proof of purchase.{' '}
-        <strong>[OWNER INPUT REQUIRED — how to report, assessment process, timeframe.]</strong>
+        Customers should report any defect, damage, or problem as soon as reasonably
+        possible after receiving the item. You can report it through any of these
+        channels:
+      </p>
+      <ul>
+        <li>Phone call</li>
+        <li>Messenger</li>
+        <li>In person at our store, during business hours ({LEGAL_BUSINESS.hours})</li>
+      </ul>
+      <p>
+        Please have your proof of purchase ready and describe the problem. We will review
+        your report and let you know the result and the next steps.
       </p>
 
-      <h2>2. Change of mind</h2>
+      <h2>2. Other return requests</h2>
       <p>
-        For a change of mind on a regular (non-custom) item, any accommodation (exchange, store
-        credit, or refund) and the window for it is our policy, offered on top of your legal rights:{' '}
-        <strong>[OWNER INPUT REQUIRED — allowed? within how many days? item condition required?]</strong>
+        If you would like to return an item for any other reason, please contact us before
+        sending or bringing it back. We will review your request and respond.
       </p>
 
-      <h2>3. Custom orders and deposits</h2>
+      <h2>3. Custom orders and repairs</h2>
       <p>
-        Custom pieces and made-to-order work are produced to your specifications. Whether a deposit
-        is refundable, and what happens if you cancel before or after work has begun, is:{' '}
-        <strong>[OWNER INPUT REQUIRED — must be fair; a deposit forfeiture should reflect actual
-        work/cost, not an arbitrary penalty. Lawyer review required.]</strong>
+        Custom orders and repairs require a deposit of{' '}
+        <strong>at least {LEGAL_POLICY.minimumDeposit}</strong>. If you need to cancel a
+        custom order or repair, please contact us as soon as possible so we can discuss
+        how your deposit will be handled.
+      </p>
+      <p>
+        Repair and resizing work has a warranty and re-work period of{' '}
+        <strong>{LEGAL_POLICY.repairReworkPeriod}</strong> after you receive the item. If
+        there is a problem with the repair or resizing work within this period, please
+        bring the item back so we can review it and re-work it where appropriate.
       </p>
 
-      <h2>4. Layaway cancellation</h2>
+      <h2>4. Layaway</h2>
       <p>
-        If a layaway account is cancelled, how paid amounts are treated (refund, store credit, or
-        forfeiture) is:{' '}
-        <strong>[OWNER INPUT REQUIRED — forfeiture terms must be fair and clearly disclosed at
-        sign-up; unfair forfeiture may be challenged under consumer law. Lawyer review required.]</strong>
+        If you are thinking of cancelling a layaway, or you may not be able to complete
+        one, please contact us so we can explain how your payments will be handled.
       </p>
 
-      <h2>5. Repairs and services</h2>
+      <h2>5. Gold and scrap buying</h2>
+      <p>A scrap-buying transaction becomes final when:</p>
+      <ol>
+        <li>you agree to the price we offer;</li>
+        <li>payment is accepted or received; and</li>
+        <li>the applicable receipt is issued or provided.</li>
+      </ol>
+      <p>Please review the offered price carefully before you agree to it.</p>
+
+      <h2>6. Duplicate or incorrect payments</h2>
       <p>
-        For repairs, resizing, and similar services, remedies for work that was not done properly
-        are handled under the Consumer Act.{' '}
-        <strong>[OWNER INPUT REQUIRED — any service warranty period and re-work terms.]</strong>
+        If you believe you paid twice or paid an incorrect amount, please contact us with
+        your proof of payment so we can review it.
       </p>
 
-      <h2>6. Gold and scrap buying</h2>
+      <h2>7. Refund method</h2>
       <p>
-        When we buy your gold or silver, the transaction is normally final once the assessed price
-        is accepted and paid. The exact terms are: <strong>[OWNER INPUT REQUIRED.]</strong>
+        The applicable refund method will be communicated after the request is reviewed
+        and approved.
       </p>
 
-      <h2>7. Duplicate or accidental charges</h2>
+      <h2>8. Refund processing time</h2>
       <p>
-        If you were charged twice or in error, contact us with proof and we will correct or refund
-        the erroneous amount.
+        Approved refunds are generally processed within <strong>2–3 business days</strong>
+        , subject to the applicable payment channel and financial institution processing
+        time. When the funds appear in your account depends on your bank, e-wallet, or
+        payment channel.
       </p>
 
-      <h2>8. How refunds are made</h2>
+      <h2>9. Contact us</h2>
       <p>
-        Approved refunds are returned using a reasonable method (for example, the original payment
-        method or an agreed alternative) within a reasonable time.{' '}
-        <strong>[OWNER INPUT REQUIRED — method and timeframe.]</strong>
+        For written requests, email us at the address below. If we cannot resolve your
+        concern, you may also seek assistance from the Department of Trade and Industry
+        (DTI).
       </p>
-
-      <h2>9. How to request</h2>
-      <p>
-        Contact us at 0917-203-5820 / 0919-096-9617 / 0919-097-5063 or{' '}
-        <strong>[OWNER INPUT REQUIRED — email]</strong>, with your proof of purchase. See our{' '}
-        <Link href="/terms">Terms &amp; Conditions</Link> for the overall agreement. If we cannot
-        resolve a concern, you may seek assistance from the Department of Trade and Industry (DTI).
-      </p>
+      <LegalBusinessDetails />
     </LegalArticle>
   );
 }

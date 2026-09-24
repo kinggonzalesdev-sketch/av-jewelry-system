@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { LegalArticle } from '@/components/legal/legal-article';
+import { LegalBusinessDetails } from '@/components/legal/legal-business-details';
+import { LEGAL_BUSINESS } from '@/lib/legal/legal-info';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy',
@@ -14,171 +16,173 @@ export default function PrivacyPolicyPage() {
   return (
     <LegalArticle title="Privacy Policy">
       <p>
-        This Privacy Policy explains how <strong>A.V. Jewelry</strong> (&quot;we&quot;,
-        &quot;us&quot;) handles personal information, consistent with the Philippine{' '}
-        <strong>Data Privacy Act of 2012 (Republic Act No. 10173)</strong>, its Implementing Rules
-        and Regulations, and issuances of the National Privacy Commission (NPC).
+        This Privacy Policy explains how <strong>{LEGAL_BUSINESS.brand}</strong>, the
+        trading name of <strong>{LEGAL_BUSINESS.registeredName}</strong> (&quot;we&quot;,
+        &quot;us&quot;), handles personal information when you buy from us, use our
+        services, or contact us. We handle personal information in line with the
+        Philippine <strong>Data Privacy Act of 2012 (Republic Act No. 10173)</strong>, its
+        Implementing Rules and Regulations, and the issuances of the National Privacy
+        Commission (NPC).
       </p>
 
-      <h2>1. Who we are (Personal Information Controller)</h2>
+      <h2>1. Who we are</h2>
       <p>
-        A.V. Jewelry, #84 Violeta Ave., Violeta Village, Sta. Cruz, Guiguinto, Bulacan,
-        Philippines. Phone: 0917-203-5820 / 0919-096-9617 / 0919-097-5063.
-      </p>
-      <p>
-        Registered business name and registration details:{' '}
-        <strong>[OWNER INPUT REQUIRED]</strong>. Data Protection Officer / privacy contact and
-        email address for privacy requests: <strong>[OWNER INPUT REQUIRED]</strong>.
+        {LEGAL_BUSINESS.registeredName}, trading as {LEGAL_BUSINESS.brand}, is responsible
+        for the personal information described in this policy. Our full business details
+        are listed in Section 13 (Contact us).
       </p>
 
       <h2>2. Scope</h2>
       <p>
-        This system has two parts: a <strong>public information page</strong> (this website&apos;s
-        landing page), which collects no personal information and sets no tracking; and an{' '}
-        <strong>internal staff system</strong> used by our authorized staff to run the business.
-        There is no public account sign-up and no customer login — customers do not create accounts
-        here. Personal information about customers is entered and processed by our staff.
+        This policy covers our public website pages and the internal system our authorized
+        staff use to run the business. Customers do not create accounts or sign in on this
+        website; customer information is recorded by our staff while serving your
+        transaction.
       </p>
 
-      <h2>3. Personal information we process</h2>
-      <h3>About customers</h3>
+      <h2>3. Personal information we handle</h2>
+      <p>Depending on your transaction, we may handle the following:</p>
       <ul>
-        <li>Name (and Facebook name/nickname where a live-selling purchase is involved).</li>
-        <li>Contact number and, where provided, delivery address.</li>
-        <li>Order, payment, and layaway records, including balances and account numbers.</li>
         <li>
-          Payment reference numbers and proof-of-payment images, and item/&quot;capture&quot;
-          screenshots taken during live selling.
+          Your name and contact details, such as your contact number and delivery address.
         </li>
         <li>
-          Facebook page-scoped identifiers and public comment text received when you comment on our
-          live selling, via our messaging provider (see Section 6).
+          Facebook and Messenger identity information, such as your Facebook name and the
+          identifiers Facebook provides when you comment on or message our page.
         </li>
-        <li>Notes our staff add to serve your order.</li>
-      </ul>
-      <h3>About staff</h3>
-      <ul>
-        <li>Name, email, role, and account credentials (passwords are stored hashed by our provider).</li>
-        <li>Attendance times and clock-in/clock-out selfie photos, and payroll/salary information.</li>
-        <li>Device identifiers used to secure attendance on the shop device.</li>
+        <li>Order records, such as the items you ordered, prices, and order status.</li>
+        <li>
+          Payment records and payment references, such as amounts, channels, and reference
+          numbers.
+        </li>
+        <li>Proof-of-payment images you send or upload.</li>
+        <li>Delivery, shipping, and tracking information.</li>
+        <li>
+          Layaway records, such as down payments, installments, balances, and due dates.
+        </li>
+        <li>
+          Customer service conversations with us, including messages sent through
+          Messenger.
+        </li>
+        <li>
+          Where applicable, captures and screenshots taken during our live selling, which
+          may show your Facebook name or comment.
+        </li>
+        <li>Notes our staff record to serve your order.</li>
       </ul>
       <p>
-        We do <strong>not</strong> knowingly collect government ID numbers, health information, or
-        other sensitive personal information through this system. We apply data minimization — we
-        collect only what is reasonably necessary to serve the transaction.
+        We aim to collect only the information that is reasonably necessary for your
+        transaction. Our system also holds records about our own staff (for example,
+        sign-in accounts, attendance, and payroll), which are used for employment and
+        business administration.
       </p>
 
       <h2>4. How we collect it</h2>
       <ul>
-        <li>Directly from you in-store, by phone, or during an online/live-selling transaction.</li>
-        <li>Entered by our staff into the system while serving your order.</li>
         <li>
-          From Facebook comments on our live selling, received through our messaging provider.
+          Directly from you — in our store, through Messenger, by phone, or during live
+          selling.
+        </li>
+        <li>From Facebook, when you comment on our live selling or message our page.</li>
+        <li>
+          From our staff, who record order, payment, delivery, and layaway details as they
+          serve you.
         </li>
       </ul>
 
-      <h2>5. Why we process it, and our lawful basis</h2>
+      <h2>5. Why we use it</h2>
       <ul>
-        <li>To take, fulfil, deliver, and keep records of your orders, payments, and layaway — <em>necessary to perform the transaction you asked for</em>.</li>
-        <li>To contact you about your order and provide customer service — <em>transaction and our legitimate interest in serving you</em>.</li>
-        <li>To send you your order&apos;s screenshot or invoice over Facebook Messenger — <em>with your engagement/consent through that channel</em>.</li>
-        <li>To run attendance and payroll for staff — <em>employment and legal obligation</em>.</li>
-        <li>To keep security, audit, tax, and accounting records — <em>legal obligation and legitimate interest</em>.</li>
+        <li>To take, confirm, and fulfil your orders, and to keep records of them.</li>
+        <li>To review and record your payments.</li>
+        <li>
+          To arrange delivery or pick-up and to share courier and tracking details with
+          you.
+        </li>
+        <li>
+          To manage layaway accounts, custom orders, repairs, and gold or scrap buying.
+        </li>
+        <li>
+          To communicate with you about your transaction, including sending your order
+          screenshot or invoice through Messenger.
+        </li>
+        <li>To provide customer service and handle concerns, returns, and disputes.</li>
+        <li>
+          To keep business, accounting, and tax records, and to keep our systems secure.
+        </li>
       </ul>
-
-      <h2>6. Analytics, cookies, and third parties we share with</h2>
       <p>
-        We do <strong>not</strong> use Google Analytics, advertising pixels, or any third-party
-        tracking on this website. The site uses only strictly-necessary cookies — see our{' '}
-        <Link href="/cookie-policy">Cookie Policy</Link>.
+        We process personal information when it is needed to carry out the transaction you
+        asked for, to comply with our legal obligations, or for our legitimate business
+        interests, and with your consent where the law requires it.
       </p>
+
+      <h2>6. Sharing and third-party processing</h2>
       <p>
-        We do use trusted service providers (processors) to run the system. To be clear, we do{' '}
-        <strong>not</strong> claim &quot;we never share your information&quot; — running the system
-        necessarily involves these providers:
+        Authorized third-party technology and service providers may process or host
+        information on our behalf for:
       </p>
       <ul>
-        <li>
-          <strong>Supabase</strong> — database, authentication, and encrypted file storage (holds
-          the records above).
-        </li>
-        <li>
-          <strong>Vercel</strong> — website and application hosting; processes requests in transit.
-        </li>
-        <li>
-          <strong>Pancake / pages.fm and Meta (Facebook Messenger)</strong> — used to receive live
-          comments and to send your order screenshot/invoice to your Facebook conversation.
-        </li>
-        <li>
-          <strong>Our email provider</strong> — sends account and password-reset emails to staff
-          only. Provider: <strong>[OWNER INPUT REQUIRED]</strong>.
-        </li>
+        <li>website and application hosting;</li>
+        <li>database and file storage;</li>
+        <li>messaging and customer communication; and</li>
+        <li>payment- and delivery-related operations.</li>
       </ul>
       <p>
-        We do not sell your personal information, and we do not share it for third-party
-        advertising.
+        We share only the information reasonably needed for each purpose. We may also
+        disclose information when required by law or by a lawful order of a government
+        authority. We do not sell your personal information.
       </p>
 
-      <h2>7. International processing</h2>
+      <h2>7. Where information is processed</h2>
       <p>
-        Some of these providers process data on servers that may be located outside the Philippines
-        (for example, in Singapore). We rely on the provider&apos;s contractual and security
-        commitments to protect it. <strong>[OWNER INPUT REQUIRED — confirm with counsel/DPO.]</strong>
+        Because we use third-party providers, some information may be stored or processed
+        on servers located outside the Philippines.
       </p>
 
       <h2>8. How long we keep it</h2>
-      <ul>
-        <li>Facebook live-comment webhook data is automatically deleted after about 30 days.</li>
-        <li>
-          Order, payment, layaway, and accounting records are kept as long as needed to serve you
-          and to meet tax, accounting, and legal requirements.{' '}
-          <strong>[OWNER INPUT REQUIRED — specific retention periods.]</strong>
-        </li>
-        <li>
-          Stored images (proof-of-payment, capture screenshots, attendance selfies) are retained
-          until no longer needed; a formal storage-retention/erasure schedule is{' '}
-          <strong>[OWNER INPUT REQUIRED]</strong>.
-        </li>
-      </ul>
+      <p>
+        Personal and transactional information is retained only for as long as reasonably
+        necessary for business operations, legal and accounting requirements, dispute
+        handling, security, and other legitimate purposes, after which it may be securely
+        deleted or anonymized where appropriate.
+      </p>
 
       <h2>9. How we protect it</h2>
       <p>
-        Access is restricted to authenticated, authorized staff; the database enforces row-level
-        access rules; files are kept in a private store reachable only through short-lived signed
-        links; traffic is encrypted in transit; and staff actions are recorded in an audit log.
+        We use reasonable organizational, physical, and technical measures to protect
+        personal information, including limiting access to authorized staff. No method of
+        storage or transmission is completely secure, so please contact us right away if
+        you believe your information has been misused.
       </p>
 
-      <h2>10. Your rights</h2>
-      <p>Under the Data Privacy Act, you have the right to be informed, to object, to access, to
-        correct, to erasure or blocking, to data portability, to damages, and to complain to the
-        NPC. Because customers do not have accounts here, you may exercise these rights by
-        contacting us using the details in Section 1; our staff will act on your request.
-      </p>
-
-      <h2>11. Marketing</h2>
+      <h2>10. Cookies</h2>
       <p>
-        We contact you about your own orders. We do not run automated marketing tracking on this
-        site. Any marketing messages would be sent only through channels you engaged with, and you
-        may ask us to stop at any time.
+        Our website does not use advertising or analytics tracking. The cookies and
+        browser storage it does use are described in our{' '}
+        <Link href="/cookie-policy">Cookie Policy</Link>.
       </p>
 
-      <h2>12. Children</h2>
-      <p>This system is not directed at children, and we do not knowingly collect their
-        information.</p>
-
-      <h2>13. External links</h2>
-      <p>Facebook and our providers operate their own services under their own privacy policies;
-        this policy does not cover them.</p>
-
-      <h2>14. Changes</h2>
-      <p>We may update this policy; the effective date above will change accordingly.</p>
-
-      <h2>15. Contact for privacy requests</h2>
+      <h2>11. Your rights</h2>
       <p>
-        Privacy requests and questions: <strong>[OWNER INPUT REQUIRED — email/DPO contact]</strong>,
-        or by phone using the numbers in Section 1. You may also complain to the National Privacy
-        Commission (privacy.gov.ph).
+        Under the Data Privacy Act, you have the right to be informed, to access, to
+        object, to correct, to erasure or blocking, to data portability, and to damages,
+        and the right to file a complaint with the National Privacy Commission
+        (privacy.gov.ph). To make a request, email us at the address in Section 13. We may
+        need to confirm your identity before acting on a request.
       </p>
+
+      <h2>12. Other matters</h2>
+      <p>
+        Our services are not directed at children, and we do not knowingly collect their
+        information. Facebook, Messenger, and other services we use operate under their
+        own privacy policies, which this policy does not cover. We may update this policy
+        from time to time; the Effective Date above shows when the current version took
+        effect.
+      </p>
+
+      <h2>13. Contact us</h2>
+      <p>For privacy questions or requests, email us or visit our store:</p>
+      <LegalBusinessDetails />
     </LegalArticle>
   );
 }
