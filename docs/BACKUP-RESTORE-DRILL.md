@@ -17,6 +17,51 @@ backup — it is a hope.** This drill turns it into a fact.
 
 ---
 
+## 0. Production backups — Owner decision 2026-09-24
+
+The Owner chose to rely on **Supabase's automatic daily backups** for production.
+Facts below were checked on 2026-09-24 against the project and the Supabase docs
+(<https://supabase.com/docs/guides/platform/backups>).
+
+|                     |                                                                                                                        |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **Project**         | `eqfddwxsmzzojuasffjx` (kinggonzalesdev-avjewelry, ap-southeast-1, Postgres 17)                                        |
+| **Plan**            | Pro (organization `avjewelrysystem`)                                                                                   |
+| **Frequency**       | Daily, automatic                                                                                                       |
+| **Retention**       | The last 7 days                                                                                                        |
+| **Type**            | Physical backups: restorable from the dashboard, **not downloadable**                                                  |
+| **Not included**    | Files in Storage: bucket `attachments` (capture screenshots and attendance selfies; 1,041 files, 136 MB on 2026-09-24) |
+| **Worst-case loss** | Everything entered since the last daily backup (up to about a day)                                                     |
+
+### Check the backups (monthly, and before any risky change)
+
+1. Supabase dashboard → the project → **Database** → **Backups** → **Scheduled backups**.
+2. Confirm there is a backup from the last 24 hours, and 7 daily backups in total.
+3. Record the check: date \_\_\_\_\_\_\_\_\_\_ by \_\_\_\_\_\_\_\_\_\_
+
+### Before restoring anything, read this
+
+- Restoring from **Database → Backups** replaces the **whole live project** with that
+  backup. Every order, payment, layaway, capture and attendance record entered after
+  the backup is lost, and the app is offline while it runs. Only the Owner decides this.
+- Safer first step: restore the backup into a **separate project** (Supabase "restore
+  to a new project" / duplicate project), check it with this drill (§2 to §8), and only
+  then decide.
+- A restore does **not** bring back Storage files deleted after the backup.
+- Deleting the Supabase project also deletes its backups.
+
+### What covers what
+
+| Need                                           | Covered by                                                                                                                              |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Undo one bad change made today                 | The in-database save point taken before that change (`savepoint_YYYYMMDD_*` schemas; restore guides in `backups/`). Loses nothing else. |
+| Recover a damaged database                     | Supabase daily backup, up to 7 days back                                                                                                |
+| Survive losing the Supabase project or account | **Not covered today.** Needs a downloadable copy (`supabase db dump` / `pg_dump` with the database password) kept outside Supabase.     |
+| Uploaded screenshots and selfies               | **Not covered today.** Storage is not part of database backups.                                                                         |
+| Recovery to the minute                         | Point-in-Time Recovery add-on (needs at least Small compute; about US$100 a month for 7 days). **Not enabled.**                         |
+
+---
+
 ## 1. Before you start
 
 |                                                                   |                      |
@@ -276,8 +321,9 @@ steps.
 Still open. The drill can be **run** on Staging without them, but production
 readiness cannot be **declared** without them:
 
-- [ ] **Backup frequency** — how much work may we lose? (daily = up to a day)
-- [ ] **Retention** — how far back must we be able to go?
+- [x] **Backup frequency** — daily (Supabase automatic backups; Owner, 2026-09-24)
+- [x] **Retention** — 7 days (Supabase Pro plan)
 - [ ] **Who may restore** — production restore is a destructive privilege
-- [ ] **Where backups live** — and who can read them (they contain everything)
+- [x] **Where backups live** — Supabase's own backup storage (Owner, 2026-09-24); see §0
+      for what that does not cover
 - [ ] **How often this drill repeats** — a restore proven once is proven once
