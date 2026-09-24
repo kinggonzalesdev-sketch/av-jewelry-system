@@ -7,6 +7,7 @@ import { decryptShareToken, firstNameOf, newShareToken, shareLinkUrl } from '@/l
 import {
   AUTO_TEXT_DEFAULT_BODY,
   AUTO_TEXT_KEY,
+  SHOP_NAME_DEFAULT,
   buildAutoTextValues,
   renderAutoText,
 } from '@/lib/messaging/auto-text';
@@ -153,9 +154,47 @@ type ShareLinkRow = {
   conversation_id?: string | null;
 };
 
+/** What the capture's ONE Private Reply carried. */
+export type PrivateReplyKind = 'computation' | 'prompt';
+
 export type RouteBResult =
-  | { ok: true; code: 'sent' | 'already_sent'; url: string | null }
+  | { ok: true; code: 'sent' | 'already_sent'; url: string | null; kind: PrivateReplyKind }
   | { ok: false; code: string; message: string };
+
+/**
+ * The screenshot-first "please reply" Private Reply (Owner 2026-09-24). Facebook allows a
+ * comment-only customer ONE text reply and no photo, so it asks them to reply in Messenger; the
+ * screenshot and then the computation follow that reply. Same greeting as the AUTO TEXT.
+ */
+export function buildReplyPromptText(fbName: string): string {
+  const first = firstNameOf(fbName);
+  const greeting = first ? `Hi beshy ${first}!` : 'Hi beshy!';
+  return [
+    `${greeting} 💛 Thank you for mining with ${SHOP_NAME_DEFAULT} ✨`,
+    '',
+    'Please reply here (kahit "Hi" lang po) para ma-send na namin ang picture ng item at ang computation mo. Salamat beshy! 😊',
+  ].join('\n');
+}
+
+/** The kind recorded for a capture's Private Reply. Anything unreadable (including a database
+ *  without the column) means 'computation', the meaning every earlier reply had. */
+async function readPrivateReplyKind(
+  supabase: SupabaseClient,
+  captureRecordId: string,
+): Promise<PrivateReplyKind> {
+  try {
+    const { data } = await supabase
+      .from('capture_records')
+      .select('private_reply_kind')
+      .eq('id', captureRecordId)
+      .maybeSingle();
+    return (data as { private_reply_kind?: unknown } | null)?.private_reply_kind === 'prompt'
+      ? 'prompt'
+      : 'computation';
+  } catch {
+    return 'computation';
+  }
+}
 
 /**
  * ROUTE B (Owner 2026-08-21): when a normal Inbox PHOTO can't be sent, create/reuse a secure
@@ -177,6 +216,9 @@ export async function attemptSecureLinkPrivateReply(input: {
   /** The capture's EXACT customer PSID (from its linked inbox conversation), when known. Lets the
    *  resolver key off the precise identity instead of fuzzy name-matching — the reliable path. */
   psid?: string | null;
+  /** Screenshot-first: send the "please reply" prompt instead of the computation. Applied only
+   *  when the database confirms the capture as a prompt (mark_capture_private_reply_prompt). */
+  prompt?: boolean;
 }): Promise<RouteBResult> {
   const { supabase, captureRecordId, fbName } = input;
   if (!input.screenshotPath) {
@@ -277,7 +319,14 @@ export async function attemptSecureLinkPrivateReply(input: {
   const raw = decryptShareToken(link.token_ciphertext);
   const url = raw ? shareLinkUrl(raw) : null;
   if (link.revoked_at) return { ok: false, code: 'revoked', message: 'This link was revoked.' };
-  if (link.private_reply_status === 'sent') return { ok: true, code: 'already_sent', url };
+  if (link.private_reply_status === 'sent') {
+    return {
+      ok: true,
+      code: 'already_sent',
+      url,
+      kind: await readPrivateReplyKind(supabase, captureRecordId),
+    };
+  }
   // TERMINAL (Owner 2026-08-24): a Private Reply was attempted for this exact comment and Pancake did
   // not accept it. It must NOT be retried (one reply per comment — a retry risks a duplicate), so
   // surface a FINITE failure. Without this the capture loops "AUTO TEXT sending…" against a dead link
@@ -304,8 +353,8 @@ export async function attemptSecureLinkPrivateReply(input: {
   // Build the mode-aware AUTO TEXT from the FINALIZED Capture business data BEFORE claiming, so an
   // incomplete Capture (unclassifiable value / missing grams-or-price / grams with no rate) never
   // consumes the ONE Private Reply — it stays reviewable/retryable.
-  const message = await buildAutoTextMessage(supabase, fbName, effectiveValue);
-  if (!message) {
+  const computation = await buildAutoTextMessage(supabase, fbName, effectiveValue);
+  if (!computation) {
     await auditRouteB(captureRecordId, 'PRIVATE_REPLY_TEXT', 'failed', 'incomplete_business_data');
     return {
       ok: false,
@@ -314,9 +363,32 @@ export async function attemptSecureLinkPrivateReply(input: {
     };
   }
 
+  // Screenshot-first: the one reply becomes the "please reply" prompt, but ONLY once the database
+  // has recorded it as a prompt BEFORE the send (so it is never mistaken for the computation). If
+  // that cannot be recorded, the reply carries the computation exactly as before.
+  let kind: PrivateReplyKind = 'computation';
+  if (input.prompt) {
+    try {
+      const marked = (
+        await supabase.rpc('mark_capture_private_reply_prompt', { p_capture_id: captureRecordId })
+      ) as { data: unknown; error: unknown };
+      if (!marked.error && marked.data === 'prompt') kind = 'prompt';
+    } catch {
+      kind = 'computation';
+    }
+  }
+  const message = kind === 'prompt' ? buildReplyPromptText(fbName) : computation;
+
   // Atomic claim — only the worker that flips pending→sending sends the ONE Private Reply.
   const claim = (await supabase.rpc('claim_share_link_send', { p_id: link.id })).data as string;
-  if (claim === 'already_sent') return { ok: true, code: 'already_sent', url };
+  if (claim === 'already_sent') {
+    return {
+      ok: true,
+      code: 'already_sent',
+      url,
+      kind: await readPrivateReplyKind(supabase, captureRecordId),
+    };
+  }
   if (claim !== 'claimed') {
     return { ok: false, code: 'in_progress', message: 'Another Private Reply for this comment is in progress.' };
   }
@@ -334,8 +406,8 @@ export async function attemptSecureLinkPrivateReply(input: {
       p_result: 'sent',
       p_msg_id: pr.pancakeMessageId,
     });
-    await auditRouteB(captureRecordId, 'PRIVATE_REPLY_TEXT', 'succeeded', 'sent');
-    return { ok: true, code: 'sent', url };
+    await auditRouteB(captureRecordId, 'PRIVATE_REPLY_TEXT', 'succeeded', kind === 'prompt' ? 'prompt_sent' : 'sent');
+    return { ok: true, code: 'sent', url, kind };
   }
   // A definite PRE-SEND failure → release to retry; anything after contacting Pancake → terminal
   // 'failed' (do NOT auto-retry and risk a second Private Reply — Pancake allows only one).

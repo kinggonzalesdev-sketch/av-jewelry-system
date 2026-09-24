@@ -39,6 +39,7 @@ type Cap = {
   text_claimed_at: number | null;
   text_waiting_since: string | null;
   route_reason: string | null;
+  private_reply_kind: string | null;
 };
 
 let db: Map<string, Cap>;
@@ -77,6 +78,7 @@ function newCap(id: string, over: Partial<Cap> = {}): Cap {
     text_claimed_at: null,
     text_waiting_since: null,
     route_reason: null,
+    private_reply_kind: null,
     ...over,
   };
 }
@@ -88,13 +90,15 @@ function claimText(id: string, trigger: string): string {
   if (c.message_sequence !== 'screenshot_first') return 'not_applicable';
   const status = c.text_send_status ?? 'pending';
   if (status === 'sent') return 'already_sent';
-  if (shareLinkSent.has(id)) {
-    c.text_send_status = 'sent';
-    return 'already_sent';
-  }
-  if (shareLinkUncertain.has(id)) {
-    c.text_send_status = 'unconfirmed';
-    return 'unconfirmed';
+  if ((c.private_reply_kind ?? 'computation') === 'computation') {
+    if (shareLinkSent.has(id)) {
+      c.text_send_status = 'sent';
+      return 'already_sent';
+    }
+    if (shareLinkUncertain.has(id)) {
+      c.text_send_status = 'unconfirmed';
+      return 'unconfirmed';
+    }
   }
   if (c.message_status !== 'sent') return 'not_ready';
   if (status === 'failed' || status === 'unconfirmed') return status;
@@ -159,7 +163,12 @@ function rpc(name: string, a: Record<string, unknown>): unknown {
         c.text_max_attempts =
           a.p_mode === 'screenshot_first' ? Math.max(1, Math.min(3, a.p_max_attempts as number)) : null;
       }
-      if (c.message_sequence === 'screenshot_first' && c.text_send_status === null && shareLinkSent.has(id)) {
+      if (
+        c.message_sequence === 'screenshot_first' &&
+        c.text_send_status === null &&
+        (c.private_reply_kind ?? 'computation') === 'computation' &&
+        shareLinkSent.has(id)
+      ) {
         c.text_send_status = 'sent';
       }
       return c.message_sequence;
@@ -178,10 +187,27 @@ function rpc(name: string, a: Record<string, unknown>): unknown {
       }
       return a.p_status;
     case 'mark_capture_text_sent_by_private_reply':
-      if (c && c.message_sequence === 'screenshot_first' && c.text_send_status !== 'sent') {
+      if (
+        c &&
+        c.message_sequence === 'screenshot_first' &&
+        (c.private_reply_kind ?? 'computation') === 'computation' &&
+        c.text_send_status !== 'sent'
+      ) {
         c.text_send_status = 'sent';
       }
       return c?.text_send_status ?? null;
+    case 'mark_capture_private_reply_prompt':
+      if (!c) return null;
+      if (
+        c.message_sequence === 'screenshot_first' &&
+        c.private_reply_kind === null &&
+        c.text_send_status !== 'sent' &&
+        !shareLinkSent.has(id) &&
+        !shareLinkUncertain.has(id)
+      ) {
+        c.private_reply_kind = 'prompt';
+      }
+      return c.private_reply_kind ?? 'computation';
     case 'claim_capture_text_send':
       return claimText(id, a.p_trigger as string);
     case 'list_due_capture_text_legs':
@@ -548,9 +574,62 @@ describe('screenshot-first sequence', () => {
     expect(db.get('B')?.text_send_status).toBe('sent');
   });
 
-  it('comment-only customer: the one Private Reply IS the computation — never sent again after the screenshot', async () => {
+  it('comment-only customer: the one Private Reply only asks them to reply; screenshot THEN computation follow the reply', async () => {
     vi.mocked(mediaWindow.isConversationMediaEligible).mockResolvedValue(false);
-    vi.mocked(routeB.attemptSecureLinkPrivateReply).mockResolvedValue({ ok: true, code: 'sent', url: null });
+    // The real Route B records the prompt in the database before sending it; mirror that.
+    vi.mocked(routeB.attemptSecureLinkPrivateReply).mockImplementation(async (input) => {
+      const marked = input.prompt
+        ? ((await input.supabase.rpc('mark_capture_private_reply_prompt', { p_capture_id: input.captureRecordId }))
+            .data as 'prompt' | 'computation')
+        : 'computation';
+      shareLinkSent.add(input.captureRecordId);
+      return { ok: true, code: 'sent', url: null, kind: marked };
+    });
+    db.set('A', newCap('A'));
+    queue = ['A'];
+    scriptSends([OK]);
+    await sweep();
+    expect(vi.mocked(routeB.attemptSecureLinkPrivateReply).mock.calls[0]![0].prompt).toBe(true);
+    expect(count('photo')).toBe(0);
+    expect(count('text')).toBe(0);
+    expect(db.get('A')?.message_status).toBe('link_sent');
+    expect(db.get('A')?.private_reply_kind).toBe('prompt');
+    expect(db.get('A')?.text_send_status).toBeNull(); // the computation is still to come
+    expect(db.get('A')?.route_reason).toBe('Reply request sent ✓ · Screenshot + computation after reply');
+
+    // The customer replies in Messenger: the SCREENSHOT goes first, then the computation.
+    vi.mocked(mediaWindow.isConversationMediaEligible).mockResolvedValue(true);
+    const r = reactivatePhotoForConversationSystem('PAGE_Apsid');
+    await vi.runAllTimersAsync();
+    await r;
+    expect(sends.map((s) => s.kind)).toEqual(['photo', 'text']);
+    expect(sends[1]!.message).toBe(COMPUTATION);
+    expect(db.get('A')?.text_send_status).toBe('sent');
+    expect(db.get('A')?.route_reason).toBe('Screenshot sent ✓ · Computation sent ✓');
+
+    // A second reply (or a replayed webhook) sends nothing more.
+    const again = reactivatePhotoForConversationSystem('PAGE_Apsid');
+    await vi.runAllTimersAsync();
+    await again;
+    expect(count('photo')).toBe(1);
+    expect(count('text')).toBe(1);
+  });
+
+  it('classic sequence: the one Private Reply still carries the computation (no prompt)', async () => {
+    settingsRow = { private_reply_sequence: 'classic', text_send_attempts: 3 };
+    vi.mocked(mediaWindow.isConversationMediaEligible).mockResolvedValue(false);
+    vi.mocked(routeB.attemptSecureLinkPrivateReply).mockResolvedValue({ ok: true, code: 'sent', url: null, kind: 'computation' });
+    db.set('A', newCap('A'));
+    queue = ['A'];
+    await sweep();
+    expect(vi.mocked(routeB.attemptSecureLinkPrivateReply).mock.calls[0]![0].prompt).toBe(false);
+    expect(db.get('A')?.route_reason).toBe('AUTO TEXT Sent to Messenger ✓');
+    expect(db.get('A')?.private_reply_kind).toBeNull();
+  });
+
+  it('a capture whose one Private Reply already carried the computation never gets it twice', async () => {
+    vi.mocked(mediaWindow.isConversationMediaEligible).mockResolvedValue(false);
+    vi.mocked(routeB.attemptSecureLinkPrivateReply).mockResolvedValue({ ok: true, code: 'sent', url: null, kind: 'computation' });
     db.set('A', newCap('A'));
     queue = ['A'];
     scriptSends([OK]);
@@ -631,7 +710,7 @@ describe('screenshot-first sequence', () => {
     vi.mocked(mediaWindow.isConversationMediaEligible).mockResolvedValue(false);
     vi.mocked(routeB.attemptSecureLinkPrivateReply).mockImplementation(() => {
       shareLinkSent.add('A'); // the Private Reply went out and the ledger says so …
-      return Promise.resolve({ ok: true, code: 'sent', url: null });
+      return Promise.resolve({ ok: true, code: 'sent', url: null, kind: 'computation' as const });
     });
     db.set('A', newCap('A'));
     queue = ['A'];

@@ -632,7 +632,8 @@ async function routeOne(
     return { outcome: 'awaiting', reason: 'no_identity' };
   }
   // Comment-only customer: a screenshot cannot go first (Pancake rejects a screenshot Private
-  // Reply), so the Owner-approved path is the ONE Private Reply computation text.
+  // Reply). Screenshot-first (Owner 2026-09-24): the ONE Private Reply asks the customer to reply;
+  // the screenshot and then the computation follow that reply. Classic: the computation, as before.
   const mode = await stampSequence(admin, id, ctx.settings);
   if (mode === null) {
     await setRouteReason(admin, id, 'AUTO TEXT pending · retrying shortly');
@@ -645,13 +646,18 @@ async function routeOne(
     value,
     screenshotPath: path,
     psid,
+    prompt: mode === 'screenshot_first',
   });
   if (rb.ok) {
     await admin.rpc('mark_capture_photo_state', {
       p_capture_id: id,
       p_status: 'link_sent',
     });
-    if (mode === 'screenshot_first') {
+    if (mode === 'screenshot_first' && rb.kind === 'prompt') {
+      // Only the request to reply went out: the computation is still to come, after the
+      // screenshot (the database never records a prompt as the text).
+      await setRouteReason(admin, id, sequenceRouteReason('prompt_sent'));
+    } else if (mode === 'screenshot_first') {
       // That Private Reply IS the computation text: record it so it is never sent again after
       // the screenshot follows the customer's reply.
       await admin.rpc('mark_capture_text_sent_by_private_reply', { p_capture_id: id });

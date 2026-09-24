@@ -965,6 +965,8 @@ export function IncomingCapturesStrip({
                       // A FINITE failure shows a clear ⚠ state + a Retry action (Owner 2026-08-24,
                       // Issue 1) — never a silent stall. Not for a Test capture (never messages).
                       const autoFailed = r.messageStatus === 'failed' && !r.isTest;
+                      // Name WHAT failed: the screenshot ("AUTO SS Failed …") or the text.
+                      const screenshotFailed = (r.routeReason ?? '').startsWith('AUTO SS Failed');
                       const note = notes[r.captureRecordId] ?? null;
                       if (!sequence && !autoStatus && !note && !autoFailed) return null;
                       return (
@@ -993,7 +995,7 @@ export function IncomingCapturesStrip({
                           ) : null}
                           {autoFailed ? (
                             <span className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-amber-700">
-                              ⚠ AUTO TEXT not sent
+                              {screenshotFailed ? '⚠ Screenshot not sent' : '⚠ AUTO TEXT not sent'}
                               <button
                                 type="button"
                                 onClick={() => void retryAutoText(r)}
@@ -1001,7 +1003,11 @@ export function IncomingCapturesStrip({
                                 data-testid={`incoming-retry-${r.captureRecordId}`}
                                 className="rounded border border-border px-1.5 py-0.5 text-[10px] font-medium text-foreground hover:bg-accent"
                               >
-                                {retryingId === r.captureRecordId ? 'Retrying…' : '🔄 Retry Auto Text'}
+                                {retryingId === r.captureRecordId
+                                  ? 'Retrying…'
+                                  : screenshotFailed
+                                    ? '🔄 Retry'
+                                    : '🔄 Retry Auto Text'}
                               </button>
                             </span>
                           ) : null}

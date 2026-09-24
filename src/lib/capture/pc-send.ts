@@ -226,13 +226,15 @@ export async function sendPendingCaptureToMessenger(
         fbName: fbName ?? '',
         value: ocrStr(row.ocr, 'itemQuery', 'grams', 'weight'),
         screenshotPath: path,
+        // Screenshot-first: the one Private Reply asks the customer to reply (Owner 2026-09-24).
+        prompt: mode === 'screenshot_first',
       });
       if (rb.ok) {
         await supabase.rpc('mark_capture_photo_state', {
           p_capture_id: id,
           p_status: 'link_sent',
         });
-        if (mode === 'screenshot_first') {
+        if (mode === 'screenshot_first' && rb.kind === 'computation') {
           // The Private Reply IS the computation text: record it so it is never sent again.
           await markTextSentByPrivateReplySystem(id).catch(() => undefined);
         }
@@ -242,7 +244,9 @@ export async function sendPendingCaptureToMessenger(
           message:
             rb.code === 'already_sent'
               ? 'Secure link already sent — not resent.'
-              : 'Sent a secure screenshot link via Private Reply ✓',
+              : rb.kind === 'prompt'
+                ? 'Asked the customer to reply ✓ — the screenshot and computation follow their reply.'
+                : 'Sent a secure screenshot link via Private Reply ✓',
         };
       }
       await supabase.rpc('mark_capture_photo_state', {

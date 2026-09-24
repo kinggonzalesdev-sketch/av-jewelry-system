@@ -10,6 +10,7 @@ import {
   classifyTextSend,
   isMessageSequence,
   parseTextSendAttempts,
+  sequenceRouteReason,
   sequenceStatusLines,
 } from '@/lib/capture/message-sequence';
 import { fetchFailureTransport, parseRetryAfterSeconds } from '@/lib/integrations/pancake';
@@ -157,6 +158,26 @@ describe('staff-facing status (never a raw API error)', () => {
       'Computation sent ✓',
       'Screenshot after customer replies',
     ]);
+  });
+
+  it('comment-only: the "please reply" request, then screenshot + computation after the reply', () => {
+    expect(sequenceStatusLines('screenshot_first', 'link_sent', null)?.lines).toEqual([
+      'Reply request sent ✓',
+      'Screenshot + computation after reply',
+    ]);
+    expect(sequenceRouteReason('prompt_sent')).toBe(
+      'Reply request sent ✓ · Screenshot + computation after reply',
+    );
+  });
+
+  it('a failed screenshot after the computation went out says the computation was sent', () => {
+    expect(sequenceStatusLines('screenshot_first', 'failed', 'sent')).toEqual({
+      lines: ['Computation sent ✓'],
+      tone: 'ok',
+    });
+    // Any other failure keeps the card's own wording.
+    expect(sequenceStatusLines('screenshot_first', 'failed', null)).toBeNull();
+    expect(sequenceStatusLines('classic', 'failed', 'sent')).toBeNull();
   });
 
   it('leaves classic / not-started captures to the existing wording', () => {

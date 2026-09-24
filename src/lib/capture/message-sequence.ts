@@ -199,8 +199,18 @@ export function sequenceStatusLines(
   if (messageSequence !== 'screenshot_first') return null;
 
   if (messageStatus === 'link_sent') {
-    // Comment-only customer: the computation went as the one Private Reply text.
-    return { lines: ['Computation sent ✓', 'Screenshot after customer replies'], tone: 'wait' };
+    // Comment-only customer. Before 2026-09-24 evening the one Private Reply carried the
+    // computation (text recorded as sent); now it only asks the customer to reply, and the
+    // screenshot and then the computation follow that reply.
+    if (textStatus === 'sent') {
+      return { lines: ['Computation sent ✓', 'Screenshot after customer replies'], tone: 'wait' };
+    }
+    return { lines: ['Reply request sent ✓', 'Screenshot + computation after reply'], tone: 'wait' };
+  }
+  if (messageStatus === 'failed') {
+    // The screenshot failed after the computation already went out: say so (the card's warning
+    // row says what failed). Any other failure keeps the card's existing wording.
+    return textStatus === 'sent' ? { lines: ['Computation sent ✓'], tone: 'ok' } : null;
   }
   if (messageStatus !== 'sent') return null;
 
@@ -219,8 +229,12 @@ export function sequenceStatusLines(
 }
 
 /** The one-line durable route_reason for the same states (≤200 chars, human-safe). */
-export function sequenceRouteReason(textStatus: TextSendStatus | 'private_reply_sent'): string {
+export function sequenceRouteReason(
+  textStatus: TextSendStatus | 'private_reply_sent' | 'prompt_sent',
+): string {
   switch (textStatus) {
+    case 'prompt_sent':
+      return 'Reply request sent ✓ · Screenshot + computation after reply';
     case 'private_reply_sent':
       return 'Computation sent ✓ · Screenshot after customer replies';
     case 'sent':

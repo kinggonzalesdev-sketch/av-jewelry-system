@@ -107,7 +107,7 @@ describe('durable auto-router — routing decisions', () => {
   it('ROUTE B — not eligible + resolvable comment → ONE secure-link TEXT, marks link_sent', async () => {
     claimedBatch = [cap()];
     vi.mocked(mediaWindow.isConversationMediaEligible).mockResolvedValue(false);
-    vi.mocked(routeB.attemptSecureLinkPrivateReply).mockResolvedValue({ ok: true, code: 'sent', url: 'u' });
+    vi.mocked(routeB.attemptSecureLinkPrivateReply).mockResolvedValue({ ok: true, code: 'sent', url: 'u', kind: 'computation' });
     const summary = await routePendingCapturesSystem();
     // The secure-link path resolves by the capture's EXACT PSID (from its linked conversation).
     const arg = vi.mocked(routeB.attemptSecureLinkPrivateReply).mock.calls[0]![0];
@@ -158,7 +158,7 @@ describe('durable auto-router — routing decisions', () => {
       source: 'customer',
     });
     vi.mocked(mediaWindow.isConversationMediaEligible).mockResolvedValue(false);
-    vi.mocked(routeB.attemptSecureLinkPrivateReply).mockResolvedValue({ ok: true, code: 'sent', url: 'u' });
+    vi.mocked(routeB.attemptSecureLinkPrivateReply).mockResolvedValue({ ok: true, code: 'sent', url: 'u', kind: 'computation' });
     const summary = await routePendingCapturesSystem();
     const arg = vi.mocked(routeB.attemptSecureLinkPrivateReply).mock.calls[0]![0];
     expect(arg.psid).toBe('777');
