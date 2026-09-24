@@ -4,13 +4,26 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { captureDebugLog } from '@/lib/capture/debug-log';
 import {
+  genuineInboxDmSinceBatch,
   isConversationMediaEligible,
   psidFromConversationId,
 } from '@/lib/capture/media-window';
+import {
+  DEFAULT_MESSAGE_SEQUENCE,
+  DEFAULT_TEXT_SEND_ATTEMPTS,
+  MAX_INLINE_TEXT_WAIT_MS,
+  backoffBeforeNextAttempt,
+  classifyTextSend,
+  isMessageSequence,
+  parseTextSendAttempts,
+  sequenceRouteReason,
+  type MessageSequence,
+} from '@/lib/capture/message-sequence';
 import { sanitizeCaptureName } from '@/lib/capture/name-sanitize';
-import { attemptSecureLinkPrivateReply } from '@/lib/capture/route-b';
+import { attemptSecureLinkPrivateReply, buildAutoTextMessageDetailed } from '@/lib/capture/route-b';
 import {
   conversationBelongsToPage,
+  findConversationMessageByText,
   getActivePancakePageId,
   resolveConversationForName,
   sendPancakeConversationMessage,
@@ -116,11 +129,365 @@ async function setRouteReason(
   await admin.rpc('set_capture_route_reason', { p_capture_id: id, p_reason: reason });
 }
 
+/* ==========================================================================
+ * SCREENSHOT-FIRST SEQUENCE (Owner 2026-09-24).
+ *
+ * screenshot_first: a capture whose customer has an open Messenger window gets the SCREENSHOT,
+ * then the computation TEXT as a SEPARATE request, up to N attempts (Settings, 1..3, default 3).
+ * Only transient failures are retried, with bounded backoff (about 2s, then 5s; a Retry-After
+ * from Pancake wins). If the text still cannot be sent, or Facebook says a customer reply is
+ * needed first, the capture WAITS; a genuine customer reply then sends the text ONCE.
+ * A comment-only customer cannot receive a screenshot first (Pancake rejects a screenshot
+ * Private Reply: Controlled Test C-A), so, as the Owner approved, the computation goes as the
+ * ONE Private Reply text, is recorded AS the text, and the screenshot follows their reply.
+ *
+ * Every step is an atomic database claim (migration 20260924120000): the screenshot must be
+ * 'sent' before a text can be claimed; a 'sent' text is never claimed again; a claim lost
+ * mid-request becomes 'unconfirmed' and is never re-sent automatically. So a page refresh,
+ * a webhook replay, a realtime reconnect, a server restart or an Android reconnect cannot
+ * produce a second screenshot or a second computation.
+ * ======================================================================== */
+
+type SequenceSettings = { mode: MessageSequence; attempts: number };
+const CLASSIC_SETTINGS: SequenceSettings = {
+  mode: 'classic',
+  attempts: DEFAULT_TEXT_SEND_ATTEMPTS,
+};
+
+/** Worst case for ONE inline text attempt: the send (10s timeout), a short pause and the
+ *  delivery check (10s timeout) after an ambiguous answer, plus margin. */
+const INLINE_ATTEMPT_BUDGET_MS = 25_000;
+/** Worst case for ONE screenshot send: read the image (10s) + upload (15s) + send (10s), plus margin. */
+const PHOTO_SEND_BUDGET_MS = 36_000;
+/** Default wall-clock budget when a caller passes none (the cron route allows 60s). */
+const SEQUENCE_BUDGET_MS = 40_000;
+/** Pause before checking the chat after an ambiguous answer, so a just-accepted message shows. */
+const AMBIGUOUS_CHECK_DELAY_MS = 1500;
+
+/** A missing column or function: the migration is not applied yet (keep the previous behaviour). */
+function isMissingSchema(error: unknown): boolean {
+  const e = (error && typeof error === 'object' ? error : {}) as {
+    code?: unknown;
+    message?: unknown;
+  };
+  const code = typeof e.code === 'string' ? e.code : '';
+  const message = typeof e.message === 'string' ? e.message : '';
+  return (
+    ['42703', '42P01', '42883', 'PGRST202', 'PGRST204'].includes(code) ||
+    /does not exist|could not find the function|schema cache/i.test(message)
+  );
+}
+
+/**
+ * The Owner's messaging sequence.
+ *   - migration not applied (a missing column): CLASSIC, so new code on the old database behaves
+ *     exactly like the old code;
+ *   - any other read failure: null. The caller then sends nothing this time and the capture is
+ *     retried on the next sweep, instead of stamping a sequence the Owner did not choose.
+ */
+export async function readMessageSequenceSettings(
+  admin: SupabaseClient,
+): Promise<SequenceSettings | null> {
+  try {
+    const { data, error } = await admin
+      .from('pancake_integration_config')
+      .select('private_reply_sequence, text_send_attempts')
+      .maybeSingle();
+    if (error) return isMissingSchema(error) ? CLASSIC_SETTINGS : null;
+    const row = data as {
+      private_reply_sequence?: unknown;
+      text_send_attempts?: unknown;
+    } | null;
+    if (!row) {
+      return { mode: DEFAULT_MESSAGE_SEQUENCE, attempts: DEFAULT_TEXT_SEND_ATTEMPTS };
+    }
+    return {
+      mode: isMessageSequence(row.private_reply_sequence)
+        ? row.private_reply_sequence
+        : CLASSIC_SETTINGS.mode,
+      attempts: parseTextSendAttempts(row.text_send_attempts) ?? DEFAULT_TEXT_SEND_ATTEMPTS,
+    };
+  } catch {
+    // An unexpected client failure: the previous behaviour, never a guessed new one.
+    return CLASSIC_SETTINGS;
+  }
+}
+
+/**
+ * Stamp the capture's sequence ONCE (set-once in the database) and return the effective one.
+ * A capture already in flight keeps its original sequence when the Owner changes the setting.
+ * Returns null when the sequence cannot be determined right now: the caller must not send.
+ */
+async function stampSequence(
+  admin: SupabaseClient,
+  captureId: string,
+  settings: SequenceSettings | null,
+): Promise<MessageSequence | null> {
+  if (!settings) return null;
+  try {
+    const res = (await admin.rpc('start_capture_message_sequence', {
+      p_capture_id: captureId,
+      p_mode: settings.mode,
+      p_max_attempts: settings.attempts,
+    })) as { data: unknown; error: unknown };
+    if (res.error) return isMissingSchema(res.error) ? 'classic' : null;
+    return isMessageSequence(res.data) ? res.data : 'classic';
+  } catch {
+    return 'classic';
+  }
+}
+
+async function finalizeText(
+  admin: SupabaseClient,
+  captureId: string,
+  outcome: 'sent' | 'retry' | 'waiting_reply' | 'failed' | 'unconfirmed',
+  code: string,
+  messageId: string | null = null,
+  retryAfterSeconds: number | null = null,
+): Promise<string | null> {
+  const res = (await admin.rpc('finalize_capture_text_send', {
+    p_capture_id: captureId,
+    p_outcome: outcome,
+    p_code: code,
+    p_message_id: messageId,
+    p_retry_after_seconds: retryAfterSeconds,
+  })) as { data: unknown };
+  return typeof res.data === 'string' ? res.data : null;
+}
+
+/** A PII-free production warning for a text that did not go out cleanly. */
+function warnText(captureId: string, outcome: string, code: string): void {
+  console.warn(
+    '[capture-text] not_sent',
+    JSON.stringify({ capture: captureId.slice(-6), outcome, code: code.slice(0, 60) }),
+  );
+}
+
+export type TextSequenceOutcome =
+  | 'text_sent'
+  | 'waiting_reply'
+  | 'text_failed'
+  | 'unconfirmed'
+  | 'deferred'
+  | 'already_sent'
+  | 'skipped';
+
+export type TextSequenceDeps = {
+  send: typeof sendPancakeConversationMessage;
+  verify: typeof findConversationMessageByText;
+  sleep: (ms: number) => Promise<void>;
+  now: () => number;
+};
+
+// Resolved at CALL time (not module load) so a partial module mock never breaks an import.
+const DEFAULT_TEXT_DEPS: TextSequenceDeps = {
+  send: (input) => sendPancakeConversationMessage(input),
+  verify: (conversationId, text, sinceMs) =>
+    findConversationMessageByText(conversationId, text, sinceMs),
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  now: () => Date.now(),
+};
+
+/**
+ * Send the computation TEXT for ONE screenshot-first capture: claim → send (a text-only request,
+ * never with the image) → classify → finalize, looping only on transient failures while attempts
+ * and the time budget remain. trigger 'reply' is the single send unlocked by a genuine customer
+ * reply after the capture started waiting. The database decides every state change.
+ */
+export async function runCaptureTextSequence(
+  admin: SupabaseClient,
+  captureId: string,
+  opts: { trigger: 'auto' | 'reply'; deadlineAt: number },
+  deps: Partial<TextSequenceDeps> = {},
+): Promise<TextSequenceOutcome> {
+  const d: TextSequenceDeps = { ...DEFAULT_TEXT_DEPS, ...deps };
+
+  let row: {
+    ocr: unknown;
+    canonical_grams: string | null;
+    pancake_conversation_id: string | null;
+  };
+  try {
+    const { data, error } = await admin
+      .from('capture_records')
+      .select('id, ocr, canonical_grams, pancake_conversation_id')
+      .eq('id', captureId)
+      .maybeSingle();
+    if (error || !data) return 'skipped';
+    row = data;
+  } catch {
+    return 'skipped';
+  }
+
+  const conv = (row.pancake_conversation_id ?? '').trim();
+  const fbName = sanitizeCaptureName(
+    ocrStr(row.ocr, 'fbName', 'fb_name', 'name'),
+    (row.ocr as { rawLines?: unknown } | null)?.rawLines,
+  );
+  // The SAME authoritative computation text as the Private Reply (canonical grams when the exact
+  // comment proved them, else the capture's value); the formatting is never changed here.
+  const value = (row.canonical_grams ?? '').trim() || ocrStr(row.ocr, 'itemQuery', 'grams', 'weight');
+  let message: string | null = null;
+  if (conv && fbName) {
+    try {
+      const built = await buildAutoTextMessageDetailed(admin, fbName, value);
+      // The shared rate could not be READ: a transient failure — nothing is claimed and the
+      // next sweep tries again. Only genuinely incomplete data becomes a finite failure below.
+      if (built.readError) return 'skipped';
+      message = built.message;
+    } catch {
+      return 'skipped';
+    }
+  }
+
+  let retries = 0;
+  for (;;) {
+    // Never start an attempt that could outlive the caller's time budget.
+    if (d.now() + INLINE_ATTEMPT_BUDGET_MS > opts.deadlineAt) return 'deferred';
+
+    const claimRes = (await admin.rpc('claim_capture_text_send', {
+      p_capture_id: captureId,
+      p_trigger: opts.trigger,
+    })) as { data: unknown };
+    const claim = typeof claimRes.data === 'string' ? claimRes.data : null;
+    if (claim !== 'claimed') {
+      if (claim === 'already_sent') return 'already_sent';
+      if (claim === 'waiting_reply') {
+        await setRouteReason(admin, captureId, sequenceRouteReason('waiting_reply'));
+        return 'waiting_reply';
+      }
+      if (claim === 'unconfirmed') {
+        await setRouteReason(admin, captureId, sequenceRouteReason('unconfirmed'));
+        warnText(captureId, 'unconfirmed', 'stale_claim');
+        return 'unconfirmed';
+      }
+      if (claim === 'failed') return 'text_failed';
+      return 'skipped'; // not_ready (no screenshot yet) · not_due · in_progress · not_applicable
+    }
+
+    if (!message) {
+      // Nothing authoritative to send (no conversation / incomplete price data): a finite
+      // state staff can see; never a guessed or partial computation.
+      const code = conv ? 'incomplete_business_data' : 'no_conversation';
+      await finalizeText(admin, captureId, 'failed', code);
+      await setRouteReason(admin, captureId, sequenceRouteReason('failed'));
+      warnText(captureId, 'failed', code);
+      return 'text_failed';
+    }
+
+    const attemptStartedAt = d.now();
+    const res = await d.send({ conversationId: conv, message });
+    const cls = classifyTextSend(res);
+
+    if (cls.kind === 'sent') {
+      await finalizeText(admin, captureId, 'sent', 'sent', res.pancakeMessageId ?? null);
+      await setRouteReason(admin, captureId, sequenceRouteReason('sent'));
+      return 'text_sent';
+    }
+    if (cls.kind === 'wait_reply') {
+      await finalizeText(admin, captureId, 'waiting_reply', res.code);
+      await setRouteReason(admin, captureId, sequenceRouteReason('waiting_reply'));
+      warnText(captureId, 'waiting_reply', res.code);
+      return 'waiting_reply';
+    }
+    if (cls.kind === 'failed') {
+      await finalizeText(admin, captureId, 'failed', res.code);
+      await setRouteReason(admin, captureId, sequenceRouteReason('failed'));
+      warnText(captureId, 'failed', res.code);
+      return 'text_failed';
+    }
+
+    if (cls.kind === 'ambiguous') {
+      // The request may have reached Pancake (a gateway can still deliver it seconds later).
+      // Look for this exact text, NEWER than this attempt: found → sent. Anything else is
+      // "unconfirmed" and is NEVER re-sent automatically — a duplicate computation is worse
+      // than a staff check.
+      await d.sleep(AMBIGUOUS_CHECK_DELAY_MS);
+      const seen = await d.verify(conv, message, attemptStartedAt).catch(() => 'unknown' as const);
+      if (seen === 'found') {
+        await finalizeText(admin, captureId, 'sent', 'confirmed_after_ambiguous');
+        await setRouteReason(admin, captureId, sequenceRouteReason('sent'));
+        return 'text_sent';
+      }
+      const code = `${res.code}:${res.transport ?? String(res.sendHttpStatus ?? 'unknown')}:${seen}`;
+      await finalizeText(admin, captureId, 'unconfirmed', code);
+      await setRouteReason(admin, captureId, sequenceRouteReason('unconfirmed'));
+      warnText(captureId, 'unconfirmed', code);
+      return 'unconfirmed';
+    }
+    const retryAfterMs = cls.retryAfterMs;
+    const retryCode: string = res.code;
+
+    // Transient failure.
+    if (opts.trigger === 'reply') {
+      // A reply unlocks ONE send; a transient failure waits for the next genuine reply.
+      await finalizeText(admin, captureId, 'waiting_reply', retryCode);
+      await setRouteReason(admin, captureId, sequenceRouteReason('waiting_reply'));
+      warnText(captureId, 'waiting_reply', retryCode);
+      return 'waiting_reply';
+    }
+    // The backoff is PERSISTED (text_next_at), so no other worker can make the next attempt early.
+    const wait = backoffBeforeNextAttempt(retries, retryAfterMs);
+    const waitSeconds = Math.ceil(wait / 1000);
+    const next = await finalizeText(admin, captureId, 'retry', retryCode, null, waitSeconds);
+    if (next !== 'pending') {
+      if (next === 'waiting_reply') {
+        await setRouteReason(admin, captureId, sequenceRouteReason('waiting_reply'));
+        warnText(captureId, 'waiting_reply', retryCode);
+        return 'waiting_reply';
+      }
+      return 'skipped';
+    }
+    retries += 1;
+    if (
+      wait > MAX_INLINE_TEXT_WAIT_MS ||
+      d.now() + waitSeconds * 1000 + INLINE_ATTEMPT_BUDGET_MS > opts.deadlineAt
+    ) {
+      // Still due: the next every-minute sweep continues from the persisted attempt count.
+      await setRouteReason(admin, captureId, sequenceRouteReason('pending'));
+      return 'deferred';
+    }
+    await d.sleep(waitSeconds * 1000 + 300);
+  }
+}
+
+/** Continue screenshot-first text work that is DUE (never started, a retry whose time has come,
+ *  or a lost claim, which the claim turns into 'unconfirmed'). The list comes from the database,
+ *  oldest due first, so waiting captures can never starve due ones. Before the migration the
+ *  function does not exist and this simply does nothing. */
+async function runDueTextLegs(
+  admin: SupabaseClient,
+  deadlineAt: number,
+): Promise<{ sent: number; considered: number }> {
+  let ids: string[] = [];
+  try {
+    const res = (await admin.rpc('list_due_capture_text_legs', { p_limit: 20 })) as {
+      data: unknown;
+      error: unknown;
+    };
+    if (res.error || !Array.isArray(res.data)) return { sent: 0, considered: 0 };
+    ids = (res.data as unknown[]).filter((v): v is string => typeof v === 'string');
+  } catch {
+    return { sent: 0, considered: 0 };
+  }
+  let sent = 0;
+  for (const id of ids) {
+    if (Date.now() + INLINE_ATTEMPT_BUDGET_MS > deadlineAt) break;
+    const outcome = await runCaptureTextSequence(admin, id, { trigger: 'auto', deadlineAt });
+    if (outcome === 'text_sent') sent += 1;
+  }
+  return { sent, considered: ids.length };
+}
+
 /** Route ONE claimed capture. Returns its outcome for the cron summary (no PII). */
 async function routeOne(
   admin: SupabaseClient,
   activePage: string,
   cap: RouterCapture,
+  ctx: { settings: SequenceSettings | null; deadlineAt: number } = {
+    settings: CLASSIC_SETTINGS,
+    deadlineAt: Date.now() + SEQUENCE_BUDGET_MS,
+  },
 ): Promise<{ outcome: RouteOutcome; reason: string }> {
   const id = cap.id;
   const conversationId = (cap.pancake_conversation_id ?? '').trim();
@@ -187,6 +554,16 @@ async function routeOne(
         await setRouteReason(admin, id, 'AUTO SS pending · screenshot URL unavailable');
         return { outcome: 'awaiting', reason: 'no_signed_url' };
       }
+      // The capture's sequence is fixed (set-once) just before its first send.
+      const mode = await stampSequence(admin, id, ctx.settings);
+      if (mode === null) {
+        await setRouteReason(admin, id, 'AUTO SS pending · retrying shortly');
+        return { outcome: 'awaiting', reason: 'sequence_unavailable' };
+      }
+      if (Date.now() + PHOTO_SEND_BUDGET_MS > ctx.deadlineAt) {
+        // Out of time for a whole screenshot send: nothing claimed; the next sweep sends it.
+        return { outcome: 'awaiting', reason: 'budget' };
+      }
       const claim = (
         await admin.rpc('claim_capture_photo_send', {
           p_capture_id: id,
@@ -194,12 +571,22 @@ async function routeOne(
         })
       ).data as string;
       if (claim === 'already_sent') {
+        if (mode === 'screenshot_first') {
+          // The screenshot is out; make sure its text leg continues (idempotent claim).
+          const t = await runCaptureTextSequence(admin, id, {
+            trigger: 'auto',
+            deadlineAt: ctx.deadlineAt,
+          });
+          if (t === 'already_sent') await setRouteReason(admin, id, sequenceRouteReason('sent'));
+          return { outcome: 'already_sent', reason: `already_sent:${t}` };
+        }
         await setRouteReason(admin, id, 'AUTO SS Sent to Messenger ✓');
         return { outcome: 'already_sent', reason: 'already_sent' };
       }
       if (claim !== 'claimed')
         return { outcome: 'in_progress', reason: 'photo_in_progress' };
 
+      // SCREENSHOT FIRST: the image goes alone (content_ids, never with text).
       const res = await sendPancakeConversationMessage({
         conversationId: convForPhoto,
         message: '',
@@ -211,6 +598,17 @@ async function routeOne(
         p_pancake_message_id: res.pancakeMessageId,
         p_conversation_id: convForPhoto,
       });
+      if (res.ok && mode === 'screenshot_first') {
+        // THEN the computation text, as its own request, only after the screenshot succeeded.
+        await setRouteReason(admin, id, sequenceRouteReason('pending'));
+        const t = await runCaptureTextSequence(admin, id, {
+          trigger: 'auto',
+          deadlineAt: ctx.deadlineAt,
+        });
+        return { outcome: 'photo_sent', reason: `photo_sent:${t}` };
+      }
+      // A screenshot failure never falls through to text: the existing finite 'failed' state
+      // (reviewable, with Retry) applies in both sequences.
       await setRouteReason(
         admin,
         id,
@@ -233,6 +631,13 @@ async function routeOne(
     await setRouteReason(admin, id, 'AUTO TEXT pending · awaiting comment context');
     return { outcome: 'awaiting', reason: 'no_identity' };
   }
+  // Comment-only customer: a screenshot cannot go first (Pancake rejects a screenshot Private
+  // Reply), so the Owner-approved path is the ONE Private Reply computation text.
+  const mode = await stampSequence(admin, id, ctx.settings);
+  if (mode === null) {
+    await setRouteReason(admin, id, 'AUTO TEXT pending · retrying shortly');
+    return { outcome: 'awaiting', reason: 'sequence_unavailable' };
+  }
   const rb = await attemptSecureLinkPrivateReply({
     supabase: admin,
     captureRecordId: id,
@@ -246,7 +651,14 @@ async function routeOne(
       p_capture_id: id,
       p_status: 'link_sent',
     });
-    await setRouteReason(admin, id, 'AUTO TEXT Sent to Messenger ✓');
+    if (mode === 'screenshot_first') {
+      // That Private Reply IS the computation text: record it so it is never sent again after
+      // the screenshot follows the customer's reply.
+      await admin.rpc('mark_capture_text_sent_by_private_reply', { p_capture_id: id });
+      await setRouteReason(admin, id, sequenceRouteReason('private_reply_sent'));
+    } else {
+      await setRouteReason(admin, id, 'AUTO TEXT Sent to Messenger ✓');
+    }
     return {
       outcome: rb.code === 'already_sent' ? 'already_sent' : 'text_sent',
       reason: rb.code,
@@ -278,7 +690,10 @@ export type AutoRouteSummary = {
  * Service-role; safe to run concurrently (DB claims prevent double-processing). Returns a PII-free
  * summary for the cron log.
  */
-export async function routePendingCapturesSystem(limit = 15): Promise<AutoRouteSummary> {
+export async function routePendingCapturesSystem(
+  limit = 15,
+  opts: { deadlineAt?: number } = {},
+): Promise<AutoRouteSummary> {
   const admin = createAdminClient();
 
   // P0-A cheap short-circuit (Owner 2026-08-26): thousands of Live-comment webhooks/day trigger this
@@ -298,6 +713,9 @@ export async function routePendingCapturesSystem(limit = 15): Promise<AutoRouteS
   }
 
   const activePage = await getActivePancakePageId();
+  // The messaging sequence is read ONCE per sweep; each capture stamps it set-once at its first send.
+  const settings = await readMessageSequenceSettings(admin);
+  const deadlineAt = opts.deadlineAt ?? Date.now() + SEQUENCE_BUDGET_MS;
   const claimRes = (await admin.rpc('claim_captures_to_route', { p_limit: limit })) as {
     data: RouterCapture[] | null;
   };
@@ -307,8 +725,13 @@ export async function routePendingCapturesSystem(limit = 15): Promise<AutoRouteS
   for (const cap of caps) {
     let outcome: RouteOutcome = 'skipped';
     let reason = 'exception';
+    if (Date.now() + INLINE_ATTEMPT_BUDGET_MS > deadlineAt) {
+      // Out of time: it stays claimable with its backoff and the next sweep routes it.
+      outcomes.deferred_budget = (outcomes.deferred_budget ?? 0) + 1;
+      continue;
+    }
     try {
-      ({ outcome, reason } = await routeOne(admin, activePage, cap));
+      ({ outcome, reason } = await routeOne(admin, activePage, cap, { settings, deadlineAt }));
     } catch {
       outcome = 'skipped';
     }
@@ -359,12 +782,22 @@ export async function routePendingCapturesSystem(limit = 15): Promise<AutoRouteS
     ];
     for (const c of convs) {
       try {
-        const r = await reactivatePhotoForConversationSystem(c);
+        if (Date.now() + INLINE_ATTEMPT_BUDGET_MS > deadlineAt) break;
+        const r = await reactivatePhotoForConversationSystem(c, { deadlineAt });
         reactivated += r.sent;
       } catch {
         /* best-effort per conversation */
       }
     }
+  } catch {
+    /* best-effort — never breaks the main sweep */
+  }
+
+  // Screenshot-first text work still due (deferred retries, lost claims, and the missed-reply
+  // fallback). Best-effort and bounded by the sweep's time budget.
+  let textLegs = { sent: 0, considered: 0 };
+  try {
+    textLegs = await runDueTextLegs(admin, deadlineAt);
   } catch {
     /* best-effort — never breaks the main sweep */
   }
@@ -377,7 +810,11 @@ export async function routePendingCapturesSystem(limit = 15): Promise<AutoRouteS
     ok: true,
     claimed: caps.length,
     exhausted: typeof exhausted === 'number' ? exhausted : 0,
-    outcomes: { ...outcomes, reactivated_photos: reactivated },
+    outcomes: {
+      ...outcomes,
+      reactivated_photos: reactivated,
+      ...(textLegs.considered > 0 ? { due_text_sent: textLegs.sent } : {}),
+    },
   };
 }
 
@@ -397,6 +834,7 @@ export async function routePendingCapturesSystem(limit = 15): Promise<AutoRouteS
  */
 export async function reactivatePhotoForConversationSystem(
   conversationId: string,
+  opts: { deadlineAt?: number } = {},
 ): Promise<{ eligible: boolean; sent: number; considered: number }> {
   const conv = (conversationId ?? '').trim();
   if (!conv) return { eligible: false, sent: 0, considered: 0 };
@@ -439,6 +877,10 @@ export async function reactivatePhotoForConversationSystem(
     )
     .slice(0, 10);
 
+  const settings = caps.length > 0 ? await readMessageSequenceSettings(admin) : CLASSIC_SETTINGS;
+  // Settings unreadable right now: send nothing; the cron fallback / next reply retries.
+  if (!settings) return { eligible: true, sent: 0, considered: caps.length };
+  const deadlineAt = opts.deadlineAt ?? Date.now() + SEQUENCE_BUDGET_MS;
   let sent = 0;
   for (const cap of caps) {
     const path = (cap.screenshot_path ?? '').trim();
@@ -448,6 +890,10 @@ export async function reactivatePhotoForConversationSystem(
       .createSignedUrl(path, 600)) as { data: { signedUrl?: string } | null };
     const url = signed.data?.signedUrl ?? null;
     if (!url) continue;
+    // Set-once: a capture that already started (e.g. its Private Reply) keeps its sequence.
+    if (Date.now() + PHOTO_SEND_BUDGET_MS > deadlineAt) break;
+    const mode = await stampSequence(admin, cap.id, settings);
+    if (mode === null) continue;
     // Atomic one-photo-per-capture claim (link_sent → sending); already_sent / in_progress → skip.
     const claim = (
       await admin.rpc('claim_capture_photo_send', {
@@ -467,6 +913,15 @@ export async function reactivatePhotoForConversationSystem(
       p_pancake_message_id: res.pancakeMessageId,
       p_conversation_id: conv,
     });
+    if (res.ok && mode === 'screenshot_first') {
+      // Screenshot sent. A comment-only customer already has the computation (its Private Reply,
+      // claim → already_sent); otherwise the text follows now as its own request.
+      await setRouteReason(admin, cap.id, sequenceRouteReason('pending'));
+      const t = await runCaptureTextSequence(admin, cap.id, { trigger: 'auto', deadlineAt });
+      if (t === 'already_sent') await setRouteReason(admin, cap.id, sequenceRouteReason('sent'));
+      sent += 1;
+      continue;
+    }
     // The AUTO TEXT history stays in capture_share_links + audit_events; the row's live status now
     // reflects the PHOTO. A failed photo leaves it reviewable and Send stays enabled as the fallback.
     await admin.rpc('set_capture_route_reason', {
@@ -484,4 +939,150 @@ export async function reactivatePhotoForConversationSystem(
     captureDebugLog('[capture-reactivate]', summary);
   }
   return { eligible: true, sent, considered: caps.length };
+}
+
+/**
+ * GENUINE CUSTOMER REPLY → send the waiting computation TEXT once (Owner 2026-09-24). Called by
+ * the Pancake webhook only for a NEWLY stored event that passes the genuine-Inbox-DM gate (never
+ * a Page echo, staff message, comment, reaction or system event), so a replayed webhook cannot
+ * trigger it. Matches the EXACT conversation (or its PSID), never a name. Each capture is claimed
+ * atomically, so this, the cron fallback and a duplicate webhook can never double-send.
+ */
+export async function resumeTextForConversationSystem(
+  conversationId: string,
+  opts: { deadlineAt?: number } = {},
+): Promise<{ sent: number; considered: number }> {
+  const conv = (conversationId ?? '').trim();
+  if (!conv) return { sent: 0, considered: 0 };
+  const admin = createAdminClient();
+  const activePage = await getActivePancakePageId();
+  if (!conversationBelongsToPage(conv, activePage)) return { sent: 0, considered: 0 };
+
+  // Filter by THIS customer in the database (the stored id, or any id ending in their PSID),
+  // so another customer's waiting captures can never crowd theirs out of the result.
+  const psid = psidFromConversationId(conv);
+  let rows: Array<{ id: string; pancake_conversation_id: string | null }> = [];
+  try {
+    const base = admin
+      .from('capture_records')
+      .select('id, pancake_conversation_id')
+      .eq('source', 'floating')
+      .eq('is_test', false)
+      .is('official_order_id', null)
+      .is('confirmed', null)
+      .eq('message_sequence', 'screenshot_first')
+      .eq('text_send_status', 'waiting_reply');
+    const scoped = psid
+      ? base.like('pancake_conversation_id', `%${psid}`)
+      : base.eq('pancake_conversation_id', conv);
+    const { data, error } = await scoped
+      .gt('created_at', new Date(Date.now() - 3 * 86400_000).toISOString())
+      .order('captured_at', { ascending: false })
+      .limit(20);
+    if (error) return { sent: 0, considered: 0 };
+    rows = data ?? [];
+  } catch {
+    return { sent: 0, considered: 0 };
+  }
+
+  // Exact identity only (the database filter is a suffix match; this confirms the PSID).
+  const mine = rows.filter(
+    (r) =>
+      r.pancake_conversation_id === conv ||
+      (psid !== null && psidFromConversationId(r.pancake_conversation_id) === psid),
+  );
+
+  const deadlineAt = opts.deadlineAt ?? Date.now() + SEQUENCE_BUDGET_MS;
+  let sent = 0;
+  for (const r of mine) {
+    if (Date.now() + INLINE_ATTEMPT_BUDGET_MS > deadlineAt) break;
+    const t = await runCaptureTextSequence(admin, r.id, { trigger: 'reply', deadlineAt });
+    if (t === 'text_sent') sent += 1;
+  }
+  if (sent > 0) {
+    console.info('[capture-text-resume] sent', JSON.stringify({ conv_tail: conv.slice(-4), sent }));
+  } else {
+    captureDebugLog('[capture-text-resume]', { conv_tail: conv.slice(-4), considered: mine.length });
+  }
+  return { sent, considered: mine.length };
+}
+
+/**
+ * MISSED-REPLY FALLBACK (every minute, from the cron route only — never per Live comment). The
+ * webhook normally resumes a waiting text the instant the customer replies; if that webhook was
+ * missed, this finds waiting captures whose customer HAS genuinely replied SINCE the wait began
+ * (one batched events query) and sends each text once. Before the migration it does nothing.
+ */
+export async function runWaitingTextReplyFallbackSystem(
+  opts: { deadlineAt?: number } = {},
+): Promise<{ sent: number; considered: number }> {
+  const admin = createAdminClient();
+  const deadlineAt = opts.deadlineAt ?? Date.now() + SEQUENCE_BUDGET_MS;
+  if (Date.now() + INLINE_ATTEMPT_BUDGET_MS > deadlineAt) return { sent: 0, considered: 0 };
+  let items: Array<{ id: string; pancake_conversation_id: string; text_waiting_since: string }> = [];
+  try {
+    const res = (await admin.rpc('list_waiting_capture_texts', { p_limit: 100 })) as {
+      data: unknown;
+      error: unknown;
+    };
+    if (res.error || !Array.isArray(res.data)) return { sent: 0, considered: 0 };
+    items = (res.data as Array<Record<string, unknown>>)
+      .map((r) => ({
+        id: typeof r.id === 'string' ? r.id : '',
+        pancake_conversation_id:
+          typeof r.pancake_conversation_id === 'string' ? r.pancake_conversation_id : '',
+        text_waiting_since: typeof r.text_waiting_since === 'string' ? r.text_waiting_since : '',
+      }))
+      .filter((r) => r.id && r.pancake_conversation_id && r.text_waiting_since);
+  } catch {
+    return { sent: 0, considered: 0 };
+  }
+  if (items.length === 0) return { sent: 0, considered: 0 };
+
+  const replied = await genuineInboxDmSinceBatch(
+    admin,
+    items.map((i) => ({
+      key: i.id,
+      conversationId: i.pancake_conversation_id,
+      sinceIso: i.text_waiting_since,
+    })),
+  );
+  let sent = 0;
+  for (const it of items) {
+    if (!replied.has(it.id)) continue;
+    if (Date.now() + INLINE_ATTEMPT_BUDGET_MS > deadlineAt) break;
+    const t = await runCaptureTextSequence(admin, it.id, { trigger: 'reply', deadlineAt });
+    if (t === 'text_sent') sent += 1;
+  }
+  return { sent, considered: items.length };
+}
+
+/* Entry points for the MANUAL PC Send (pc-send.ts runs under the operator's session; these use
+ * the service-role client, like the rest of this sanctioned module). */
+
+/** Stamp the capture's sequence set-once from the current settings; 'classic' if unavailable. */
+export async function stampCaptureSequenceSystem(captureId: string): Promise<MessageSequence | null> {
+  const admin = createAdminClient();
+  const settings = await readMessageSequenceSettings(admin);
+  return stampSequence(admin, captureId, settings);
+}
+
+/** A manual Private Reply delivered the computation text: record it as the text. */
+export async function markTextSentByPrivateReplySystem(captureId: string): Promise<void> {
+  const admin = createAdminClient();
+  await admin.rpc('mark_capture_text_sent_by_private_reply', { p_capture_id: captureId });
+  await setRouteReason(admin, captureId, sequenceRouteReason('private_reply_sent'));
+}
+
+/** After a manual screenshot send: run the text leg (bounded by the sequence time budget). */
+export async function runCaptureTextSequenceSystem(
+  captureId: string,
+): Promise<TextSequenceOutcome> {
+  const admin = createAdminClient();
+  const t = await runCaptureTextSequence(admin, captureId, {
+    trigger: 'auto',
+    deadlineAt: Date.now() + SEQUENCE_BUDGET_MS,
+  });
+  if (t === 'already_sent') await setRouteReason(admin, captureId, sequenceRouteReason('sent'));
+  return t;
 }

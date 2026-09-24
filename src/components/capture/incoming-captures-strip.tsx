@@ -24,6 +24,7 @@ import {
   type EffectiveCaptureLink,
 } from '@/components/capture/capture-link-panel';
 import { CaptureSendControl } from '@/components/capture/capture-send-control';
+import { sequenceStatusLines } from '@/lib/capture/message-sequence';
 import { sanitizeCaptureName } from '@/lib/capture/name-sanitize';
 import {
   NewOrderModal,
@@ -260,6 +261,18 @@ export function IncomingCapturesStrip({
             (typeof raw.route_reason === 'string' && raw.route_reason.trim()
               ? raw.route_reason
               : prev?.routeReason) ?? null,
+          messageSequence:
+            (typeof raw.message_sequence === 'string'
+              ? raw.message_sequence
+              : prev?.messageSequence) ?? null,
+          // A realtime row carries the column even when it is null (text not started yet), so an
+          // explicit null must replace an older value rather than fall back to it.
+          textSendStatus:
+            'text_send_status' in raw
+              ? typeof raw.text_send_status === 'string'
+                ? raw.text_send_status
+                : null
+              : (prev?.textSendStatus ?? null),
         };
         return prev
           ? cur.map((r) => (r.captureRecordId === id ? row : r))
@@ -934,8 +947,17 @@ export function IncomingCapturesStrip({
                         comment context / sending / backoff) are never shown — only the finite success
                         states, plus transient operator notes (Saved ✓ / Printed ✓). */}
                     {(() => {
-                      const autoStatus =
-                        r.messageStatus === 'sent'
+                      // Screenshot-first captures show their two-step state compactly (Owner
+                      // 2026-09-24): "Screenshot sent ✓" + "Computation sent ✓" / "Sending
+                      // computation…" / "Waiting for customer reply". Never a raw API error.
+                      const sequence = sequenceStatusLines(
+                        r.messageSequence,
+                        r.messageStatus,
+                        r.textSendStatus,
+                      );
+                      const autoStatus = sequence
+                        ? null
+                        : r.messageStatus === 'sent'
                           ? 'AUTO SS Sent to Messenger ✓'
                           : r.messageStatus === 'link_sent'
                             ? 'AUTO TEXT Sent to Messenger ✓'
@@ -944,12 +966,26 @@ export function IncomingCapturesStrip({
                       // Issue 1) — never a silent stall. Not for a Test capture (never messages).
                       const autoFailed = r.messageStatus === 'failed' && !r.isTest;
                       const note = notes[r.captureRecordId] ?? null;
-                      if (!autoStatus && !note && !autoFailed) return null;
+                      if (!sequence && !autoStatus && !note && !autoFailed) return null;
                       return (
                         <div
                           className="mt-1 flex flex-col gap-0.5"
                           data-testid={`incoming-msgstatus-${r.captureRecordId}`}
                         >
+                          {sequence ? (
+                            <span
+                              className={`text-[11px] font-semibold ${
+                                sequence.tone === 'ok'
+                                  ? 'text-emerald-600'
+                                  : sequence.tone === 'warn'
+                                    ? 'text-amber-700'
+                                    : 'text-sky-600'
+                              }`}
+                              data-testid={`incoming-sequence-${r.captureRecordId}`}
+                            >
+                              {sequence.lines.join(' · ')}
+                            </span>
+                          ) : null}
                           {autoStatus ? (
                             <span className="text-[11px] font-semibold text-emerald-600">
                               {autoStatus}

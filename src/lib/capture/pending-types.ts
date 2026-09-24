@@ -99,4 +99,10 @@ export type PendingCaptureRow = {
   /** Durable auto-router's last human-safe finite reason (e.g. "AUTO TEXT Sent to Messenger ✓",
    *  "AUTO TEXT Failed · awaiting comment context"). Null until the server router has run. */
   routeReason: string | null;
+  /** The capture's messaging sequence, fixed at its first send ('screenshot_first' / 'classic'),
+   *  or null for a capture that has not started messaging (or predates the setting). */
+  messageSequence?: string | null;
+  /** Screenshot-first computation text state (pending / sending / sent / waiting_reply / failed /
+   *  unconfirmed), or null. */
+  textSendStatus?: string | null;
 };

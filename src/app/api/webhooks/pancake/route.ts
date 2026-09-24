@@ -2,6 +2,7 @@ import { after, NextResponse } from 'next/server';
 
 import {
   reactivatePhotoForConversationSystem,
+  resumeTextForConversationSystem,
   routePendingCapturesSystem,
 } from '@/lib/capture/auto-router';
 import { isGenuineInboxDmEvent } from '@/lib/capture/media-window';
@@ -13,6 +14,9 @@ import {
 } from '@/lib/integrations/pancake-webhook';
 
 export const dynamic = 'force-dynamic';
+// The after() follow-up shares ONE 50s deadline across routing, reactivation and the text resume,
+// so the function limit is set explicitly (like the capture cron) rather than left to a default.
+export const maxDuration = 60;
 
 /**
  * Pancake webhook — PRODUCTION endpoint, MILESTONE 1: receive Facebook Live comments.
@@ -115,9 +119,11 @@ export async function POST(request: Request): Promise<Response> {
   // after() attempt, and the cron can never double-send.
   if (res.stored) {
     after(async () => {
+      // ONE deadline shared by every step below, so no step starts a send it cannot finish.
+      const deadlineAt = Date.now() + 50_000;
       try {
         // A new comment → Route B for AUTO-TEXT-not-yet-sent captures (existing behavior).
-        await routePendingCapturesSystem();
+        await routePendingCapturesSystem(15, { deadlineAt });
         // A genuine customer INBOX reply → REACTIVATE that exact conversation's waiting captures for
         // Route A (the actual screenshot PHOTO). Gated on the genuine-inbox-DM predicate (Owner
         // 2026-08-26, P0): only a real reply opens the media window, so a mere Live comment never needs
@@ -125,7 +131,10 @@ export async function POST(request: Request): Promise<Response> {
         // reactivates IMMEDIATELY; a missed one is still recovered by the broad sweep's link_sent
         // fallback + the cron. One PHOTO per capture stays guaranteed by the atomic photo claim.
         if (live.conversationId && isGenuineInboxDmEvent(body, live.facebookPsid ?? '')) {
-          await reactivatePhotoForConversationSystem(live.conversationId);
+          await reactivatePhotoForConversationSystem(live.conversationId, { deadlineAt });
+          // Screenshot-first (Owner 2026-09-24): the same genuine reply unlocks ONE send of a
+          // computation text that was waiting for it. Atomic per capture — never a duplicate.
+          await resumeTextForConversationSystem(live.conversationId, { deadlineAt });
         }
       } catch {
         /* best-effort — the every-minute cron is the durable recovery fallback */

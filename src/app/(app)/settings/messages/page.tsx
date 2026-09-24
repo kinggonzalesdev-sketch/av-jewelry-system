@@ -2,9 +2,11 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 
+import { MessageSequenceCard } from '@/components/settings/message-sequence-card';
 import { MessageTemplatesPanel } from '@/components/settings/message-templates-panel';
 import { PageHeader } from '@/components/ui/page-primitives';
 import { canOpenPage, isPrimarySuperAdmin, requireActiveStaff } from '@/lib/authz/guard';
+import { getMessagingSequenceSettings } from '@/lib/messaging/sequence-settings';
 import { listMessageTemplates } from '@/lib/messaging/templates';
 
 export const metadata: Metadata = {};
@@ -27,7 +29,10 @@ export default async function MessageTemplatesPage() {
   // Referenced so the primary check stays available for future primary-only bits.
   await isPrimarySuperAdmin();
 
-  const templates = await listMessageTemplates();
+  const [templates, sequence] = await Promise.all([
+    listMessageTemplates(),
+    getMessagingSequenceSettings(),
+  ]);
 
   return (
     <div className="space-y-4">
@@ -38,6 +43,8 @@ export default async function MessageTemplatesPage() {
       >
         ← Back to Settings
       </Link>
+      {/* Live Selling / Messaging — the Private Reply Sequence (Owner 2026-09-24). */}
+      <MessageSequenceCard initial={sequence} />
       <MessageTemplatesPanel templates={templates} />
     </div>
   );

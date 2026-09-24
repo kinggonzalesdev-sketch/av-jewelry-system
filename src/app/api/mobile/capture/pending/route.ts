@@ -5,6 +5,9 @@ import { createPendingCapture } from '@/lib/capture/service';
 import { authenticateMobile } from '@/lib/mobile/auth';
 
 export const dynamic = 'force-dynamic';
+// The after() sweep can now include a screenshot-first text leg (bounded to 40s), so the function
+// limit is explicit rather than a platform default that could cut a send off mid-request.
+export const maxDuration = 60;
 
 /**
  * POST /api/mobile/capture/pending — the floating screenshot uploads a PENDING

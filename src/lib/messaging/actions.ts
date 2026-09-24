@@ -11,6 +11,20 @@ import {
   type TemplateMutationResult,
 } from '@/lib/messaging/templates';
 import type { TemplateKey } from '@/lib/messaging/template-vars';
+import {
+  saveMessagingSequenceSettings,
+  type SaveMessagingSequenceResult,
+} from '@/lib/messaging/sequence-settings';
+
+/** Settings → Live Selling / Messaging. Super Admin gated in the domain module AND the database. */
+export async function saveMessagingSequenceAction(input: {
+  mode: string;
+  attempts: number;
+}): Promise<SaveMessagingSequenceResult> {
+  const result = await saveMessagingSequenceSettings(input);
+  if (result.ok) revalidatePath('/settings/messages');
+  return result;
+}
 
 /**
  * Message-template actions (transport only). Every one is Super Admin gated in the

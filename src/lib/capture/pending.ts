@@ -82,16 +82,22 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
   await requirePermission('claim_capture');
   const supabase = await createClient();
 
-  const { data, error } = await supabase
-    .from('capture_records')
-    .select(
-      'id, captured_at, screenshot_path, ocr, is_test, link_status, customer_id, pancake_conversation_id, message_status, route_reason, canonical_grams, customers ( display_name, facebook_conversation_url )',
-    )
-    .eq('source', 'floating')
-    .is('official_order_id', null)
-    .is('confirmed', null)
-    .order('captured_at', { ascending: false })
-    .limit(50);
+  const BASE_COLUMNS =
+    'id, captured_at, screenshot_path, ocr, is_test, link_status, customer_id, pancake_conversation_id, message_status, route_reason, canonical_grams, customers ( display_name, facebook_conversation_url )';
+  const readRows = (columns: string) =>
+    supabase
+      .from('capture_records')
+      .select(columns)
+      .eq('source', 'floating')
+      .is('official_order_id', null)
+      .is('confirmed', null)
+      .order('captured_at', { ascending: false })
+      .limit(50);
+
+  // The screenshot-first sequence columns (migration 20260924120000). If they are not there yet,
+  // read exactly the columns this list always read, so Incoming Captures never breaks.
+  let { data, error } = await readRows(`${BASE_COLUMNS}, message_sequence, text_send_status`);
+  if (error) ({ data, error } = await readRows(BASE_COLUMNS));
 
   if (error || !data) return [];
 
@@ -99,7 +105,7 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
     display_name?: string | null;
     facebook_conversation_url?: string | null;
   };
-  const rows = data as Array<{
+  const rows = data as unknown as Array<{
     id: string;
     captured_at: string;
     screenshot_path: string | null;
@@ -111,6 +117,8 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
     message_status: string | null;
     route_reason: string | null;
     canonical_grams: string | null;
+    message_sequence?: string | null;
+    text_send_status?: string | null;
     customers: CustJoin | CustJoin[] | null;
   }>;
 
@@ -178,6 +186,8 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
       fbUrl: (cust?.facebook_conversation_url ?? '').trim() || null,
       messageStatus: r.message_status ?? null,
       routeReason: (r.route_reason ?? '').trim() || null,
+      messageSequence: r.message_sequence ?? null,
+      textSendStatus: r.text_send_status ?? null,
     };
   });
 }

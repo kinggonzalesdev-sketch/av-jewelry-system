@@ -1,6 +1,14 @@
 import 'server-only';
 
+import { after } from 'next/server';
+
 import { recordAuditEvent } from '@/lib/audit/log';
+import {
+  markTextSentByPrivateReplySystem,
+  runCaptureTextSequenceSystem,
+  stampCaptureSequenceSystem,
+} from '@/lib/capture/auto-router';
+import type { MessageSequence } from '@/lib/capture/message-sequence';
 import { requirePermission } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
 import { isConversationMediaEligible } from '@/lib/capture/media-window';
@@ -48,6 +56,32 @@ function ocrStr(ocr: unknown, ...keys: string[]): string | null {
     if (typeof v === 'string' && v.trim()) return v.trim();
   }
   return null;
+}
+
+/** The capture's messaging sequence, fixed set-once at its first send; null when it cannot be
+ *  determined right now (the Send then stops and asks the operator to click again). */
+async function stampSequenceSafely(captureId: string): Promise<MessageSequence | null> {
+  try {
+    return await stampCaptureSequenceSystem(captureId);
+  } catch {
+    return 'classic';
+  }
+}
+
+/** Run the screenshot-first text leg AFTER the response (the operator is not kept waiting).
+ *  Outside a request scope the every-minute sweep continues it instead. */
+function scheduleTextLeg(captureId: string): void {
+  try {
+    after(async () => {
+      try {
+        await runCaptureTextSequenceSystem(captureId);
+      } catch {
+        /* the every-minute sweep continues any text still due */
+      }
+    });
+  } catch {
+    /* no request scope — the every-minute sweep continues any text still due */
+  }
 }
 
 export type SendCaptureToMessengerResult =
@@ -168,6 +202,17 @@ export async function sendPendingCaptureToMessenger(
   // customer-initiated inbox interaction ("Photo ready"). Otherwise park 'awaiting_inbox' and send
   // NOTHING ("Photo waiting" → Open FB Chat). BOTH auto and manual pass requireMediaWindow:true, so
   // neither fires a doomed send / "Pancake rejected" for a known-ineligible customer.
+  // The capture's messaging sequence is fixed (set-once) at its first send. If it cannot be
+  // read right now, send NOTHING and say so (fail fast, loud; the operator clicks again).
+  const mode = await stampSequenceSafely(id);
+  if (mode === null) {
+    return {
+      ok: false,
+      code: 'sequence_unavailable',
+      error: 'Could not read the messaging setting just now. Nothing was sent — please click Send again.',
+    };
+  }
+
   if (opts?.requireMediaWindow) {
     const eligible = await isConversationMediaEligible(supabase, conversationId);
     if (!eligible) {
@@ -187,6 +232,10 @@ export async function sendPendingCaptureToMessenger(
           p_capture_id: id,
           p_status: 'link_sent',
         });
+        if (mode === 'screenshot_first') {
+          // The Private Reply IS the computation text: record it so it is never sent again.
+          await markTextSentByPrivateReplySystem(id).catch(() => undefined);
+        }
         return {
           ok: true,
           code: rb.code === 'already_sent' ? 'already_sent' : 'sent',
@@ -255,6 +304,10 @@ export async function sendPendingCaptureToMessenger(
       context: { stage: 'INBOX_PHOTO', code: result.code, conversationId, hadAttachment: true, debug },
     }).catch(() => undefined);
     return { ok: false, code: result.code, error: result.message };
+  }
+  if (mode === 'screenshot_first') {
+    // Screenshot sent FIRST; the computation text follows as its own request.
+    scheduleTextLeg(id);
   }
   return { ok: true, code: 'sent', message: 'Sent to Messenger ✓' };
 }

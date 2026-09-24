@@ -461,7 +461,50 @@ export type PancakeSendResult = {
   sendHttpStatus?: number | null;
   sendSuccess?: boolean;
   sendMessageCode?: string | null;
+  /** When the request itself threw: 'network' = it never reached Pancake (safe to retry);
+   *  'timeout' / 'unknown' = it may have reached Pancake (ambiguous — never blindly re-sent). */
+  transport?: 'network' | 'timeout' | 'unknown';
+  /** Pancake's authoritative Retry-After (seconds) on a rejected send, when present. */
+  retryAfterSeconds?: number | null;
 };
+
+/**
+ * How a thrown `fetch` failed. Only a failure that provably happened BEFORE the request reached
+ * Pancake (DNS, refused or unreachable connection, connect timeout) is 'network'. A request
+ * timeout or any other error is 'timeout'/'unknown': Pancake may already have accepted it.
+ */
+export function fetchFailureTransport(err: unknown): 'network' | 'timeout' | 'unknown' {
+  const e = (err && typeof err === 'object' ? err : {}) as {
+    name?: unknown;
+    cause?: { code?: unknown } | null;
+  };
+  const name = typeof e.name === 'string' ? e.name : '';
+  if (name === 'TimeoutError' || name === 'AbortError') return 'timeout';
+  const code = typeof e.cause?.code === 'string' ? e.cause.code : '';
+  if (
+    [
+      'ENOTFOUND',
+      'EAI_AGAIN',
+      'ECONNREFUSED',
+      'ENETUNREACH',
+      'EHOSTUNREACH',
+      'UND_ERR_CONNECT_TIMEOUT',
+    ].includes(code)
+  ) {
+    return 'network';
+  }
+  return 'unknown';
+}
+
+/** Parse an HTTP Retry-After header (delta-seconds or an HTTP date) into seconds, or null. */
+export function parseRetryAfterSeconds(header: string | null, nowMs = Date.now()): number | null {
+  const v = (header ?? '').trim();
+  if (!v) return null;
+  if (/^[0-9]+$/.test(v)) return Number(v);
+  const at = Date.parse(v);
+  if (!Number.isFinite(at)) return null;
+  return Math.max(0, Math.ceil((at - nowMs) / 1000));
+}
 
 /** Pull a message id out of Pancake's response without assuming one exact shape. */
 function extractMessageId(body: unknown): string | null {
@@ -791,7 +834,7 @@ export async function sendPancakeConversationMessage(input: {
       body: form.toString(),
       signal: AbortSignal.timeout(10000),
     });
-  } catch {
+  } catch (err) {
     return {
       ok: false,
       code: 'unavailable',
@@ -799,6 +842,7 @@ export async function sendPancakeConversationMessage(input: {
       pancakeMessageId: null,
       ...(uploadDiagnostics ? { uploadDiagnostics } : {}),
       ...(sentForm ? { sentForm } : {}),
+      transport: fetchFailureTransport(err),
     };
   }
 
@@ -863,6 +907,7 @@ export async function sendPancakeConversationMessage(input: {
       sendHttpStatus: res.status,
       sendSuccess: false,
       sendMessageCode,
+      retryAfterSeconds: parseRetryAfterSeconds(res.headers.get('retry-after')),
     };
   }
 
@@ -1092,6 +1137,80 @@ export async function getPancakeConversationMessages(
     return { ok: true, messages };
   } catch {
     return { ok: false, message: 'Pancake API is unavailable right now.' };
+  }
+}
+
+/**
+ * After an AMBIGUOUS text send (a timeout — Pancake may have accepted it), look for that exact
+ * text among the conversation's recent messages before deciding anything. Server-only, no user
+ * session (the durable router / reply follow-up); the token never leaves the server.
+ * Returns 'found' only on an exact (whitespace-normalised) text match; 'not_found' when the
+ * list was read and holds no such message; 'unknown' when it could not be read. Callers treat
+ * anything but 'found' as NOT confirmed and never re-send automatically.
+ */
+export async function findConversationMessageByText(
+  conversationId: string,
+  text: string,
+  /** Only a message at or after this instant counts (an identical EARLIER computation to the
+   *  same customer must never confirm this attempt). */
+  sinceMs?: number,
+): Promise<'found' | 'not_found' | 'unknown'> {
+  const pageToken = process.env.PANCAKE_PAGE_ACCESS_TOKEN;
+  const token = pageToken || process.env.PANCAKE_USER_ACCESS_TOKEN;
+  const tokenParam =
+    process.env.PANCAKE_SEND_TOKEN_PARAM ||
+    (pageToken ? 'page_access_token' : 'access_token');
+  const convId = (conversationId ?? '').trim();
+  const norm = (v: string) => v.split(/[ \t\r\n]+/).filter(Boolean).join(' ').trim();
+  const target = norm(text ?? '');
+  if (!token?.trim() || !convId || !target) return 'unknown';
+  const pageId = await getActivePancakePageId();
+  if (!pageId) return 'unknown';
+
+  const base = resolvePancakeApiBase();
+  const template =
+    process.env.PANCAKE_MESSAGES_PATH ||
+    '/pages/{page_id}/conversations/{conversation_id}/messages';
+  const path = template
+    .replace('{page_id}', encodeURIComponent(pageId.trim()))
+    .replace('{conversation_id}', encodeURIComponent(convId));
+  try {
+    const endpoint = `${base}${path}${path.includes('?') ? '&' : '?'}${tokenParam}=${encodeURIComponent(token.trim())}`;
+    const res = await fetch(endpoint, { cache: 'no-store', signal: AbortSignal.timeout(10000) });
+    if (!res.ok) return 'unknown';
+    const body = (await res.json().catch(() => null)) as unknown;
+    const root = body && typeof body === 'object' ? (body as Record<string, unknown>) : null;
+    const list: unknown[] = Array.isArray(body)
+      ? (body as unknown[])
+      : (Array.isArray(root?.messages) && (root.messages as unknown[])) ||
+        (Array.isArray(root?.data) && (root.data as unknown[])) ||
+        [];
+    if (!Array.isArray(list)) return 'unknown';
+    // A small allowance for clock differences between this server and Pancake. Kept tight so an
+    // identical computation sent to the same customer moments earlier cannot confirm this one.
+    const floor = typeof sinceMs === 'number' ? sinceMs - 10_000 : null;
+    let untimedMatch = false;
+    for (const m of list) {
+      if (!m || typeof m !== 'object') continue;
+      const r = m as Record<string, unknown>;
+      const texts = [r.original_message, r.message, r.text, r.content]
+        .map((v) => asConvText(v))
+        .filter((v): v is string => Boolean(v));
+      if (!texts.some((t) => norm(t) === target)) continue;
+      if (floor === null) return 'found';
+      const atRaw =
+        asConvText(r.inserted_at) ?? asConvText(r.created_at) ?? asConvText(r.updated_at);
+      const at = atRaw ? Date.parse(atRaw) : NaN;
+      if (Number.isFinite(at)) {
+        if (at >= floor) return 'found';
+        continue; // an identical, OLDER message — not this attempt
+      }
+      untimedMatch = true;
+    }
+    // A matching message we cannot date proves nothing either way.
+    return untimedMatch ? 'unknown' : 'not_found';
+  } catch {
+    return 'unknown';
   }
 }
 

@@ -117,6 +117,69 @@ export async function isConversationMediaEligible(
   return hasGenuineDmInWindow(data, psid, sinceMs);
 }
 
+/**
+ * For the every-minute missed-reply fallback: which of
+ * these items (one per waiting capture) had a genuine customer Inbox DM strictly AFTER ITS OWN `sinceIso`? ONE
+ * events query for all of them (same genuine-DM gate); a PSID left undecided by a possibly
+ * truncated result is re-checked alone. Returns the item KEYS that qualify. Fail-safe:
+ * any read error means "no reply seen".
+ */
+export async function genuineInboxDmSinceBatch(
+  supabase: SupabaseClient,
+  items: ReadonlyArray<{ key: string; conversationId: string; sinceIso: string }>,
+): Promise<Set<string>> {
+  const replied = new Set<string>();
+  const parsed = items
+    .map((it) => ({
+      key: it.key,
+      conv: it.conversationId,
+      psid: psidFromConversationId(it.conversationId),
+      sinceMs: Date.parse(it.sinceIso),
+    }))
+    .filter(
+      (p): p is { key: string; conv: string; psid: string; sinceMs: number } =>
+        p.psid !== null && Number.isFinite(p.sinceMs),
+    );
+  if (parsed.length === 0) return replied;
+
+  const psids = [...new Set(parsed.map((p) => p.psid))];
+  const minSince = Math.min(...parsed.map((p) => p.sinceMs));
+  const limit = Math.min(EVENTS_PER_PSID * psids.length, BATCH_ROW_CAP);
+  let rows: Array<Record<string, unknown>> = [];
+  try {
+    const { data } = await supabase
+      .from('pancake_webhook_events')
+      .select('raw, event_timestamp, facebook_psid')
+      .in('facebook_psid', psids)
+      .is('post_type', null)
+      .gt('event_timestamp', new Date(minSince).toISOString())
+      .order('event_timestamp', { ascending: false })
+      .limit(limit);
+    rows = data ?? [];
+  } catch {
+    return replied;
+  }
+  const truncated = rows.length >= limit;
+  const byPsid = new Map<string, Array<Record<string, unknown>>>();
+  for (const row of rows) {
+    const psid = typeof row.facebook_psid === 'string' ? row.facebook_psid : null;
+    if (!psid) continue;
+    const list = byPsid.get(psid) ?? [];
+    if (list.length < EVENTS_PER_PSID) list.push(row);
+    byPsid.set(psid, list);
+  }
+  for (const p of parsed) {
+    const events = byPsid.get(p.psid) ?? [];
+    if (hasGenuineDmInWindow(events, p.psid, p.sinceMs)) {
+      replied.add(p.key);
+    } else if (truncated && events.length < EVENTS_PER_PSID) {
+      const own = await fetchPsidWindowEvents(supabase, p.psid, p.sinceMs).catch(() => []);
+      if (hasGenuineDmInWindow(own, p.psid, p.sinceMs)) replied.add(p.key);
+    }
+  }
+  return replied;
+}
+
 /** Newest events examined per PSID — the single-row query's `.limit(50)`. */
 const EVENTS_PER_PSID = 50;
 

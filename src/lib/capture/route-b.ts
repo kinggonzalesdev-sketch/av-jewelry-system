@@ -43,28 +43,45 @@ async function readAutoTextTemplateBody(supabase: SupabaseClient): Promise<strin
  * suppression come from the shared AUTO TEXT engine, rendering the Owner's SAVED template. Returns
  * null when the business data is INCOMPLETE (unclassifiable value, missing grams/price, or grams with
  * no rate) so the ONE Private Reply is NOT consumed — it stays retryable until the Capture is final.
+ * Exported (unchanged) so the screenshot-first text leg sends the SAME computation text.
  */
-async function buildAutoTextMessage(
+export async function buildAutoTextMessage(
   supabase: SupabaseClient,
   fbName: string,
   value: string | null,
 ): Promise<string | null> {
+  return (await buildAutoTextMessageDetailed(supabase, fbName, value)).message;
+}
+
+/**
+ * The same computation text, also saying WHY there is none: `readError` is true only when the
+ * shared rate could not be READ (a transient database failure), as opposed to the capture's data
+ * being genuinely incomplete. The screenshot-first text leg retries the first and reports the
+ * second; the Private Reply path (buildAutoTextMessage) treats both exactly as before.
+ */
+export async function buildAutoTextMessageDetailed(
+  supabase: SupabaseClient,
+  fbName: string,
+  value: string | null,
+): Promise<{ message: string | null; readError: boolean }> {
   const mode = classifyCaptureValue(value);
   let values: Record<string, string> | null = null;
 
   if (mode === 'grams') {
     const grams = normalizeGrams(value);
-    if (!grams) return null;
-    const { data } = await supabase
+    if (!grams) return { message: null, readError: false };
+    const { data, error } = await supabase
       .from('sticker_settings')
       .select('price_per_gram')
       .eq('id', 1)
       .maybeSingle();
+    if (error) return { message: null, readError: true };
     const pricePerGram =
       typeof (data as { price_per_gram?: unknown } | null)?.price_per_gram === 'string'
         ? ((data as { price_per_gram: string }).price_per_gram).trim()
         : '';
-    if (!pricePerGram) return null; // grams needs a rate — else keep it reviewable, don't send.
+    // grams needs a rate — else keep it reviewable, don't send.
+    if (!pricePerGram) return { message: null, readError: false };
     values = buildAutoTextValues({
       mode: 'grams',
       firstName: firstNameOf(fbName),
@@ -73,13 +90,14 @@ async function buildAutoTextMessage(
     });
   } else if (mode === 'fixed') {
     const fixedPrice = parseFixedPrice(value);
-    if (!fixedPrice) return null;
+    if (!fixedPrice) return { message: null, readError: false };
     values = buildAutoTextValues({ mode: 'fixed', firstName: firstNameOf(fbName), fixedPrice });
   }
 
-  if (!values) return null; // unclassifiable / incomplete → do not consume the Private Reply.
+  // unclassifiable / incomplete → do not consume the Private Reply.
+  if (!values) return { message: null, readError: false };
   const body = await readAutoTextTemplateBody(supabase);
-  return renderAutoText(body, values);
+  return { message: renderAutoText(body, values), readError: false };
 }
 
 /**
