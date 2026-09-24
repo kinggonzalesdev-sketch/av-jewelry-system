@@ -76,6 +76,19 @@ export function isGenuineInboxDmEvent(raw: unknown, psid: string): boolean {
   }
   // Never a Page echo (an outbound Page message mirrored back into the webhook stream).
   if (message.is_echo === true) return false;
+  // Never a Messenger-generated SYSTEM notice. When the Page sends bank details, Messenger posts
+  // "Messenger automatically created a transfer request" into the chat, attributed to the customer
+  // but never typed by them, and it does not open the reply window (Charvin, 2026-09-24: the photo
+  // it triggered was refused and the capture was left failed). Pancake marks it with an attachment
+  // of type `system_message`.
+  const attachmentList: unknown[] = Array.isArray(message.attachments)
+    ? message.attachments
+    : [];
+  const isSystemNotice = attachmentList.some((a) => {
+    const t = obj(a)?.type;
+    return typeof t === 'string' && t.trim().toLowerCase() === 'system_message';
+  });
+  if (isSystemNotice) return false;
   // Direction: the sender must be EXACTLY the customer PSID (customer → Page).
   const fromId = obj(message.from)?.id;
   if (typeof fromId !== 'string' || fromId !== psid) return false;

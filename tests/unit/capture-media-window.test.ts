@@ -79,6 +79,27 @@ const inboxReplyEmptyPost = (psid = PSID) => ({
 const inboxWithRealPost = (psid = PSID) => ({
   data: { post: { id: 'p1' }, message: { type: 'INBOX', from: { id: psid }, text: 'hi' } },
 });
+/** Messenger's automatic notice after the Page sends bank details (real shape, 2026-09-24): INBOX,
+ *  from = the customer, a message id, but a `system_message` attachment — the customer typed nothing. */
+const messengerSystemNotice = (psid = PSID) => ({
+  data: {
+    post: null,
+    message: {
+      id: 'm_sys',
+      type: 'INBOX',
+      from: { id: psid, name: 'Customer' },
+      message: '<div>Messenger automatically created a transfer request. </div>',
+      original_message: 'Messenger automatically created a transfer request. ',
+      attachments: [
+        {
+          type: 'system_message',
+          message: 'Messenger automatically created a transfer request. ',
+        },
+      ],
+    },
+    conversation: { id: `${PAGE}_${psid}`, type: 'INBOX' },
+  },
+});
 
 describe('isGenuineInboxDmEvent (pure structure gate)', () => {
   it('TRUE for a genuine customer Inbox text DM (case 5)', () => {
@@ -119,6 +140,22 @@ describe('isGenuineInboxDmEvent (pure structure gate)', () => {
   });
   it('FALSE when the psid is empty (fail-safe)', () => {
     expect(isGenuineInboxDmEvent(dmText(), '')).toBe(false);
+  });
+  it('FALSE for a Messenger system notice ("automatically created a transfer request")', () => {
+    expect(isGenuineInboxDmEvent(messengerSystemNotice(), PSID)).toBe(false);
+  });
+  it('still TRUE for a real DM whose attachments are ordinary media', () => {
+    const withText = {
+      data: {
+        message: {
+          type: 'INBOX',
+          from: { id: PSID },
+          text: 'ok',
+          attachments: [{ type: 'image' }],
+        },
+      },
+    };
+    expect(isGenuineInboxDmEvent(withText, PSID)).toBe(true);
   });
 });
 
