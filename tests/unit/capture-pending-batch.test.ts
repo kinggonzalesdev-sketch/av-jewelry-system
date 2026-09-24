@@ -10,6 +10,16 @@ vi.mock('@/lib/authz/guard', () => ({
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(() => Promise.resolve(holder.client)),
 }));
+// The list asks the router module for eligibility (a service-role read in production, because the
+// events table is Owner-only under RLS). Here it reads the test's own client so the query count
+// is still measured.
+vi.mock('@/lib/capture/auto-router', async () => {
+  const mw = await import('@/lib/capture/media-window');
+  return {
+    conversationsMediaEligibilitySystem: (ids: ReadonlyArray<string>) =>
+      mw.conversationsMediaEligibility(holder.client as SupabaseClient, ids),
+  };
+});
 
 import {
   createClient as createSupabaseJs,

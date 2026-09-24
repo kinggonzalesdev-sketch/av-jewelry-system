@@ -4,14 +4,13 @@ import { after } from 'next/server';
 
 import { recordAuditEvent } from '@/lib/audit/log';
 import {
-  markTextSentByPrivateReplySystem,
+  isConversationMediaEligibleSystem,
   runCaptureTextSequenceSystem,
   stampCaptureSequenceSystem,
 } from '@/lib/capture/auto-router';
 import type { MessageSequence } from '@/lib/capture/message-sequence';
 import { requirePermission } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
-import { isConversationMediaEligible } from '@/lib/capture/media-window';
 import { sanitizeCaptureName } from '@/lib/capture/name-sanitize';
 import { attemptSecureLinkPrivateReply } from '@/lib/capture/route-b';
 import {
@@ -214,39 +213,48 @@ export async function sendPendingCaptureToMessenger(
   }
 
   if (opts?.requireMediaWindow) {
-    const eligible = await isConversationMediaEligible(supabase, conversationId);
+    // Server read: the events table is Owner-only under RLS (see isConversationMediaEligibleSystem).
+    const eligible = await isConversationMediaEligibleSystem(conversationId);
     if (!eligible) {
       // ROUTE B — not Inbox-media-eligible ("Photo waiting"): if MineFlow can prove the EXACT Live
       // comment identity, create/reuse a secure screenshot link and send ONE Pancake Private Reply
       // TEXT (idempotent, atomic — never two replies). No exact comment / outside the 7-day window
       // → Route C: park 'awaiting_inbox' for Open FB Chat. Never a doomed reply_inbox PHOTO here.
+      if (mode === 'screenshot_first') {
+        // Screenshot-first (Owner 2026-09-24): send NOTHING to a comment-only customer; the
+        // screenshot and then the computation go the moment they message the page. Wait on the
+        // STORED conversation (what the reply path looks up); otherwise leave it for the sweep.
+        const storedOnPage = (row.pancake_conversation_id ?? '').trim() === conversationId;
+        await supabase.rpc('mark_capture_photo_state', {
+          p_capture_id: id,
+          p_status: storedOnPage ? 'link_sent' : 'awaiting_inbox',
+        });
+        return {
+          ok: false,
+          code: 'awaiting_customer_message',
+          error:
+            'The customer has not messaged the page yet, so Facebook will not accept the screenshot. Nothing was sent — it goes automatically the moment they message.',
+        };
+      }
       const rb = await attemptSecureLinkPrivateReply({
         supabase,
         captureRecordId: id,
         fbName: fbName ?? '',
         value: ocrStr(row.ocr, 'itemQuery', 'grams', 'weight'),
         screenshotPath: path,
-        // Screenshot-first: the one Private Reply asks the customer to reply (Owner 2026-09-24).
-        prompt: mode === 'screenshot_first',
       });
       if (rb.ok) {
         await supabase.rpc('mark_capture_photo_state', {
           p_capture_id: id,
           p_status: 'link_sent',
         });
-        if (mode === 'screenshot_first' && rb.kind === 'computation') {
-          // The Private Reply IS the computation text: record it so it is never sent again.
-          await markTextSentByPrivateReplySystem(id).catch(() => undefined);
-        }
         return {
           ok: true,
           code: rb.code === 'already_sent' ? 'already_sent' : 'sent',
           message:
             rb.code === 'already_sent'
               ? 'Secure link already sent — not resent.'
-              : rb.kind === 'prompt'
-                ? 'Asked the customer to reply ✓ — the screenshot and computation follow their reply.'
-                : 'Sent a secure screenshot link via Private Reply ✓',
+              : 'Sent a secure screenshot link via Private Reply ✓',
         };
       }
       await supabase.rpc('mark_capture_photo_state', {

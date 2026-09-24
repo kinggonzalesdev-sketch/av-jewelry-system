@@ -2,7 +2,7 @@ import 'server-only';
 
 import { requirePermission } from '@/lib/authz/guard';
 import { createClient } from '@/lib/supabase/server';
-import { conversationsMediaEligibility } from '@/lib/capture/media-window';
+import { conversationsMediaEligibilitySystem } from '@/lib/capture/auto-router';
 import { sanitizeCaptureName } from '@/lib/capture/name-sanitize';
 import { normalizeGrams } from '@/lib/print/order-receipt';
 import type { PendingCaptureRow } from '@/lib/capture/pending-types';
@@ -137,7 +137,8 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
       supabase,
       rows.map((r) => r.screenshot_path).filter((p): p is string => Boolean(p)),
     ),
-    conversationsMediaEligibility(supabase, linkedConv.filter(Boolean)).catch(
+    // Server read: the events table is Owner-only under RLS, so an Admin saw every chat closed.
+    conversationsMediaEligibilitySystem(linkedConv.filter(Boolean)).catch(
       () => new Map<string, boolean>(),
     ),
   ]);

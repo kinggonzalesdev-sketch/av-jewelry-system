@@ -574,30 +574,21 @@ describe('screenshot-first sequence', () => {
     expect(db.get('B')?.text_send_status).toBe('sent');
   });
 
-  it('comment-only customer: the one Private Reply only asks them to reply; screenshot THEN computation follow the reply', async () => {
+  it('comment-only customer: NOTHING is sent; the screenshot THEN the computation go when they message', async () => {
     vi.mocked(mediaWindow.isConversationMediaEligible).mockResolvedValue(false);
-    // The real Route B records the prompt in the database before sending it; mirror that.
-    vi.mocked(routeB.attemptSecureLinkPrivateReply).mockImplementation(async (input) => {
-      const marked = input.prompt
-        ? ((await input.supabase.rpc('mark_capture_private_reply_prompt', { p_capture_id: input.captureRecordId }))
-            .data as 'prompt' | 'computation')
-        : 'computation';
-      shareLinkSent.add(input.captureRecordId);
-      return { ok: true, code: 'sent', url: null, kind: marked };
-    });
     db.set('A', newCap('A'));
     queue = ['A'];
     scriptSends([OK]);
     await sweep();
-    expect(vi.mocked(routeB.attemptSecureLinkPrivateReply).mock.calls[0]![0].prompt).toBe(true);
-    expect(count('photo')).toBe(0);
-    expect(count('text')).toBe(0);
+    expect(vi.mocked(routeB.attemptSecureLinkPrivateReply)).not.toHaveBeenCalled();
+    expect(sends).toHaveLength(0);
     expect(db.get('A')?.message_status).toBe('link_sent');
-    expect(db.get('A')?.private_reply_kind).toBe('prompt');
-    expect(db.get('A')?.text_send_status).toBeNull(); // the computation is still to come
-    expect(db.get('A')?.route_reason).toBe('Reply request sent ✓ · Screenshot + computation after reply');
+    expect(db.get('A')?.text_send_status).toBeNull();
+    expect(db.get('A')?.route_reason).toBe(
+      'Waiting for customer to message · Screenshot + computation will follow',
+    );
 
-    // The customer replies in Messenger: the SCREENSHOT goes first, then the computation.
+    // The customer messages the page: the SCREENSHOT goes first, then the computation.
     vi.mocked(mediaWindow.isConversationMediaEligible).mockResolvedValue(true);
     const r = reactivatePhotoForConversationSystem('PAGE_Apsid');
     await vi.runAllTimersAsync();
@@ -607,7 +598,7 @@ describe('screenshot-first sequence', () => {
     expect(db.get('A')?.text_send_status).toBe('sent');
     expect(db.get('A')?.route_reason).toBe('Screenshot sent ✓ · Computation sent ✓');
 
-    // A second reply (or a replayed webhook) sends nothing more.
+    // Another message (or a replayed webhook) sends nothing more.
     const again = reactivatePhotoForConversationSystem('PAGE_Apsid');
     await vi.runAllTimersAsync();
     await again;
@@ -615,40 +606,38 @@ describe('screenshot-first sequence', () => {
     expect(count('text')).toBe(1);
   });
 
-  it('classic sequence: the one Private Reply still carries the computation (no prompt)', async () => {
+  it('comment-only customer with no stored conversation keeps waiting for the sweep (never a text)', async () => {
+    vi.mocked(mediaWindow.isConversationMediaEligible).mockResolvedValue(false);
+    db.set('A', newCap('A', { pancake_conversation_id: null }));
+    queue = ['A'];
+    await sweep();
+    expect(vi.mocked(routeB.attemptSecureLinkPrivateReply)).not.toHaveBeenCalled();
+    expect(db.get('A')?.message_status).toBe('awaiting_inbox');
+    expect(sends).toHaveLength(0);
+  });
+  it('classic sequence: the one Private Reply still carries the computation', async () => {
     settingsRow = { private_reply_sequence: 'classic', text_send_attempts: 3 };
     vi.mocked(mediaWindow.isConversationMediaEligible).mockResolvedValue(false);
-    vi.mocked(routeB.attemptSecureLinkPrivateReply).mockResolvedValue({ ok: true, code: 'sent', url: null, kind: 'computation' });
+    vi.mocked(routeB.attemptSecureLinkPrivateReply).mockResolvedValue({ ok: true, code: 'sent', url: null });
     db.set('A', newCap('A'));
     queue = ['A'];
     await sweep();
-    expect(vi.mocked(routeB.attemptSecureLinkPrivateReply).mock.calls[0]![0].prompt).toBe(false);
-    expect(db.get('A')?.route_reason).toBe('AUTO TEXT Sent to Messenger ✓');
-    expect(db.get('A')?.private_reply_kind).toBeNull();
-  });
-
-  it('a capture whose one Private Reply already carried the computation never gets it twice', async () => {
-    vi.mocked(mediaWindow.isConversationMediaEligible).mockResolvedValue(false);
-    vi.mocked(routeB.attemptSecureLinkPrivateReply).mockResolvedValue({ ok: true, code: 'sent', url: null, kind: 'computation' });
-    db.set('A', newCap('A'));
-    queue = ['A'];
-    scriptSends([OK]);
-    await sweep();
-    expect(count('photo')).toBe(0);
+    expect(vi.mocked(routeB.attemptSecureLinkPrivateReply)).toHaveBeenCalledTimes(1);
     expect(db.get('A')?.message_status).toBe('link_sent');
-    expect(db.get('A')?.text_send_status).toBe('sent');
-    expect(db.get('A')?.route_reason).toBe('Computation sent ✓ · Screenshot after customer replies');
-
-    // The customer replies: the screenshot follows, and NO second computation.
+    expect(db.get('A')?.route_reason).toBe('AUTO TEXT Sent to Messenger ✓');
+  });
+  it('an earlier capture whose Private Reply carried the computation never gets it twice', async () => {
+    // Sent before 2026-09-24 evening: the computation went as the Private Reply and was recorded.
+    db.set('A', newCap('A', { message_status: 'link_sent', message_sequence: 'screenshot_first', text_max_attempts: 3, text_send_status: 'sent' }));
+    shareLinkSent.add('A');
+    scriptSends([OK]);
     vi.mocked(mediaWindow.isConversationMediaEligible).mockResolvedValue(true);
     const r = reactivatePhotoForConversationSystem('PAGE_Apsid');
     await vi.runAllTimersAsync();
     await r;
-    expect(count('photo')).toBe(1);
-    expect(count('text')).toBe(0);
-    expect(db.get('A')?.route_reason).toBe('Screenshot sent ✓ · Computation sent ✓');
+    expect(count('photo')).toBe(1); // the screenshot follows the reply
+    expect(count('text')).toBe(0); // the computation is NOT sent again
   });
-
   it('classic sequence keeps the previous behaviour: screenshot only, no computation text', async () => {
     settingsRow = { private_reply_sequence: 'classic', text_send_attempts: 3 };
     db.set('A', newCap('A'));
@@ -707,16 +696,11 @@ describe('screenshot-first sequence', () => {
   });
 
   it('REVIEW M1 — if recording the Private Reply failed, the ledger still blocks a second computation', async () => {
-    vi.mocked(mediaWindow.isConversationMediaEligible).mockResolvedValue(false);
-    vi.mocked(routeB.attemptSecureLinkPrivateReply).mockImplementation(() => {
-      shareLinkSent.add('A'); // the Private Reply went out and the ledger says so …
-      return Promise.resolve({ ok: true, code: 'sent', url: null, kind: 'computation' as const });
-    });
-    db.set('A', newCap('A'));
-    queue = ['A'];
+    // An earlier capture: the Private Reply (the computation) went out and the ledger says so, but
+    // recording it as the text never happened.
+    db.set('A', newCap('A', { message_status: 'link_sent', message_sequence: 'screenshot_first', text_max_attempts: 3 }));
+    shareLinkSent.add('A');
     scriptSends([OK]);
-    await sweep();
-    db.get('A')!.text_send_status = null; // … but recording it as the text never happened
     vi.mocked(mediaWindow.isConversationMediaEligible).mockResolvedValue(true);
     const r = reactivatePhotoForConversationSystem('PAGE_Apsid');
     await vi.runAllTimersAsync();
@@ -724,7 +708,6 @@ describe('screenshot-first sequence', () => {
     expect(count('photo')).toBe(1);
     expect(count('text')).toBe(0);
   });
-
   it('REVIEW M2 — a reply is never missed because other customers have many waiting captures', async () => {
     for (let i = 0; i < 30; i += 1) {
       db.set(

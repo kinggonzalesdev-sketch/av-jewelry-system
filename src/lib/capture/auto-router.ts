@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { captureDebugLog } from '@/lib/capture/debug-log';
 import {
+  conversationsMediaEligibility,
   genuineInboxDmSinceBatch,
   isConversationMediaEligible,
   psidFromConversationId,
@@ -137,9 +138,11 @@ async function setRouteReason(
  * Only transient failures are retried, with bounded backoff (about 2s, then 5s; a Retry-After
  * from Pancake wins). If the text still cannot be sent, or Facebook says a customer reply is
  * needed first, the capture WAITS; a genuine customer reply then sends the text ONCE.
- * A comment-only customer cannot receive a screenshot first (Pancake rejects a screenshot
- * Private Reply: Controlled Test C-A), so, as the Owner approved, the computation goes as the
- * ONE Private Reply text, is recorded AS the text, and the screenshot follows their reply.
+ * A comment-only customer cannot receive a screenshot at all until they message the page
+ * (Pancake rejects a screenshot Private Reply: Controlled Test C-A), so, as the Owner decided on
+ * 2026-09-24, NOTHING is sent to them: the capture waits, and their first message to the page
+ * brings the screenshot, then the computation. (Earlier captures got the computation as their
+ * one Private Reply; that is still recorded as the text and never sent twice.)
  *
  * Every step is an atomic database claim (migration 20260924120000): the screenshot must be
  * 'sent' before a text can be claimed; a 'sent' text is never claimed again; a claim lost
@@ -632,12 +635,23 @@ async function routeOne(
     return { outcome: 'awaiting', reason: 'no_identity' };
   }
   // Comment-only customer: a screenshot cannot go first (Pancake rejects a screenshot Private
-  // Reply). Screenshot-first (Owner 2026-09-24): the ONE Private Reply asks the customer to reply;
-  // the screenshot and then the computation follow that reply. Classic: the computation, as before.
+  // Reply). Classic: the ONE Private Reply carries the computation, as before.
   const mode = await stampSequence(admin, id, ctx.settings);
   if (mode === null) {
     await setRouteReason(admin, id, 'AUTO TEXT pending · retrying shortly');
     return { outcome: 'awaiting', reason: 'sequence_unavailable' };
+  }
+  if (mode === 'screenshot_first') {
+    // Screenshot-first (Owner 2026-09-24): send NOTHING to a comment-only customer. The moment
+    // they message the page, the reply path sends the screenshot, then the computation. With the
+    // conversation stored on the capture it waits as 'link_sent' (what the reply path picks up);
+    // without one it stays 'awaiting_inbox' so the next sweep can still find the conversation.
+    await admin.rpc('mark_capture_photo_state', {
+      p_capture_id: id,
+      p_status: onPageConv ? 'link_sent' : 'awaiting_inbox',
+    });
+    await setRouteReason(admin, id, sequenceRouteReason('awaiting_message'));
+    return { outcome: 'awaiting', reason: 'awaiting_customer_message' };
   }
   const rb = await attemptSecureLinkPrivateReply({
     supabase: admin,
@@ -646,25 +660,13 @@ async function routeOne(
     value,
     screenshotPath: path,
     psid,
-    prompt: mode === 'screenshot_first',
   });
   if (rb.ok) {
     await admin.rpc('mark_capture_photo_state', {
       p_capture_id: id,
       p_status: 'link_sent',
     });
-    if (mode === 'screenshot_first' && rb.kind === 'prompt') {
-      // Only the request to reply went out: the computation is still to come, after the
-      // screenshot (the database never records a prompt as the text).
-      await setRouteReason(admin, id, sequenceRouteReason('prompt_sent'));
-    } else if (mode === 'screenshot_first') {
-      // That Private Reply IS the computation text: record it so it is never sent again after
-      // the screenshot follows the customer's reply.
-      await admin.rpc('mark_capture_text_sent_by_private_reply', { p_capture_id: id });
-      await setRouteReason(admin, id, sequenceRouteReason('private_reply_sent'));
-    } else {
-      await setRouteReason(admin, id, 'AUTO TEXT Sent to Messenger ✓');
-    }
+    await setRouteReason(admin, id, 'AUTO TEXT Sent to Messenger ✓');
     return {
       outcome: rb.code === 'already_sent' ? 'already_sent' : 'text_sent',
       reason: rb.code,
@@ -1066,18 +1068,29 @@ export async function runWaitingTextReplyFallbackSystem(
 /* Entry points for the MANUAL PC Send (pc-send.ts runs under the operator's session; these use
  * the service-role client, like the rest of this sanctioned module). */
 
+/**
+ * "Is this customer's Messenger chat open?" read with the service-role client. The webhook
+ * events table is readable only by Owners under RLS, so the same check under an Admin's or a
+ * staff member's session saw no messages and treated every open chat as closed: the PC sent a
+ * comment reply instead of the screenshot (2026-09-24). Read-only; returns yes/no only; both
+ * callers (pc-send, pending) are claim_capture-gated.
+ */
+export async function isConversationMediaEligibleSystem(conversationId: string): Promise<boolean> {
+  return isConversationMediaEligible(createAdminClient(), conversationId);
+}
+
+/** The batch form of the same check, for the Incoming Captures list ("Photo ready"). */
+export async function conversationsMediaEligibilitySystem(
+  conversationIds: ReadonlyArray<string>,
+): Promise<Map<string, boolean>> {
+  return conversationsMediaEligibility(createAdminClient(), conversationIds);
+}
+
 /** Stamp the capture's sequence set-once from the current settings; 'classic' if unavailable. */
 export async function stampCaptureSequenceSystem(captureId: string): Promise<MessageSequence | null> {
   const admin = createAdminClient();
   const settings = await readMessageSequenceSettings(admin);
   return stampSequence(admin, captureId, settings);
-}
-
-/** A manual Private Reply delivered the computation text: record it as the text. */
-export async function markTextSentByPrivateReplySystem(captureId: string): Promise<void> {
-  const admin = createAdminClient();
-  await admin.rpc('mark_capture_text_sent_by_private_reply', { p_capture_id: captureId });
-  await setRouteReason(admin, captureId, sequenceRouteReason('private_reply_sent'));
 }
 
 /** After a manual screenshot send: run the text leg (bounded by the sequence time budget). */

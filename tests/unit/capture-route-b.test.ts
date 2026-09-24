@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { attemptSecureLinkPrivateReply, buildReplyPromptText } from '@/lib/capture/route-b';
+import { attemptSecureLinkPrivateReply } from '@/lib/capture/route-b';
 import { encryptShareToken } from '@/lib/capture/share-link';
 import * as pancake from '@/lib/integrations/pancake';
 
@@ -358,96 +358,5 @@ describe('Route B — value-only canonical safety net (leading-decimal)', () => 
     });
     expect(r).toMatchObject({ ok: false, code: 'no_exact_comment' });
     expect(setCanon).not.toHaveBeenCalled();
-  });
-});
-
-describe('Route B — screenshot-first "please reply" prompt (Owner 2026-09-24)', () => {
-  const handlers = (mark: () => unknown) => ({
-    find_capture_share_link_for_capture: () => ({ found: false }),
-    resolve_exact_live_comment: () => RESOLVED,
-    upsert_capture_share_link: () => ({
-      id: 'L1',
-      private_reply_status: 'pending',
-      token_ciphertext: CT(),
-    }),
-    mark_capture_private_reply_prompt: mark,
-    claim_share_link_send: () => 'claimed',
-    finalize_share_link_send: () => null,
-  });
-  const sentText = () => vi.mocked(pancake.sendPancakePrivateReply).mock.calls[0]![0].message;
-
-  it('prompt recorded → the ONE reply asks the customer to reply (no computation, no price)', async () => {
-    const { supabase, rpc } = mockSupabase(handlers(() => 'prompt'));
-    const r = await attemptSecureLinkPrivateReply({
-      supabase,
-      captureRecordId: 'cap1',
-      fbName: 'King Gonzales',
-      value: '1.5',
-      screenshotPath: 'p.jpg',
-      prompt: true,
-    });
-    expect(r).toMatchObject({ ok: true, code: 'sent', kind: 'prompt' });
-    expect(vi.mocked(pancake.sendPancakePrivateReply)).toHaveBeenCalledTimes(1);
-    expect(sentText()).toBe(buildReplyPromptText('King Gonzales'));
-    expect(sentText()).not.toContain('₱');
-    // The prompt is recorded BEFORE the one reply is claimed and sent.
-    const order = rpc.mock.calls.map((c) => c[0]);
-    expect(order.indexOf('mark_capture_private_reply_prompt')).toBeLessThan(
-      order.indexOf('claim_share_link_send'),
-    );
-  });
-
-  it('the database does not confirm a prompt → the reply carries the computation exactly as before', async () => {
-    const { supabase } = mockSupabase(handlers(() => 'computation'));
-    const r = await attemptSecureLinkPrivateReply({
-      supabase,
-      captureRecordId: 'cap1',
-      fbName: 'King Gonzales',
-      value: '1.5',
-      screenshotPath: 'p.jpg',
-      prompt: true,
-    });
-    expect(r).toMatchObject({ ok: true, code: 'sent', kind: 'computation' });
-    expect(sentText()).toContain('₱');
-  });
-
-  it('classic (no prompt requested) never asks the database and sends the computation', async () => {
-    const mark = vi.fn(() => 'prompt');
-    const { supabase } = mockSupabase(handlers(mark));
-    const r = await attemptSecureLinkPrivateReply({
-      supabase,
-      captureRecordId: 'cap1',
-      fbName: 'King Gonzales',
-      value: '1.5',
-      screenshotPath: 'p.jpg',
-    });
-    expect(r).toMatchObject({ ok: true, kind: 'computation' });
-    expect(mark).not.toHaveBeenCalled();
-    expect(sentText()).toContain('₱');
-  });
-
-  it('incomplete price data → no reply at all, prompt or not (the one reply is not used up)', async () => {
-    const mark = vi.fn(() => 'prompt');
-    const { supabase } = mockSupabase(handlers(mark));
-    const r = await attemptSecureLinkPrivateReply({
-      supabase,
-      captureRecordId: 'cap1',
-      fbName: 'King Gonzales',
-      value: 'not a price',
-      screenshotPath: 'p.jpg',
-      prompt: true,
-    });
-    expect(r).toMatchObject({ ok: false, code: 'incomplete_business_data' });
-    expect(mark).not.toHaveBeenCalled();
-    expect(vi.mocked(pancake.sendPancakePrivateReply)).not.toHaveBeenCalled();
-  });
-
-  it('the prompt greets like the AUTO TEXT, with or without a first name', () => {
-    expect(buildReplyPromptText('King Gonzales').split('\n')[0]).toBe(
-      'Hi beshy King! 💛 Thank you for mining with A.V. Jewelry ✨',
-    );
-    expect(buildReplyPromptText('').split('\n')[0]).toBe(
-      'Hi beshy! 💛 Thank you for mining with A.V. Jewelry ✨',
-    );
   });
 });

@@ -16,6 +16,7 @@ const H = vi.hoisted(() => {
       source: 'none',
     },
     activePageId: '588622885161430',
+    sequence: 'classic' as string,
     sendResult: {
       ok: true,
       code: 'sent',
@@ -69,6 +70,13 @@ vi.mock('@/lib/audit/log', () => ({
 vi.mock('@/lib/capture/media-window', () => ({
   isConversationMediaEligible: (...a: unknown[]) => H.eligibleMock(...a),
 }));
+// The PC path asks the router module (service-role read; the events table is Owner-only under
+// RLS). The sequence stays classic here, exactly as these tests always ran.
+vi.mock('@/lib/capture/auto-router', () => ({
+  isConversationMediaEligibleSystem: (conv: string) => H.eligibleMock(null, conv),
+  stampCaptureSequenceSystem: () => Promise.resolve(H.cfg.sequence),
+  runCaptureTextSequenceSystem: () => Promise.resolve('not_applicable'),
+}));
 vi.mock('@/lib/integrations/pancake', () => ({
   getActivePancakePageId: () => Promise.resolve(H.cfg.activePageId),
   conversationBelongsToPage: (id: string | null, page: string) =>
@@ -108,6 +116,7 @@ beforeEach(() => {
   H.cfg.mediaEligible = true;
   H.cfg.resolveResult = { conversationId: null, matchCount: 0, source: 'none' };
   H.cfg.activePageId = '588622885161430';
+  H.cfg.sequence = 'classic';
   H.cfg.sendResult = { ok: true, code: 'sent', message: 'ok', pancakeMessageId: 'm1' };
 });
 
@@ -165,6 +174,16 @@ describe('MineFlow Capture screenshot delivery — hardened send path', () => {
       p_status: 'awaiting_inbox',
     });
     expect(rpcCalls('claim_capture_photo_send')).toHaveLength(0);
+  });
+
+  it('4b. screenshot-first + comment-only → NOTHING sent (no Private Reply); waits for their message', async () => {
+    H.cfg.sequence = 'screenshot_first';
+    H.cfg.mediaEligible = false;
+    const res = await sendPendingCaptureToMessenger('cap-1', { requireMediaWindow: true });
+    expect(res).toMatchObject({ ok: false, code: 'awaiting_customer_message' });
+    expect(H.sendMock).not.toHaveBeenCalled();
+    expect(rpcCalls('claim_share_link_send')).toHaveLength(0);
+    expect(rpcCalls('mark_capture_photo_state')[0]?.[1]).toMatchObject({ p_status: 'link_sent' });
   });
 
   it('5. qualified customer-initiated inbox exists → PHOTO becomes eligible + sends once', async () => {

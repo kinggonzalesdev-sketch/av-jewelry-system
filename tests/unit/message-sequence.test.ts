@@ -160,13 +160,13 @@ describe('staff-facing status (never a raw API error)', () => {
     ]);
   });
 
-  it('comment-only: the "please reply" request, then screenshot + computation after the reply', () => {
+  it('comment-only: nothing sent yet — waiting for the customer to message', () => {
     expect(sequenceStatusLines('screenshot_first', 'link_sent', null)?.lines).toEqual([
-      'Reply request sent ✓',
-      'Screenshot + computation after reply',
+      'Waiting for customer to message',
+      'Screenshot + computation will follow',
     ]);
-    expect(sequenceRouteReason('prompt_sent')).toBe(
-      'Reply request sent ✓ · Screenshot + computation after reply',
+    expect(sequenceRouteReason('awaiting_message')).toBe(
+      'Waiting for customer to message · Screenshot + computation will follow',
     );
   });
 
