@@ -776,6 +776,8 @@ export type PrivateReplyMediaResult = { ok: boolean; steps: PrivateReplyTestStep
 export async function runControlledPrivateReplyMediaTest(input: {
   webhookEventId: string;
   screenshotCaptureId: string;
+  /** Owner 2026-09-24: send ONLY the image (no `message`) — the Screenshot First question. */
+  imageOnly?: boolean;
 }): Promise<PrivateReplyMediaResult> {
   await requirePrimarySuperAdmin();
   const steps: PrivateReplyTestStep[] = [];
@@ -868,8 +870,10 @@ export async function runControlledPrivateReplyMediaTest(input: {
   }
 
   // 4) MEDIA private reply — attach the screenshot to the COMMENT reply itself (window-exempt).
-  //    private_replies REQUIRES a non-empty message even with media (Test C-A, error 100), so the
-  //    SAME single request carries the required message + the PHOTO content id — NOT a text fallback.
+  //    Default: the SAME single request carries a message + the PHOTO content id (Test C-A showed
+  //    private_replies asks for a message). imageOnly (Owner 2026-09-24): the image ALONE, no
+  //    message — ONE request, no retry, never a text fallback.
+  const imageOnly = input.imageOnly === true;
   const pr = await sendPancakePrivateReply({
     postId,
     messageId: commentId,
@@ -877,6 +881,14 @@ export async function runControlledPrivateReplyMediaTest(input: {
     commentConversationId: commentConv,
     message: TEST_C_MEDIA_MESSAGE,
     contentId: up.contentId,
+    ...(imageOnly ? { imageOnly: true } : {}),
+  });
+  steps.push({
+    step: 'request_shape',
+    ok: true,
+    detail: imageOnly
+      ? 'image only: content_ids + attachment_type, NO message'
+      : 'message + content_ids + attachment_type',
   });
   steps.push({
     step: 'private_reply_media',

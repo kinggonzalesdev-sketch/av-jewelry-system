@@ -182,6 +182,7 @@ export async function sendControlledPhotoAction(input: {
 export async function sendControlledPrivateReplyMediaAction(input: {
   webhookEventId: string;
   screenshotCaptureId: string;
+  imageOnly?: boolean;
 }): Promise<{ ok: boolean; report: string }> {
   try {
     const result = await runControlledPrivateReplyMediaTest(input);

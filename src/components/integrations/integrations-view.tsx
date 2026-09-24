@@ -972,8 +972,10 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
   const [mediaBusy, startMedia] = useTransition();
   const [mediaReport, setMediaReport] = useState<string | null>(null);
   const [mediaOk, setMediaOk] = useState(false);
+  // Owner 2026-09-24: the image alone, with no message (the Screenshot First question).
+  const [mediaImageOnly, setMediaImageOnly] = useState(true);
 
-  const selected = candidates.find((c) => c.webhookEventId === selectedId) ?? null;
+  const selected =candidates.find((c) => c.webhookEventId === selectedId) ?? null;
 
   const fetchCandidates = async (query: string) => {
     setLoading(true);
@@ -1046,6 +1048,7 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
       const res = await sendControlledPrivateReplyMediaAction({
         webhookEventId: selectedId,
         screenshotCaptureId: captureId.trim(),
+        imageOnly: mediaImageOnly,
       });
       setMediaReport(res.report);
       setMediaOk(res.ok);
@@ -1284,6 +1287,19 @@ function PrivateReplyTestCard({ senderReady }: { senderReady: boolean }) {
                 placeholder="e.g. 5543c409-21d6-4a04-9610-da3b3b2e3e71"
                 data-testid="pr-media-capture"
               />
+            </label>
+            <label className="flex items-start gap-2 text-xs text-foreground">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={mediaImageOnly}
+                onChange={(e) => setMediaImageOnly(e.target.checked)}
+                data-testid="pr-media-image-only"
+              />
+              <span>
+                Image only — send the screenshot with <strong>no message</strong> (the Screenshot
+                First question). Unticked: message + image in one request.
+              </span>
             </label>
             <Button
               type="button"

@@ -91,6 +91,34 @@ describe('buildPrivateReplyBody — MEDIA variant (Cases 1/2, comment-entry scre
   });
 });
 
+describe('buildPrivateReplyBody — IMAGE ONLY (Owner 2026-09-24 controlled test)', () => {
+  const base = {
+    postId: 'POST_1',
+    messageId: 'COMMENT_1',
+    fromId: 'PSID_1',
+    senderId: 'PANCAKE_USER_1',
+    message: 'Hi!',
+  };
+
+  it('carries ONLY the image: content_ids[] + attachment_type, NO message', () => {
+    const body = buildPrivateReplyBody({ ...base, contentId: 'CID_9', imageOnly: true });
+    expect(body).toEqual({
+      action: 'private_replies',
+      post_id: 'POST_1',
+      message_id: 'COMMENT_1',
+      from_id: 'PSID_1',
+      sender_id: 'PANCAKE_USER_1',
+      'content_ids[]': 'CID_9',
+      attachment_type: 'PHOTO',
+    });
+    expect(body).not.toHaveProperty('message');
+  });
+
+  it('imageOnly without an image never drops the message (a text reply stays a text reply)', () => {
+    expect(buildPrivateReplyBody({ ...base, imageOnly: true })).toHaveProperty('message', 'Hi!');
+  });
+});
+
 describe('extractPageUsers — only active users[], never disabled_users[]', () => {
   const parsed = extractPageUsers({
     success: true,

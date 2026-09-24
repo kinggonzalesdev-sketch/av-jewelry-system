@@ -125,6 +125,41 @@ describe('runControlledPrivateReplyMediaTest — Test C (comment-media private r
     expect((calls[0]?.[1] as Record<string, unknown>).p_classification).toBe('C');
   });
 
+  it('image only (Owner 2026-09-24): ONE call carrying the content id with imageOnly, no retry', async () => {
+    const res = await runControlledPrivateReplyMediaTest({
+      webhookEventId: 'wh1',
+      screenshotCaptureId: 'c',
+      imageOnly: true,
+    });
+    expect(res.ok).toBe(true);
+    expect(H.prMock).toHaveBeenCalledTimes(1);
+    expect(H.prMock.mock.calls[0]?.[0]).toMatchObject({ contentId: 'CID_xyz', imageOnly: true });
+    expect(res.steps.find((s) => s.step === 'request_shape')?.detail).toMatch(/NO message/);
+  });
+
+  it('image only rejected → ONE call, never retried, never a text fallback', async () => {
+    H.prMock.mockResolvedValue({
+      ok: false,
+      code: 'failed',
+      message: 'Missing required field: message',
+      privateConversationId: null,
+      pancakeMessageId: null,
+      debug: 'HTTP 200 · private_replies · {"success":false,"error_code":100}',
+    });
+    const res = await runControlledPrivateReplyMediaTest({
+      webhookEventId: 'wh1',
+      screenshotCaptureId: 'c',
+      imageOnly: true,
+    });
+    expect(res.ok).toBe(false);
+    expect(H.prMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('default (box unticked) keeps message + image in one request', async () => {
+    await runControlledPrivateReplyMediaTest({ webhookEventId: 'wh1', screenshotCaptureId: 'c' });
+    expect(H.prMock.mock.calls[0]?.[0]).not.toHaveProperty('imageOnly');
+  });
+
   it('upload valid but the media reply is rejected → classification B', async () => {
     H.prMock.mockResolvedValue({
       ok: false,

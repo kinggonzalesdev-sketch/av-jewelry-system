@@ -2324,6 +2324,11 @@ export const DEFAULT_PRIVATE_REPLY_TEXT =
  * env-overridable so the exact Pancake contract can be corrected during the controlled proof
  * WITHOUT a redeploy. Whether Pancake accepts message+PHOTO together is UNPROVEN until the next
  * Controlled Test C attempt; the text path above is untouched.
+ *
+ * IMAGE ONLY (Owner 2026-09-24, controlled test only): `imageOnly` with a `contentId` omits
+ * `message`, so the request carries ONLY the image. On 2026-08-20 this exact shape was rejected
+ * ("Missing required field: message"); the Owner asked to try it once more before building on it.
+ * No production caller sets it.
  */
 export function buildPrivateReplyBody(input: {
   postId: string;
@@ -2332,6 +2337,7 @@ export function buildPrivateReplyBody(input: {
   senderId: string;
   message: string;
   contentId?: string | null;
+  imageOnly?: boolean;
 }): Record<string, string> {
   const body: Record<string, string> = {
     action: 'private_replies',
@@ -2340,9 +2346,9 @@ export function buildPrivateReplyBody(input: {
     from_id: input.fromId,
     sender_id: input.senderId,
   };
-  // `message` is ALWAYS present — private_replies requires it even when media is attached.
-  body.message = input.message;
   const contentId = (input.contentId ?? '').trim();
+  // `message` is present unless this is the controlled image-only test (see above).
+  if (!(input.imageOnly && contentId)) body.message = input.message;
   if (contentId) {
     const key = process.env.PANCAKE_PRIVATE_REPLY_CONTENT_KEY || 'content_ids[]';
     body[key] = contentId;
@@ -2370,6 +2376,8 @@ export async function sendPancakePrivateReply(input: {
   /** MEDIA variant (Cases 1/2): an uploaded screenshot content id to attach to the comment
    *  private reply itself (window-exempt). Omit for the verified TEXT reply. */
   contentId?: string | null;
+  /** Controlled test only: send the image without `message` (see buildPrivateReplyBody). */
+  imageOnly?: boolean;
 }): Promise<PancakePrivateReplyResult> {
   const senderId = await resolvePancakeSenderUserId();
   if (!senderId) {
@@ -2441,6 +2449,7 @@ export async function sendPancakePrivateReply(input: {
         senderId,
         message: input.message,
         ...(input.contentId != null ? { contentId: input.contentId } : {}),
+        ...(input.imageOnly ? { imageOnly: true } : {}),
       }),
     )) {
       form.set(k, v);
