@@ -113,7 +113,7 @@ export default function TermsPage() {
         </li>
         <li>
           Repair and resizing work has a warranty and re-work period of{' '}
-          <strong>{LEGAL_POLICY.repairReworkPeriod}</strong> after you receive the item.
+          <strong>{LEGAL_POLICY.repairReworkPeriod}</strong>.
           If there is a problem with the repair or resizing work within this period,
           please bring the item back so we can review it and re-work it where appropriate.
         </li>
