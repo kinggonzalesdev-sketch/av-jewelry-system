@@ -110,6 +110,32 @@ describe('Route B — secure link Private Reply', () => {
     expect(vi.mocked(pancake.sendPancakePrivateReply)).not.toHaveBeenCalled();
   });
 
+  it('Screenshot First database gate refuses the claim → NO Private Reply, finite "screenshot_first"', async () => {
+    const finalize = vi.fn(() => null);
+    const { supabase } = mockSupabase({
+      find_capture_share_link_for_capture: () => ({ found: false }),
+      resolve_exact_live_comment: () => RESOLVED,
+      upsert_capture_share_link: () => ({
+        id: 'L1',
+        private_reply_status: 'pending',
+        token_ciphertext: CT(),
+      }),
+      claim_share_link_send: () => 'screenshot_first',
+      finalize_share_link_send: finalize,
+    });
+    const r = await attemptSecureLinkPrivateReply({
+      supabase,
+      captureRecordId: 'cap1',
+      fbName: 'King Gonzales',
+      value: '1.5',
+      screenshotPath: 'p.jpg',
+    });
+    expect(r).toMatchObject({ ok: false, code: 'screenshot_first' });
+    expect(vi.mocked(pancake.sendPancakePrivateReply)).not.toHaveBeenCalled();
+    // The ledger row is left untouched (never finalized as sent or failed).
+    expect(finalize).not.toHaveBeenCalled();
+  });
+
   it('already sent → same link reused, NO second reply', async () => {
     const { supabase } = mockSupabase({
       find_capture_share_link_for_capture: () => ({

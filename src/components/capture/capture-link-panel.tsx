@@ -44,6 +44,7 @@ export function CaptureLinkPanel({
   onChanged,
   onRecheck,
   messageStatus = null,
+  messageSequence = null,
 }: {
   captureRecordId: string;
   link: EffectiveCaptureLink;
@@ -56,7 +57,12 @@ export function CaptureLinkPanel({
    *  "Photo waiting" is never a dead-end: 'sent' → Photo sent ✓, 'link_sent' → Waiting for reply
    *  to send screenshot, 'failed' → AUTO TEXT not sent, else → Preparing AUTO TEXT. */
   messageStatus?: string | null;
+  /** The capture's messaging sequence. On 'screenshot_first' nothing is sent before the
+   *  screenshot, so 'link_sent' means "waiting for the customer to message" and 'failed' means the
+   *  screenshot failed (Owner 2026-09-24): never "Waiting for reply to send screenshot". */
+  messageSequence?: string | null;
 }) {
+  const screenshotFirst = messageSequence === 'screenshot_first';
   const [picking, setPicking] = useState(false);
   const [candidates, setCandidates] = useState<CaptureCandidateOption[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -134,12 +140,26 @@ export function CaptureLinkPanel({
         >
           · Photo ready
         </span>
+      ) : messageStatus === 'link_sent' && screenshotFirst ? (
+        <span
+          className="text-sky-600"
+          title="Screenshot First: nothing has been sent yet. The moment the customer messages the page, the screenshot goes first and the computation follows."
+        >
+          · Waiting for customer to message
+        </span>
       ) : messageStatus === 'link_sent' ? (
         <span
           className="text-sky-600"
           title="The AUTO TEXT reached the customer via a Pancake Private Reply. When they reply, the Inbox window opens and the actual screenshot can be sent."
         >
           · Waiting for reply to send screenshot
+        </span>
+      ) : messageStatus === 'failed' && screenshotFirst ? (
+        <span
+          className="text-amber-700"
+          title="Screenshot First: the screenshot was not delivered, and no computation was sent before it. Use Retry, or Open chat to message the customer."
+        >
+          · Screenshot not sent
         </span>
       ) : messageStatus === 'failed' ? (
         <span

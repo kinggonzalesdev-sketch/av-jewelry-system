@@ -965,8 +965,12 @@ export function IncomingCapturesStrip({
                       // A FINITE failure shows a clear ⚠ state + a Retry action (Owner 2026-08-24,
                       // Issue 1) — never a silent stall. Not for a Test capture (never messages).
                       const autoFailed = r.messageStatus === 'failed' && !r.isTest;
-                      // Name WHAT failed: the screenshot ("AUTO SS Failed …") or the text.
-                      const screenshotFailed = (r.routeReason ?? '').startsWith('AUTO SS Failed');
+                      // Name WHAT failed: the screenshot ("AUTO SS Failed …") or the text. On
+                      // Screenshot First no text goes before the screenshot, so a failed capture
+                      // is always a screenshot that was not delivered.
+                      const screenshotFailed =
+                        r.messageSequence === 'screenshot_first' ||
+                        (r.routeReason ?? '').startsWith('AUTO SS Failed');
                       const note = notes[r.captureRecordId] ?? null;
                       if (!sequence && !autoStatus && !note && !autoFailed) return null;
                       return (
@@ -1087,6 +1091,7 @@ export function IncomingCapturesStrip({
                         captureRecordId={r.captureRecordId}
                         link={effectiveLink(r)}
                         messageStatus={r.messageStatus}
+                        messageSequence={r.messageSequence ?? null}
                         onChanged={(res) =>
                           setLinkOverrides((cur) => ({
                             ...cur,

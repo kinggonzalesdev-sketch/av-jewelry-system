@@ -411,7 +411,9 @@ describe('screenshot-first sequence', () => {
     await sweep();
     expect(count('text')).toBe(3); // 3 total attempts, not 3 retries after the first
     expect(db.get('A')?.text_send_status).toBe('waiting_reply');
-    expect(db.get('A')?.route_reason).toBe('Screenshot sent ✓ · Waiting for customer reply');
+    expect(db.get('A')?.route_reason).toBe(
+      'Screenshot sent ✓ · Waiting for customer reply to send computation',
+    );
   });
 
   it('honours the Owner setting: 1 attempt means one try only', async () => {

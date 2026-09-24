@@ -24,16 +24,53 @@ const linked = (over: Partial<EffectiveCaptureLink> = {}): EffectiveCaptureLink 
   ...over,
 });
 
-function renderPanel(opts: { photoEligible?: boolean; messageStatus?: string | null }) {
+function renderPanel(opts: {
+  photoEligible?: boolean;
+  messageStatus?: string | null;
+  messageSequence?: string | null;
+}) {
   return render(
     <CaptureLinkPanel
       captureRecordId="c1"
       link={linked({ photoEligible: opts.photoEligible ?? false })}
       onChanged={vi.fn()}
       messageStatus={opts.messageStatus ?? null}
+      messageSequence={opts.messageSequence ?? null}
     />,
   );
 }
+
+describe('CaptureLinkPanel — Screenshot First wording (Owner 2026-09-24)', () => {
+  it('nothing sent yet (link_sent) → "Waiting for customer to message", never "Waiting for reply to send screenshot"', () => {
+    renderPanel({ messageStatus: 'link_sent', messageSequence: 'screenshot_first' });
+    expect(screen.getByText(/Waiting for customer to message/)).toBeInTheDocument();
+    expect(screen.queryByText(/Waiting for reply to send screenshot/)).toBeNull();
+  });
+
+  it('failed → "Screenshot not sent", never "AUTO TEXT not sent"', () => {
+    renderPanel({ messageStatus: 'failed', messageSequence: 'screenshot_first' });
+    expect(screen.getByText(/Screenshot not sent/)).toBeInTheDocument();
+    expect(screen.queryByText(/AUTO TEXT not sent/)).toBeNull();
+  });
+
+  it('no Screenshot First state ever shows "Waiting for reply to send screenshot"', () => {
+    for (const messageStatus of ['awaiting_inbox', 'sending', 'sent', 'link_sent', 'failed', null]) {
+      const { unmount } = renderPanel({ messageStatus, messageSequence: 'screenshot_first' });
+      expect(screen.queryByText(/Waiting for reply to send screenshot/)).toBeNull();
+      unmount();
+    }
+  });
+
+  it('a customer who has now messaged (eligible) → "Photo ready" still wins', () => {
+    renderPanel({ photoEligible: true, messageStatus: 'link_sent', messageSequence: 'screenshot_first' });
+    expect(screen.getByText(/Photo ready/)).toBeInTheDocument();
+  });
+
+  it('Classic keeps its wording', () => {
+    renderPanel({ messageStatus: 'link_sent', messageSequence: 'classic' });
+    expect(screen.getByText(/Waiting for reply to send screenshot/)).toBeInTheDocument();
+  });
+});
 
 describe('CaptureLinkPanel — finite, state-accurate bottom wording', () => {
   it('photo-eligible → "Photo ready" (never "Photo waiting")', () => {

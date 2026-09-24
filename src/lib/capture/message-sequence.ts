@@ -198,10 +198,14 @@ export function sequenceStatusLines(
 ): { lines: string[]; tone: 'ok' | 'wait' | 'warn' } | null {
   if (messageSequence !== 'screenshot_first') return null;
 
+  if (messageStatus === 'sending') {
+    return { lines: ['Sending screenshot…'], tone: 'wait' };
+  }
   if (messageStatus === 'link_sent') {
-    // Comment-only customer. Earlier captures got the computation as their one Private Reply
-    // (text recorded as sent); now NOTHING is sent until the customer messages the page, and
-    // then the screenshot goes first and the computation follows.
+    // Comment-only customer: NOTHING is sent until the customer messages the page, and then the
+    // screenshot goes first and the computation follows. "Computation sent" here is only the true
+    // history of a capture sent before the database gate (migration 20260924160000) stopped every
+    // build from sending a Private Reply on Screenshot First; no new capture can reach it.
     if (textStatus === 'sent') {
       return { lines: ['Computation sent ✓', 'Screenshot after customer replies'], tone: 'wait' };
     }
@@ -221,7 +225,10 @@ export function sequenceStatusLines(
     case 'sent':
       return { lines: ['Screenshot sent ✓', 'Computation sent ✓'], tone: 'ok' };
     case 'waiting_reply':
-      return { lines: ['Screenshot sent ✓', 'Waiting for customer reply'], tone: 'wait' };
+      return {
+        lines: ['Screenshot sent ✓', 'Waiting for customer reply to send computation'],
+        tone: 'wait',
+      };
     case 'failed':
       return { lines: ['Screenshot sent ✓', 'Computation not sent · open chat'], tone: 'warn' };
     case 'unconfirmed':
@@ -243,7 +250,7 @@ export function sequenceRouteReason(
     case 'sent':
       return 'Screenshot sent ✓ · Computation sent ✓';
     case 'waiting_reply':
-      return 'Screenshot sent ✓ · Waiting for customer reply';
+      return 'Screenshot sent ✓ · Waiting for customer reply to send computation';
     case 'failed':
       return 'Screenshot sent ✓ · Computation not sent · open chat';
     case 'unconfirmed':

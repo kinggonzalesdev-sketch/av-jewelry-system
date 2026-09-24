@@ -317,6 +317,15 @@ export async function attemptSecureLinkPrivateReply(input: {
   // Atomic claim — only the worker that flips pending→sending sends the ONE Private Reply.
   const claim = (await supabase.rpc('claim_share_link_send', { p_id: link.id })).data as string;
   if (claim === 'already_sent') return { ok: true, code: 'already_sent', url };
+  if (claim === 'screenshot_first') {
+    // The database gate (migration 20260924160000): on Screenshot First nothing may go before the
+    // screenshot, so this capture never gets a comment Private Reply, whichever build asks.
+    return {
+      ok: false,
+      code: 'screenshot_first',
+      message: 'Screenshot First: nothing is sent before the screenshot.',
+    };
+  }
   if (claim !== 'claimed') {
     return { ok: false, code: 'in_progress', message: 'Another Private Reply for this comment is in progress.' };
   }

@@ -152,8 +152,14 @@ describe('staff-facing status (never a raw API error)', () => {
     ]);
     expect(sequenceStatusLines('screenshot_first', 'sent', 'waiting_reply')?.lines).toEqual([
       'Screenshot sent ✓',
-      'Waiting for customer reply',
+      'Waiting for customer reply to send computation',
     ]);
+    expect(sequenceStatusLines('screenshot_first', 'sending', null)?.lines).toEqual([
+      'Sending screenshot…',
+    ]);
+    expect(sequenceRouteReason('waiting_reply')).toBe(
+      'Screenshot sent ✓ · Waiting for customer reply to send computation',
+    );
     expect(sequenceStatusLines('screenshot_first', 'link_sent', 'sent')?.lines).toEqual([
       'Computation sent ✓',
       'Screenshot after customer replies',
@@ -178,6 +184,20 @@ describe('staff-facing status (never a raw API error)', () => {
     // Any other failure keeps the card's own wording.
     expect(sequenceStatusLines('screenshot_first', 'failed', null)).toBeNull();
     expect(sequenceStatusLines('classic', 'failed', 'sent')).toBeNull();
+  });
+
+  it('Screenshot First never says the screenshot waits on a reply after a computation, unless that really happened', () => {
+    // Only a capture whose computation truly went first (before the database gate) may say so.
+    const statuses = [null, 'pending', 'awaiting_inbox', 'sending', 'sent', 'link_sent', 'failed'];
+    const texts = [null, 'pending', 'sending', 'waiting_reply', 'failed', 'unconfirmed'];
+    for (const m of statuses) {
+      for (const t of texts) {
+        const shown = (sequenceStatusLines('screenshot_first', m, t)?.lines ?? []).join(' · ');
+        expect(shown).not.toMatch(/Waiting for reply to send screenshot/);
+        expect(shown).not.toMatch(/Screenshot after customer replies/);
+        expect(shown).not.toMatch(/^Computation sent/);
+      }
+    }
   });
 
   it('leaves classic / not-started captures to the existing wording', () => {
@@ -257,5 +277,51 @@ describe('migration 20260924120000 — additive, screenshot-first enforced in th
   it('keeps the sweep guard a superset of its previous body', () => {
     expect(SQL).toContain("coalesce(c.message_status, '') in ('pending', 'awaiting_inbox')");
     expect(SQL).toContain("(c.message_status = 'link_sent' and c.created_at > now() - interval '24 hours')");
+  });
+});
+
+describe('migration 20260924160000 — the Screenshot First gate lives in the database', () => {
+  const RAW = readFileSync(
+    join(__dirname, '..', '..', 'supabase', 'migrations', '20260924160000_capture_screenshot_first_hard_gate.sql'),
+    'utf8',
+  );
+  const SQL = RAW.split(String.fromCharCode(10))
+    .filter((l) => !l.trim().startsWith('--'))
+    .join(String.fromCharCode(10))
+    .toLowerCase();
+  const claimBody = SQL.slice(SQL.indexOf('create or replace function public.claim_share_link_send'));
+
+  it('is additive: no table, column or data change (only its own trigger is re-created)', () => {
+    expect(SQL).not.toMatch(/drop (table|column|function|index|policy)/);
+    expect(SQL.match(/drop trigger/g)).toEqual(['drop trigger']);
+    expect(SQL).toContain('drop trigger if exists trg_stamp_message_sequence on public.capture_records;');
+    expect(SQL).not.toMatch(/alter table|rename|delete from|truncate/);
+    const topLevel = SQL.split('$$').filter((_, i) => i % 2 === 0).join(' ');
+    expect(topLevel).not.toMatch(/update public\./);
+  });
+
+  it('a new capture snapshots the saved setting at insert, set-once', () => {
+    expect(SQL).toContain('before insert on public.capture_records');
+    expect(SQL).toContain('if new.message_sequence is null then');
+    expect(SQL).toContain('from public.pancake_integration_config c');
+  });
+
+  it('the Private Reply claim refuses a screenshot_first capture BEFORE it can be claimed', () => {
+    expect(claimBody).toContain("c.message_sequence = 'screenshot_first'");
+    expect(claimBody).toContain("return 'screenshot_first';");
+    expect(claimBody.indexOf("return 'screenshot_first';")).toBeLessThan(
+      claimBody.indexOf("set private_reply_status = 'sending'"),
+    );
+    // A reply that already went still answers 'already_sent' (idempotent re-entry).
+    expect(claimBody).toContain("s.private_reply_status is distinct from 'sent'");
+  });
+
+  it('keeps the live claim rules and grants', () => {
+    expect(claimBody).toContain('app_private.is_active_staff() or app_private.is_service_role()');
+    expect(claimBody).toContain("send_claimed_at < now() - interval '5 minutes'");
+    expect(SQL).toContain('revoke all on function public.claim_share_link_send(uuid) from public, anon;');
+    expect(SQL).toContain(
+      'revoke all on function app_private.stamp_capture_message_sequence() from public, anon, authenticated;',
+    );
   });
 });
