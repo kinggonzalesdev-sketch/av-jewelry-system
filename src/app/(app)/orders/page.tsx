@@ -104,6 +104,7 @@ export default async function OrdersPage({
           // Compact "Capture Pending" pill beside + New Order — only for capture
           // holders (the strip is theirs), 0 otherwise so it never shows.
           pendingCaptureCount={permissions.has('claim_capture') ? pendingCaptureCount : 0}
+          canSendInvoices={permissions.has('invoice_preparation')}
           // Passed as a slot so + New Order renders inside OrdersView's sticky top
           // action row (beside the Capture Pending pill), where its state lives.
           newOrderAction={

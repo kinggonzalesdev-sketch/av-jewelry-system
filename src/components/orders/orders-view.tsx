@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { OrderDetailsModal } from '@/components/orders/order-details-modal';
 import { OrderDelete } from '@/components/orders/cancelled-order-delete';
 import { OrderEdit } from '@/components/orders/order-edit';
+import { SendInvoicesModal } from '@/components/orders/send-invoices-modal';
 import { LayawayLedgerViewModal } from '@/components/payments/layaway-ledger-view-modal';
 
 import { loadOrdersPageAction } from '@/lib/orders/actions';
@@ -437,6 +438,7 @@ export function OrdersView({
   canManageOrders = false,
   isOwner = false,
   pendingCaptureCount = 0,
+  canSendInvoices = false,
   title,
 }: {
   /** The server-rendered FIRST page (rows + exact total + full-store card counts). */
@@ -464,9 +466,15 @@ export function OrdersView({
   canManageOrders?: boolean;
   /** Owner = the Edit/Delete buttons act directly; admin = they submit for approval. */
   isOwner?: boolean;
+  /** May send invoices (invoice_preparation — the same gate as Send Invoice). Shows the
+   *  For Invoice card's "Send Invoices" button; the server re-checks every send. */
+  canSendInvoices?: boolean;
 }) {
   const router = useRouter();
   const [card, setCard] = useState<CardKey>((initialCard as CardKey) || 'all');
+  // Orders → For Invoice → Send Invoices (Owner 2026-09-25): bulk send + reminders.
+  const [sendInvoicesOpen, setSendInvoicesOpen] = useState(false);
+  const showSendInvoices = canSendInvoices && card === 'for_invoice';
   // The "Capture Pending" badge starts at the server-rendered count, then tracks the
   // Incoming Captures strip's LIVE count (same query) so the pill always matches the
   // popup's "(N)" — the strip broadcasts its count after every load.
@@ -617,9 +625,19 @@ export function OrdersView({
         {title ? <PageHeader title={title} /> : null}
         {/* Top action row: + New Order (and the Capture Pending pill when captures are
           waiting). Hidden with no leftover gap when there is nothing to show. */}
-        {newOrderAction || liveCaptureCount > 0 ? (
+        {newOrderAction || liveCaptureCount > 0 || showSendInvoices ? (
           <div className="flex flex-wrap items-center gap-2">
             {newOrderAction}
+            {showSendInvoices ? (
+              <button
+                type="button"
+                onClick={() => setSendInvoicesOpen(true)}
+                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gold/50 bg-gold/10 px-3 text-sm font-medium text-foreground transition-colors hover:bg-gold/20"
+                data-testid="send-invoices-open"
+              >
+                Send Invoices
+              </button>
+            ) : null}
             {/* Compact "Capture Pending" pill — amber, only when captures are waiting.
               Lightweight COUNT only; clicking OPENS the Incoming Captures station,
               which stays hidden until then (Owner request 2026-08-09). The station is
@@ -904,6 +922,17 @@ export function OrdersView({
       {/* In-page order details — the list stays mounted behind it, so search,
           filters, selected status, and scroll are preserved on close. After an
           in-modal action, only this order's data + the counts refresh. */}
+      {canSendInvoices ? (
+        <SendInvoicesModal
+          open={sendInvoicesOpen}
+          onClose={() => setSendInvoicesOpen(false)}
+          onChanged={() => router.refresh()}
+          onViewOrder={(orderId) => {
+            setSendInvoicesOpen(false);
+            setSelectedId(orderId);
+          }}
+        />
+      ) : null}
       <OrderDetailsModal
         orderId={selectedId}
         // The active card decides the tab structure: only Total keeps a separate

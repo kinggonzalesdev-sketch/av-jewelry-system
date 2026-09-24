@@ -574,8 +574,14 @@ export async function sendOrderReminder(
     return { ok: false, error: response.error.message.replace(/^ERROR:\s*/i, '').trim() };
   }
 
-  // Best-effort auto-delivery through Pancake (never blocks the reminder record).
-  const pancake = await deliverOrderMessageViaPancake(supabase, officialOrderId, trimmed);
+  // Best-effort auto-delivery through Pancake (never blocks the reminder record). TEXT ONLY to
+  // the order's/customer's STORED chat, exactly like Send Invoice (Owner 2026-09-25): no photo
+  // (with a photo attached Pancake sends the photo alone and drops the reminder text) and never
+  // a customer guessed by Facebook name.
+  const pancake = await deliverOrderMessageViaPancake(supabase, officialOrderId, trimmed, {
+    attachOrderPhoto: false,
+    resolveConversationByName: false,
+  });
 
   await recordAuditEvent({
     action: 'order.reminder_sent',

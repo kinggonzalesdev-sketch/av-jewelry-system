@@ -54,6 +54,14 @@ import {
   type OrderReminder,
 } from '@/lib/orders/for-invoice';
 import { recordAuditEvent } from '@/lib/audit/log';
+import { AuthorizationError } from '@/lib/authz/guard';
+import {
+  listInvoiceSendRows,
+  sendInvoiceInBulk,
+  sendReminderInBulk,
+  type InvoiceSendList,
+} from '@/lib/orders/bulk-invoice';
+import type { BulkRowOutcome, InvoiceFilter } from '@/lib/orders/bulk-invoice-rules';
 import {
   deleteTestOrderAndReturnItems,
   type DeleteTestOrderResult,
@@ -614,6 +622,8 @@ export async function recordBulkInvoiceSendAction(summary: {
   sent: number;
   failed: number;
   skipped: number;
+  /** 'reminder' for a bulk Send Reminders run (default: invoices). */
+  kind?: 'invoice' | 'reminder';
 }): Promise<void> {
   await recordAuditEvent({
     action: 'order.bulk_invoice_send',
@@ -841,4 +851,45 @@ export async function setOrderWaybillAction(
     revalidatePath('/orders');
   }
   return result;
+}
+
+/** Orders → For Invoice → Send Invoices: one page of the list (filter chip + search). */
+export async function loadInvoiceSendListAction(opts: {
+  filter?: InvoiceFilter;
+  search?: string;
+  page?: number;
+}): Promise<{ ok: true; list: InvoiceSendList } | { ok: false; error: string }> {
+  try {
+    return { ok: true, list: await listInvoiceSendRows(opts) };
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return { ok: false, error: cause.message };
+    throw cause;
+  }
+}
+
+/** Send ONE invoice from the bulk window (claimed in the database; the individual Send
+ *  Invoice underneath). The window calls this one order at a time, a few in parallel. */
+export async function sendInvoiceInBulkAction(orderId: string): Promise<BulkRowOutcome> {
+  if (!orderId) return { orderId, outcome: 'skipped', reason: 'An order is required.' };
+  try {
+    return await sendInvoiceInBulk(orderId);
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) {
+      return { orderId, outcome: 'skipped', reason: cause.message };
+    }
+    return { orderId, outcome: 'failed', reason: 'Send failed unexpectedly' };
+  }
+}
+
+/** Send ONE order's next reminder from the bulk window. */
+export async function sendReminderInBulkAction(orderId: string): Promise<BulkRowOutcome> {
+  if (!orderId) return { orderId, outcome: 'skipped', reason: 'An order is required.' };
+  try {
+    return await sendReminderInBulk(orderId);
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) {
+      return { orderId, outcome: 'skipped', reason: cause.message };
+    }
+    return { orderId, outcome: 'failed', reason: 'Reminder failed unexpectedly' };
+  }
 }

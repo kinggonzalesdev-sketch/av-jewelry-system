@@ -417,24 +417,16 @@ export type OrderLineItem = {
  * Used by the Order Details drawer to show what item(s) the order is for and how
  * many grams.
  */
-export async function getOrderLineItems(
-  officialOrderId: string,
-): Promise<OrderLineItem[]> {
-  const supabase = await createClient();
-
-  const { data, error } = await supabase
-    .from('official_order_claims')
-    .select(
-      `claim_id,
+const LINE_ITEM_SELECT = `claim_id,
        claims (
          quantity, claim_reference,
          inventory_items ( item_name, item_code, grams_per_piece, total_price_per_piece )
-       )`,
-    )
-    .eq('official_order_id', officialOrderId);
+       )`;
 
-  if (error || !data) return [];
+type LineItemRow = { claim_id: string; claims: unknown };
 
+/** One official_order_claims row → its OrderLineItem (the ONE mapping for single and batch). */
+function toOrderLineItem(row: LineItemRow): OrderLineItem {
   type ItemShape = {
     item_name: string | null;
     item_code: string | null;
@@ -446,26 +438,56 @@ export async function getOrderLineItems(
     claim_reference: string | null;
     inventory_items: ItemShape | ItemShape[] | null;
   };
+  const claim = one<ClaimShape>(row.claims);
+  const item = one<ItemShape>(claim?.inventory_items);
+  return {
+    claimId: row.claim_id,
+    claimReference: claim?.claim_reference ?? '—',
+    itemName: item?.item_name ?? null,
+    itemCode: item?.item_code ?? null,
+    gramsPerPiece:
+      item?.grams_per_piece === null || item?.grams_per_piece === undefined
+        ? null
+        : String(item.grams_per_piece),
+    quantity: Number(claim?.quantity ?? 0),
+    unitPrice:
+      item?.total_price_per_piece === null || item?.total_price_per_piece === undefined
+        ? null
+        : String(item.total_price_per_piece),
+  };
+}
 
-  return (
-    data as Array<{ claim_id: string; claims: ClaimShape | ClaimShape[] | null }>
-  ).map((row) => {
-    const claim = one<ClaimShape>(row.claims);
-    const item = one<ItemShape>(claim?.inventory_items);
-    return {
-      claimId: row.claim_id,
-      claimReference: claim?.claim_reference ?? '—',
-      itemName: item?.item_name ?? null,
-      itemCode: item?.item_code ?? null,
-      gramsPerPiece:
-        item?.grams_per_piece === null || item?.grams_per_piece === undefined
-          ? null
-          : String(item.grams_per_piece),
-      quantity: Number(claim?.quantity ?? 0),
-      unitPrice:
-        item?.total_price_per_piece === null || item?.total_price_per_piece === undefined
-          ? null
-          : String(item.total_price_per_piece),
-    };
-  });
+export async function getOrderLineItems(
+  officialOrderId: string,
+): Promise<OrderLineItem[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('official_order_claims')
+    .select(LINE_ITEM_SELECT)
+    .eq('official_order_id', officialOrderId);
+
+  if (error || !data) return [];
+  return (data as LineItemRow[]).map(toOrderLineItem);
+}
+
+/**
+ * The line items of MANY orders in ONE query (no per-order round trip), keyed by order id.
+ * Same source and mapping as getOrderLineItems. An order with no readable lines maps to [].
+ */
+export async function getOrderLineItemsByOrder(
+  officialOrderIds: ReadonlyArray<string>,
+): Promise<Map<string, OrderLineItem[]>> {
+  const byOrder = new Map<string, OrderLineItem[]>(officialOrderIds.map((id) => [id, []]));
+  if (officialOrderIds.length === 0) return byOrder;
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('official_order_claims')
+    .select(`official_order_id, ${LINE_ITEM_SELECT}`)
+    .in('official_order_id', [...officialOrderIds]);
+  if (error || !data) return byOrder;
+  for (const row of data as Array<LineItemRow & { official_order_id: string }>) {
+    byOrder.get(row.official_order_id)?.push(toOrderLineItem(row));
+  }
+  return byOrder;
 }

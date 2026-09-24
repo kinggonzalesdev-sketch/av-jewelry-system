@@ -15,12 +15,12 @@
 export const TEMPLATE_KEYS = ['invoice', 'reminder_1', 'auto_text'] as const;
 export type TemplateKey = (typeof TEMPLATE_KEYS)[number];
 
-// Owner request 2026-08-05: the Reminder template EDITOR was removed from
-// Settings → Message Templates. Only these keys get a card there. The reminder is
-// still composed and sent from the Orders → For Reminder flow (its own inline
-// editor), which reads reminder_1's body straight from the database. `auto_text`
-// gets its own card (Owner 2026-08-22), rendered with a dedicated mode-aware editor.
-export const EDITABLE_TEMPLATE_KEYS = ['invoice', 'auto_text'] as const;
+// Only these keys get a card in Settings → Message Templates. The Reminder editor was
+// removed on 2026-08-05 and brought back on 2026-09-25 (Owner decision): reminders are
+// now sent from Orders → Send Invoices using reminder_1, so its wording must be editable.
+// `auto_text` gets its own card (Owner 2026-08-22), rendered with a dedicated
+// mode-aware editor.
+export const EDITABLE_TEMPLATE_KEYS = ['invoice', 'reminder_1', 'auto_text'] as const;
 
 /** Every variable a template may use, with what it means and a sample value. */
 export const TEMPLATE_VARIABLES: ReadonlyArray<{

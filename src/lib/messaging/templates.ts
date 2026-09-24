@@ -277,16 +277,32 @@ export async function renderOrderMessage(
   // Suppress the grams/rate lines when empty (fixed-price → clean, no blank labels).
   const message = renderWithOptionalLines(body, values, INVOICE_OPTIONAL_TOKENS);
 
-  // BLOCK signal (Owner 2026-09-01): a GRAMS-BASED invoice must not be sent with a blank
-  // grams or rate. Only these two count as "missing" — every other optional token (a
-  // full-payment order has no {due_date}, etc.) renders/suppresses without blocking.
-  // A fixed-price order (no grams) requires neither, so nothing blocks it.
-  const missing: string[] = [];
-  if (key === 'invoice' && gp.hasGrams) {
-    const used = tokensUsed(body);
-    if (used.includes('{grams}') && !gramsValue) missing.push('{grams}');
-    if (used.includes('{price_per_gram}') && !rateValue) missing.push('{price_per_gram}');
-  }
+  const missing = key === 'invoice' ? invoiceMissingTokens(body, gp) : [];
 
   return { ok: true, message, missing };
+}
+
+/**
+ * BLOCK signal (Owner 2026-09-01): a GRAMS-BASED invoice must not be sent with a blank grams or
+ * rate. Only these two count as "missing" — every other optional token (a full-payment order has
+ * no {due_date}, etc.) renders/suppresses without blocking. A fixed-price order (no grams)
+ * requires neither, so nothing blocks it. The ONE rule behind Send Invoice's "Please complete
+ * Grams and Price Per Gram", shared with the bulk Send Invoices list.
+ */
+export function invoiceMissingTokens(
+  body: string,
+  gp: ReturnType<typeof computeOrderGramsPricing>,
+): string[] {
+  const missing: string[] = [];
+  if (!gp.hasGrams) return missing;
+  const gramsValue = gramsTokenValue(gp);
+  const rateValue = gp.mixedRates
+    ? 'Mixed Rates'
+    : gp.pricePerGram != null
+      ? formatPeso(String(gp.pricePerGram))
+      : '';
+  const used = tokensUsed(body);
+  if (used.includes('{grams}') && !gramsValue) missing.push('{grams}');
+  if (used.includes('{price_per_gram}') && !rateValue) missing.push('{price_per_gram}');
+  return missing;
 }
