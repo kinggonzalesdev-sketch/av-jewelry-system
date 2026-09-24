@@ -28,7 +28,9 @@ const loadMock = vi.fn(() => Promise.resolve(listData));
 
 vi.mock('@/lib/capture/pending-actions', () => ({
   dismissPendingCaptureAction: (...a: unknown[]) => dismissMock(...(a as [])),
-  loadPendingCapturesAction: () => loadMock(),
+  loadPendingCapturesPageAction: () =>
+    loadMock().then((rows) => ({ rows, total: rows.length })),
+  stillPendingCaptureIdsAction: () => Promise.resolve(null),
   claimCaptureStickerAction: () => Promise.resolve(null),
   releaseCaptureStickerAction: () => Promise.resolve(undefined),
   markCaptureStickerPrintedAction: () => Promise.resolve(undefined),

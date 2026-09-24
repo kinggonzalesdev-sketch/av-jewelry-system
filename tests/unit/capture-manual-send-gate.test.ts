@@ -32,7 +32,10 @@ vi.mock('@/lib/capture/pending-link', () => ({
   resolveChosenCustomer: vi.fn(),
 }));
 vi.mock('@/lib/orders/for-invoice', () => ({ autoSendCaptureForOrder: vi.fn() }));
-vi.mock('@/lib/capture/pending', () => ({ listPendingCaptures: vi.fn() }));
+vi.mock('@/lib/capture/pending', () => ({
+  listPendingCapturesPage: vi.fn(),
+  stillPendingCaptureIds: vi.fn(),
+}));
 vi.mock('@/lib/capture/media-window', () => ({ isConversationMediaEligible: vi.fn() }));
 vi.mock('@/lib/authz/guard', () => ({ requirePermission: vi.fn(() => Promise.resolve()) }));
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }));

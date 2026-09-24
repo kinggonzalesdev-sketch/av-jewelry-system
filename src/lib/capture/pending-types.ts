@@ -15,13 +15,25 @@
 export const TOGGLE_INCOMING_CAPTURES_EVENT = 'mineflow:toggle-incoming-captures';
 
 /**
- * A window CustomEvent (`detail: number`) the Incoming Captures strip fires after
- * every load with its CURRENT number of pending captures. The "Capture Pending"
- * pill listens and shows exactly this, so the pill's badge always matches the
- * popup's "(N)" — the server-rendered count is only the first-paint placeholder
- * until the strip's live count arrives (Owner request 2026-08-09).
+ * A window CustomEvent (`detail: number`) the Incoming Captures strip fires whenever
+ * the EXACT number of pending captures changes (the server count, adjusted for what
+ * this station just added or removed; never the number of rows it has loaded). The
+ * "Capture Pending" pill listens and shows exactly this, so the pill's badge always
+ * matches the popup's "(N)" — the server-rendered count is only the first-paint
+ * placeholder until the strip's count arrives (Owner request 2026-08-09).
  */
 export const CAPTURE_COUNT_EVENT = 'mineflow:capture-count';
+
+/**
+ * A window event the pill fires when it mounts: the strip lives app-wide and may
+ * have loaded before the Orders page opened, so the pill asks for the current count
+ * instead of waiting for the next change (Owner 2026-09-24: pill 70, list 50).
+ */
+export const CAPTURE_COUNT_REQUEST_EVENT = 'mineflow:capture-count-request';
+
+/** Rows per Incoming Captures page. The first page is what the station always
+ *  loaded; older pages load on demand, so every pending capture is reachable. */
+export const PENDING_CAPTURES_PAGE_SIZE = 50;
 
 /** The resolved-customer state of a pending capture (Capture-time linking, 2026-08-09).
  *  Mirrors capture_records.link_status; null = not resolved yet. */
@@ -105,4 +117,15 @@ export type PendingCaptureRow = {
   /** Screenshot-first computation text state (pending / sending / sent / waiting_reply / failed /
    *  unconfirmed), or null. */
   textSendStatus?: string | null;
+};
+
+/** Where the next (older) page starts: the oldest row already loaded. Newest-first keyset on
+ *  (captured_at, id), so a capture arriving on top can never shift, duplicate or skip a page. */
+export type PendingCapturesCursor = { capturedAt: string; id: string };
+
+export type PendingCapturesPage = {
+  rows: PendingCaptureRow[];
+  /** EXACT number of pending captures (the same count the pill shows), not rows.length;
+   *  null when the count could not be read (the station keeps its last known total). */
+  total: number | null;
 };

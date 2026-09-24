@@ -5,20 +5,35 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   claimCaptureStickerAction,
   dismissPendingCaptureAction,
-  loadPendingCapturesAction,
+  loadPendingCapturesPageAction,
   markCaptureStickerPrintedAction,
   releaseCaptureStickerAction,
   resolveCaptureLinkAction,
   retryCaptureAutoTextAction,
   saveCaptureEditsAction,
   sendCaptureToMessengerAction,
+  stillPendingCaptureIdsAction,
 } from '@/lib/capture/pending-actions';
 import {
   CAPTURE_COUNT_EVENT,
+  CAPTURE_COUNT_REQUEST_EVENT,
+  PENDING_CAPTURES_PAGE_SIZE,
   TOGGLE_INCOMING_CAPTURES_EVENT,
   type CaptureLinkResult,
   type PendingCaptureRow,
 } from '@/lib/capture/pending-types';
+import {
+  appendOlderPage,
+  comparePendingRows,
+  cursorOf,
+  displayedPendingTotal,
+  EMPTY_SNAPSHOT,
+  fitsLoadedWindow,
+  hasMorePending,
+  mergeFirstPage,
+  sortPendingRows,
+  type PendingSnapshot,
+} from '@/lib/capture/pending-list';
 import {
   CaptureLinkPanel,
   type EffectiveCaptureLink,
@@ -63,6 +78,22 @@ function ocrStr(ocr: unknown, ...keys: string[]): string | null {
   return null;
 }
 
+/** Ids marked within the last `windowMs` (older marks are dropped as they are read). */
+function recentIds(marks: Map<string, number>, windowMs: number): string[] {
+  const now = Date.now();
+  const ids: string[] = [];
+  for (const [id, at] of marks) {
+    if (now - at < windowMs) ids.push(id);
+    else marks.delete(id);
+  }
+  return ids;
+}
+
+/** How long a just-dismissed capture is excluded from refreshes (its DELETE may be in flight). */
+const DISMISS_EXCLUDE_MS = 60_000;
+/** How long a realtime arrival/removal outranks a refresh that may have been read before it. */
+const REALTIME_GRACE_MS = 30_000;
+
 /**
  * Incoming Captures — the PC's live station. Floating-screenshot captures uploaded
  * from the phone appear here in realtime (no refresh). "Use" opens New Order
@@ -82,7 +113,29 @@ export function IncomingCapturesStrip({
 }) {
   const { lastSyncedAt } = useDashboardSync();
   const { activeChannel, printLang } = usePrinter();
-  const [rows, setRows] = useState<PendingCaptureRow[]>([]);
+  // The loaded WINDOW of pending captures (newest first, contiguous) + what the last exact
+  // server count covered — ONE state, so every change is a pure update (see pending-list.ts).
+  const [list, setList] = useState<{
+    rows: PendingCaptureRow[];
+    snapshot: PendingSnapshot;
+    /** An older-page read came back empty: nothing more to load until the next refresh. */
+    noOlder: boolean;
+  }>({ rows: [], snapshot: EMPTY_SNAPSHOT, noOlder: false });
+  const rows = list.rows;
+  const setRows = useCallback(
+    (next: PendingCaptureRow[] | ((cur: PendingCaptureRow[]) => PendingCaptureRow[])) =>
+      setList((cur) => ({ ...cur, rows: typeof next === 'function' ? next(cur.rows) : next })),
+    [],
+  );
+  // The EXACT pending count, shown on the "Capture Pending" pill AND this title — never
+  // rows.length (the station loads 50 at a time; Owner 2026-09-24: pill 70, title 50).
+  const total = displayedPendingTotal(list.rows, list.snapshot);
+  const moreToLoad = hasMorePending(list.rows, total) && !list.noOlder;
+  const listRef = useRef(list);
+  useEffect(() => {
+    listRef.current = list;
+  }, [list]);
+  const [loadingMore, setLoadingMore] = useState(false);
   // Hidden until the operator clicks the "Capture Pending" pill (Owner request
   // 2026-08-09) — the strip must not appear on its own. The component stays
   // mounted regardless (all effects below keep running, so background auto-print
@@ -128,6 +181,13 @@ export function IncomingCapturesStrip({
   // FAILED mutation restores it in its original position instead of silently losing it.
   const dismissedRef = useRef<Set<string>>(new Set());
   const dismissRollbackRef = useRef<Map<string, PendingCaptureRow>>(new Map());
+  // When each capture was dismissed here: sent as `excludeIds` for a minute, so a refresh
+  // started while its DELETE is in flight neither lists nor counts it.
+  const dismissedAtRef = useRef<Map<string, number>>(new Map());
+  // Realtime removals (Use / confirm) and arrivals seen moments ago, so a refresh read just
+  // before them cannot briefly undo them (see mergeFirstPage).
+  const recentRemovalRef = useRef<Map<string, number>>(new Map());
+  const recentArrivalRef = useRef<Map<string, number>>(new Map());
 
   // Set by the auto-print effect below; lets the realtime handler kick an INSTANT drain
   // the moment a capture arrives (null while no printer is connected / auto-print off).
@@ -157,23 +217,103 @@ export function IncomingCapturesStrip({
     }
   };
 
+  // Refresh the FIRST page + the exact total (the poll / realtime reconcile). Never re-reads the
+  // older pages the operator loaded: those are only re-checked by id (one light query), so a
+  // capture Used or Dismissed elsewhere still drops out even if its realtime event was missed.
   const load = useCallback(() => {
-    loadPendingCapturesAction()
-      .then((data) =>
-        // Drop anything optimistically dismissed but not yet confirmed. A load() that was
-        // already in flight when Dismiss was clicked returns a PRE-dismiss snapshot; without
-        // this filter it would put the card back for a few seconds ("flicker").
-        setRows(data.filter((r) => !dismissedRef.current.has(r.captureRecordId))),
-      )
+    const excludeIds = recentIds(dismissedAtRef.current, DISMISS_EXCLUDE_MS);
+    const olderIds = listRef.current.rows
+      .slice(PENDING_CAPTURES_PAGE_SIZE)
+      .map((r) => r.captureRecordId);
+    Promise.all([
+      loadPendingCapturesPageAction({ excludeIds }),
+      olderIds.length
+        ? stillPendingCaptureIdsAction(olderIds).catch(() => null)
+        : Promise.resolve(null),
+    ])
+      .then(([page, still]) => {
+        // Anything optimistically dismissed (or removed through realtime a moment ago) stays
+        // off the list: a refresh that was already in flight returns a PRE-removal page, and
+        // without this it would put the card back for a few seconds ("flicker").
+        const hide = new Set([
+          ...dismissedRef.current,
+          ...recentIds(recentRemovalRef.current, REALTIME_GRACE_MS),
+        ]);
+        const keepNewer = new Set(recentIds(recentArrivalRef.current, REALTIME_GRACE_MS));
+        const checkedOlder = new Set(olderIds);
+        const stillPending = still ? new Set(still) : null;
+        setList((cur) => {
+          const merged = mergeFirstPage(cur.rows, page.rows, {
+            pageSize: PENDING_CAPTURES_PAGE_SIZE,
+            hide,
+            keepNewer,
+            checkedOlder,
+            stillPending,
+          });
+          return {
+            rows: merged.rows,
+            // A count that could not be read keeps the last known total.
+            snapshot:
+              page.total === null
+                ? cur.snapshot
+                : { total: page.total, ids: merged.snapshotIds },
+            noOlder: false,
+          };
+        });
+      })
       .catch(() => undefined);
   }, []);
 
-  // Tell the "Capture Pending" pill the exact live count whenever the list changes.
-  // Driven by local state, so it updates the INSTANT a realtime insert/removal lands
-  // (Capture Pending 4 → 5) — not only after a server refetch. One source of truth.
+  // The operator reached the end of the list (or clicked Load more): fetch the next OLDER page,
+  // starting right after the oldest loaded capture (keyset: no duplicates, no skips).
+  const loadMore = useCallback(() => {
+    if (loadingMore) return;
+    const cursor = cursorOf(listRef.current.rows);
+    if (!cursor) return;
+    setLoadingMore(true);
+    const excludeIds = recentIds(dismissedAtRef.current, DISMISS_EXCLUDE_MS);
+    loadPendingCapturesPageAction({ cursor, excludeIds })
+      .then((page) => {
+        const hide = new Set([
+          ...dismissedRef.current,
+          ...recentIds(recentRemovalRef.current, REALTIME_GRACE_MS),
+        ]);
+        setList((cur) => ({
+          rows: appendOlderPage(cur.rows, page.rows, hide),
+          // The total already counted these captures: they only extend what it covers.
+          snapshot: {
+            total: cur.snapshot.total,
+            ids: new Set([...cur.snapshot.ids, ...page.rows.map((r) => r.captureRecordId)]),
+          },
+          noOlder: page.rows.length === 0,
+        }));
+      })
+      .catch(() => undefined)
+      .finally(() => setLoadingMore(false));
+  }, [loadingMore]);
+
+  // Tell the "Capture Pending" pill the exact count whenever it changes — the SAME number
+  // as this title, updated the instant a realtime insert/removal or a Dismiss lands (Capture
+  // Pending 70 → 71), not only after a server refetch. The pill may mount after this station
+  // (which lives app-wide), so it can also ask for the current count.
+  const totalRef = useRef(total);
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent(CAPTURE_COUNT_EVENT, { detail: rows.length }));
-  }, [rows.length]);
+    totalRef.current = total;
+    if (total !== null) {
+      window.dispatchEvent(new CustomEvent(CAPTURE_COUNT_EVENT, { detail: total }));
+    }
+  }, [total]);
+  useEffect(() => {
+    const onRequest = () => {
+      if (totalRef.current !== null) {
+        window.dispatchEvent(
+          new CustomEvent(CAPTURE_COUNT_EVENT, { detail: totalRef.current }),
+        );
+      }
+    };
+    window.addEventListener(CAPTURE_COUNT_REQUEST_EVENT, onRequest);
+    return () => window.removeEventListener(CAPTURE_COUNT_REQUEST_EVENT, onRequest);
+  }, []);
 
   // Map a raw capture_records realtime row → the strip's row shape so a new capture
   // appears the INSTANT the event arrives — no server round-trip on the appearance path
@@ -188,7 +328,7 @@ export function IncomingCapturesStrip({
       // Optimistically dismissed → stay gone. A realtime echo for the row (or a late
       // INSERT/UPDATE that raced the DELETE) must not make the card reappear.
       if (dismissedRef.current.has(id)) return;
-      // Mirror listPendingCaptures' filter EXACTLY: a pending floating capture has
+      // Mirror the server's ONE pending filter (pendingCaptures in pending.ts) EXACTLY: it has
       // source 'floating', no linked order, and confirmed still null (jsonb).
       const isPending =
         raw.source === 'floating' &&
@@ -196,11 +336,16 @@ export function IncomingCapturesStrip({
         raw.confirmed === null;
       if (!isPending) {
         // Used / dismissed / confirmed → it leaves the pending list.
+        recentRemovalRef.current.set(id, Date.now());
         setRows((cur) => cur.filter((r) => r.captureRecordId !== id));
         return;
       }
+      if (!listRef.current.rows.some((r) => r.captureRecordId === id)) {
+        recentArrivalRef.current.set(id, Date.now());
+      }
       const ocr = raw.ocr;
-      setRows((cur) => {
+      setList((curList) => {
+        const cur = curList.rows;
         const prev = cur.find((r) => r.captureRecordId === id);
         const row: PendingCaptureRow = {
           captureRecordId: id,
@@ -274,12 +419,18 @@ export function IncomingCapturesStrip({
                 : null
               : (prev?.textSendStatus ?? null),
         };
-        return prev
-          ? cur.map((r) => (r.captureRecordId === id ? row : r))
-          : [row, ...cur];
+        if (prev) {
+          return { ...curList, rows: cur.map((r) => (r.captureRecordId === id ? row : r)) };
+        }
+        // A capture not loaded yet joins only INSIDE the loaded window (a new capture is the
+        // newest); an update for an older, not-yet-loaded one waits for its page (no holes).
+        const shown = displayedPendingTotal(cur, curList.snapshot);
+        const more = hasMorePending(cur, shown) && !curList.noOlder;
+        if (!fitsLoadedWindow(cur, row, more)) return curList;
+        return { ...curList, rows: sortPendingRows([row, ...cur]) };
       });
     },
-    [],
+    [setRows],
   );
 
   // Load on mount + on every realtime nudge, so a new upload from the phone appears
@@ -355,8 +506,12 @@ export function IncomingCapturesStrip({
         { event: 'DELETE', schema: 'public', table: 'capture_records' },
         (payload) => {
           const deletedId = (payload.old as { id?: string } | null)?.id;
-          if (deletedId)
+          if (deletedId) {
+            recentRemovalRef.current.set(deletedId, Date.now());
             setRows((cur) => cur.filter((r) => r.captureRecordId !== deletedId));
+          }
+          // The exact total follows from the server (a deleted capture may not be loaded here).
+          scheduleReconcile();
         },
       )
       .subscribe((status) => {
@@ -380,7 +535,7 @@ export function IncomingCapturesStrip({
       stopRealtimeAuth();
       void supabase.removeChannel(channel);
     };
-  }, [load, applyRealtimeRow]);
+  }, [load, applyRealtimeRow, setRows]);
 
   // Open/close when the "Capture Pending" pill (in OrdersView) is clicked. The
   // pill dispatches a window event so the two siblings stay decoupled; clicking it
@@ -692,12 +847,13 @@ export function IncomingCapturesStrip({
     const snapshot = dismissRollbackRef.current.get(id);
     dismissRollbackRef.current.delete(id);
     dismissedRef.current.delete(id);
+    dismissedAtRef.current.delete(id);
     if (snapshot) {
       setRows((cur) =>
         cur.some((r) => r.captureRecordId === id)
           ? cur // a reconcile already brought it back — don't duplicate
-          : // Re-insert in its original slot (the list is captured_at DESC), not at the top.
-            [...cur, snapshot].sort((a, b) => b.capturedAt.localeCompare(a.capturedAt)),
+          : // Re-insert in its original slot (the list is newest first), not at the top.
+            [...cur, snapshot].sort(comparePendingRows),
       );
     }
     setError(`${message} Please retry.`);
@@ -724,6 +880,7 @@ export function IncomingCapturesStrip({
     if (!snapshot) return;
 
     dismissedRef.current.add(id);
+    dismissedAtRef.current.set(id, Date.now());
     dismissRollbackRef.current.set(id, snapshot);
     setError(null);
     // 1) INSTANT — the card disappears now. The rows.length effect fires CAPTURE_COUNT_EVENT
@@ -736,6 +893,8 @@ export function IncomingCapturesStrip({
         if (res.ok) {
           // Committed. Keep the id suppressed: a stale in-flight load() may still list it.
           dismissRollbackRef.current.delete(id);
+          // Re-read the exact total now that the capture is gone on the server.
+          load();
           return;
         }
         restoreDismissed(id, res.error);
@@ -811,7 +970,7 @@ export function IncomingCapturesStrip({
       <Modal
         open={open}
         onClose={() => setOpen(false)}
-        title={`Incoming Captures${rows.length ? ` (${rows.length})` : ''}`}
+        title={`Incoming Captures${(total ?? rows.length) ? ` (${total ?? rows.length})` : ''}`}
         size="lg"
       >
         <div data-testid="incoming-captures" className="space-y-3">
@@ -820,7 +979,7 @@ export function IncomingCapturesStrip({
               {error}
             </p>
           ) : null}
-          {rows.length === 0 ? (
+          {rows.length === 0 && !moreToLoad ? (
             <p className="rounded-md border border-border bg-card/60 px-3 py-6 text-center text-sm text-muted-foreground">
               No incoming captures right now.
             </p>
@@ -1118,6 +1277,15 @@ export function IncomingCapturesStrip({
               ))}
             </ul>
           )}
+          {moreToLoad ? (
+            <LoadMoreCaptures
+              loaded={rows.length}
+              total={total ?? rows.length}
+              loading={loadingMore}
+              active={open}
+              onLoadMore={loadMore}
+            />
+          ) : null}
         </div>
       </Modal>
 
@@ -1136,5 +1304,65 @@ export function IncomingCapturesStrip({
         />
       ) : null}
     </>
+  );
+}
+
+/**
+ * "Showing 50 of 70 · Load 20 more" at the end of the list. Loads ONE next page when the operator
+ * clicks, or by itself when the end of the list scrolls into view (where the browser supports it),
+ * so every pending capture is reachable without ever loading the whole list at once.
+ */
+function LoadMoreCaptures({
+  loaded,
+  total,
+  loading,
+  active,
+  onLoadMore,
+}: {
+  loaded: number;
+  total: number;
+  loading: boolean;
+  /** Only while the station is open: a closed popup never loads pages in the background. */
+  active: boolean;
+  onLoadMore: () => void;
+}) {
+  const endRef = useRef<HTMLDivElement | null>(null);
+  const onLoadMoreRef = useRef(onLoadMore);
+  useEffect(() => {
+    onLoadMoreRef.current = onLoadMore;
+  }, [onLoadMore]);
+  useEffect(() => {
+    const el = endRef.current;
+    if (!active || loading || !el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) onLoadMoreRef.current();
+      },
+      { rootMargin: '200px 0px' },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [active, loading, loaded]);
+  const next = Math.min(Math.max(0, total - loaded), PENDING_CAPTURES_PAGE_SIZE);
+  return (
+    <div
+      ref={endRef}
+      className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground"
+      data-testid="incoming-load-more"
+    >
+      <span>
+        Showing {loaded} of {total}
+      </span>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        onClick={onLoadMore}
+        disabled={loading}
+        data-testid="incoming-load-more-button"
+      >
+        {loading ? 'Loading…' : next > 0 ? `Load ${next} more` : 'Load more'}
+      </Button>
+    </div>
   );
 }

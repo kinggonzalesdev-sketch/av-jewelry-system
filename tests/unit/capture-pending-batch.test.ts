@@ -30,7 +30,7 @@ import {
   conversationsMediaEligibility,
   isConversationMediaEligible,
 } from '@/lib/capture/media-window';
-import { listPendingCaptures } from '@/lib/capture/pending';
+import { listPendingCapturesPage } from '@/lib/capture/pending';
 
 /*
  * Incoming Captures strip reader: proves the per-row fan-out (1 Storage sign + 1
@@ -69,6 +69,13 @@ function fakeDb(
     const log: QueryLog = { table, ops: [], limit: null };
     queries.push(log);
     const time = (v: unknown) => Date.parse(String(v));
+    // ORDER BY a, b: the FIRST key decides, later keys only break ties (as in SQL). Timestamps
+    // compare as times; anything else (ids) as text.
+    const orders: Array<{ c: string; asc: boolean }> = [];
+    const cmp = (x: unknown, y: unknown) =>
+      /^[0-9]{4}-/.test(String(x)) && /^[0-9]{4}-/.test(String(y))
+        ? time(x) - time(y)
+        : String(x).localeCompare(String(y));
     const b: Builder = {
       select: () => b,
       eq: (c, v) => {
@@ -94,7 +101,14 @@ function fakeDb(
       },
       order: (c, o) => {
         log.ops.push(`order ${c}`);
-        rows.sort((a, z) => (o.ascending ? 1 : -1) * (time(a[c]) - time(z[c])));
+        orders.push({ c, asc: o.ascending });
+        rows.sort((a, z) => {
+          for (const k of orders) {
+            const d = cmp(a[k.c], z[k.c]);
+            if (d) return k.asc ? d : -d;
+          }
+          return 0;
+        });
         return b;
       },
       limit: (n) => {
@@ -344,7 +358,7 @@ async function runStrip(
     failTables: opts.failDb ? ['pancake_webhook_events'] : [],
   });
   holder.client = { from: db.from, storage: storage.storage };
-  const rows = await listPendingCaptures();
+  const { rows } = await listPendingCapturesPage();
   return { rows, storage, db };
 }
 

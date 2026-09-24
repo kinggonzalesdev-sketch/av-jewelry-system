@@ -5,7 +5,12 @@ import { createClient } from '@/lib/supabase/server';
 import { conversationsMediaEligibilitySystem } from '@/lib/capture/auto-router';
 import { sanitizeCaptureName } from '@/lib/capture/name-sanitize';
 import { normalizeGrams } from '@/lib/print/order-receipt';
-import type { PendingCaptureRow } from '@/lib/capture/pending-types';
+import {
+  PENDING_CAPTURES_PAGE_SIZE,
+  type PendingCaptureRow,
+  type PendingCapturesCursor,
+  type PendingCapturesPage,
+} from '@/lib/capture/pending-types';
 
 const CAPTURE_BUCKET = 'attachments';
 /** Lifetime (seconds) of each screenshot's signed URL. */
@@ -52,54 +57,112 @@ function ocrStr(ocr: unknown, ...keys: string[]): string | null {
   return null;
 }
 
+type ServerClient = Awaited<ReturnType<typeof createClient>>;
+
 /**
- * Floating-screenshot captures waiting on the PC: uploaded but not yet turned into
- * an order (source 'floating', no linked order). RLS scopes the rows to
- * claim_capture holders; each gets a short-lived signed screenshot URL and the OCR
- * guess (name + item) so the operator can confirm/correct it into a New Order.
- * Newest first. An empty list is a normal "nothing waiting", never an error.
+ * THE definition of a pending capture — the ONE filter both the "Capture Pending" count and the
+ * Incoming Captures list use, so they can never drift: a floating screenshot that is not yet an
+ * order (no official_order_id) and not confirmed. Dismiss deletes the row; Use links the order.
+ * Messaging state (screenshot sent, computation sent, waiting) does NOT end pending: a capture
+ * stays until staff Use or Dismiss it.
  */
-/**
- * Lightweight COUNT of floating captures still waiting on the PC — for the compact
- * "Capture Pending" pill beside + New Order. `head: true` fetches NO rows (no
- * screenshots, no OCR), only the count. RLS scopes it to claim_capture holders, so
- * it returns 0 for anyone who cannot see captures (no throw — safe to call for any
- * Orders viewer). Realtime: capture_records is in the publication, so the shell's
- * DashboardSync router.refresh() re-runs this and the pill updates without a reload.
- */
-export async function countPendingCaptures(): Promise<number> {
-  const supabase = await createClient();
-  const { count } = await supabase
+function pendingCaptures(
+  supabase: ServerClient,
+  columns: string,
+  options?: { count: 'exact'; head?: boolean },
+) {
+  return supabase
     .from('capture_records')
-    .select('id', { count: 'exact', head: true })
+    .select(columns, options)
     .eq('source', 'floating')
     .is('official_order_id', null)
     .is('confirmed', null);
+}
+
+/** At most this many "just dismissed" ids are excluded from a count (see listPendingCapturesPage). */
+const MAX_EXCLUDED_IDS = 100;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** A timestamp exactly as PostgREST returned it (keeps microseconds for an exact keyset). */
+const TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d{1,6})?([+-]\d{2}(:?\d{2})?|Z)?$/;
+
+/** Only well-formed capture ids ever reach a PostgREST filter string. */
+function safeIds(ids: ReadonlyArray<string> | undefined): string[] {
+  return [...new Set((ids ?? []).filter((id) => UUID_RE.test(id)))];
+}
+
+/**
+ * Lightweight COUNT of pending captures — for the compact "Capture Pending" pill beside
+ * + New Order. `head: true` fetches NO rows (no screenshots, no OCR), only the count. RLS
+ * scopes it to claim_capture holders, so it returns 0 for anyone who cannot see captures
+ * (no throw — safe to call for any Orders viewer). Same filter as the list (pendingCaptures).
+ */
+export async function countPendingCaptures(): Promise<number> {
+  const supabase = await createClient();
+  const { count } = await pendingCaptures(supabase, 'id', { count: 'exact', head: true });
   return count ?? 0;
 }
 
-export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
+/**
+ * One page of pending captures, newest first, with the EXACT pending total. Each row gets a
+ * short-lived signed screenshot URL and the OCR guess (name + item) so the operator can
+ * confirm/correct it into a New Order. The page is never the whole list: the first page is what
+ * the station always loaded, and older pages load on demand from `cursor`.
+ *
+ * `excludeIds`: captures THIS station just dismissed (its DELETE may still be in flight), so a
+ * refresh started meanwhile neither lists nor counts them. An empty page is a normal "nothing
+ * waiting", never an error.
+ */
+export async function listPendingCapturesPage(
+  opts: {
+    limit?: number;
+    cursor?: PendingCapturesCursor | null;
+    excludeIds?: ReadonlyArray<string>;
+  } = {},
+): Promise<PendingCapturesPage> {
   await requirePermission('claim_capture');
   const supabase = await createClient();
+  const limit = Math.max(1, Math.min(opts.limit ?? PENDING_CAPTURES_PAGE_SIZE, 100));
+  const exclude = safeIds(opts.excludeIds).slice(0, MAX_EXCLUDED_IDS);
+  const cursor =
+    opts.cursor && UUID_RE.test(opts.cursor.id) && TIMESTAMP_RE.test(opts.cursor.capturedAt)
+      ? opts.cursor
+      : null;
 
   const BASE_COLUMNS =
     'id, captured_at, screenshot_path, ocr, is_test, link_status, customer_id, pancake_conversation_id, message_status, route_reason, canonical_grams, customers ( display_name, facebook_conversation_url )';
-  const readRows = (columns: string) =>
-    supabase
-      .from('capture_records')
-      .select(columns)
-      .eq('source', 'floating')
-      .is('official_order_id', null)
-      .is('confirmed', null)
+  const withExclusions = <Q extends { not: (c: string, o: string, v: string) => Q }>(q: Q): Q =>
+    exclude.length ? q.not('id', 'in', `(${exclude.join(',')})`) : q;
+  const readRows = (columns: string) => {
+    // The first page carries the exact total in the SAME request (one query, one snapshot).
+    let q = withExclusions(
+      pendingCaptures(supabase, columns, cursor ? undefined : { count: 'exact' }),
+    );
+    if (cursor) {
+      const at = `"${cursor.capturedAt}"`;
+      q = q.or(`captured_at.lt.${at},and(captured_at.eq.${at},id.lt.${cursor.id})`);
+    }
+    return q
       .order('captured_at', { ascending: false })
-      .limit(50);
+      .order('id', { ascending: false })
+      .limit(limit);
+  };
 
   // The screenshot-first sequence columns (migration 20260924120000). If they are not there yet,
   // read exactly the columns this list always read, so Incoming Captures never breaks.
-  let { data, error } = await readRows(`${BASE_COLUMNS}, message_sequence, text_send_status`);
-  if (error) ({ data, error } = await readRows(BASE_COLUMNS));
+  const [first, pageTotal] = await Promise.all([
+    readRows(`${BASE_COLUMNS}, message_sequence, text_send_status`),
+    // An older page is filtered by the cursor, so its total comes from the head-only count.
+    cursor
+      ? withExclusions(pendingCaptures(supabase, 'id', { count: 'exact', head: true })).then(
+          (r) => r.count,
+        )
+      : Promise.resolve(null),
+  ]);
+  let { data, error, count } = first;
+  if (error) ({ data, error, count } = await readRows(BASE_COLUMNS));
 
-  if (error || !data) return [];
+  if (error || !data) return { rows: [], total: null };
+  const total = (cursor ? pageTotal : count) ?? null;
 
   type CustJoin = {
     display_name?: string | null;
@@ -143,7 +206,7 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
     ),
   ]);
 
-  return rows.map((r, i) => {
+  const mapped = rows.map((r, i): PendingCaptureRow => {
     const cust = Array.isArray(r.customers) ? r.customers[0] : r.customers;
     const linkStatus = (r.link_status ?? null) as PendingCaptureRow['linkStatus'];
     // Clean the OCR'd name for display/matching (incl. captures already stored by older phones):
@@ -191,4 +254,20 @@ export async function listPendingCaptures(): Promise<PendingCaptureRow[]> {
       textSendStatus: r.text_send_status ?? null,
     };
   });
+  return { rows: mapped, total };
+}
+
+/**
+ * Which of these (already loaded, older-page) captures are STILL pending — ids only, one query,
+ * no screenshots. Lets the station drop an older row that was Used or Dismissed elsewhere when a
+ * realtime event was missed, without re-reading every page it has loaded.
+ */
+export async function stillPendingCaptureIds(ids: ReadonlyArray<string>): Promise<string[] | null> {
+  await requirePermission('claim_capture');
+  const wanted = safeIds(ids).slice(0, 500);
+  if (wanted.length === 0) return [];
+  const supabase = await createClient();
+  const { data, error } = await pendingCaptures(supabase, 'id').in('id', wanted);
+  if (error || !data) return null;
+  return (data as unknown as Array<{ id: string }>).map((r) => r.id);
 }

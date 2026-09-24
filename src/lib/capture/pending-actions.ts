@@ -10,7 +10,7 @@ import { createClient } from '@/lib/supabase/server';
 import { routePendingCapturesSystem } from '@/lib/capture/auto-router';
 import { isConversationMediaEligible } from '@/lib/capture/media-window';
 import { sanitizeCaptureName, sanitizeLeadingNameGlyph } from '@/lib/capture/name-sanitize';
-import { listPendingCaptures } from '@/lib/capture/pending';
+import { listPendingCapturesPage, stillPendingCaptureIds } from '@/lib/capture/pending';
 import {
   sendPendingCaptureToMessenger,
   type SendCaptureToMessengerResult,
@@ -26,12 +26,24 @@ import { autoSendCaptureForOrder } from '@/lib/orders/for-invoice';
 import type {
   CaptureCandidateOption,
   CaptureLinkResult,
-  PendingCaptureRow,
+  PendingCapturesCursor,
+  PendingCapturesPage,
 } from '@/lib/capture/pending-types';
 
-/** Load the floating captures waiting to be turned into orders (realtime-refreshed). */
-export async function loadPendingCapturesAction(): Promise<PendingCaptureRow[]> {
-  return listPendingCaptures();
+/** One page of the captures waiting to be turned into orders, with the EXACT pending total
+ *  (realtime-refreshed). No cursor = the newest page; a cursor = the next older page. */
+export async function loadPendingCapturesPageAction(
+  opts: {
+    cursor?: PendingCapturesCursor | null;
+    excludeIds?: string[];
+  } = {},
+): Promise<PendingCapturesPage> {
+  return listPendingCapturesPage(opts);
+}
+
+/** Of these loaded older-page captures, the ids still pending (null = could not check). */
+export async function stillPendingCaptureIdsAction(ids: string[]): Promise<string[] | null> {
+  return stillPendingCaptureIds(ids);
 }
 
 /** Attach a pending capture to the order the operator just created from it, so Send

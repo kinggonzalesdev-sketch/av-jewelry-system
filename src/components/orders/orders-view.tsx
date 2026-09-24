@@ -12,6 +12,7 @@ import { loadOrdersPageAction } from '@/lib/orders/actions';
 import type { OrderListRow, OrdersPageResult, PaymentStatus } from '@/lib/orders/service';
 import {
   CAPTURE_COUNT_EVENT,
+  CAPTURE_COUNT_REQUEST_EVENT,
   TOGGLE_INCOMING_CAPTURES_EVENT,
 } from '@/lib/capture/pending-types';
 import type { KeepLayawayRow } from '@/lib/payments/layaway-ledger';
@@ -476,6 +477,8 @@ export function OrdersView({
       if (typeof n === 'number') setLiveCaptureCount(n);
     };
     window.addEventListener(CAPTURE_COUNT_EVENT, onCount);
+    // The station lives app-wide and may have counted before this page opened: ask for it now.
+    window.dispatchEvent(new CustomEvent(CAPTURE_COUNT_REQUEST_EVENT));
     return () => window.removeEventListener(CAPTURE_COUNT_EVENT, onCount);
   }, []);
   // The order whose details modal is open (null = closed). Opening it navigates
