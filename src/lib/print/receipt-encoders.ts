@@ -111,7 +111,80 @@ const MARGIN_X = 16; // safe left/right margin (never touch the edge)
 const PRINTABLE_W = LABEL_W - MARGIN_X * 2;
 const LINE_GAP = 10; // vertical gap between physical lines
 
-type SizedLine = { text: string; font: string };
+/** One printed TSPL line: text in a bitmap font, scaled xMul × yMul (default 1 × 1). */
+type SizedLine = { text: string; font: string; xMul?: number; yMul?: number };
+
+/* --------------------------------------------------------------------------- *
+ * Customer name: ONE line, sized to the printable width (Owner 2026-09-25). Same rules as the
+ * phone app (StickerEncoder.kt), so a PC sticker and a phone sticker look the same.
+ *
+ * TSPL's built-in fonts are fixed-width bitmap fonts: a line's printed width in dots is its
+ * character count × the cell width × the width multiplier — the exact width, not an estimate.
+ *   1. font "3" 16×24 dots — the approved size, up to 18 characters in 288 dots
+ *   2. font "2" 12×20 dots — slightly smaller, up to 24 characters
+ *   3. font "1" 8×12 at double height = 8×24 dots (1 mm wide, 3 mm tall) — the MINIMUM readable
+ *      size, up to 36 characters. Nothing smaller is used.
+ * --------------------------------------------------------------------------- */
+const NAME_SIZES: { font: string; xMul: number; yMul: number }[] = [
+  { font: '3', xMul: 1, yMul: 1 },
+  { font: '2', xMul: 1, yMul: 1 },
+  { font: '1', xMul: 1, yMul: 2 },
+];
+
+export type NameFit = {
+  text: string;
+  font: string;
+  xMul: number;
+  yMul: number;
+  fits: boolean;
+};
+
+/** Cut `t` to at most `max` characters after the last whole word (a single over-long word is cut
+ *  at `max`). Only used when a name cannot fit even at the minimum size. */
+function cutAtWord(t: string, max: number): string {
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  if (t[max] === ' ') return cut.trimEnd();
+  const space = cut.lastIndexOf(' ');
+  return (space > 0 ? cut.slice(0, space) : cut).trimEnd();
+}
+
+/**
+ * The customer name on ONE line, never wrapped: the largest size at which the whole name fits the
+ * printable width. A name too long even at the minimum size (over 36 characters) prints at the
+ * minimum size, cut after the last whole word that fits, reported with fits = false.
+ */
+export function tsplNameFit(name: string): NameFit {
+  const t = asciify(name).replace(/"/g, '').replace(/\s+/g, ' ').trim() || '-';
+  for (const s of NAME_SIZES) {
+    if (t.length * cell(s.font).w * s.xMul <= PRINTABLE_W)
+      return { text: t, ...s, fits: true };
+  }
+  const min = NAME_SIZES[NAME_SIZES.length - 1] ?? { font: '1', xMul: 1, yMul: 2 };
+  const maxChars = Math.floor(PRINTABLE_W / (cell(min.font).w * min.xMul));
+  return { text: cutAtWord(t, maxChars), ...min, fits: false };
+}
+
+/** ESC/POS fonts are fixed-width too: Font A 12 dots per character, Font B 9. */
+const ESC_FONT_A_W = 12;
+const ESC_FONT_B_W = 9;
+
+/**
+ * ESC/POS customer name on ONE line: Font A (the approved double-height bold) up to 24 characters
+ * in 288 dots, Font B up to 32, longer names cut after the last whole word — never wrapped.
+ */
+export function escPosNameFit(name: string): {
+  text: string;
+  fontB: boolean;
+  fits: boolean;
+} {
+  const t = asciify(name).replace(/\s+/g, ' ').trim() || '-';
+  const fontA = Math.floor(PRINTABLE_W / ESC_FONT_A_W);
+  const fontB = Math.floor(PRINTABLE_W / ESC_FONT_B_W);
+  if (t.length <= fontA) return { text: t, fontB: false, fits: true };
+  if (t.length <= fontB) return { text: t, fontB: true, fits: true };
+  return { text: cutAtWord(t, fontB), fontB: true, fits: false };
+}
 
 /**
  * Fit one logical element into 1–2 physical lines at the largest font in `fontOrder`
@@ -149,22 +222,39 @@ export function tsplStickerLines(
   d: OrderReceiptData,
   fields: StickerFields = DEFAULT_STICKER_FIELDS,
 ): SizedLine[] {
-  return stickerLineItems(d, fields).flatMap((l) =>
-    fitElement(l.text, TSPL_FONT_BY_KIND[l.kind]),
-  );
+  return stickerLineItems(d, fields).flatMap((l): SizedLine[] => {
+    if (l.kind === 'name') {
+      const n = tsplNameFit(l.text);
+      return [{ text: n.text, font: n.font, xMul: n.xMul, yMul: n.yMul }];
+    }
+    return fitElement(l.text, TSPL_FONT_BY_KIND[l.kind]);
+  });
+}
+
+/**
+ * CENTERING (Owner 2026-09-25): each line's printed width in dots (fixed-width font: characters ×
+ * cell width × multiplier) is centered on the 320-dot label and held inside the 16-dot side
+ * margins, so no line — the date included — can run past the right edge. Integer halves, exactly
+ * as the phone app computes them.
+ */
+function centeredX(lineW: number): number {
+  if (lineW >= PRINTABLE_W) return MARGIN_X;
+  const x = Math.floor((LABEL_W - lineW) / 2);
+  return Math.min(Math.max(x, MARGIN_X), LABEL_W - MARGIN_X - lineW);
 }
 
 /** Position the sized lines centered both ways and emit the TSPL TEXT commands. */
 function layoutTsplText(lines: SizedLine[]): string[] {
-  const heights = lines.map((l) => cell(l.font).h);
+  const heights = lines.map((l) => cell(l.font).h * (l.yMul ?? 1));
   const totalH =
     heights.reduce((a, b) => a + b, 0) + LINE_GAP * Math.max(0, lines.length - 1);
-  let y = Math.max(8, Math.round((LABEL_H - totalH) / 2));
+  let y = Math.max(8, Math.floor((LABEL_H - totalH) / 2));
   const cmds: string[] = [];
   lines.forEach((l, i) => {
-    const lineW = l.text.length * cell(l.font).w;
-    const x = Math.max(MARGIN_X, Math.round((LABEL_W - lineW) / 2));
-    cmds.push(`TEXT ${x},${y},"${l.font}",0,1,1,"${l.text}"`);
+    const xMul = l.xMul ?? 1;
+    const yMul = l.yMul ?? 1;
+    const lineW = l.text.length * cell(l.font).w * xMul;
+    cmds.push(`TEXT ${centeredX(lineW)},${y},"${l.font}",0,${xMul},${yMul},"${l.text}"`);
     y += (heights[i] ?? 0) + LINE_GAP;
   });
   return cmds;
@@ -214,12 +304,22 @@ export function encodeReceiptEscPos(
   };
 
   out.push(ESC, 0x40); // initialise
-  out.push(ESC, 0x61, 0x01); // center align
+  // Center: the PRINTER centers each line on its own printable width, measuring the real glyph
+  // widths — no character-count padding from us.
+  out.push(ESC, 0x61, 0x01);
   out.push(LF); // top spacing for vertical balance
 
   for (const line of stickerLineItems(d, fields)) {
     const s = ESC_STYLE_BY_KIND[line.kind];
-    emit(line.text, s.w, s.h, s.bold, s.max);
+    if (line.kind === 'name') {
+      // One line always: Font B (ESC M 1) only when Font A is too wide; never wrapped.
+      const n = escPosNameFit(line.text);
+      if (n.fontB) out.push(ESC, 0x4d, 0x01);
+      emit(n.text, s.w, s.h, s.bold, null);
+      if (n.fontB) out.push(ESC, 0x4d, 0x00);
+    } else {
+      emit(line.text, s.w, s.h, s.bold, s.max);
+    }
   }
 
   out.push(LF, LF, LF); // feed clear of the tear bar

@@ -151,6 +151,16 @@ class StickerLayoutTest {
         lines.forEach { assertCenteredInside(it) }
     }
 
+    @Test
+    fun printsExactlyWhatThePcPrints() {
+        // The same three commands are asserted by the web's tests/unit/sticker-typography.test.ts,
+        // so a phone sticker and a PC sticker stay identical.
+        val out = String(StickerEncoder.encode(sticker("JAIMEE MARTIN ANCHETA"), tspl = true), Charsets.US_ASCII)
+        assertTrue(out.contains("TEXT 34,78,\"2\",0,1,1,\"JAIMEE MARTIN ANCHETA\""))
+        assertTrue(out.contains("TEXT 32,108,\"3\",0,1,1,\"11.5g - P6,800/g\""))
+        assertTrue(out.contains("TEXT 82,142,\"2\",0,1,1,\"Sept 25, 2026\""))
+    }
+
     // ---- 4. Grams / price line and Fixed Price unchanged -----------------------------------------
 
     @Test

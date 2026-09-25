@@ -33,7 +33,7 @@ export type OrderReceiptData = {
   /** A FIXED total price (peso string). When set, the value line prints "FIXED • ₱X"
    *  instead of grams × rate — the Fixed Price capture mode. */
   fixedPrice?: string | null;
-  /** Preformatted date, e.g. "August 6, 2026". */
+  /** Preformatted date, e.g. "Aug 6, 2026" (stickerDate). */
   date: string;
 };
 
@@ -170,7 +170,10 @@ export function stickerLineItems(
   }
   if (fields.pricePerGram && d.fixedPrice) {
     // Fixed Price mode: a flat total instead of grams × rate, e.g. "FIXED • ₱12,500".
-    out.push({ text: `FIXED • ${formatStickerPeso(d.fixedPrice)}`, kind: 'pricePerGram' });
+    out.push({
+      text: `FIXED • ${formatStickerPeso(d.fixedPrice)}`,
+      kind: 'pricePerGram',
+    });
   } else if (fields.pricePerGram && d.pricePerGram) {
     // Grams + rate on one line, e.g. "11.5g • ₱7,500/g" (the screenshot-to-print
     // format). Falls back to just the rate when the weight is unknown.
@@ -178,7 +181,8 @@ export function stickerLineItems(
     const g = normalizeGrams(d.grams);
     out.push({ text: g ? `${g}g • ${perGram}` : perGram, kind: 'pricePerGram' });
   }
-  if (fields.date) out.push({ text: d.date, kind: 'date' });
+  // Short month on every print path, even for a date that was formatted elsewhere.
+  if (fields.date) out.push({ text: shortenStickerMonth(d.date), kind: 'date' });
   return out;
 }
 
@@ -187,13 +191,50 @@ export function stickerLines(d: OrderReceiptData): string[] {
   return stickerLineItems(d).map((l) => l.text);
 }
 
-/** Today's date in long words, e.g. "August 6, 2026" (Owner request — not 08/06/2026). */
+/** The Owner's exact sticker month names (2026-09-25). Not Intl "short" — that gives Sep, Jun,
+ *  Jul. The phone app (StickerEncoder.kt) uses the same list. */
+const SHORT_MONTHS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'June',
+  'July',
+  'Aug',
+  'Sept',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;
+const LONG_MONTHS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+] as const;
+
+/** Today's sticker date, e.g. "Sept 25, 2026" / "Jan 8, 2026" — this computer's local date, as
+ *  before (Owner request — not 08/06/2026; short months 2026-09-25). */
 export function stickerDate(now: Date = new Date()): string {
-  return now.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+  return `${SHORT_MONTHS[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
+}
+
+/** Shorten a leading full month name in a date text ("September 25, 2026" → "Sept 25, 2026");
+ *  the day and year are kept as they are. Anything else is returned unchanged. */
+export function shortenStickerMonth(text: string): string {
+  const t = text.trim();
+  const i = LONG_MONTHS.findIndex((m) => t.startsWith(`${m} `));
+  const long = LONG_MONTHS[i];
+  return long === undefined ? t : `${SHORT_MONTHS[i]}${t.slice(long.length)}`;
 }
 
 /* ------------------------------------------------------------------------- *
@@ -298,8 +339,9 @@ const RECEIPT_STYLE = `
     text-align: center; gap: 1.1mm; line-height: 1.12;
   }
   .stk > div { width: 100%; overflow-wrap: break-word; word-break: break-word; }
-  /* Name + price a touch smaller (was 30/28) so a longer name fits on one line
-     before wrapping — matches the thermal label sizing. */
+  /* Name, price and date stay on ONE centered line (Owner 2026-09-25); fitStickerLines()
+     shrinks each to the width after the page is written. Item may still wrap. */
+  .name, .price, .date { white-space: nowrap; overflow: hidden; overflow-wrap: normal; word-break: normal; }
   .name { font-size: 25px; font-weight: 800; }
   .item { font-size: 24px; font-weight: 700; }
   .price { font-size: 25px; font-weight: 800; }
@@ -309,6 +351,69 @@ const RECEIPT_STYLE = `
   .stk + .stk { break-before: page; page-break-before: always; }
   @media print { @page { size: 40mm 30mm; margin: 0; } }
 `;
+
+/** Smallest font sizes the browser sticker may shrink to (CSS px) — still readable on paper. */
+const MIN_FIT_PX: Record<string, number> = { name: 11, price: 11, date: 10 };
+/** After the minimum size, a line may be narrowed horizontally down to this, never further. */
+const MIN_SCALE_X = 0.75;
+
+/**
+ * The size that puts one line of text on ONE line within `available` width, from the real
+ * rendered width (`measure(px)` → width at that font size): the largest size from `startPx` down
+ * to `minPx` (0.5 px steps) that fits; if even `minPx` is too wide, `minPx` narrowed horizontally
+ * (scaleX, not below MIN_SCALE_X). `fits` is false only when that still is not enough. Pure.
+ */
+export function fitLine(
+  measure: (px: number) => number,
+  available: number,
+  startPx: number,
+  minPx: number,
+): { px: number; scaleX: number; fits: boolean } {
+  for (let px = startPx; px >= minPx; px -= 0.5) {
+    if (measure(px) <= available) return { px, scaleX: 1, fits: true };
+  }
+  const w = measure(minPx);
+  const scaleX = w > 0 ? available / w : 1;
+  if (scaleX >= MIN_SCALE_X) return { px: minPx, scaleX, fits: true };
+  return { px: minPx, scaleX: MIN_SCALE_X, fits: false };
+}
+
+/**
+ * Keep the browser sticker's name / price / date lines on ONE line each: measure the real
+ * rendered width in the print document and shrink to fit (fitLine). Runs from THIS page's code
+ * on the same-origin print frame, before print(). Layout-free environments measure 0 and are left
+ * alone.
+ */
+function fitStickerLines(doc: Document): void {
+  const lines = doc.querySelectorAll<HTMLElement>(
+    '.stk > .name, .stk > .price, .stk > .date',
+  );
+  lines.forEach((el) => {
+    const available = el.clientWidth;
+    if (!available) return;
+    const kind = el.className;
+    const start = parseFloat(doc.defaultView?.getComputedStyle(el).fontSize ?? '') || 21;
+    const fit = fitLine(
+      (px) => {
+        el.style.fontSize = `${px}px`;
+        return el.scrollWidth;
+      },
+      available,
+      start,
+      MIN_FIT_PX[kind] ?? 10,
+    );
+    el.style.fontSize = `${fit.px}px`;
+    if (fit.scaleX < 1) {
+      // Narrow the text itself so a very long name keeps every letter on one line: the box takes
+      // the text's natural width (the flex column centers it), then scales about its center.
+      el.style.width = `${el.scrollWidth}px`;
+      el.style.flex = 'none';
+      el.style.overflow = 'visible';
+      el.style.transform = `scaleX(${fit.scaleX})`;
+      el.style.transformOrigin = 'center';
+    }
+  });
+}
 
 export function printOrderReceipt(
   data: OrderReceiptData,
@@ -348,6 +453,12 @@ export function printOrderReceipt(
   iframe.contentWindow?.focus();
   setTimeout(() => {
     try {
+      // Fitting is best-effort: a measuring problem must never stop the print.
+      try {
+        fitStickerLines(doc);
+      } catch {
+        /* print as laid out */
+      }
       iframe.contentWindow?.print();
     } finally {
       cleanup();
@@ -401,6 +512,11 @@ export function printOrderStickers(
   iframe.contentWindow?.focus();
   setTimeout(() => {
     try {
+      try {
+        fitStickerLines(doc);
+      } catch {
+        /* print as laid out */
+      }
       iframe.contentWindow?.print();
     } finally {
       cleanup();
