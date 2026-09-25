@@ -93,8 +93,8 @@ class ApiClient(context: Context) {
                 Log.w(TAG, "signIn HTTP ${it.code} ok but no access_token in response")
                 return "Sign-in failed: no session returned. Please try again."
             }
-            store.accessToken = access
-            store.refreshToken = body.optString("refresh_token").trim().ifEmpty { null }
+            // One synchronous write for both tokens (see SecureStore.saveSession).
+            store.saveSession(access, body.optString("refresh_token").trim().ifEmpty { null })
         }
 
         // Step 2: confirm the account is active MineFlow staff and cache the name.
@@ -199,15 +199,37 @@ class ApiClient(context: Context) {
                 // 200 with no token is a malformed/proxied response (captive portal, CDN error
                 // page). NOT a rejection — never destroy a good session over it.
                 if (access.isEmpty()) return@synchronized RefreshOutcome.UNAVAILABLE
-                store.accessToken = access
-                body.optString("refresh_token").trim().ifEmpty { null }
-                    ?.let { store.refreshToken = it }
+                // Supabase has ALREADY rotated the refresh token server-side: the new one must be
+                // on disk before anything else can happen, or a kill now signs the phone out at the
+                // next launch. One synchronous write for both (see SecureStore.saveSession).
+                store.saveSession(access, body.optString("refresh_token").trim().ifEmpty { null })
                 return@synchronized RefreshOutcome.REFRESHED
             }
         } catch (e: Exception) {
             // Timeout, DNS, no signal, TLS. The session is almost certainly still valid.
             Log.w(TAG, "refresh network failure (session KEPT): ${e.javaClass.simpleName}")
             return@synchronized RefreshOutcome.UNAVAILABLE
+        }
+    }
+
+    /**
+     * Explicit Logout on THIS phone: ask Supabase to end this phone's session, so its refresh token
+     * stops working on the server too, not just on the phone (Owner 2026-09-25). scope=local — the
+     * GoTrue default is global, which would also sign the Owner out of every browser. Best-effort
+     * and called AFTER the local wipe, with the token captured before it: offline or an expired
+     * access token just means the server-side end waits for the token's own expiry. Never throws.
+     */
+    fun revokeThisSession(accessToken: String) {
+        val req = Request.Builder()
+            .url(BuildConfig.SUPABASE_URL + LOGOUT_THIS_DEVICE_PATH)
+            .addHeader("apikey", BuildConfig.SUPABASE_ANON_KEY)
+            .addHeader("Authorization", "Bearer $accessToken")
+            .post(ByteArray(0).toRequestBody(null))
+            .build()
+        try {
+            http.newCall(req).execute().use { Log.i(TAG, "logout POST /auth/v1/logout?scope=local -> HTTP ${it.code}") }
+        } catch (e: Exception) {
+            Log.w(TAG, "logout network failure (signed out on the phone anyway): ${e.javaClass.simpleName}")
         }
     }
 
@@ -512,6 +534,10 @@ class ApiClient(context: Context) {
 
     companion object {
         private const val TAG = "MineFlowAuth"
+
+        /** End ONLY this phone's session. Without scope=local, GoTrue ends every session of the
+         *  account — the exact bug that made a web Logout sign the phone out. */
+        internal const val LOGOUT_THIS_DEVICE_PATH = "/auth/v1/logout?scope=local"
 
         /** Process-wide lock so token refresh is serialized across ApiClient instances
          *  (the SecureStore is a singleton, so the refresh token is shared state). */

@@ -402,7 +402,14 @@ class SetupActivity : AppCompatActivity() {
         val logout = utilityChip(R.drawable.ic_logout, "Log out", white) {
             // Logging out SHOULD end everything: without a session the poller can do nothing.
             OverlayCaptureService.stopAll(this)
+            // Signed out on the phone at once; then end this phone's session on the server too
+            // (this phone only — never the Owner's browsers). Best-effort, off the main thread.
+            val token = store.accessToken
             store.clearSession()
+            if (!token.isNullOrBlank()) {
+                val app = applicationContext
+                thread { ApiClient(app).revokeThisSession(token) }
+            }
             startActivity(Intent(this, LoginActivity::class.java))
             finish()
         }
@@ -439,6 +446,15 @@ class SetupActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // The session can end while this screen sits in the background: only a refresh token the
+        // SERVER refused (revoked, password reset, account deactivated) clears it. Say so and show
+        // Login, instead of a dashboard that silently cannot print (Owner 2026-09-25).
+        if (!store.isLoggedIn) {
+            toast("Your session ended. Please sign in again.")
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
+            return
+        }
         refreshCaptureStatus()
         refreshCaptureArea()
         // Heartbeat: tell the backend this capture device is active (System Check "Ready").
@@ -494,10 +510,10 @@ class SetupActivity : AppCompatActivity() {
         }
         setActionState(captureAction, running, "Active", "Start Now") {
             if (!Settings.canDrawOverlays(this)) { toast("Grant overlay permission first (Overlay → Grant Now)."); return@setActionState }
-            // If the service is already up for printing, the overlay comes back via SHOW — a plain
-            // start() delivers a null-action Intent that the service treats as "already running,
-            // capture stopped" and would leave the button hidden.
-            if (serviceUp) OverlayCaptureService.showButton(this) else OverlayCaptureService.start(this)
+            // Capture on AND the saved Capture Box opens for editing straight away — no Edit Box or
+            // Reset Box needed (Owner 2026-09-25). startNow picks SHOW when the service is already
+            // up for printing, exactly as before.
+            OverlayCaptureService.startNow(this)
             refreshCaptureStatus()
         }
     }

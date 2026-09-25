@@ -72,6 +72,16 @@ data class CaptureRoi(
          *  = right margin 0.176). Owner-tuned 2026-09-03 to 64.8% × 4.2% at (0.176, 0.60) — ≈ 700 × 100 px
          *  on a 1080×2400 phone (~7:1), sized to just "Name + one claim line". */
         fun default(): CaptureRoi = CaptureRoi(0.176f, 0.60f, 0.648f, 0.042f)
+
+        /** The box to open for editing (Edit Box, Start Now): the SAVED box exactly as it is — same
+         *  position and size — only unlocked. The default only when no box was ever saved; resetting
+         *  a saved box is Reset Box's job, never an edit's. */
+        fun forEditing(saved: CaptureRoi?): CaptureRoi = (saved ?: default()).copy(locked = false)
+
+        /** ✓ / Lock: the stored box with only its lock changed. A valid box keeps its exact
+         *  position and size (normalized() only repairs one that has gone off-screen). */
+        fun withLock(saved: CaptureRoi?, locked: Boolean): CaptureRoi =
+            (saved ?: default()).normalized().copy(locked = locked)
     }
 }
 

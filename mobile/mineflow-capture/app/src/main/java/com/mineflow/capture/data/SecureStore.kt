@@ -2,6 +2,7 @@ package com.mineflow.capture.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import java.util.UUID
@@ -10,8 +11,8 @@ import java.util.UUID
  * Encrypted local storage (Android Keystore-backed via EncryptedSharedPreferences).
  *
  * Holds the Supabase access/refresh tokens and a stable per-install device id.
- * NEVER stores a password. Screenshots are never persisted here. Tokens are wiped
- * on logout / session expiry.
+ * NEVER stores a password. Screenshots are never persisted here. Tokens survive app close,
+ * force-stop and phone restart; they are wiped only by Logout or a refresh the server refuses.
  */
 class SecureStore private constructor(private val prefs: SharedPreferences) {
 
@@ -148,11 +149,35 @@ class SecureStore private constructor(private val prefs: SharedPreferences) {
     // a new one silently. Only a real logout / a failed refresh clears both.
     val isLoggedIn: Boolean get() = !accessToken.isNullOrBlank() || !refreshToken.isNullOrBlank()
 
+    /**
+     * Store a signed-in session: BOTH tokens in ONE synchronous write (Owner 2026-09-25, stay signed
+     * in until Logout).
+     *
+     * Supabase ROTATES the refresh token on every refresh and refuses the old one afterwards. The
+     * two setters above each schedule their own asynchronous apply(), so a force-stop, a swipe-away
+     * or a low-memory kill right after a refresh could lose the NEW refresh token (or keep a new
+     * access token beside an old refresh token). The next launch would then offer Supabase a spent
+     * token, the refresh would be REJECTED, and the phone would be signed out for nothing. commit()
+     * is on disk before this returns, and one editor makes the pair all-or-nothing.
+     *
+     * A null [refresh] keeps the stored one (a refresh response without a new refresh token).
+     */
+    fun saveSession(access: String, refresh: String?) {
+        val e = prefs.edit().putString(KEY_ACCESS, access)
+        if (!refresh.isNullOrBlank()) e.putString(KEY_REFRESH, refresh)
+        if (!e.commit()) Log.w(TAG, "saveSession: the session could not be written to disk")
+    }
+
+    /** Explicit Logout / a refresh token the server refused. Synchronous, so a Logout followed at
+     *  once by a force-stop cannot come back signed in. Device id, printer and Capture Box stay. */
     fun clearSession() {
-        prefs.edit().remove(KEY_ACCESS).remove(KEY_REFRESH).remove(KEY_NAME).apply()
+        if (!prefs.edit().remove(KEY_ACCESS).remove(KEY_REFRESH).remove(KEY_NAME).commit()) {
+            Log.w(TAG, "clearSession: the sign-out could not be written to disk")
+        }
     }
 
     companion object {
+        private const val TAG = "MineFlowAuth"
         private const val FILE = "mineflow_secure"
         private const val KEY_ACCESS = "access_token"
         private const val KEY_REFRESH = "refresh_token"
@@ -186,6 +211,9 @@ class SecureStore private constructor(private val prefs: SharedPreferences) {
         fun get(context: Context): SecureStore = instance ?: synchronized(this) {
             instance ?: build(context.applicationContext).also { instance = it }
         }
+
+        /** JVM tests only: a store over plain prefs, to check what survives a process restart. */
+        internal fun forTest(prefs: SharedPreferences): SecureStore = SecureStore(prefs)
 
         private fun build(context: Context): SecureStore {
             val masterKey = MasterKey.Builder(context)

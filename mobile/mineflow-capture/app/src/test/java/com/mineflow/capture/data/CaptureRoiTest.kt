@@ -89,4 +89,65 @@ class CaptureRoiTest {
         assertTrue(n.top + n.height <= 1f + 0.001f)
     }
 
+    // ---- Start Now / Edit Box open the SAVED box (Owner 2026-09-25) ----------------------------
+
+    @Test
+    fun forEditing_keepsTheSavedBoxExactly_onlyUnlocked() {
+        val saved = CaptureRoi(0.213f, 0.587f, 0.611f, 0.049f, locked = true)
+        val editing = CaptureRoi.forEditing(saved)
+        assertEquals(saved.left, editing.left, 0f)
+        assertEquals(saved.top, editing.top, 0f)
+        assertEquals(saved.width, editing.width, 0f)
+        assertEquals(saved.height, editing.height, 0f)
+        assertFalse(editing.locked)
+    }
+
+    @Test
+    fun forEditing_neverResetsASavedBox_toTheDefault() {
+        val saved = CaptureRoi(0.05f, 0.30f, 0.90f, 0.10f, locked = true)
+        assertTrue(CaptureRoi.forEditing(saved) != CaptureRoi.default().copy(locked = false))
+        assertEquals(saved.copy(locked = false), CaptureRoi.forEditing(saved))
+    }
+
+    @Test
+    fun forEditing_anAlreadyUnlockedBox_isUnchanged() {
+        val saved = CaptureRoi(0.176f, 0.61f, 0.7f, 0.06f, locked = false)
+        assertEquals(saved, CaptureRoi.forEditing(saved))
+    }
+
+    @Test
+    fun forEditing_withNoSavedBox_opensTheDefault_unlocked() {
+        assertEquals(CaptureRoi.default().copy(locked = false), CaptureRoi.forEditing(null))
+    }
+
+    @Test
+    fun checkWithNoChange_keepsTheSavedBoxExactly() {
+        // Start Now → ✓ without touching the box: nothing may move or grow.
+        val saved = CaptureRoi(0.176f, 0.60f, 0.648f, 0.042f, locked = true)
+        val afterStartNowAndCheck = CaptureRoi.withLock(CaptureRoi.forEditing(saved), true)
+        assertEquals(saved, afterStartNowAndCheck)
+    }
+
+    @Test
+    fun withLock_onlyChangesTheLock() {
+        val saved = CaptureRoi(0.213f, 0.587f, 0.611f, 0.049f, locked = false)
+        assertEquals(saved.copy(locked = true), CaptureRoi.withLock(saved, true))
+        assertEquals(saved, CaptureRoi.withLock(saved.copy(locked = true), false))
+    }
+
+    @Test
+    fun withLock_repairsOnlyABoxThatWentOffScreen() {
+        val off = CaptureRoi(0.9f, 0.6f, 0.3f, 0.05f)
+        val fixed = CaptureRoi.withLock(off, true)
+        assertTrue(fixed.isValid())
+        assertTrue(fixed.locked)
+    }
+
+    @Test
+    fun repeatedStartNowAndCheck_neverDrifts() {
+        var roi = CaptureRoi(0.1234f, 0.5678f, 0.7011f, 0.0433f, locked = true)
+        val first = roi
+        repeat(50) { roi = CaptureRoi.withLock(CaptureRoi.forEditing(roi), true) }
+        assertEquals(first, roi)
+    }
 }

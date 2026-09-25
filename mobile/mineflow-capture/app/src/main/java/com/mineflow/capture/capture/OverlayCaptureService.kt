@@ -74,7 +74,7 @@ class OverlayCaptureService : Service() {
     private var restoreHandle: View? = null
     // The Lock/Check controls window OUTSIDE the box's upper-right (Owner 2026-09-02 reference), + whether
     // the edit UI (controls + resize grip) is currently shown. A saved locked ROI restores as FINALIZED
-    // (outline only) until the operator taps Edit Box.
+    // (outline only) until the operator taps Edit Box — except Start Now, which opens it for editing.
     private var boxControls: BoxControlsView? = null
     private var controlsLp: WindowManager.LayoutParams? = null
     private var boxEditing: Boolean = false
@@ -159,9 +159,13 @@ class OverlayCaptureService : Service() {
         // service restart, so the operator's setup survives (PHASE 16). Orientation/scale changes are
         // handled at capture time — an off-screen box fails safely there rather than cropping wrong.
         val store = SecureStore.get(this)
-        if (store.captureMode == SecureStore.MODE_BOX && store.captureRoi != null) {
-            // Restore the saved box as FINALIZED (outline only) — editing UI returns via Edit Box.
-            boxEditing = false
+        val saved = store.captureRoi
+        if (store.captureMode == SecureStore.MODE_BOX && saved != null) {
+            // Restore the saved box as it was left: FINALIZED (outline only) when locked, but still
+            // EDITING — Lock and ✓ showing — when an edit was never finished with ✓. An unlocked box
+            // restored as outline-only was a dead end: no ✓ to tap, a long-press does nothing on an
+            // unlocked box, and every capture is refused until ✓ (Owner 2026-09-25).
+            boxEditing = !saved.locked
             showCaptureBox()
         }
         if (store.controlsHidden) setControlsHidden(true)
@@ -232,10 +236,21 @@ class OverlayCaptureService : Service() {
             // on the operator's NEXT deliberate start.
             null -> {
                 val printingOnly = intent?.getBooleanExtra(EXTRA_PRINTING_ONLY, false) ?: false
+                val startNow = intent?.getBooleanExtra(EXTRA_START_NOW, false) ?: false
                 if (printingOnly) {
                     setOverlayStopped(true)
                     startAsForeground(mediaProjection = false)
+                } else if (startNow) {
+                    // The operator's own Start Now overrides an earlier Stop Capture remembered in
+                    // prefs; before, a fresh start after one needed a second tap to show anything.
+                    setOverlayStopped(false)
+                    restoreOverlays()
+                    openBoxForStartNow()
+                    // onCreate built the notification from the remembered stop ("Capture is off").
+                    refreshNotification()
                 } else if (!overlayStopped) {
+                    // Capture is on: say so, or Setup keeps offering Start Now over a live overlay.
+                    setOverlayStopped(false)
                     restoreOverlays()
                 }
             }
@@ -243,6 +258,8 @@ class OverlayCaptureService : Service() {
             ACTION_SHOW -> {
                 setOverlayStopped(false)
                 restoreOverlays()
+                // Only Start Now carries this; the notification's "Show Floating Button" does not.
+                if (intent.getBooleanExtra(EXTRA_START_NOW, false)) openBoxForStartNow()
                 // Clear any capture latch stranded by a Stop or a cancelled consent dialog,
                 // otherwise the restored button is inert and gives no feedback at all.
                 busy = false
@@ -492,9 +509,12 @@ class OverlayCaptureService : Service() {
         val roi = (store.captureRoi ?: com.mineflow.capture.data.CaptureRoi.default()).normalized()
         if (store.captureRoi == null) store.captureRoi = roi // seed a usable default
         val (sw, sh) = screenSize()
+        // The window IS the saved box. Its floors are the same as the resize floors, so a box the
+        // operator saved is drawn at exactly that size. The old 48dp floor (~126-168px) drew the thin
+        // ~100px box taller than saved, and the next ✓ saved that taller window (Owner 2026-09-25).
         val lp = WindowManager.LayoutParams(
-            (roi.width * sw).toInt().coerceAtLeast(dp(48)),
-            (roi.height * sh).toInt().coerceAtLeast(dp(48)),
+            (roi.width * sw).toInt().coerceAtLeast(dp(64)),
+            (roi.height * sh).toInt().coerceAtLeast(minBoxHeightPx(sh)),
             overlayType(),
             boxFlags(),
             PixelFormat.TRANSLUCENT,
@@ -554,7 +574,7 @@ class OverlayCaptureService : Service() {
     /** Edit Box (dashboard) → show the box UNLOCKED with the Lock/Check controls + resize grip. */
     private fun enterEditMode() {
         val store = SecureStore.get(this)
-        store.captureRoi = (store.captureRoi ?: com.mineflow.capture.data.CaptureRoi.default()).copy(locked = false)
+        store.captureRoi = com.mineflow.capture.data.CaptureRoi.forEditing(store.captureRoi)
         boxEditing = true
         revealedByLongPress = false
         cancelAutoHide()
@@ -562,13 +582,27 @@ class OverlayCaptureService : Service() {
         toastMain("Edit Capture Area — drag to move, drag any edge/corner to resize. Tap ✓ when done.")
     }
 
+    /**
+     * START NOW OPENS THE BOX FOR EDITING (Owner 2026-09-25). The saved Capture Box comes up
+     * EDITING / UNLOCKED straight away — drag, edge and corner resize, Lock and ✓ — so the operator
+     * never needs Edit Box or Reset Box first. Its saved position and size are kept exactly
+     * (CaptureRoi.forEditing only clears the lock). ✓ saves, locks and leaves the outline, as before.
+     * Box mode only. A sticky restart, the boot start and "Show Floating Button" never come here:
+     * they restore the box as it was left (locked, or still editing if ✓ was never tapped).
+     */
+    private fun openBoxForStartNow() {
+        if (SecureStore.get(this).captureMode != SecureStore.MODE_BOX) return
+        enterEditMode()
+    }
+
     /** Unlock control → enable / re-freeze move + resize; the box AND controls STAY visible. Any control
      *  tap cancels the long-press auto-hide (the operator is clearly interacting now). */
     private fun toggleBoxLock() {
         val store = SecureStore.get(this)
-        saveBoxFromWindow()
+        // Every drag/resize already saved itself on release, so the stored box is current: only the
+        // lock changes here. Re-reading the window would round the box by a pixel on every tap.
         val nowLocked = !isRoiLocked()
-        store.captureRoi = (store.captureRoi ?: com.mineflow.capture.data.CaptureRoi.default()).copy(locked = nowLocked)
+        store.captureRoi = com.mineflow.capture.data.CaptureRoi.withLock(store.captureRoi, nowLocked)
         revealedByLongPress = false
         cancelAutoHide()
         applyBoxState()
@@ -578,9 +612,10 @@ class OverlayCaptureService : Service() {
     /** Check (Done) → save + finalize: hide Lock, Check, the resize grip and every editing affordance,
      *  leaving ONLY the gold box outline. Re-edit later by LONG-PRESSING the box (or dashboard Edit Box). */
     private fun finalizeBox() {
-        saveBoxFromWindow()
         val store = SecureStore.get(this)
-        store.captureRoi = (store.captureRoi ?: com.mineflow.capture.data.CaptureRoi.default()).copy(locked = true)
+        // Save = lock the box as stored. Drags/resizes saved themselves on release; a ✓ with no change
+        // keeps the saved box EXACTLY (Start Now + ✓ must never move or grow it — Owner 2026-09-25).
+        store.captureRoi = com.mineflow.capture.data.CaptureRoi.withLock(store.captureRoi, true)
         boxEditing = false
         revealedByLongPress = false
         cancelAutoHide()
@@ -725,7 +760,9 @@ class OverlayCaptureService : Service() {
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     if (longPressArmed) { longPressArmed = false; handler.removeCallbacks(longPress) }
-                    if (editing) saveBoxFromWindow()
+                    // Save only a real move/resize. A plain tap on the box must not rewrite the saved
+                    // box from the window (rounding, or a floored window size).
+                    if (editing && WinRect(lp.x, lp.y, lp.width, lp.height) != start) saveBoxFromWindow()
                 }
             }
             return true
@@ -1422,6 +1459,9 @@ class OverlayCaptureService : Service() {
         /** Intent extra: start for printing only, no overlays. */
         private const val EXTRA_PRINTING_ONLY = "printing_only"
 
+        /** Intent extra: the operator tapped Start Now — show capture AND open the box for editing. */
+        private const val EXTRA_START_NOW = "start_now"
+
         /** Persisted capture-side choice, so a sticky restart cannot re-add a dismissed overlay. */
         private const val PREF_OVERLAY_STOPPED = "overlay_stopped"
 
@@ -1468,6 +1508,19 @@ class OverlayCaptureService : Service() {
             val intent = Intent(context, OverlayCaptureService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 context.startForegroundService(intent)
+            else context.startService(intent)
+        }
+
+        /**
+         * Setup's Start Now: capture on, and the saved Capture Box opens EDITING so it can be moved
+         * and resized at once (Owner 2026-09-25). If the service is already up for printing, SHOW
+         * brings the overlay back (a plain start would be read as "already running, capture
+         * stopped" and leave the button hidden); otherwise a fresh foreground start.
+         */
+        fun startNow(context: Context) {
+            val intent = Intent(context, OverlayCaptureService::class.java).putExtra(EXTRA_START_NOW, true)
+            if (isRunning) context.startService(intent.setAction(ACTION_SHOW))
+            else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
             else context.startService(intent)
         }
 
