@@ -37,7 +37,9 @@ describe('isTransientAuthError — transient vs definitive (Owner 2026-09-07)', 
     expect(isTransientAuthError({ name: 'AbortError: timeout' })).toBe(true);
     // A bare TypeError name (no matching substring, no status) is treated as definitive — the
     // retry-fetch layer already absorbs genuine transport blips on the read path first.
-    expect(isTransientAuthError({ name: 'TypeError', message: 'fetch failed' })).toBe(false);
+    expect(isTransientAuthError({ name: 'TypeError', message: 'fetch failed' })).toBe(
+      false,
+    );
   });
 
   it('classifies transport (0), timeout (408/425), rate-limit (429) and 5xx as transient', () => {
@@ -85,11 +87,16 @@ describe('toPersistentCookie — trusted-device persistence (Owner 2026-09-07)',
 
 describe('no idle / arbitrary logout remains (Owner 2026-09-07)', () => {
   it('has removed the IdleLogout component entirely', () => {
-    expect(existsSync(join(srcDir, 'components', 'shell', 'idle-logout.tsx'))).toBe(false);
+    expect(existsSync(join(srcDir, 'components', 'shell', 'idle-logout.tsx'))).toBe(
+      false,
+    );
   });
 
   it('does not mount any idle-timeout logout in the app shell', () => {
-    const shell = readFileSync(join(srcDir, 'components', 'shell', 'app-shell.tsx'), 'utf8');
+    const shell = readFileSync(
+      join(srcDir, 'components', 'shell', 'app-shell.tsx'),
+      'utf8',
+    );
     expect(shell).not.toMatch(/IdleLogout/);
   });
 });
@@ -107,6 +114,13 @@ describe('explicit Logout stays authoritative (Owner 2026-09-07, R5)', () => {
   it('still redirects to sign-in and revalidates the layout after logout', () => {
     expect(actions).toMatch(/revalidatePath\('\/',\s*'layout'\)/);
     expect(actions).toMatch(/redirect\('\/sign-in'\)/);
+  });
+
+  it('signs out THIS device only, never every session of the account (Owner 2026-09-25)', () => {
+    // supabase-js defaults to scope 'global', which also signed the Capture phone out.
+    expect(actions).toMatch(/auth\.signOut\(\{\s*scope:\s*'local'\s*\}\)/);
+    expect(actions).not.toMatch(/supabase\.auth\.signOut\(\s*\)/);
+    expect(actions).not.toMatch(/scope:\s*'global'/);
   });
 });
 

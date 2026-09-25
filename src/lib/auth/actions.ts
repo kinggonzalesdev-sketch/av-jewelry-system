@@ -140,7 +140,14 @@ export async function signOut(): Promise<never> {
   // Audited BEFORE the session is revoked, while it can still be attributed.
   await recordAuditEvent({ action: 'auth.sign_out', entityType: 'auth_session' });
 
-  const { error } = await supabase.auth.signOut();
+  // THIS DEVICE ONLY (Owner 2026-09-25). supabase-js signs out with scope 'global' by default,
+  // which revokes EVERY session of the account. The Owner's Capture phone uses the same account,
+  // so each web Logout silently signed the phone out: on 2026-09-24 at 00:34 PHT a web logout was
+  // followed 26 seconds later by the phone's refresh failing with "Refresh Token Not Found", and
+  // the phone stayed signed out until someone signed in again the next afternoon. 'local' still
+  // revokes this browser's session on the server. Ending every session remains deliberate
+  // elsewhere: the password reset (scope 'global') and the Owner's revoke_staff_sessions.
+  const { error } = await supabase.auth.signOut({ scope: 'local' });
 
   if (error) {
     console.error(
