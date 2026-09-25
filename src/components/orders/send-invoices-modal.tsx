@@ -274,7 +274,8 @@ export function SendInvoicesModal({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search customer name or item code"
-          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-gold"
+          // Phones: 44px tall with 16px text (iOS zooms into smaller fields); compact from sm up.
+          className="h-11 w-full rounded-md border border-border bg-background px-3 text-base outline-none focus:border-gold sm:h-9 sm:text-sm"
           aria-label="Search invoices"
         />
         <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Invoice filter">
@@ -288,7 +289,8 @@ export function SendInvoicesModal({
               disabled={running}
               data-testid={`send-invoices-filter-${f.key}`}
               className={cn(
-                'rounded-full border px-2.5 py-1 text-xs font-medium',
+                // tap-44: a 44px hit area on touch screens without enlarging the chip.
+                'tap-44 rounded-full border px-2.5 py-1 text-xs font-medium',
                 filter === f.key
                   ? 'border-gold bg-gold/15 text-foreground'
                   : 'border-border text-muted-foreground hover:bg-accent',
@@ -364,9 +366,10 @@ export function SendInvoicesModal({
         ) : null}
 
         {pickable.length > 0 ? (
-          <label className="flex items-center gap-2 text-sm font-medium">
+          <label className="flex min-h-11 items-center gap-2 text-sm font-medium sm:min-h-0">
             <input
               type="checkbox"
+              className="h-5 w-5 shrink-0 sm:h-4 sm:w-4"
               checked={allPicked}
               onChange={toggleAll}
               disabled={running}
@@ -394,15 +397,18 @@ export function SendInvoicesModal({
                   data-testid={`send-invoices-row-${r.orderId}`}
                 >
                   <div className="flex items-start gap-2">
-                    <input
-                      type="checkbox"
-                      className="mt-1"
-                      checked={selected.has(r.orderId)}
-                      disabled={!verdict.eligible || running}
-                      onChange={() => toggle(r.orderId)}
-                      aria-label={`Select ${r.customerName}`}
-                      data-testid={`send-invoices-pick-${r.orderId}`}
-                    />
+                    {/* Phones: a bigger box with a 44px hit area (tap-44) — the row's main action. */}
+                    <label className="tap-44 mt-0.5 flex shrink-0 items-center">
+                      <input
+                        type="checkbox"
+                        className="h-5 w-5 sm:h-4 sm:w-4"
+                        checked={selected.has(r.orderId)}
+                        disabled={!verdict.eligible || running}
+                        onChange={() => toggle(r.orderId)}
+                        aria-label={`Select ${r.customerName}`}
+                        data-testid={`send-invoices-pick-${r.orderId}`}
+                      />
+                    </label>
                     <div className="min-w-0 flex-1">
                       <p className="break-words font-medium">{r.customerName}</p>
                       <p className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-muted-foreground">

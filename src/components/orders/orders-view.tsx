@@ -632,7 +632,7 @@ export function OrdersView({
               <button
                 type="button"
                 onClick={() => setSendInvoicesOpen(true)}
-                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gold/50 bg-gold/10 px-3 text-sm font-medium text-foreground transition-colors hover:bg-gold/20"
+                className="tap-44 inline-flex h-9 items-center gap-1.5 rounded-md border border-gold/50 bg-gold/10 px-3 text-sm font-medium text-foreground transition-colors hover:bg-gold/20"
                 data-testid="send-invoices-open"
               >
                 Send Invoices
