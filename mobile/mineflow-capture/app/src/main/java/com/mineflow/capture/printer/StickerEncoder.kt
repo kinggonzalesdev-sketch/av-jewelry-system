@@ -1,7 +1,6 @@
 package com.mineflow.capture.printer
 
 import org.json.JSONObject
-import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
@@ -48,12 +47,37 @@ object StickerEncoder {
         val fixedPrice: String? = null,
     )
 
-    private data class SizedLine(val text: String, val font: String)
+    /** One printed TSPL line: text in a bitmap font, scaled xMul × yMul. */
+    private data class SizedLine(val text: String, val font: String, val xMul: Int = 1, val yMul: Int = 1)
     private data class Kinded(val text: String, val kind: String)
 
-    /** Today in long words, e.g. "August 6, 2026" (Owner request — not 08/06/2026). */
-    fun today(): String =
-        SimpleDateFormat("MMMM d, yyyy", Locale.US).format(Date())
+    // ---- Date (Owner 2026-09-25: short month names) ------------------------------------------
+    /** The Owner's exact month names. NOT SimpleDateFormat "MMM" — that gives Sep / Jun / Jul. */
+    private val SHORT_MONTHS = listOf(
+        "Jan", "Feb", "Mar", "Apr", "May", "June", "July", "Aug", "Sept", "Oct", "Nov", "Dec",
+    )
+    private val LONG_MONTHS = listOf(
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+    )
+
+    /** Today, e.g. "Sept 25, 2026". The phone's own clock and time zone, exactly as before. */
+    fun today(): String = stickerDate(Date())
+
+    /** A date in the sticker format: short month, day, year ("Jan 8, 2026", "Sept 25, 2026"). */
+    internal fun stickerDate(date: Date, zone: java.util.TimeZone = java.util.TimeZone.getDefault()): String {
+        val c = java.util.Calendar.getInstance(zone, Locale.US).apply { time = date }
+        return "${SHORT_MONTHS[c.get(java.util.Calendar.MONTH)]} " +
+            "${c.get(java.util.Calendar.DAY_OF_MONTH)}, ${c.get(java.util.Calendar.YEAR)}"
+    }
+
+    /** A date LINE received as text (the web's Order sticker says "September 25, 2026"): only a
+     *  leading full month name is shortened; the day and year are kept as they are. */
+    fun shortenMonth(text: String): String {
+        val t = text.trim()
+        val i = LONG_MONTHS.indexOfFirst { t.startsWith("$it ") }
+        return if (i < 0) t else SHORT_MONTHS[i] + t.substring(LONG_MONTHS[i].length)
+    }
 
     /**
      * Build the sticker from a claimed label-job payload + the device's price-per-gram
@@ -208,6 +232,48 @@ object StickerEncoder {
         return if (lines.size <= maxLines) lines else null
     }
 
+    // ---- Customer name: ONE line, sized to the printable width (Owner 2026-09-25) --------------
+    /**
+     * The name sizes, largest first. TSPL's built-in fonts are fixed-width bitmap fonts: every
+     * character is exactly one cell wide, so a line's printed width in dots is its character count
+     * × the cell width × the width multiplier — the exact width, not an estimate.
+     *   1. font "3" 16×24 dots — the approved size, up to 18 characters in 288 dots
+     *   2. font "2" 12×20 dots — slightly smaller, up to 24 characters
+     *   3. font "1" 8×12 at double height = 8×24 dots (1 mm wide, 3 mm tall) — the MINIMUM readable
+     *      size, up to 36 characters. Nothing smaller is used.
+     */
+    private val NAME_SIZES = listOf(
+        SizedLine("", "3"), SizedLine("", "2"), SizedLine("", "1", xMul = 1, yMul = 2),
+    )
+
+    /** How a customer name fits the sticker: the line to print, and whether the WHOLE name fit. */
+    data class NameFit(val text: String, val font: String, val xMul: Int, val yMul: Int, val fits: Boolean) {
+        /** Printed width in dots. */
+        val widthDots: Int get() = text.length * cellW(font) * xMul
+    }
+
+    private fun cellW(font: String): Int = cell(font).first
+
+    /**
+     * The customer name on ONE line, never wrapped: the largest size at which the whole name fits
+     * the printable width. A name too long even at the minimum size (over 36 characters) prints at
+     * the minimum size cut after the last whole word that fits, and is reported with fits = false —
+     * it is never wrapped onto a second line and never shrunk below the minimum.
+     */
+    fun nameFit(name: String): NameFit {
+        val t = asciify(name).replace("\"", "").trim().replace(Regex("\\s+"), " ").ifEmpty { "-" }
+        for (s in NAME_SIZES) {
+            if (t.length * cellW(s.font) * s.xMul <= PRINTABLE_W) return NameFit(t, s.font, s.xMul, s.yMul, true)
+        }
+        val min = NAME_SIZES.last()
+        val maxChars = PRINTABLE_W / (cellW(min.font) * min.xMul)
+        val cut = t.substring(0, maxChars)
+        // Keep whole words: cut at the last space, unless the cut already ends exactly at a word.
+        val atWord = if (t[maxChars] == ' ') cut.trimEnd()
+            else cut.substring(0, cut.lastIndexOf(' ').takeIf { it > 0 } ?: maxChars).trimEnd()
+        return NameFit(atWord, min.font, min.xMul, min.yMul, false)
+    }
+
     // ---- TSPL ---------------------------------------------------------------------
     private val TSPL_FONT_BY_KIND = mapOf(
         "name" to listOf("3", "2"), "item" to listOf("3", "2"),
@@ -230,15 +296,23 @@ object StickerEncoder {
         return (if (lines.isEmpty()) listOf("") else lines).map { SizedLine(it, font) }
     }
 
+    /**
+     * CENTERING (Owner 2026-09-25): each line's printed width in dots (fixed-width font: characters
+     * × cell width × multiplier) is centered on the 320-dot label, then held inside the 16-dot side
+     * margins, so no line — the date included — can run past the right edge.
+     */
+    private fun centeredX(lineW: Int): Int =
+        if (lineW >= PRINTABLE_W) MARGIN_X
+        else ((LABEL_W - lineW) / 2).coerceIn(MARGIN_X, LABEL_W - MARGIN_X - lineW)
+
     private fun layoutTsplText(lines: List<SizedLine>): List<String> {
-        val heights = lines.map { cell(it.font).second }
+        val heights = lines.map { cell(it.font).second * it.yMul }
         val totalH = heights.sum() + LINE_GAP * maxOf(0, lines.size - 1)
         var y = maxOf(8, (LABEL_H - totalH) / 2)
         val cmds = ArrayList<String>()
         lines.forEachIndexed { i, l ->
-            val lineW = l.text.length * cell(l.font).first
-            val x = maxOf(MARGIN_X, (LABEL_W - lineW) / 2)
-            cmds.add("TEXT $x,$y,\"${l.font}\",0,1,1,\"${l.text}\"")
+            val lineW = l.text.length * cell(l.font).first * l.xMul
+            cmds.add("TEXT ${centeredX(lineW)},$y,\"${l.font}\",0,${l.xMul},${l.yMul},\"${l.text}\"")
             y += (heights.getOrElse(i) { 0 }) + LINE_GAP
         }
         return cmds
@@ -246,8 +320,16 @@ object StickerEncoder {
 
     private fun encodeTspl(d: Sticker): ByteArray = encodeTsplKinded(lineItems(d))
 
+    /** One sticker line laid out: the name on ONE line (nameFit), a date line with the short month,
+     *  every other line exactly as before. */
+    private fun sizeTspl(l: Kinded): List<SizedLine> = when (l.kind) {
+        "name" -> nameFit(l.text).let { listOf(SizedLine(it.text, it.font, it.xMul, it.yMul)) }
+        "date" -> fitElement(shortenMonth(l.text), TSPL_FONT_BY_KIND.getValue("date"))
+        else -> fitElement(l.text, TSPL_FONT_BY_KIND[l.kind] ?: listOf("2"))
+    }
+
     private fun encodeTsplKinded(lines: List<Kinded>): ByteArray {
-        val sized = lines.flatMap { fitElement(it.text, TSPL_FONT_BY_KIND[it.kind] ?: listOf("2")) }
+        val sized = lines.flatMap { sizeTspl(it) }
         val program = (listOf("SIZE 40 mm,30 mm", "GAP 2 mm,0 mm", "DIRECTION 1", "CLS") +
             layoutTsplText(sized) + listOf("PRINT 1,1", "")).joinToString("\r\n")
         return asciify(program).toByteArray(Charsets.US_ASCII)
@@ -264,6 +346,28 @@ object StickerEncoder {
 
     private fun encodeEscPos(d: Sticker): ByteArray = encodeEscPosKinded(lineItems(d))
 
+    /**
+     * ESC/POS customer name, ONE line (Owner 2026-09-25). ESC/POS fonts are fixed-width too:
+     * Font A is 12 dots per character, Font B 9. In the same 288-dot width that allows 24
+     * characters in Font A — the approved double-height bold name — and 32 in Font B, the smallest
+     * the printer has. Longer names are cut after the last whole word that fits, never wrapped.
+     * Returns the text and whether it is Font B.
+     */
+    internal fun escPosName(name: String): Pair<String, Boolean> {
+        val t = asciify(name).replace(Regex("\\s+"), " ").trim().ifEmpty { "-" }
+        val fontA = PRINTABLE_W / ESC_FONT_A_W
+        val fontB = PRINTABLE_W / ESC_FONT_B_W
+        if (t.length <= fontA) return t to false
+        if (t.length <= fontB) return t to true
+        val cut = t.substring(0, fontB)
+        val atWord = if (t[fontB] == ' ') cut.trimEnd()
+            else cut.substring(0, cut.lastIndexOf(' ').takeIf { it > 0 } ?: fontB).trimEnd()
+        return atWord to true
+    }
+
+    private const val ESC_FONT_A_W = 12
+    private const val ESC_FONT_B_W = 9
+
     private fun encodeEscPosKinded(lines: List<Kinded>): ByteArray {
         val out = ArrayList<Int>()
         fun emit(text: String, wT: Int, hT: Int, bold: Boolean, maxChars: Int?) {
@@ -275,11 +379,23 @@ object StickerEncoder {
             out.addAll(listOf(GS, 0x21, 0x00))
         }
         out.addAll(listOf(ESC, 0x40))       // init
-        out.addAll(listOf(ESC, 0x61, 0x01)) // center
+        // Center: the PRINTER centers each line on its own printable width, measuring the real
+        // glyph widths — no character-count padding from us.
+        out.addAll(listOf(ESC, 0x61, 0x01))
         out.add(LF)                         // top spacing
         for (l in lines) {
             val s = ESC_STYLE_BY_KIND[l.kind] ?: EscStyle(1, 1, false, null)
-            emit(l.text, s.w, s.h, s.bold, s.max)
+            when (l.kind) {
+                "name" -> {
+                    // One line always: Font B (ESC M 1) only when Font A is too wide; never wrapped.
+                    val (text, small) = escPosName(l.text)
+                    if (small) out.addAll(listOf(ESC, 0x4d, 0x01))
+                    emit(text, s.w, s.h, s.bold, null)
+                    if (small) out.addAll(listOf(ESC, 0x4d, 0x00))
+                }
+                "date" -> emit(shortenMonth(l.text), s.w, s.h, s.bold, s.max)
+                else -> emit(l.text, s.w, s.h, s.bold, s.max)
+            }
         }
         out.addAll(listOf(LF, LF, LF))
         out.addAll(listOf(ESC, 0x61, 0x00))       // left
