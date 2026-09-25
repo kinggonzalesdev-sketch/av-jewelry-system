@@ -147,10 +147,12 @@ export async function listPendingCapturesPage(
       .limit(limit);
   };
 
-  // The screenshot-first sequence columns (migration 20260924120000). If they are not there yet,
-  // read exactly the columns this list always read, so Incoming Captures never breaks.
+  // The sequence columns (migrations 20260924120000 and, for the Computation First screenshot,
+  // 20260925120000). If they are not there yet, read the columns that exist, so Incoming Captures
+  // never breaks.
+  const SEQUENCE_COLUMNS = `${BASE_COLUMNS}, message_sequence, text_send_status`;
   const [first, pageTotal] = await Promise.all([
-    readRows(`${BASE_COLUMNS}, message_sequence, text_send_status`),
+    readRows(`${SEQUENCE_COLUMNS}, photo_send_status`),
     // An older page is filtered by the cursor, so its total comes from the head-only count.
     cursor
       ? withExclusions(pendingCaptures(supabase, 'id', { count: 'exact', head: true })).then(
@@ -159,6 +161,7 @@ export async function listPendingCapturesPage(
       : Promise.resolve(null),
   ]);
   let { data, error, count } = first;
+  if (error) ({ data, error, count } = await readRows(SEQUENCE_COLUMNS));
   if (error) ({ data, error, count } = await readRows(BASE_COLUMNS));
 
   if (error || !data) return { rows: [], total: null };
@@ -182,6 +185,7 @@ export async function listPendingCapturesPage(
     canonical_grams: string | null;
     message_sequence?: string | null;
     text_send_status?: string | null;
+    photo_send_status?: string | null;
     customers: CustJoin | CustJoin[] | null;
   }>;
 
@@ -252,6 +256,7 @@ export async function listPendingCapturesPage(
       routeReason: (r.route_reason ?? '').trim() || null,
       messageSequence: r.message_sequence ?? null,
       textSendStatus: r.text_send_status ?? null,
+      photoSendStatus: r.photo_send_status ?? null,
     };
   });
   return { rows: mapped, total };

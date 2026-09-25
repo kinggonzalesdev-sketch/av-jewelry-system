@@ -5,7 +5,11 @@ import { after } from 'next/server';
 import { recordAuditEvent } from '@/lib/audit/log';
 import {
   isConversationMediaEligibleSystem,
+  readComputationStatusSystem,
+  recordComputationPrivateReplySystem,
+  runCapturePhotoSequenceSystem,
   runCaptureTextSequenceSystem,
+  runComputationFirstTextSystem,
   stampCaptureSequenceSystem,
 } from '@/lib/capture/auto-router';
 import type { MessageSequence } from '@/lib/capture/message-sequence';
@@ -80,6 +84,22 @@ function scheduleTextLeg(captureId: string): void {
     });
   } catch {
     /* no request scope — the every-minute sweep continues any text still due */
+  }
+}
+
+/** Computation First: send the screenshot AFTER the response, once the computation is out.
+ *  Outside a request scope the every-minute sweep continues it instead. */
+function schedulePhotoLeg(captureId: string): void {
+  try {
+    after(async () => {
+      try {
+        await runCapturePhotoSequenceSystem(captureId);
+      } catch {
+        /* the every-minute sweep continues any screenshot still due */
+      }
+    });
+  } catch {
+    /* no request scope — the every-minute sweep continues any screenshot still due */
   }
 }
 
@@ -236,6 +256,29 @@ export async function sendPendingCaptureToMessenger(
             'The customer has not messaged the page yet, so Facebook will not accept the screenshot. Nothing was sent — it goes automatically the moment they message.',
         };
       }
+      if (mode === 'computation_first') {
+        // Computation First: the computation goes ONCE. If it already started in Messenger, it is
+        // never repeated as a Private Reply (the database refuses that as well).
+        const started = await readComputationStatusSystem(id);
+        if (started === undefined) {
+          return {
+            ok: false,
+            code: 'sequence_unavailable',
+            error: 'Could not read this capture just now. Nothing was sent — please click Send again.',
+          };
+        }
+        if (started !== null) {
+          if (started === 'sent') schedulePhotoLeg(id);
+          return {
+            ok: false,
+            code: started === 'sent' ? 'awaiting_customer_message' : `computation_${started}`,
+            error:
+              started === 'sent'
+                ? 'The computation was already sent. Facebook will not accept the screenshot until the customer messages the page — it goes automatically the moment they do.'
+                : 'The computation for this capture was already attempted. Nothing more was sent — check the chat.',
+          };
+        }
+      }
       const rb = await attemptSecureLinkPrivateReply({
         supabase,
         captureRecordId: id,
@@ -248,6 +291,18 @@ export async function sendPendingCaptureToMessenger(
           p_capture_id: id,
           p_status: 'link_sent',
         });
+        if (mode === 'computation_first') {
+          // The Private Reply WAS the computation; the screenshot waits for the customer's message.
+          await recordComputationPrivateReplySystem(id);
+          return {
+            ok: true,
+            code: rb.code === 'already_sent' ? 'already_sent' : 'sent',
+            message:
+              rb.code === 'already_sent'
+                ? 'Computation already sent — not resent.'
+                : 'Computation sent via Private Reply ✓ · the screenshot follows when the customer messages the page',
+          };
+        }
         return {
           ok: true,
           code: rb.code === 'already_sent' ? 'already_sent' : 'sent',
@@ -262,6 +317,56 @@ export async function sendPendingCaptureToMessenger(
         p_status: 'awaiting_inbox',
       });
       return { ok: false, code: 'awaiting_inbox', error: rb.message };
+    }
+  }
+
+  if (mode === 'computation_first') {
+    // COMPUTATION FIRST into an open chat: the computation now, then the screenshot after the
+    // response (both through atomic database claims — a double click never duplicates either).
+    const t = await runComputationFirstTextSystem(id, conversationId);
+    switch (t) {
+      case 'text_sent':
+      case 'already_sent':
+        schedulePhotoLeg(id);
+        return {
+          ok: true,
+          code: t === 'text_sent' ? 'sent' : 'already_sent',
+          message:
+            t === 'text_sent'
+              ? 'Computation sent ✓ · Sending screenshot...'
+              : 'Computation already sent — not resent. Sending screenshot...',
+        };
+      case 'waiting_reply':
+        return {
+          ok: false,
+          code: 'waiting_reply',
+          error:
+            'Facebook did not accept the computation yet. Nothing more is sent until the customer replies.',
+        };
+      case 'text_failed':
+        return {
+          ok: false,
+          code: 'text_failed',
+          error: 'The computation could not be sent. Open the chat to message the customer.',
+        };
+      case 'unconfirmed':
+        return {
+          ok: false,
+          code: 'unconfirmed',
+          error: 'The computation may have been sent. Check the chat before sending anything else.',
+        };
+      case 'deferred':
+        return {
+          ok: false,
+          code: 'deferred',
+          error: 'Pancake is busy. The computation is retried automatically within a minute.',
+        };
+      default:
+        return {
+          ok: false,
+          code: 'in_progress',
+          error: 'Could not start the computation just now (it may already be sending). Nothing new was sent.',
+        };
     }
   }
 

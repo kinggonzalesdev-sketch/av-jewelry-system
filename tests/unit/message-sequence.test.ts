@@ -6,9 +6,15 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_MESSAGE_SEQUENCE,
   DEFAULT_TEXT_SEND_ATTEMPTS,
+  DEFAULT_SCREENSHOT_SEND_ATTEMPTS,
+  MESSAGE_SEQUENCE_OPTIONS,
+  attemptSettingFor,
   backoffBeforeNextAttempt,
+  classifyPhotoSend,
   classifyTextSend,
+  computationFirstRouteReason,
   isMessageSequence,
+  parseScreenshotSendAttempts,
   parseTextSendAttempts,
   sequenceRouteReason,
   sequenceStatusLines,
@@ -323,5 +329,224 @@ describe('migration 20260924160000 — the Screenshot First gate lives in the da
     expect(SQL).toContain(
       'revoke all on function app_private.stamp_capture_message_sequence() from public, anon, authenticated;',
     );
+  });
+});
+
+/* ---------------------------------------------------------------------------------------------
+ * COMPUTATION FIRST (Owner 2026-09-25)
+ * ------------------------------------------------------------------------------------------- */
+
+describe('Computation First settings values', () => {
+  it('is a stable enum value with its own description and Screenshot Send Attempts (default 3, 1..3)', () => {
+    expect(isMessageSequence('computation_first')).toBe(true);
+    expect(isMessageSequence('Computation First')).toBe(false);
+    expect(MESSAGE_SEQUENCE_OPTIONS.map((o) => o.value)).toEqual([
+      'screenshot_first',
+      'computation_first',
+      'classic',
+    ]);
+    expect(MESSAGE_SEQUENCE_OPTIONS.find((o) => o.value === 'computation_first')?.description).toBe(
+      'Send the invoice/computation first, then immediately attempt the screenshot. If the screenshot cannot be sent after the allowed attempts, wait for a genuine customer reply before sending the screenshot.',
+    );
+    expect(DEFAULT_SCREENSHOT_SEND_ATTEMPTS).toBe(3);
+    expect([0, 1, 2, 3, 4, 1.5, 'x'].map(parseScreenshotSendAttempts)).toEqual([null, 1, 2, 3, null, null, null]);
+    expect(attemptSettingFor('computation_first')).toBe('screenshot');
+    expect(attemptSettingFor('screenshot_first')).toBe('text');
+    expect(attemptSettingFor('classic')).toBeNull();
+  });
+});
+
+describe('screenshot send classification (transient-only retry)', () => {
+  const upload = (code: string, status: number | null = null) => ({
+    ok: false,
+    code,
+    stage: 'upload' as const,
+    uploadDiagnostics: { httpStatus: status },
+  });
+
+  it('an upload hiccup never reached the customer: network, 429 and 5xx are retried', () => {
+    expect(classifyPhotoSend(upload('unavailable')).kind).toBe('retry');
+    expect(classifyPhotoSend(upload('failed', 503)).kind).toBe('retry');
+    expect(classifyPhotoSend(upload('failed', 429)).kind).toBe('retry');
+  });
+
+  it('an image Pancake refuses, or a missing token/page, is a finite failure', () => {
+    expect(classifyPhotoSend(upload('failed', 400)).kind).toBe('failed');
+    expect(classifyPhotoSend(upload('failed', null)).kind).toBe('failed');
+    expect(classifyPhotoSend(upload('token_missing')).kind).toBe('failed');
+  });
+
+  it('the message request is judged exactly like the text', () => {
+    expect(classifyPhotoSend({ ok: true, code: 'sent' }).kind).toBe('sent');
+    expect(classifyPhotoSend({ ok: false, code: 'outside_window' }).kind).toBe('wait_reply');
+    expect(classifyPhotoSend({ ok: false, code: 'failed', sendHttpStatus: 503 }).kind).toBe('retry');
+    expect(classifyPhotoSend({ ok: false, code: 'failed', sendHttpStatus: 429, retryAfterSeconds: 7 })).toEqual({
+      kind: 'retry',
+      retryAfterMs: 7000,
+    });
+    expect(classifyPhotoSend({ ok: false, code: 'unavailable', transport: 'timeout' }).kind).toBe('ambiguous');
+    expect(classifyPhotoSend({ ok: false, code: 'failed', sendHttpStatus: 504 }).kind).toBe('ambiguous');
+    // Invalid token / malformed request (an invalid content_id): never retried.
+    expect(
+      classifyPhotoSend({ ok: false, code: 'failed', sendHttpStatus: 400, debug: '{"error_code":190}' }).kind,
+    ).toBe('failed');
+    expect(
+      classifyPhotoSend({ ok: false, code: 'failed', sendHttpStatus: 400, debug: '(#100) Invalid parameter' }).kind,
+    ).toBe('failed');
+    // Facebook refusing the image because the chat is closed: wait for the customer.
+    expect(
+      classifyPhotoSend({
+        ok: false,
+        code: 'failed',
+        sendHttpStatus: 200,
+        sendMessageCode: 'invalid_upload_fb_attachments_result',
+      }).kind,
+    ).toBe('wait_reply');
+  });
+});
+
+describe('Computation First status (its own wording, never Screenshot First text)', () => {
+  const line = (ms: string | null, text: string | null, photo: string | null) =>
+    sequenceStatusLines('computation_first', ms, text, photo)?.lines.join(' · ') ?? null;
+
+  it('shows exactly the three Owner states', () => {
+    expect(line('pending', 'sent', null)).toBe('Computation sent ✓ · Sending screenshot...');
+    expect(line('sending', 'sent', 'sending')).toBe('Computation sent ✓ · Sending screenshot...');
+    expect(line('pending', 'sent', 'pending')).toBe('Computation sent ✓ · Sending screenshot...');
+    expect(line('sent', 'sent', 'sent')).toBe('Computation sent ✓ · Screenshot sent ✓');
+    expect(line('link_sent', 'sent', 'waiting_reply')).toBe(
+      'Computation sent ✓ · Waiting for customer reply to send screenshot',
+    );
+  });
+
+  it('the computation itself: sending / waiting / not sent / unconfirmed', () => {
+    expect(line('pending', 'sending', null)).toBe('Sending computation...');
+    expect(line('link_sent', 'waiting_reply', null)).toBe('Waiting for customer reply to send computation');
+    expect(line('failed', 'failed', null)).toBe('Computation not sent · open chat');
+    expect(line('failed', 'unconfirmed', null)).toBe('Computation may not have sent · check chat');
+    expect(line('pending', null, null)).toBeNull(); // not started: the card keeps its wording
+  });
+
+  it('a failed screenshot after the computation: the line says the computation went (the card names the failure)', () => {
+    expect(line('failed', 'sent', 'failed')).toBe('Computation sent ✓');
+    expect(line('failed', 'sent', 'unconfirmed')).toBe('Computation sent ✓');
+  });
+
+  it('never shows Screenshot First wording', () => {
+    const states = [null, 'pending', 'sending', 'sent', 'waiting_reply', 'failed', 'unconfirmed'];
+    const all = ['pending', 'sending', 'sent', 'link_sent', 'failed'].flatMap((ms) =>
+      states.flatMap((t) => states.map((p) => line(ms, t, p) ?? '')),
+    );
+    for (const l of all) {
+      expect(l).not.toMatch(/Screenshot sent ✓ · (Computation|Sending computation|Waiting for customer reply to send computation)/);
+      expect(l).not.toContain('Waiting for customer to message');
+    }
+    expect(computationFirstRouteReason('photo_pending')).toBe('Computation sent ✓ · Sending screenshot...');
+    expect(computationFirstRouteReason('photo_sent')).toBe('Computation sent ✓ · Screenshot sent ✓');
+    expect(computationFirstRouteReason('photo_waiting_reply')).toBe(
+      'Computation sent ✓ · Waiting for customer reply to send screenshot',
+    );
+  });
+
+  it('Screenshot First wording is unchanged', () => {
+    expect(sequenceStatusLines('screenshot_first', 'sent', 'sent')?.lines).toEqual([
+      'Screenshot sent ✓',
+      'Computation sent ✓',
+    ]);
+    expect(sequenceStatusLines('screenshot_first', 'sent', 'sent', 'sent')?.lines).toEqual([
+      'Screenshot sent ✓',
+      'Computation sent ✓',
+    ]);
+    expect(sequenceStatusLines('classic', 'sent', null, null)).toBeNull();
+  });
+});
+
+describe('migration 20260925120000 — Computation First enforced in the database', () => {
+  const RAW = readFileSync(
+    join(__dirname, '..', '..', 'supabase', 'migrations', '20260925120000_capture_computation_first_sequence.sql'),
+    'utf8',
+  );
+  const SQL = RAW.split(String.fromCharCode(10))
+    .filter((l) => !l.trim().startsWith('--'))
+    .join(String.fromCharCode(10))
+    .toLowerCase();
+  const fn = (name: string) => {
+    const start = SQL.indexOf(`create or replace function ${name}(`);
+    const end = SQL.indexOf('create or replace function', start + 10);
+    return SQL.slice(start, end === -1 ? undefined : end);
+  };
+
+  it('is additive: nothing dropped except the two widened check constraints; no data changes', () => {
+    expect(SQL).not.toMatch(/drop (table|column|function|index|trigger|policy)/);
+    expect(SQL.match(/drop constraint if exists/g)).toHaveLength(2);
+    expect(SQL).not.toMatch(/rename|delete from|truncate/);
+    const topLevel = SQL.split(/\$(?:function)?\$/)
+      .filter((_, i) => i % 2 === 0)
+      .join(' ');
+    expect(topLevel).not.toMatch(/update public\./);
+    expect(SQL).toContain(
+      "check (message_sequence is null or message_sequence in ('screenshot_first', 'computation_first', 'classic'))",
+    );
+  });
+
+  it('HARD GATE: the shared screenshot claim refuses Computation First until the computation is sent', () => {
+    const claim = fn('public.claim_capture_photo_send');
+    expect(claim).toContain("c.message_sequence = 'computation_first'");
+    expect(claim).toContain("return 'computation_first';");
+    expect(claim.indexOf("return 'computation_first';")).toBeLessThan(claim.indexOf("set message_status = 'sending'"));
+  });
+
+  it('the screenshot leg claim requires the computation, and keeps the photo lock, budget and lease', () => {
+    const leg = fn('public.claim_capture_photo_leg');
+    expect(leg).toContain("return 'text_not_sent'");
+    expect(leg.indexOf("return 'text_not_sent'")).toBeLessThan(leg.indexOf("set message_status = 'sending'"));
+    expect(leg).toContain("interval '2 minutes'");
+    expect(leg).toContain('r.photo_attempts >= coalesce(r.photo_max_attempts, 3)');
+    expect(leg).toContain("if v_status = 'waiting_reply' and p_trigger <> 'reply' then return 'waiting_reply'");
+    expect(leg).toContain("return 'unconfirmed'");
+  });
+
+  it('the Private Reply claim never repeats a computation that started in Messenger', () => {
+    const share = fn('public.claim_share_link_send');
+    expect(share).toContain("return 'screenshot_first';"); // the Screenshot First gate is kept
+    expect(share).toContain("c.message_sequence = 'computation_first'");
+    expect(share).toContain('c.text_send_status is not null');
+    expect(share.indexOf("return 'computation_sent';")).toBeLessThan(
+      share.indexOf("set private_reply_status = 'sending'"),
+    );
+  });
+
+  it('the text claim keeps IMAGE THEN TEXT for Screenshot First only', () => {
+    const t = fn('public.claim_capture_text_send');
+    expect(t).toContain("if r.message_sequence = 'screenshot_first' and coalesce(r.message_status, '') <> 'sent' then");
+    expect(t).toContain("r.message_sequence not in ('screenshot_first', 'computation_first')");
+  });
+
+  it('snapshots the sequence and attempt limits at insert', () => {
+    const stamp = fn('app_private.stamp_capture_message_sequence');
+    expect(stamp).toContain("if v_mode in ('screenshot_first', 'computation_first', 'classic') then");
+    expect(stamp).toContain("when v_mode = 'computation_first' then greatest(1, least(coalesce(v_shots, 3), 3))");
+  });
+
+  it('closes every new function to PUBLIC, anon and authenticated (service role only)', () => {
+    for (const sig of [
+      'public.set_capture_sequence_conversation(uuid, text)',
+      'public.claim_capture_photo_leg(uuid, text, text)',
+      'public.finalize_capture_photo_leg(uuid, text, text, text, integer)',
+      'public.park_capture_photo_leg(uuid, text)',
+      'public.list_due_capture_photo_legs(integer)',
+      'public.list_waiting_capture_photos(integer)',
+    ]) {
+      expect(SQL).toContain(`revoke all on function ${sig} from public, anon, authenticated;`);
+      expect(SQL).toContain(`grant execute on function ${sig} to service_role;`);
+    }
+  });
+
+  it('keeps the Screenshot First branches of the sweep guard and the due list', () => {
+    const guard = fn('public.has_capture_routing_work');
+    expect(guard).toContain("coalesce(c.message_status, '') in ('pending', 'awaiting_inbox')");
+    expect(guard).toContain("c.message_sequence = 'screenshot_first'");
+    const due = fn('public.list_due_capture_text_legs');
+    expect(due).toMatch(/c\.message_sequence = 'screenshot_first'\s+and c\.message_status = 'sent'/);
   });
 });

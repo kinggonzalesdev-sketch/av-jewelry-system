@@ -466,6 +466,9 @@ export type PancakeSendResult = {
   transport?: 'network' | 'timeout' | 'unknown';
   /** Pancake's authoritative Retry-After (seconds) on a rejected send, when present. */
   retryAfterSeconds?: number | null;
+  /** 'upload' when a screenshot send failed while uploading the image (the message request was
+   *  never made, so nothing reached the customer). */
+  stage?: 'upload' | 'send';
 };
 
 /**
@@ -787,6 +790,7 @@ export async function sendPancakeConversationMessage(input: {
         message:
           'The screenshot could not be uploaded to Pancake. The reminder is saved — retry, or send it via Open FB Chat.',
         pancakeMessageId: null,
+        stage: 'upload',
         ...(up.debug ? { debug: up.debug } : {}),
         ...(up.diag ? { uploadDiagnostics: up.diag } : {}),
       };

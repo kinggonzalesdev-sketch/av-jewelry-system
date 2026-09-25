@@ -117,6 +117,8 @@ export type PendingCaptureRow = {
   /** Screenshot-first computation text state (pending / sending / sent / waiting_reply / failed /
    *  unconfirmed), or null. */
   textSendStatus?: string | null;
+  /** Computation First screenshot state (same values), or null. */
+  photoSendStatus?: string | null;
 };
 
 /** Where the next (older) page starts: the oldest row already loaded. Newest-first keyset on

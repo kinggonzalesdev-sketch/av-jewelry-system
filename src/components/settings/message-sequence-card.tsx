@@ -8,6 +8,7 @@ import {
   MESSAGE_SEQUENCE_OPTIONS,
   TEXT_SEND_ATTEMPTS_MAX,
   TEXT_SEND_ATTEMPTS_MIN,
+  attemptSettingFor,
   type MessageSequence,
 } from '@/lib/capture/message-sequence';
 import { Button } from '@/components/ui/button';
@@ -17,34 +18,52 @@ const ATTEMPT_CHOICES = Array.from(
   (_, i) => TEXT_SEND_ATTEMPTS_MIN + i,
 );
 
+type Saved = { mode: MessageSequence; attempts: number; screenshotAttempts: number };
+
 /**
- * Settings → Live Selling / Messaging (Owner 2026-09-24). The Private Reply Sequence and Text
- * Send Attempts for Incoming Captures. Saving affects NEW messaging flows only; a capture already
- * being sent keeps the sequence it started with.
+ * Settings → Live Selling / Messaging (Owner 2026-09-24). The Private Reply Sequence and its
+ * attempt setting for Incoming Captures: Text Send Attempts on Screenshot First, Screenshot Send
+ * Attempts on Computation First (Owner 2026-09-25). Saving affects NEW messaging flows only; a
+ * capture already being sent keeps the sequence it started with.
  */
 export function MessageSequenceCard({ initial }: { initial: MessagingSequenceSettings }) {
   const [mode, setMode] = useState<MessageSequence>(initial.mode);
   const [attempts, setAttempts] = useState<number>(initial.attempts);
-  const [saved, setSaved] = useState<{ mode: MessageSequence; attempts: number }>({
+  const [screenshotAttempts, setScreenshotAttempts] = useState<number>(initial.screenshotAttempts);
+  const [saved, setSaved] = useState<Saved>({
     mode: initial.mode,
     attempts: initial.attempts,
+    screenshotAttempts: initial.screenshotAttempts,
   });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
 
-  const dirty = mode !== saved.mode || attempts !== saved.attempts;
+  const setting = attemptSettingFor(mode);
+  const screenshotSetting = setting === 'screenshot';
+  const dirty =
+    mode !== saved.mode ||
+    (screenshotSetting ? screenshotAttempts !== saved.screenshotAttempts : attempts !== saved.attempts);
+  // Computation First needs its own database update (migration 20260925120000).
+  const blocked = mode === 'computation_first' && !initial.computationFirstAvailable;
 
   const save = async () => {
-    if (busy || !dirty) return;
+    if (busy || !dirty || blocked) return;
     setBusy(true);
     setMessage(null);
-    const res = await saveMessagingSequenceAction({ mode, attempts });
+    const res = await saveMessagingSequenceAction({
+      mode,
+      attempts: screenshotSetting ? screenshotAttempts : attempts,
+    });
     setBusy(false);
     if (!res.ok) {
       setMessage({ tone: 'error', text: res.error });
       return;
     }
-    setSaved({ mode: res.settings.mode, attempts: res.settings.attempts });
+    setSaved({
+      mode: res.settings.mode,
+      attempts: res.settings.attempts,
+      screenshotAttempts: res.settings.screenshotAttempts,
+    });
     setMessage({ tone: 'ok', text: 'Saved ✓ — applies to new captures.' });
   };
 
@@ -98,36 +117,71 @@ export function MessageSequenceCard({ initial }: { initial: MessagingSequenceSet
         ))}
       </fieldset>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <label htmlFor="text-send-attempts" className="text-xs font-semibold text-foreground">
-          Text Send Attempts
-        </label>
-        <select
-          id="text-send-attempts"
-          value={attempts}
-          onChange={(e) => setAttempts(Number(e.target.value))}
-          disabled={mode !== 'screenshot_first'}
-          className="h-11 rounded-md border border-border bg-background px-3 text-base sm:h-9 sm:text-sm"
-          data-testid="text-send-attempts"
+      {blocked && initial.available ? (
+        <p
+          role="status"
+          className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800"
+          data-testid="computation-first-unavailable"
         >
-          {ATTEMPT_CHOICES.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-        <span className="text-xs text-muted-foreground">
-          total tries after the screenshot ({TEXT_SEND_ATTEMPTS_MIN}–{TEXT_SEND_ATTEMPTS_MAX}); only
-          temporary errors are retried.
-        </span>
-      </div>
+          Computation First needs its database update before it can be saved.
+        </p>
+      ) : null}
+
+      {screenshotSetting ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <label htmlFor="screenshot-send-attempts" className="text-xs font-semibold text-foreground">
+            Screenshot Send Attempts
+          </label>
+          <select
+            id="screenshot-send-attempts"
+            value={screenshotAttempts}
+            onChange={(e) => setScreenshotAttempts(Number(e.target.value))}
+            className="h-11 rounded-md border border-border bg-background px-3 text-base sm:h-9 sm:text-sm"
+            data-testid="screenshot-send-attempts"
+          >
+            {ATTEMPT_CHOICES.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <span className="text-xs text-muted-foreground">
+            total tries after the computation ({TEXT_SEND_ATTEMPTS_MIN}–{TEXT_SEND_ATTEMPTS_MAX});
+            only temporary errors are retried.
+          </span>
+        </div>
+      ) : (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <label htmlFor="text-send-attempts" className="text-xs font-semibold text-foreground">
+            Text Send Attempts
+          </label>
+          <select
+            id="text-send-attempts"
+            value={attempts}
+            onChange={(e) => setAttempts(Number(e.target.value))}
+            disabled={setting !== 'text'}
+            className="h-11 rounded-md border border-border bg-background px-3 text-base sm:h-9 sm:text-sm"
+            data-testid="text-send-attempts"
+          >
+            {ATTEMPT_CHOICES.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <span className="text-xs text-muted-foreground">
+            total tries after the screenshot ({TEXT_SEND_ATTEMPTS_MIN}–{TEXT_SEND_ATTEMPTS_MAX}); only
+            temporary errors are retried.
+          </span>
+        </div>
+      )}
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <Button
           type="button"
           size="sm"
           onClick={() => void save()}
-          disabled={busy || !dirty || !initial.available}
+          disabled={busy || !dirty || !initial.available || blocked}
           data-testid="message-sequence-save"
         >
           {busy ? 'Saving…' : 'Save'}

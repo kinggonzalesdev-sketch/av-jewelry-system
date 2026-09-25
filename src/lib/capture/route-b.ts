@@ -326,6 +326,15 @@ export async function attemptSecureLinkPrivateReply(input: {
       message: 'Screenshot First: nothing is sent before the screenshot.',
     };
   }
+  if (claim === 'computation_sent') {
+    // The database gate (migration 20260925120000): on Computation First the computation already
+    // started in Messenger, so it is never sent again as a Private Reply.
+    return {
+      ok: false,
+      code: 'computation_sent',
+      message: 'Computation First: the computation was already sent in Messenger.',
+    };
+  }
   if (claim !== 'claimed') {
     return { ok: false, code: 'in_progress', message: 'Another Private Reply for this comment is in progress.' };
   }

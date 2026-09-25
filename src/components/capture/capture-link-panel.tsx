@@ -45,6 +45,7 @@ export function CaptureLinkPanel({
   onRecheck,
   messageStatus = null,
   messageSequence = null,
+  textSendStatus = null,
 }: {
   captureRecordId: string;
   link: EffectiveCaptureLink;
@@ -61,8 +62,13 @@ export function CaptureLinkPanel({
    *  screenshot, so 'link_sent' means "waiting for the customer to message" and 'failed' means the
    *  screenshot failed (Owner 2026-09-24): never "Waiting for reply to send screenshot". */
   messageSequence?: string | null;
+  /** The computation's state. On 'computation_first' it says what a waiting or failed capture is
+   *  waiting on: the computation itself, or the screenshot after it. */
+  textSendStatus?: string | null;
 }) {
   const screenshotFirst = messageSequence === 'screenshot_first';
+  const computationFirst = messageSequence === 'computation_first';
+  const computationOut = textSendStatus === 'sent';
   const [picking, setPicking] = useState(false);
   const [candidates, setCandidates] = useState<CaptureCandidateOption[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -147,6 +153,13 @@ export function CaptureLinkPanel({
         >
           · Waiting for customer to message
         </span>
+      ) : messageStatus === 'link_sent' && computationFirst && !computationOut ? (
+        <span
+          className="text-sky-600"
+          title="Computation First: Facebook did not accept the computation yet. When the customer replies, the computation goes first and the screenshot follows."
+        >
+          · Waiting for customer reply to send computation
+        </span>
       ) : messageStatus === 'link_sent' ? (
         <span
           className="text-sky-600"
@@ -154,10 +167,21 @@ export function CaptureLinkPanel({
         >
           · Waiting for reply to send screenshot
         </span>
-      ) : messageStatus === 'failed' && screenshotFirst ? (
+      ) : messageStatus === 'failed' && computationFirst && !computationOut ? (
         <span
           className="text-amber-700"
-          title="Screenshot First: the screenshot was not delivered, and no computation was sent before it. Use Retry, or Open chat to message the customer."
+          title="Computation First: the computation was not sent, so the screenshot was not sent either. Open chat to message the customer."
+        >
+          · Computation not sent
+        </span>
+      ) : messageStatus === 'failed' && (screenshotFirst || computationFirst) ? (
+        <span
+          className="text-amber-700"
+          title={
+            computationFirst
+              ? 'Computation First: the computation was sent, but the screenshot was not delivered. Use Retry, or Open chat to message the customer.'
+              : 'Screenshot First: the screenshot was not delivered, and no computation was sent before it. Use Retry, or Open chat to message the customer.'
+          }
         >
           · Screenshot not sent
         </span>

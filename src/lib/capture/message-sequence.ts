@@ -9,7 +9,7 @@
  */
 
 /** The configurable sequences. Stored as these exact values; never as display text. */
-export const MESSAGE_SEQUENCES = ['screenshot_first', 'classic'] as const;
+export const MESSAGE_SEQUENCES = ['screenshot_first', 'computation_first', 'classic'] as const;
 export type MessageSequence = (typeof MESSAGE_SEQUENCES)[number];
 
 export const DEFAULT_MESSAGE_SEQUENCE: MessageSequence = 'screenshot_first';
@@ -24,6 +24,12 @@ export const MESSAGE_SEQUENCE_OPTIONS: ReadonlyArray<{
     label: 'Screenshot First',
     description:
       'Send the screenshot first, then attempt to send the invoice/computation text. If the text cannot be sent after the allowed attempts, wait for a genuine customer reply before sending the text.',
+  },
+  {
+    value: 'computation_first',
+    label: 'Computation First',
+    description:
+      'Send the invoice/computation first, then immediately attempt the screenshot. If the screenshot cannot be sent after the allowed attempts, wait for a genuine customer reply before sending the screenshot.',
   },
   {
     value: 'classic',
@@ -48,6 +54,19 @@ export function parseTextSendAttempts(value: unknown): number | null {
   if (!Number.isInteger(n)) return null;
   if (n < TEXT_SEND_ATTEMPTS_MIN || n > TEXT_SEND_ATTEMPTS_MAX) return null;
   return n;
+}
+
+/** Computation First: total screenshot attempts after the computation (same 1..3 rule: 3 means
+ *  3 attempts in all, not 3 retries). */
+export const DEFAULT_SCREENSHOT_SEND_ATTEMPTS = 3;
+export const parseScreenshotSendAttempts = parseTextSendAttempts;
+
+/** The attempt setting that belongs to a sequence ('text' on Screenshot First, 'screenshot' on
+ *  Computation First, none on Classic). The database stores the one saved with the sequence. */
+export function attemptSettingFor(mode: MessageSequence): 'text' | 'screenshot' | null {
+  if (mode === 'screenshot_first') return 'text';
+  if (mode === 'computation_first') return 'screenshot';
+  return null;
 }
 
 /**
@@ -89,6 +108,11 @@ export type TextSendResultLike = {
   transport?: 'network' | 'timeout' | 'unknown';
   retryAfterSeconds?: number | null;
   debug?: string;
+  /** A screenshot send: 'upload' = it failed while getting the content_id, so nothing reached the
+   *  customer; 'send' (or absent) = the message request itself. */
+  stage?: 'upload' | 'send';
+  /** The upload_contents HTTP status, when the upload got an answer. */
+  uploadDiagnostics?: { httpStatus?: number | null } | null;
 };
 
 export type TextSendClass =
@@ -187,6 +211,22 @@ export function classifyTextSend(res: TextSendResultLike): TextSendClass {
 }
 
 /**
+ * Classify ONE screenshot send (Computation First). The message request itself is judged exactly
+ * like the text (classifyTextSend: transient-only retry, ambiguous timeouts, "customer must reply"
+ * answers). A failure while UPLOADING the image never reached the customer, so it is safe to try
+ * again when it is temporary (network, 429, 5xx); an image Pancake refuses to take cannot be
+ * fixed by a retry or a reply and is a finite failure.
+ */
+export function classifyPhotoSend(res: TextSendResultLike): TextSendClass {
+  if (res.ok || res.stage !== 'upload') return classifyTextSend(res);
+  if (res.code === 'token_missing' || res.code === 'page_missing') return { kind: 'failed' };
+  if (res.code === 'unavailable') return { kind: 'retry', retryAfterMs: null };
+  const status = res.uploadDiagnostics?.httpStatus ?? null;
+  if (status === 429 || (status !== null && status >= 500)) return { kind: 'retry', retryAfterMs: null };
+  return { kind: 'failed' };
+}
+
+/**
  * The compact staff-facing status lines for a screenshot-first capture. Never raw API
  * errors. Returns null when the capture is not on the screenshot-first sequence, so the
  * caller keeps its existing wording.
@@ -195,7 +235,11 @@ export function sequenceStatusLines(
   messageSequence: string | null | undefined,
   messageStatus: string | null | undefined,
   textStatus: string | null | undefined,
+  photoStatus?: string | null,
 ): { lines: string[]; tone: 'ok' | 'wait' | 'warn' } | null {
+  if (messageSequence === 'computation_first') {
+    return computationFirstStatusLines(messageStatus, textStatus, photoStatus ?? null);
+  }
   if (messageSequence !== 'screenshot_first') return null;
 
   if (messageStatus === 'sending') {
@@ -235,6 +279,82 @@ export function sequenceStatusLines(
       return { lines: ['Screenshot sent ✓', 'Computation may not have sent · check chat'], tone: 'warn' };
     default:
       return { lines: ['Screenshot sent ✓', 'Sending computation…'], tone: 'wait' };
+  }
+}
+
+/**
+ * Computation First status lines (Owner 2026-09-25). The computation is the first message, so no
+ * Screenshot First wording is ever shown here. The screenshot's own failure is named by the
+ * card's warning row (with Retry), so the line then only says the computation went out.
+ */
+export function computationFirstStatusLines(
+  messageStatus: string | null | undefined,
+  textStatus: string | null | undefined,
+  photoStatus: string | null | undefined,
+): { lines: string[]; tone: 'ok' | 'wait' | 'warn' } | null {
+  switch (textStatus) {
+    case 'pending':
+    case 'sending':
+      return { lines: ['Sending computation...'], tone: 'wait' };
+    case 'waiting_reply':
+      return { lines: ['Waiting for customer reply to send computation'], tone: 'wait' };
+    case 'failed':
+      return { lines: ['Computation not sent · open chat'], tone: 'warn' };
+    case 'unconfirmed':
+      return { lines: ['Computation may not have sent · check chat'], tone: 'warn' };
+    case 'sent':
+      break;
+    default:
+      // Not started yet: the card keeps its existing wording.
+      return null;
+  }
+  if (messageStatus === 'sent' || photoStatus === 'sent') {
+    return { lines: ['Computation sent ✓', 'Screenshot sent ✓'], tone: 'ok' };
+  }
+  if (photoStatus === 'waiting_reply' || messageStatus === 'link_sent') {
+    return {
+      lines: ['Computation sent ✓', 'Waiting for customer reply to send screenshot'],
+      tone: 'wait',
+    };
+  }
+  if (photoStatus === 'failed' || photoStatus === 'unconfirmed' || messageStatus === 'failed') {
+    return { lines: ['Computation sent ✓'], tone: 'ok' };
+  }
+  return { lines: ['Computation sent ✓', 'Sending screenshot...'], tone: 'wait' };
+}
+
+/** The same Computation First states as one durable route_reason line (human-safe). */
+export function computationFirstRouteReason(
+  state:
+    | 'text_pending'
+    | 'text_waiting_reply'
+    | 'text_failed'
+    | 'text_unconfirmed'
+    | 'photo_pending'
+    | 'photo_sent'
+    | 'photo_waiting_reply'
+    | 'photo_failed'
+    | 'photo_unconfirmed',
+): string {
+  switch (state) {
+    case 'text_pending':
+      return 'Sending computation...';
+    case 'text_waiting_reply':
+      return 'Waiting for customer reply to send computation';
+    case 'text_failed':
+      return 'Computation not sent · open chat';
+    case 'text_unconfirmed':
+      return 'Computation may not have sent · check chat';
+    case 'photo_sent':
+      return 'Computation sent ✓ · Screenshot sent ✓';
+    case 'photo_waiting_reply':
+      return 'Computation sent ✓ · Waiting for customer reply to send screenshot';
+    case 'photo_failed':
+      return 'Computation sent ✓ · Screenshot not sent';
+    case 'photo_unconfirmed':
+      return 'Computation sent ✓ · Screenshot may not have sent · check chat';
+    default:
+      return 'Computation sent ✓ · Sending screenshot...';
   }
 }
 

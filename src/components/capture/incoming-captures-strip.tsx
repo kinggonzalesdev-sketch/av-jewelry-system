@@ -418,6 +418,12 @@ export function IncomingCapturesStrip({
                 ? raw.text_send_status
                 : null
               : (prev?.textSendStatus ?? null),
+          photoSendStatus:
+            'photo_send_status' in raw
+              ? typeof raw.photo_send_status === 'string'
+                ? raw.photo_send_status
+                : null
+              : (prev?.photoSendStatus ?? null),
         };
         if (prev) {
           return { ...curList, rows: cur.map((r) => (r.captureRecordId === id ? row : r)) };
@@ -1113,7 +1119,15 @@ export function IncomingCapturesStrip({
                         r.messageSequence,
                         r.messageStatus,
                         r.textSendStatus,
+                        r.photoSendStatus,
                       );
+                      // Computation First: a failed capture whose computation is out is a
+                      // screenshot that did not go (Retry sends it again); one whose computation
+                      // did not go is said by the sequence line ("open chat"), with no Retry.
+                      const computationFirst = r.messageSequence === 'computation_first';
+                      const computationOut = r.textSendStatus === 'sent';
+                      const photoUnconfirmed =
+                        computationFirst && r.photoSendStatus === 'unconfirmed';
                       const autoStatus = sequence
                         ? null
                         : r.messageStatus === 'sent'
@@ -1123,12 +1137,16 @@ export function IncomingCapturesStrip({
                             : null;
                       // A FINITE failure shows a clear ⚠ state + a Retry action (Owner 2026-08-24,
                       // Issue 1) — never a silent stall. Not for a Test capture (never messages).
-                      const autoFailed = r.messageStatus === 'failed' && !r.isTest;
+                      const autoFailed =
+                        r.messageStatus === 'failed' &&
+                        !r.isTest &&
+                        (!computationFirst || computationOut);
                       // Name WHAT failed: the screenshot ("AUTO SS Failed …") or the text. On
                       // Screenshot First no text goes before the screenshot, so a failed capture
                       // is always a screenshot that was not delivered.
                       const screenshotFailed =
                         r.messageSequence === 'screenshot_first' ||
+                        computationFirst ||
                         (r.routeReason ?? '').startsWith('AUTO SS Failed');
                       const note = notes[r.captureRecordId] ?? null;
                       if (!sequence && !autoStatus && !note && !autoFailed) return null;
@@ -1158,7 +1176,11 @@ export function IncomingCapturesStrip({
                           ) : null}
                           {autoFailed ? (
                             <span className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-amber-700">
-                              {screenshotFailed ? '⚠ Screenshot not sent' : '⚠ AUTO TEXT not sent'}
+                              {photoUnconfirmed
+                                ? '⚠ Screenshot may not have sent · check chat'
+                                : screenshotFailed
+                                  ? '⚠ Screenshot not sent'
+                                  : '⚠ AUTO TEXT not sent'}
                               <button
                                 type="button"
                                 onClick={() => void retryAutoText(r)}
@@ -1251,6 +1273,7 @@ export function IncomingCapturesStrip({
                         link={effectiveLink(r)}
                         messageStatus={r.messageStatus}
                         messageSequence={r.messageSequence ?? null}
+                        textSendStatus={r.textSendStatus ?? null}
                         onChanged={(res) =>
                           setLinkOverrides((cur) => ({
                             ...cur,
