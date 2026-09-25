@@ -82,8 +82,8 @@ The Owner re-confirmed both on 2026-09-25 (answers 5 and 6 below).
 | —   | Credit card                                     | Accepted                                                          | Terms §4, home page              |
 | —   | Footer email                                    | The confirmed official email replaces the old placeholder         | Footer                           |
 
-Answer 11 wording: "you may sell it instead, including to us under our gold and scrap buying terms" reads the
-Owner's "pwede niyang ibenta" as selling it, including back to the shop. Confirm or adjust.
+Answer 11 wording: "you may sell it instead, including to us under our gold and scrap buying terms" was
+confirmed by the Owner on 2026-09-25 exactly as published.
 
 ## (c) Still open
 
