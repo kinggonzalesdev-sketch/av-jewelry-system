@@ -32,6 +32,12 @@ export default function TermsPage() {
         {LEGAL_BUSINESS.dtiRegistrationNumber}) trades as {LEGAL_BUSINESS.brand}. Our full
         business details are listed in Section 13 (Contact us).
       </p>
+      <p>
+        We comply with the Anti-Money Laundering Act of 2001 (Republic Act No. 9160), as
+        amended, and the rules of the Anti-Money Laundering Council (AMLC). Where the law
+        requires it, we may ask for valid identification and keep records of your
+        transaction.
+      </p>
 
       <h2>2. Products and services</h2>
       <p>
@@ -50,12 +56,17 @@ export default function TermsPage() {
       <h2>4. Payment</h2>
       <p>
         Accepted payment channels may include <strong>BDO</strong>, <strong>BPI</strong>,{' '}
-        <strong>GCash</strong>, <strong>Remittance</strong>, and{' '}
-        <strong>Cash on Delivery (COD)</strong>, where applicable. Not every payment
+        <strong>GCash</strong>, <strong>Credit Card</strong>, <strong>Remittance</strong>,
+        and <strong>Cash on Delivery (COD)</strong>, where applicable. Not every payment
         method is available for every transaction, destination, or order. We will confirm
         the applicable payment method before your transaction is completed. Payments are
         subject to our review and confirmation, so please keep your payment reference or
         proof of payment.
+      </p>
+      <p>
+        Cash on Delivery requires a down payment of{' '}
+        <strong>at least {LEGAL_POLICY.codDownPayment}</strong> before the item is
+        released for delivery.
       </p>
 
       <h2>5. Delivery and pick-up</h2>
@@ -76,7 +87,10 @@ export default function TermsPage() {
 
       <h2>6. Release of items</h2>
       <p>
-        Applicable payment and release requirements will be confirmed before fulfillment.
+        Items are released after your payment has been verified. For Cash on Delivery,
+        the item is released once the required down payment (at least{' '}
+        {LEGAL_POLICY.codDownPayment}) has been verified, and the balance is paid on
+        delivery.
       </p>
 
       <h2>7. Layaway</h2>
@@ -97,8 +111,9 @@ export default function TermsPage() {
         </li>
       </ul>
       <p>
-        If you are thinking of cancelling a layaway, or you may not be able to complete
-        one, please contact us so we can explain how your payments will be handled.
+        If you cancel a layaway, or it is not fully paid by the end of the layaway period
+        and grace period, the payments you have made are <strong>forfeited</strong> and
+        will not be refunded.
       </p>
 
       <h2>8. Custom orders, repairs, and resizing</h2>
@@ -108,8 +123,8 @@ export default function TermsPage() {
           <strong>at least {LEGAL_POLICY.minimumDeposit}</strong>.
         </li>
         <li>
-          The completion time of a custom order depends on the design and will be
-          discussed with you when you place the order.
+          The completion time of a custom order depends on the order. Usually, the item is
+          released as soon as it is fully paid.
         </li>
         <li>
           Repair and resizing work has a warranty and re-work period of{' '}
@@ -118,8 +133,8 @@ export default function TermsPage() {
           please bring the item back so we can review it and re-work it where appropriate.
         </li>
         <li>
-          If you need to cancel a custom order or repair, please contact us as soon as
-          possible so we can discuss how your deposit will be handled.
+          If you cancel a custom order or repair, your deposit can be refunded or
+          transferred to another item. Please contact us to arrange it.
         </li>
       </ul>
 

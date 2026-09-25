@@ -1,14 +1,14 @@
 import Link from 'next/link';
 
+import { LEGAL_BUSINESS } from '@/lib/legal/legal-info';
+
 /**
  * Public site footer (Owner 2026-09-08 compliance pass). Shown on the marketing landing page and
  * every legal page, so business information + policy links are reachable from any public surface
  * (aligns with Philippine Internet Transactions Act business-disclosure expectations and the Data
  * Privacy Act "reachable privacy notice" principle).
  *
- * ⚠️ Business identity fields marked [OWNER INPUT REQUIRED] are intentionally NOT invented — the
- * registered name, email, and registration numbers must be supplied/verified by the Owner. See
- * OWNER_INPUT_REQUIRED.md.
+ * The email is the Owner-confirmed official email (2026-09-25), the same one the legal pages show.
  */
 export function SiteFooter() {
   const year = 2026; // Static: builds must be deterministic; update on the yearly review.
@@ -30,7 +30,13 @@ export function SiteFooter() {
             </a>
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Email: <span className="font-medium">[OWNER INPUT REQUIRED]</span>
+            Email:{' '}
+            <a
+              className="[overflow-wrap:anywhere] hover:underline"
+              href={`mailto:${LEGAL_BUSINESS.email}`}
+            >
+              {LEGAL_BUSINESS.email}
+            </a>
           </p>
         </div>
 

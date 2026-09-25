@@ -40,8 +40,8 @@ const SERVICES: string[] = [
 const TRUST: string[] = [
   'DTI Registered',
   'BIR Registered',
-  // Anti-money-laundering badge removed (Owner 2026-09-25): that status is not confirmed, so the
-  // public site makes no such compliance or registration claim. See docs/LEGAL-PAGES-CHECKLIST.md.
+  // Restored 2026-09-25: the Owner confirmed AMLC compliance (see docs/LEGAL-PAGES-CHECKLIST.md).
+  'AMLC Compliant',
   // Softened from "Best Price Gold Buyers" (Owner 2026-09-08): an unqualified superlative is an
   // unsubstantiated-claim risk under RA 7394. "Fair" matches the brand tagline and is defensible.
   'Fair Gold Buying Prices',

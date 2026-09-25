@@ -1,8 +1,8 @@
 /**
  * Single source of truth for the four public legal pages (Privacy, Terms, Refund & Cancellation,
- * Cookie). Owner specification 2026-09-25 — every value below was supplied and confirmed by the
- * Owner. Do not add a value here that the Owner has not confirmed (for example a contact number):
- * see docs/LEGAL-PAGES-CHECKLIST.md for the items still awaiting confirmation.
+ * Cookie). Owner specification 2026-09-25 plus the Owner's answers to the 12 open questions (same
+ * day) — every value below was supplied and confirmed by the Owner. Do not add a value here that
+ * the Owner has not confirmed: see docs/LEGAL-PAGES-CHECKLIST.md for what is still open.
  */
 
 /**
@@ -42,7 +42,8 @@ export function formatLegalDate(iso: string): string {
 /** The Effective Date as displayed, e.g. "September 25, 2026". */
 export const LEGAL_EFFECTIVE_DATE = formatLegalDate(LEGAL_EFFECTIVE_DATE_ISO);
 
-/** Business identity confirmed by the Owner (2026-09-25). No contact number: not yet confirmed. */
+/** Business identity confirmed by the Owner (2026-09-25). The three contact numbers are the ones
+ *  already on the home page and footer; the Owner confirmed they are current. */
 export const LEGAL_BUSINESS = {
   registeredName: 'A.V DE ASIS JEWELRY SHOP',
   brand: 'A.V. Jewelry',
@@ -51,7 +52,13 @@ export const LEGAL_BUSINESS = {
   email: 'aprilvergeldeasis1980@yahoo.com.ph',
   address: '#84 Violeta Ave., Violeta Village, Sta. Cruz, Guiguinto, Bulacan',
   hours: '8:00 AM – 5:00 PM',
+  phones: ['0917-203-5820', '0919-096-9617', '0919-097-5063'],
 } as const;
+
+/** "0917-203-5820" → "tel:09172035820". */
+export function telHref(phone: string): string {
+  return `tel:${phone.replace(/[^0-9+]/g, '')}`;
+}
 
 /**
  * Policy values confirmed by the Owner (2026-09-25) that appear on more than one legal page, kept
@@ -61,6 +68,8 @@ export const LEGAL_BUSINESS = {
 export const LEGAL_POLICY = {
   /** Required deposit for custom orders and repairs. */
   minimumDeposit: '₱2,000',
-  /** Repair / resizing warranty or re-work period. NOT the custom-order turnaround (unconfirmed). */
+  /** Repair / resizing warranty or re-work period. NOT the custom-order turnaround. */
   repairReworkPeriod: '2–3 weeks',
+  /** Minimum down payment before a Cash on Delivery order is released. */
+  codDownPayment: '₱1,000',
 } as const;

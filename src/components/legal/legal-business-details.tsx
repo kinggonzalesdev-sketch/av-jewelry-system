@@ -1,4 +1,4 @@
-import { LEGAL_BUSINESS } from '@/lib/legal/legal-info';
+import { LEGAL_BUSINESS, telHref } from '@/lib/legal/legal-info';
 
 /**
  * The confirmed business identity, rendered the same way on every legal page. Plain list markup
@@ -22,6 +22,17 @@ export function LegalBusinessDetails() {
       </li>
       <li>
         <strong>Business address:</strong> {LEGAL_BUSINESS.address}
+      </li>
+      <li>
+        <strong>Contact numbers:</strong>{' '}
+        {LEGAL_BUSINESS.phones.map((phone, i) => (
+          <span key={phone}>
+            {i > 0 ? ' · ' : null}
+            <a className="whitespace-nowrap" href={telHref(phone)}>
+              {phone}
+            </a>
+          </span>
+        ))}
       </li>
       <li>
         <strong>Official email:</strong>{' '}

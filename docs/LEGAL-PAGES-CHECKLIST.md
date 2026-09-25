@@ -15,7 +15,7 @@ Final Philippine legal review is recommended before relying on these policies as
 | Business-details block shown on every page      | `src/components/legal/legal-business-details.tsx`                      |
 | Shared page wrapper (title, Effective Date)     | `src/components/legal/legal-article.tsx`                               |
 | Pages                                           | `src/app/(legal)/{privacy,terms,refund-policy,cookie-policy}/page.tsx` |
-| Footer links (unchanged)                        | `src/components/shell/site-footer.tsx`                                 |
+| Footer (links, contact numbers, official email) | `src/components/shell/site-footer.tsx`                                 |
 | Tests                                           | `tests/unit/legal-pages.test.tsx`                                      |
 
 ## (a) Confirmed business details used
@@ -29,21 +29,24 @@ Final Philippine legal review is recommended before relying on these policies as
 | Official email           | aprilvergeldeasis1980@yahoo.com.ph                               |
 | Business address         | #84 Violeta Ave., Violeta Village, Sta. Cruz, Guiguinto, Bulacan |
 | Business / support hours | 8:00 AM – 5:00 PM                                                |
+| Contact numbers          | 0917-203-5820, 0919-096-9617, 0919-097-5063 (confirmed current)  |
+| AMLC                     | Compliant (Owner confirmed 2026-09-25)                           |
 
 Other confirmed rules used in the pages:
 
-- Payment channels **may include** BDO, BPI, GCash, Remittance, Cash on Delivery, where applicable; not
+- Payment channels **may include** BDO, BPI, GCash, Credit Card, Remittance, Cash on Delivery, where applicable; not
   every method for every transaction; the business confirms the method before completion.
 - Delivery: nationwide in the Philippines, may accommodate international; couriers may include own
   riders, LBC, FedEx, DHL; no fixed delivery fee; timelines depend on courier and destination; courier
   and tracking details provided when available.
-- Item release: neutral wording only ("Applicable payment and release requirements will be confirmed
-  before fulfillment.").
+- Item release: after the payment is verified; Cash on Delivery needs a down payment of at least ₱1,000
+  first, and the balance is paid on delivery.
 - Layaway required down payment: 20%.
 - Custom orders / repairs: deposit at least ₱2,000; repair/resizing warranty or re-work period 2–3 weeks.
 - Gold / scrap buying: based on the current daily 24-karat gold rate; final after (1) the seller agrees
   to the price, (2) payment is accepted/received, (3) the receipt is issued/provided.
-- Defect reporting channels: phone call, Messenger, in-store (no phone number shown).
+- Defect reporting channels: phone call, Messenger, in-store. The shop discusses the problem with the
+  customer and resolves it as both agree (no fixed reporting period).
 - Refund processing: generally 2–3 business days, subject to the payment channel and financial
   institution.
 
@@ -58,29 +61,32 @@ Both are **retained** in the Terms because they are already the approved busines
 - Database (migration files): `layaway_arrangements.grace_period_days` is limited to 0–10 (default 10)
   and `layaway_arrangements.months` to 1–3.
 
-The Owner did not tick them on the 2026-09-25 form, so ask the Owner to re-confirm them (items 5 and 6).
+The Owner re-confirmed both on 2026-09-25 (answers 5 and 6 below).
 
-## (b) Client confirmations still required
+## (b) Owner answers (2026-09-25) — applied to the pages
 
-- [ ] 1. **AMLC status.** Nothing on the public site claims AMLC compliance or registration (the
-      "AMLC Compliant" badge was removed from the home page). Add a claim only after the Owner confirms it.
-- [ ] 2. **Official contact number.** No number appears on the legal pages. Note: the home page
-      (`src/app/page.tsx`) and the footer (`src/components/shell/site-footer.tsx`) still show
-      0917-203-5820, 0919-096-9617 and 0919-097-5063 from an earlier version. The Owner should confirm
-      whether these are current.
-- [ ] 3. **Item release after verified payment.** Pages use neutral wording only.
-- [ ] 4. **Cash on Delivery**, if confirmation is needed beyond the supplied payment list.
-- [ ] 5. **3-calendar-month layaway maximum**: retained (approved rule in the app; see above). Owner
-      re-confirmation recommended.
-- [ ] 6. **10-day layaway grace period**: retained (approved rule in the app; see above). Owner
-      re-confirmation recommended.
-- [ ] 7. **Cancelled / incomplete layaway payments**: whether refundable, non-refundable, or store
-      credit. The pages only ask the customer to contact the business.
-- [ ] 8. **Custom-order turnaround time.** No time is stated.
-- [ ] 9. **Deposit cancellation / refund rule** after work begins. No rule is stated.
-- [ ] 10. **Exact defect-reporting period.** Pages say "as soon as reasonably possible".
-- [ ] 11. **Change-of-mind return rule.** Pages say only that other return requests will be reviewed.
-- [ ] 12. **Refund method.** Pages say it will be communicated after review and approval.
+| #   | Question                                        | Owner answer (summary)                                            | Where it is used                 |
+| --- | ----------------------------------------------- | ----------------------------------------------------------------- | -------------------------------- |
+| 1   | AMLC status                                     | Compliant                                                         | Terms §1, Privacy §5, home badge |
+| 2   | Contact numbers                                 | The three numbers on the site are current                         | Every legal page, footer, home   |
+| 3   | Item release                                    | After payment is verified; COD needs at least ₱1,000 down payment | Terms §4 and §6                  |
+| 4   | Cash on Delivery                                | Accepted, with the ₱1,000 deposit                                 | Terms §4 and §6                  |
+| 5   | 3-month layaway maximum                         | Confirmed                                                         | Terms §7                         |
+| 6   | 10-day grace period                             | Confirmed                                                         | Terms §7                         |
+| 7   | Cancelled / incomplete layaway payments         | Forfeited, not refunded                                           | Terms §7, Refund §4              |
+| 8   | Custom-order turnaround                         | Depends; usually released as soon as fully paid                   | Terms §8                         |
+| 9   | Deposit when a custom order/repair is cancelled | Can be refunded or transferred to another item                    | Terms §8, Refund §3              |
+| 10  | Defect-reporting period                         | Contact the shop; resolved as both agree                          | Refund §1                        |
+| 11  | Change-of-mind returns                          | Not accepted (item may be used); the customer may sell it instead | Refund §2                        |
+| 12  | Refund method                                   | GCash or cash, as the customer prefers                            | Refund §7                        |
+| —   | Credit card                                     | Accepted                                                          | Terms §4, home page              |
+| —   | Footer email                                    | The confirmed official email replaces the old placeholder         | Footer                           |
+
+Answer 11 wording: "you may sell it instead, including to us under our gold and scrap buying terms" reads the
+Owner's "pwede niyang ibenta" as selling it, including back to the shop. Confirm or adjust.
+
+## (c) Still open
+
 - [ ] **Data-retention schedule** (internal policy item). The Privacy Policy uses general retention
       wording with no durations; an exact schedule still needs to be set.
 - [ ] **Effective Date at go-live.** `LEGAL_EFFECTIVE_DATE_ISO` in `src/lib/legal/legal-info.ts` is

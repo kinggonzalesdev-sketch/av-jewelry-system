@@ -109,6 +109,11 @@ export default function PrivacyPolicyPage() {
         <li>
           To keep business, accounting, and tax records, and to keep our systems secure.
         </li>
+        <li>
+          To comply with our legal obligations, including the Anti-Money Laundering Act,
+          as amended, and the rules of the Anti-Money Laundering Council (AMLC), which may
+          require us to verify identity and keep transaction records.
+        </li>
       </ul>
       <p>
         We process personal information when it is needed to carry out the transaction you
@@ -181,7 +186,7 @@ export default function PrivacyPolicyPage() {
       </p>
 
       <h2>13. Contact us</h2>
-      <p>For privacy questions or requests, email us or visit our store:</p>
+      <p>For privacy questions or requests, call or email us, or visit our store:</p>
       <LegalBusinessDetails />
     </LegalArticle>
   );

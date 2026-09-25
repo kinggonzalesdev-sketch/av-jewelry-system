@@ -27,9 +27,8 @@ export default function RefundPolicyPage() {
 
       <h2>1. Defective, damaged, or problem items</h2>
       <p>
-        Customers should report any defect, damage, or problem as soon as reasonably
-        possible after receiving the item. You can report it through any of these
-        channels:
+        If an item has a defect, damage, or other problem, please contact the shop through
+        any of these channels:
       </p>
       <ul>
         <li>Phone call</li>
@@ -37,22 +36,25 @@ export default function RefundPolicyPage() {
         <li>In person at our store, during business hours ({LEGAL_BUSINESS.hours})</li>
       </ul>
       <p>
-        Please have your proof of purchase ready and describe the problem. We will review
-        your report and let you know the result and the next steps.
+        Please have your proof of purchase ready and describe the problem. We will discuss
+        it with you, and the problem will be resolved in the way we agree on together.
       </p>
 
-      <h2>2. Other return requests</h2>
+      <h2>2. Change of mind</h2>
       <p>
-        If you would like to return an item for any other reason, please contact us before
-        sending or bringing it back. We will review your request and respond.
+        We do not accept returns or exchanges because you changed your mind, since the
+        item may already have been worn or used. If you no longer want the item, you may
+        sell it instead, including to us under our gold and scrap buying terms (Section
+        5). This does not apply to items with a defect, damage, or other problem, which
+        are handled under Section 1.
       </p>
 
       <h2>3. Custom orders and repairs</h2>
       <p>
         Custom orders and repairs require a deposit of{' '}
-        <strong>at least {LEGAL_POLICY.minimumDeposit}</strong>. If you need to cancel a
-        custom order or repair, please contact us as soon as possible so we can discuss
-        how your deposit will be handled.
+        <strong>at least {LEGAL_POLICY.minimumDeposit}</strong>. If you cancel a custom
+        order or repair, your deposit can be refunded or transferred to another item.
+        Please contact us to arrange it.
       </p>
       <p>
         Repair and resizing work has a warranty and re-work period of{' '}
@@ -63,8 +65,10 @@ export default function RefundPolicyPage() {
 
       <h2>4. Layaway</h2>
       <p>
-        If you are thinking of cancelling a layaway, or you may not be able to complete
-        one, please contact us so we can explain how your payments will be handled.
+        If you cancel a layaway, or it is not fully paid by the end of the layaway period
+        and grace period, the payments you have made are <strong>forfeited</strong> and
+        will not be refunded. The layaway period and grace period are set out in our{' '}
+        <Link href="/terms">Terms &amp; Conditions</Link>.
       </p>
 
       <h2>5. Gold and scrap buying</h2>
@@ -84,8 +88,8 @@ export default function RefundPolicyPage() {
 
       <h2>7. Refund method</h2>
       <p>
-        The applicable refund method will be communicated after the request is reviewed
-        and approved.
+        Approved refunds are paid through <strong>GCash</strong> or in{' '}
+        <strong>cash</strong>, depending on what you prefer.
       </p>
 
       <h2>8. Refund processing time</h2>
@@ -98,9 +102,9 @@ export default function RefundPolicyPage() {
 
       <h2>9. Contact us</h2>
       <p>
-        For written requests, email us at the address below. If we cannot resolve your
-        concern, you may also seek assistance from the Department of Trade and Industry
-        (DTI).
+        Call or message us using the details below, or email us for written requests. If
+        we cannot resolve your concern, you may also seek assistance from the Department of
+        Trade and Industry (DTI).
       </p>
       <LegalBusinessDetails />
     </LegalArticle>
