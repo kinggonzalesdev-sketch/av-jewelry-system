@@ -99,7 +99,8 @@ const REALTIME_GRACE_MS = 30_000;
  * from the phone appear here in realtime (no refresh). "Use" opens New Order
  * PRE-FILLED with the OCR'd Facebook name + mined item, with the screenshot shown for
  * reference — the operator confirms/corrects, then the normal flow creates the order
- * (prints on THIS PC, reserves the item, lands in For Invoice) and links the
+ * (reserves the item, lands in For Invoice; no sticker unless "Print sticker" is clicked —
+ * Owner 2026-09-26) and links the
  * screenshot so Send Invoice auto-attaches it. "Dismiss" discards a junk capture.
  * Self-hides when nothing is waiting.
  */
@@ -124,7 +125,10 @@ export function IncomingCapturesStrip({
   const rows = list.rows;
   const setRows = useCallback(
     (next: PendingCaptureRow[] | ((cur: PendingCaptureRow[]) => PendingCaptureRow[])) =>
-      setList((cur) => ({ ...cur, rows: typeof next === 'function' ? next(cur.rows) : next })),
+      setList((cur) => ({
+        ...cur,
+        rows: typeof next === 'function' ? next(cur.rows) : next,
+      })),
     [],
   );
   // The EXACT pending count, shown on the "Capture Pending" pill AND this title — never
@@ -283,7 +287,10 @@ export function IncomingCapturesStrip({
           // The total already counted these captures: they only extend what it covers.
           snapshot: {
             total: cur.snapshot.total,
-            ids: new Set([...cur.snapshot.ids, ...page.rows.map((r) => r.captureRecordId)]),
+            ids: new Set([
+              ...cur.snapshot.ids,
+              ...page.rows.map((r) => r.captureRecordId),
+            ]),
           },
           noOlder: page.rows.length === 0,
         }));
@@ -359,7 +366,8 @@ export function IncomingCapturesStrip({
             (sanitizeCaptureName(
               ocrStr(ocr, 'fbName', 'fb_name', 'name'),
               (ocr as { rawLines?: unknown } | null)?.rawLines,
-            ) || null) ??
+            ) ||
+              null) ??
             prev?.fbName ??
             null,
           itemQuery:
@@ -426,7 +434,10 @@ export function IncomingCapturesStrip({
               : (prev?.photoSendStatus ?? null),
         };
         if (prev) {
-          return { ...curList, rows: cur.map((r) => (r.captureRecordId === id ? row : r)) };
+          return {
+            ...curList,
+            rows: cur.map((r) => (r.captureRecordId === id ? row : r)),
+          };
         }
         // A capture not loaded yet joins only INSIDE the loaded window (a new capture is the
         // newest); an update for an older, not-yet-loaded one waits for its page (no holes).
@@ -768,7 +779,8 @@ export function IncomingCapturesStrip({
         if (res.code === 'awaiting_inbox') {
           setNotes((cur) => ({
             ...cur,
-            [r.captureRecordId]: 'Waiting for the customer to message — use Open FB Chat.',
+            [r.captureRecordId]:
+              'Waiting for the customer to message — use Open FB Chat.',
           }));
           return;
         }
@@ -803,7 +815,9 @@ export function IncomingCapturesStrip({
       }
       setRows((cur) =>
         cur.map((x) =>
-          x.captureRecordId === r.captureRecordId ? { ...x, messageStatus: 'awaiting_inbox' } : x,
+          x.captureRecordId === r.captureRecordId
+            ? { ...x, messageStatus: 'awaiting_inbox' }
+            : x,
         ),
       );
       setNotes((cur) => ({ ...cur, [r.captureRecordId]: res.message }));
@@ -935,7 +949,9 @@ export function IncomingCapturesStrip({
     // is ALWAYS chosen by hand: the pinned comment never names one, so it is never
     // pre-filled.
     const hasClaim =
-      normalizeGrams(gramsEdits[r.captureRecordId] ?? r.canonicalGrams ?? r.grams ?? '') !== null;
+      normalizeGrams(
+        gramsEdits[r.captureRecordId] ?? r.canonicalGrams ?? r.grams ?? '',
+      ) !== null;
     return {
       customerName: hasClaim ? (r.fbName ?? undefined) : undefined,
       captureRecordId: r.captureRecordId,
@@ -1049,11 +1065,14 @@ export function IncomingCapturesStrip({
                         <input
                           type="text"
                           inputMode="decimal"
-                          value={gramsEdits[r.captureRecordId] ?? r.canonicalGrams ?? r.grams ?? ''}
+                          value={
+                            gramsEdits[r.captureRecordId] ??
+                            r.canonicalGrams ??
+                            r.grams ??
+                            ''
+                          }
                           placeholder={
-                            modeOf(r) === 'fixed'
-                              ? 'e.g. 12.5 → ₱12,500'
-                              : 'e.g. 11.5'
+                            modeOf(r) === 'fixed' ? 'e.g. 12.5 → ₱12,500' : 'e.g. 11.5'
                           }
                           onChange={(e) =>
                             setGramsEdits((cur) => ({
@@ -1078,33 +1097,37 @@ export function IncomingCapturesStrip({
                           Corrected ✓
                         </span>
                       ) : null}
-                      {modeOf(r) === 'fixed'
-                        ? (() => {
-                            const fp = parseFixedPrice(
-                              gramsEdits[r.captureRecordId] ?? r.canonicalGrams ?? r.grams ?? '',
-                            );
-                            return fp ? (
-                              <span
-                                className="font-semibold text-foreground"
-                                data-testid={`incoming-fixed-${r.captureRecordId}`}
-                              >
-                                {formatStickerPeso(fp)}
-                              </span>
-                            ) : (
-                              <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-amber-700">
-                                Needs review
-                              </span>
-                            );
-                          })()
-                        : normalizeGrams(
-                              gramsEdits[r.captureRecordId] ?? r.canonicalGrams ?? r.grams ?? '',
-                            ) === null
-                          ? (
-                              <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-amber-700">
-                                Needs review
-                              </span>
-                            )
-                          : null}
+                      {modeOf(r) === 'fixed' ? (
+                        (() => {
+                          const fp = parseFixedPrice(
+                            gramsEdits[r.captureRecordId] ??
+                              r.canonicalGrams ??
+                              r.grams ??
+                              '',
+                          );
+                          return fp ? (
+                            <span
+                              className="font-semibold text-foreground"
+                              data-testid={`incoming-fixed-${r.captureRecordId}`}
+                            >
+                              {formatStickerPeso(fp)}
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-amber-700">
+                              Needs review
+                            </span>
+                          );
+                        })()
+                      ) : normalizeGrams(
+                          gramsEdits[r.captureRecordId] ??
+                            r.canonicalGrams ??
+                            r.grams ??
+                            '',
+                        ) === null ? (
+                        <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-amber-700">
+                          Needs review
+                        </span>
+                      ) : null}
                     </div>
                     {/* DEDICATED messaging-status area (Owner 2026-08-22) — the AUTO TEXT/SS delivery
                         status lives HERE, directly UNDER Grams/Price. Statuses ONLY: they NEVER
@@ -1197,7 +1220,9 @@ export function IncomingCapturesStrip({
                             </span>
                           ) : null}
                           {note ? (
-                            <span className="text-[10px] font-medium text-emerald-600">{note}</span>
+                            <span className="text-[10px] font-medium text-emerald-600">
+                              {note}
+                            </span>
                           ) : null}
                         </div>
                       );
@@ -1238,7 +1263,8 @@ export function IncomingCapturesStrip({
                       // Price value from what's stored (never a permanent button).
                       dirty={
                         gramsEdits[r.captureRecordId] !== undefined &&
-                        (gramsEdits[r.captureRecordId] ?? '').trim() !== (r.grams ?? '').trim()
+                        (gramsEdits[r.captureRecordId] ?? '').trim() !==
+                          (r.grams ?? '').trim()
                       }
                       onSend={() => void sendToMessenger(r)}
                       onSave={() => void saveEdits(r)}
@@ -1320,6 +1346,9 @@ export function IncomingCapturesStrip({
           admins={orderData.admins}
           prefill={prefillFor(selected)}
           newEntryOnly
+          // Use → Save saves the order only; the sticker prints on an explicit click
+          // (Owner 2026-09-26).
+          autoPrintOnSave={false}
           onClose={() => {
             setSelected(null);
             load();

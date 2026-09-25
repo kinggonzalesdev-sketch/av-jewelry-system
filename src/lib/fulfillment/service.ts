@@ -8,6 +8,7 @@ import {
 } from '@/lib/authz/guard';
 import { getOrderBalances } from '@/lib/payments/balances';
 import { createClient } from '@/lib/supabase/server';
+import { isMissingFunction } from '@/lib/supabase/missing-schema';
 
 /**
  * Fulfillment & Owner Approval Center (Bible §18, §5.13, §22.13–22.14).
@@ -750,11 +751,24 @@ export async function executeOwnerApproval(
         item_id?: string;
         price?: string | number;
         qty?: number;
+        /** The row's pricing snapshot (requests made since 2026-09-26). */
+        pricing?: Record<string, unknown>;
       };
+      const price = pl.price == null ? '0' : String(pl.price);
+      // With a pricing snapshot: add it with the line, in one transaction (migration
+      // 20260926090000). Without one — an older request, or a database without the migration —
+      // replay exactly as before.
+      if (pl.pricing && typeof pl.pricing === 'object') {
+        ({ error: delError } = await supabase.rpc('add_order_items_priced', {
+          p_order_id: eid,
+          p_items: [{ id: pl.item_id, price, qty: pl.qty ?? 1, pricing: pl.pricing }],
+        }));
+        if (!isMissingFunction(delError)) break;
+      }
       ({ error: delError } = await supabase.rpc('add_order_item', {
         p_order_id: eid,
         p_item_id: pl.item_id,
-        p_price: pl.price == null ? '0' : String(pl.price),
+        p_price: price,
         p_qty: pl.qty ?? 1,
       }));
       break;

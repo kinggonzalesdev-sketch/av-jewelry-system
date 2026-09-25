@@ -6,10 +6,12 @@ import { getOrderDetail } from '@/lib/orders/detail';
 import { listOrdersPage, type OrdersPageResult } from '@/lib/orders/service';
 import {
   addOrderItem,
+  addOrderItems,
   removeOrderItem,
   removePaidOrderItem,
   splitOrderItem,
   requestOrderEdit,
+  type AddOrderItemInput,
   type AddOrderItemResult,
   type EditItemResult,
   type OrderEditKind,
@@ -264,6 +266,21 @@ export async function addOrderItemAction(
   quantity = 1,
 ): Promise<AddOrderItemResult> {
   const result = await addOrderItem(officialOrderId, itemId, price, quantity);
+  if (result.ok) {
+    revalidatePath('/orders');
+    revalidatePath('/orders/inventory');
+    revalidatePath('/orders/payments');
+  }
+  return result;
+}
+
+/** Edit → Add Item (Owner only): every picked item in ONE all-or-nothing save, each with its
+ *  pricing snapshot. Revalidates the same screens as a single add. */
+export async function addOrderItemsAction(
+  officialOrderId: string,
+  items: AddOrderItemInput[],
+): Promise<AddOrderItemResult> {
+  const result = await addOrderItems(officialOrderId, items);
   if (result.ok) {
     revalidatePath('/orders');
     revalidatePath('/orders/inventory');

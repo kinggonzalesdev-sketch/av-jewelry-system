@@ -1,7 +1,10 @@
 import 'server-only';
 
 import { requirePermission } from '@/lib/authz/guard';
-import { conversationBelongsToPage, getActivePancakePageId } from '@/lib/integrations/pancake';
+import {
+  conversationBelongsToPage,
+  getActivePancakePageId,
+} from '@/lib/integrations/pancake';
 import {
   getTemplateBody,
   invoiceMissingTokens,
@@ -21,6 +24,7 @@ import {
 } from '@/lib/orders/bulk-invoice-rules';
 import { sendOrderInvoice, sendOrderReminder } from '@/lib/orders/for-invoice';
 import { computeOrderGramsPricing } from '@/lib/orders/grams-pricing';
+import { invoiceEditState } from '@/lib/orders/invoice-staleness';
 import { getOrderLineItemsByOrder } from '@/lib/orders/service';
 import { getOrderBalances } from '@/lib/payments/balances';
 import { createClient } from '@/lib/supabase/server';
@@ -99,7 +103,9 @@ async function loadBaseRows(
     .in('status', FOR_INVOICE_STATUSES)
     .is('fulfillment_destination', null);
   if (ids) q = q.in('id', [...ids]);
-  const { data, error } = await q.order('created_at', { ascending: true }).limit(MAX_SCOPE);
+  const { data, error } = await q
+    .order('created_at', { ascending: true })
+    .limit(MAX_SCOPE);
   if (error || !data) return [];
   const orders = data as Array<{
     id: string;
@@ -112,7 +118,9 @@ async function loadBaseRows(
 
   const { data: msgData } = await supabase
     .from('customer_messages')
-    .select('official_order_id, status, updated_at, auto_sent_at, manually_sent_at, created_at')
+    .select(
+      'official_order_id, status, updated_at, auto_sent_at, manually_sent_at, created_at',
+    )
     .in(
       'official_order_id',
       orders.map((o) => o.id),
@@ -120,7 +128,12 @@ async function loadBaseRows(
     .order('created_at', { ascending: false });
   const latest = new Map<
     string,
-    { status: string | null; updated_at: string | null; auto_sent_at: string | null; manually_sent_at: string | null }
+    {
+      status: string | null;
+      updated_at: string | null;
+      auto_sent_at: string | null;
+      manually_sent_at: string | null;
+    }
   >();
   for (const m of (msgData ?? []) as Array<{
     official_order_id: string;
@@ -135,9 +148,10 @@ async function loadBaseRows(
   const activePage = await getActivePancakePageId();
   const now = Date.now();
   return orders.map((o) => {
-    const c = one<{ display_name: string | null; pancake_conversation_id: string | null }>(
-      o.customers,
-    );
+    const c = one<{
+      display_name: string | null;
+      pancake_conversation_id: string | null;
+    }>(o.customers);
     const msg = latest.get(o.id);
     // The SAME stored-chat choice Send Invoice makes: the order's own chat, else the
     // customer's default link — only on the active page, never a name match.
@@ -156,7 +170,9 @@ async function loadBaseRows(
       messageStatus: msg?.status ?? null,
       sendState,
       sentAt:
-        sendState === 'sent' ? (msg?.auto_sent_at ?? msg?.manually_sent_at ?? null) : null,
+        sendState === 'sent'
+          ? (msg?.auto_sent_at ?? msg?.manually_sent_at ?? null)
+          : null,
       sentManually: msg?.status === 'manually_sent',
     };
   });
@@ -173,7 +189,8 @@ async function sameNameCounts(
 ): Promise<Map<string, number | null>> {
   const out = new Map<string, number | null>();
   const safe = rows.filter((r) => {
-    const ok = r.customerName !== 'Unknown customer' && !UNSAFE_FOR_ILIKE.test(r.customerName);
+    const ok =
+      r.customerName !== 'Unknown customer' && !UNSAFE_FOR_ILIKE.test(r.customerName);
     if (!ok) out.set(r.customerId, null);
     return ok;
   });
@@ -195,7 +212,8 @@ async function sameNameCounts(
     out.set(
       r.customerId,
       people.filter(
-        (p) => p.id !== r.customerId && (p.display_name ?? '').trim().toLowerCase() === key,
+        (p) =>
+          p.id !== r.customerId && (p.display_name ?? '').trim().toLowerCase() === key,
       ).length,
     );
   }
@@ -209,19 +227,21 @@ async function enrich(
   rows: ReadonlyArray<BaseRow>,
 ): Promise<Array<{ base: BaseRow; facts: InvoiceRowFacts; row: InvoiceSendRow }>> {
   const ids = rows.map((r) => r.orderId);
-  const [itemsByOrder, invoiceBody, balances, reminderData, sameName] = await Promise.all([
-    getOrderLineItemsByOrder(ids),
-    getTemplateBody('invoice'),
-    getOrderBalances(ids).catch(() => new Map()),
-    supabase
-      .from('order_reminders')
-      .select('official_order_id, reminder_number, sent_at')
-      .in('official_order_id', ids),
-    sameNameCounts(
-      supabase,
-      rows.filter((r) => r.chat === 'customer'),
-    ),
-  ]);
+  const [itemsByOrder, invoiceBody, balances, reminderData, sameName] = await Promise.all(
+    [
+      getOrderLineItemsByOrder(ids),
+      getTemplateBody('invoice'),
+      getOrderBalances(ids).catch(() => new Map()),
+      supabase
+        .from('order_reminders')
+        .select('official_order_id, reminder_number, sent_at')
+        .in('official_order_id', ids),
+      sameNameCounts(
+        supabase,
+        rows.filter((r) => r.chat === 'customer'),
+      ),
+    ],
+  );
   const reminders = new Map<string, { count: number; last: string | null }>();
   for (const r of (reminderData.data ?? []) as Array<{
     official_order_id: string;
@@ -236,17 +256,18 @@ async function enrich(
   return rows.map((base) => {
     const items = itemsByOrder.get(base.orderId) ?? [];
     const missing =
-      invoiceBody === null ? null : invoiceMissingTokens(invoiceBody, computeOrderGramsPricing(items));
+      invoiceBody === null
+        ? null
+        : invoiceMissingTokens(invoiceBody, computeOrderGramsPricing(items));
     const balance = balances.get(base.orderId) as
-      | { ok: true; balance: { paidInFull: boolean } }
-      | { ok: false }
-      | undefined;
+      { ok: true; balance: { paidInFull: boolean } } | { ok: false } | undefined;
     const rem = reminders.get(base.orderId) ?? { count: 0, last: null };
     const facts: InvoiceRowFacts = {
       orderStatus: base.orderStatus,
       sendState: base.sendState,
       chat: base.chat,
-      sameNameCount: base.chat === 'customer' ? (sameName.get(base.customerId) ?? null) : 0,
+      sameNameCount:
+        base.chat === 'customer' ? (sameName.get(base.customerId) ?? null) : 0,
       missing,
       itemCount: items.length,
       reminderCount: rem.count,
@@ -286,7 +307,8 @@ async function ordersWithItemCode(
     .select('official_order_id, claims!inner ( inventory_items!inner ( item_code ) )')
     .in('official_order_id', [...ids])
     .ilike('claims.inventory_items.item_code', `%${term}%`);
-  for (const r of (data ?? []) as Array<{ official_order_id: string }>) found.add(r.official_order_id);
+  for (const r of (data ?? []) as Array<{ official_order_id: string }>)
+    found.add(r.official_order_id);
   return found;
 }
 
@@ -321,7 +343,12 @@ export async function listInvoiceSendRows(opts: {
     );
   }
 
-  const counts: Record<InvoiceFilter, number> = { not_sent: 0, sent: 0, no_link: 0, all: 0 };
+  const counts: Record<InvoiceFilter, number> = {
+    not_sent: 0,
+    sent: 0,
+    no_link: 0,
+    all: 0,
+  };
   for (const r of scope) {
     for (const key of Object.keys(counts) as InvoiceFilter[]) {
       if (matchesInvoiceFilter(r, key)) counts[key] += 1;
@@ -333,7 +360,13 @@ export async function listInvoiceSendRows(opts: {
   const slice = matching.slice((page - 1) * pageSize, page * pageSize);
   const enriched = slice.length ? await enrich(supabase, slice) : [];
 
-  return { rows: enriched.map((e) => e.row), counts, total: matching.length, page, pageSize };
+  return {
+    rows: enriched.map((e) => e.row),
+    counts,
+    total: matching.length,
+    page,
+    pageSize,
+  };
 }
 
 /** A missing database function (the migration is not applied yet). */
@@ -361,7 +394,11 @@ function shortReason(text: string | null | undefined, fallback: string): string 
 export async function sendInvoiceInBulk(orderId: string): Promise<BulkRowOutcome> {
   await requirePermission('invoice_preparation');
   const supabase = await createClient();
-  const skipped = (reason: string): BulkRowOutcome => ({ orderId, outcome: 'skipped', reason });
+  const skipped = (reason: string): BulkRowOutcome => ({
+    orderId,
+    outcome: 'skipped',
+    reason,
+  });
 
   const [base] = await loadBaseRows(supabase, [orderId]);
   if (!base) return skipped('No longer in For Invoice');
@@ -373,20 +410,46 @@ export async function sendInvoiceInBulk(orderId: string): Promise<BulkRowOutcome
 
   // An operator-prepared message (saved from View / Edit Message, never sent) is what the
   // individual Send Invoice sends after that edit; otherwise it renders fresh from Settings.
-  const { data: saved } = await supabase
-    .from('customer_messages')
-    .select('status, body')
-    .eq('official_order_id', orderId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const savedRow = saved as { status?: string | null; body?: string | null } | null;
+  const [{ data: saved }, { data: lastLine }] = await Promise.all([
+    supabase
+      .from('customer_messages')
+      .select('status, body, updated_at')
+      .eq('official_order_id', orderId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from('official_order_claims')
+      .select('added_at')
+      .eq('official_order_id', orderId)
+      .order('added_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  const savedRow = saved as {
+    status?: string | null;
+    body?: string | null;
+    updated_at?: string | null;
+  } | null;
+  // A draft saved BEFORE an item was added describes an older order: never send it as is — the
+  // invoice is rendered fresh from the current order instead (Owner 2026-09-26).
+  const draftOutdated =
+    invoiceEditState(
+      (lastLine as { added_at?: string | null } | null)?.added_at ?? null,
+      {
+        status: savedRow?.status ?? null,
+        updatedAt: savedRow?.updated_at ?? null,
+      },
+    ) === 'draft_outdated';
   const savedBody =
-    savedRow?.status === 'ready_to_copy_or_send' && (savedRow.body ?? '').trim()
+    savedRow?.status === 'ready_to_copy_or_send' &&
+    (savedRow.body ?? '').trim() &&
+    !draftOutdated
       ? (savedRow.body as string)
       : null;
   const restore =
-    savedRow?.status === 'direct_send_failed' || savedRow?.status === 'ready_to_copy_or_send'
+    savedRow?.status === 'direct_send_failed' ||
+    savedRow?.status === 'ready_to_copy_or_send'
       ? savedRow.status
       : 'message_draft';
 
@@ -401,7 +464,10 @@ export async function sendInvoiceInBulk(orderId: string): Promise<BulkRowOutcome
   if (claim.data !== 'claimed') return skipped(claimSkipReason(String(claim.data)));
 
   const release = () =>
-    supabase.rpc('release_order_invoice_send', { p_order_id: orderId, p_restore: restore });
+    supabase.rpc('release_order_invoice_send', {
+      p_order_id: orderId,
+      p_restore: restore,
+    });
 
   const result = await sendOrderInvoice(orderId, savedBody);
   if (!result.ok) {
@@ -438,7 +504,11 @@ export async function sendInvoiceInBulk(orderId: string): Promise<BulkRowOutcome
 export async function sendReminderInBulk(orderId: string): Promise<BulkRowOutcome> {
   await requirePermission('invoice_preparation');
   const supabase = await createClient();
-  const skipped = (reason: string): BulkRowOutcome => ({ orderId, outcome: 'skipped', reason });
+  const skipped = (reason: string): BulkRowOutcome => ({
+    orderId,
+    outcome: 'skipped',
+    reason,
+  });
 
   const [base] = await loadBaseRows(supabase, [orderId]);
   if (!base) return skipped('No longer in For Invoice');

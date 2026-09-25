@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { OrderDetailsModal } from '@/components/orders/order-details-modal';
+import * as orderActions from '@/lib/orders/actions';
 import type { OrderDetail, OrderDetailResult } from '@/lib/orders/detail-types';
 
 /**
@@ -319,6 +320,68 @@ describe('OrderDetailsModal', () => {
     // orders are routed with Transfer to Destination instead.
     await screen.findByText('Gold Ring');
     expect(screen.queryByTestId('order-workflow-advance')).not.toBeInTheDocument();
+  });
+
+  // Owner 2026-09-26: a For Invoice order can take another item without a new order.
+  const ownerPerms = {
+    isOwner: true,
+    canRecordPayment: false,
+    canPrepareFulfillment: false,
+    canReleaseFulfillment: false,
+    canPrepareInvoice: true,
+    canRequestApproval: false,
+  };
+
+  it('For Invoice: the Owner gets Edit Items (Add / Remove / Split) in the For Invoice view', async () => {
+    loadOrderDetailAction.mockResolvedValue({
+      ok: true,
+      detail: detail({ status: 'invoiced', permissions: ownerPerms }),
+    });
+    render(<OrderDetailsModal orderId="o1" onClose={vi.fn()} />);
+    await screen.findByTestId('for-invoice-fields');
+    expect(screen.getByTestId('order-edit-items')).toBeInTheDocument();
+  });
+
+  it('For Invoice: staff without edit rights see no Edit Items', async () => {
+    loadOrderDetailAction.mockResolvedValue({
+      ok: true,
+      detail: detail({
+        status: 'invoiced',
+        permissions: { ...ownerPerms, isOwner: false },
+      }),
+    });
+    render(<OrderDetailsModal orderId="o1" onClose={vi.fn()} />);
+    await screen.findByTestId('for-invoice-fields');
+    expect(screen.queryByTestId('order-edit-items')).not.toBeInTheDocument();
+  });
+
+  it('For Invoice: an invoice sent BEFORE an item was added is flagged for a new Send Invoice', async () => {
+    const base = detail();
+    vi.mocked(orderActions.loadOrderInvoiceMessageAction).mockResolvedValueOnce({
+      ok: true,
+      message: {
+        body: 'old',
+        status: 'direct_sent',
+        sentAt: null,
+        sentByName: null,
+        preparedByName: 'Owner',
+        // Edited AFTER the item was added (a Save), but SENT before it: still out of date.
+        updatedAt: '2026-09-26T04:00:00Z',
+        lastSentAt: '2026-09-26T02:00:00Z',
+      },
+    });
+    loadOrderDetailAction.mockResolvedValue({
+      ok: true,
+      detail: detail({
+        status: 'invoiced',
+        permissions: ownerPerms,
+        items: base.items.map((i) => ({ ...i, addedAt: '2026-09-26T03:00:00Z' })),
+      }),
+    });
+    render(<OrderDetailsModal orderId="o1" onClose={vi.fn()} />);
+    expect(await screen.findByTestId('invoice-sent-outdated')).toHaveTextContent(
+      /items changed after the invoice was sent/i,
+    );
   });
 
   it('hides the For-Invoice view for a non-invoiced order', async () => {

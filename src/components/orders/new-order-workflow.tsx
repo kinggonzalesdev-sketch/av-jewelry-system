@@ -7,6 +7,7 @@ import type { CaptureItem, WalkInItem } from '@/lib/orders/service';
 import {
   centavosToStr,
   effectiveGrams,
+  linePricing,
   priceCentavos,
   PRICE_RE,
   rowTotalCentavos,
@@ -589,6 +590,7 @@ export function NewOrderModal({
   newEntryOnly = false,
   onSaved,
   defaultSaleDate,
+  autoPrintOnSave = true,
 }: {
   customers?: Customer[];
   items?: CaptureItem[];
@@ -610,6 +612,10 @@ export function NewOrderModal({
   /** Default sale date (YYYY-MM-DD) for a walk-in. Daily Cash passes the day being VIEWED
    *  so the saved sale files under that same day and appears in its Sales & Walk-ins box. */
   defaultSaleDate?: string;
+  /** Queue the order sticker the moment the order is saved (plain "+ New Order", as before).
+   *  Incoming Captures → Use passes false (Owner 2026-09-26): saving an order is not a print
+   *  request there — the saved panel offers "Print sticker" for an explicit click instead. */
+  autoPrintOnSave?: boolean;
 }) {
   const router = useRouter();
 
@@ -737,9 +743,7 @@ export function NewOrderModal({
   // 'failed' here means the ENQUEUE failed (the job never reached the queue). Whether the sticker
   // physically PRINTED is a separate question the jobs below answer — conflating the two is what
   // let 19 real stickers die behind a cheerful "sent to the printer" message.
-  const [printState, setPrintState] = useState<
-    'idle' | 'sending' | 'queued' | 'failed'
-  >(
+  const [printState, setPrintState] = useState<'idle' | 'sending' | 'queued' | 'failed'>(
     'idle',
   );
   /** Jobs from the last enqueue, polled until each one printed or died. */
@@ -804,7 +808,9 @@ export function NewOrderModal({
     setWalkRows((rs) => {
       const filled: Row = { ...newRow(), itemInput: match.label };
       const emptyIdx = rs.findIndex((r) => r.itemInput.trim() === '');
-      return emptyIdx >= 0 ? rs.map((r, i) => (i === emptyIdx ? filled : r)) : [...rs, filled];
+      return emptyIdx >= 0
+        ? rs.map((r, i) => (i === emptyIdx ? filled : r))
+        : [...rs, filled];
     });
     setScanErr(null);
     setScanCode('');
@@ -913,9 +919,13 @@ export function NewOrderModal({
     if (!orderId) return;
     setPrintState('sending');
     setPrintJobs([]);
-    const res = await enqueueOrderStickersAction(orderId, buildStickerPayloads(stickers), {
-      reprint: kind === 'reprint',
-    });
+    const res = await enqueueOrderStickersAction(
+      orderId,
+      buildStickerPayloads(stickers),
+      {
+        reprint: kind === 'reprint',
+      },
+    );
     setPrintState(res.ok ? 'queued' : 'failed');
     // Watch the jobs we just created. Enqueuing is NOT printing (Owner 2026-09-09) — the phone can
     // still fail with Bluetooth off, and the operator must learn that here, not from a customer.
@@ -974,7 +984,8 @@ export function NewOrderModal({
     }
   };
 
-  // New Entry: SAVE FIRST, then print. A single guarded DB call saves the parent
+  // New Entry: SAVE FIRST, then print (only when autoPrintOnSave; Use never prints on save).
+  // A single guarded DB call saves the parent
   // order + all its items atomically into For Invoice; printing follows.
   const handleSubmit = async () => {
     if (pending || saved || submittingRef.current) return;
@@ -988,11 +999,14 @@ export function NewOrderModal({
     setError(null);
 
     // One unique piece per row (quantity 1); the unit price IS the row's total,
-    // whether entered as a Fixed Price or computed as grams × price-per-gram.
+    // whether entered as a Fixed Price or computed as grams × price-per-gram. The row's
+    // pricing (mode, exact rate, exact grams) is saved with the line (Owner 2026-09-26), so
+    // Send Invoice prints the rate that was typed — never one worked out afterwards.
     const payloadItems = resolvedRows().map(({ row, item }) => ({
       inventoryItemId: item!.id,
       unitPrice: centavosToStr(rowTotalCentavos(row, item)),
       quantity: 1,
+      pricing: linePricing(row, item),
     }));
 
     try {
@@ -1024,7 +1038,9 @@ export function NewOrderModal({
         );
       }
       router.refresh();
-      void runPrint(stickers, res.officialOrderId, 'print');
+      // Only an explicit click prints (Owner rule). Use → Save queues nothing; "Print sticker"
+      // in the saved panel below does it on request.
+      if (autoPrintOnSave) void runPrint(stickers, res.officialOrderId, 'print');
     } finally {
       setPending(false);
       submittingRef.current = false;
@@ -1161,6 +1177,12 @@ export function NewOrderModal({
   const handleReprint = () => {
     if (saved) void runPrint(saved.stickers, saved.officialOrderId, 'reprint');
   };
+  // The FIRST print of a saved order, on request. 'print' (not 'reprint') keeps the fixed
+  // per-sticker queue key, so a double click still prints each sticker once.
+  const handlePrint = () => {
+    if (saved && printState === 'idle')
+      void runPrint(saved.stickers, saved.officialOrderId, 'print');
+  };
   const handleDone = () => {
     router.refresh();
     onClose();
@@ -1274,8 +1296,8 @@ export function NewOrderModal({
                 ))}
               </ul>
               <p className="mt-2 text-xs text-muted-foreground">
-                Check the printer is on and Bluetooth is enabled in A.V. Jewelry Capture, then
-                Retry. Nothing reprints on its own.
+                Check the printer is on and Bluetooth is enabled in A.V. Jewelry Capture,
+                then Retry. Nothing reprints on its own.
               </p>
             </div>
           ) : printState === 'queued' && printJobsAwaitingPickup ? (
@@ -1288,9 +1310,9 @@ export function NewOrderModal({
             >
               <p className="text-sm font-semibold">The printer has not picked this up.</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Open <strong>A.V. Jewelry Capture</strong> on the phone and check the Printer
-                toggle is ON. The sticker still prints by itself once the app is awake — no need to
-                click again.
+                Open <strong>A.V. Jewelry Capture</strong> on the phone and check the
+                Printer toggle is ON. The sticker still prints by itself once the app is
+                awake — no need to click again.
               </p>
             </div>
           ) : printState === 'queued' ? (
@@ -1309,6 +1331,16 @@ export function NewOrderModal({
                   Reprint
                 </button>
               </div>
+            </div>
+          ) : printState === 'idle' ? (
+            /* Nothing was printed on save (Incoming Captures → Use). Printing is one click away. */
+            <div className="space-y-1.5" data-testid="print-idle">
+              <p className="text-xs text-muted-foreground">
+                No sticker was printed. Print one only if you need it.
+              </p>
+              <Button type="button" size="sm" onClick={handlePrint}>
+                ⎙ Print sticker{saved.itemCount === 1 ? '' : 's'}
+              </Button>
             </div>
           ) : null}
         </div>
@@ -1526,34 +1558,34 @@ export function NewOrderModal({
           NEW-ENTRY ONLY (Orders + capture) — the Walk-In sale now lives ONLY in Daily Cash
           (Owner request 2026-08-13). */}
       {!walkInOnly && !newEntryOnly ? (
-      <div className="mb-3 grid grid-cols-2 gap-1 rounded-lg border border-border p-1">
-        <button
-          type="button"
-          onClick={() => setMode('order')}
-          data-testid="mode-order"
-          className={cn(
-            'rounded-md px-3 py-1.5 text-xs font-semibold',
-            mode === 'order'
-              ? 'bg-gold text-black'
-              : 'text-muted-foreground hover:bg-accent',
-          )}
-        >
-          New Entry
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode('walkin')}
-          data-testid="mode-walkin"
-          className={cn(
-            'rounded-md px-3 py-1.5 text-xs font-semibold',
-            mode === 'walkin'
-              ? 'bg-gold text-black'
-              : 'text-muted-foreground hover:bg-accent',
-          )}
-        >
-          Walk In
-        </button>
-      </div>
+        <div className="mb-3 grid grid-cols-2 gap-1 rounded-lg border border-border p-1">
+          <button
+            type="button"
+            onClick={() => setMode('order')}
+            data-testid="mode-order"
+            className={cn(
+              'rounded-md px-3 py-1.5 text-xs font-semibold',
+              mode === 'order'
+                ? 'bg-gold text-black'
+                : 'text-muted-foreground hover:bg-accent',
+            )}
+          >
+            New Entry
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('walkin')}
+            data-testid="mode-walkin"
+            className={cn(
+              'rounded-md px-3 py-1.5 text-xs font-semibold',
+              mode === 'walkin'
+                ? 'bg-gold text-black'
+                : 'text-muted-foreground hover:bg-accent',
+            )}
+          >
+            Walk In
+          </button>
+        </div>
       ) : null}
 
       <div className="space-y-3">
@@ -1625,7 +1657,10 @@ export function NewOrderModal({
               data-testid="walkin-scan-code"
             />
             {scanErr ? (
-              <p className="mt-1 text-[11px] text-destructive" data-testid="walkin-scan-err">
+              <p
+                className="mt-1 text-[11px] text-destructive"
+                data-testid="walkin-scan-err"
+              >
                 {scanErr}
               </p>
             ) : (
@@ -1739,7 +1774,9 @@ export function NewOrderModal({
                           className={fieldClass}
                           placeholder="e.g. 18K"
                           value={p.scrapKarat}
-                          onChange={(e) => patchPay(p.key, { scrapKarat: e.target.value })}
+                          onChange={(e) =>
+                            patchPay(p.key, { scrapKarat: e.target.value })
+                          }
                           data-testid={`walkin-scrap-karat-${i}`}
                         />
                       </label>
@@ -1750,14 +1787,17 @@ export function NewOrderModal({
                           inputMode="decimal"
                           placeholder="0.00"
                           value={p.scrapGrams}
-                          onChange={(e) => patchPay(p.key, { scrapGrams: e.target.value })}
+                          onChange={(e) =>
+                            patchPay(p.key, { scrapGrams: e.target.value })
+                          }
                           data-testid={`walkin-scrap-grams-${i}`}
                         />
                       </label>
                     </div>
                     <p className="mt-1.5 text-[10px] leading-snug text-muted-foreground">
-                      The shop buys this scrap for cash — it settles the order and is logged
-                      in Scrap. The drawer only moves by the cash actually received.
+                      The shop buys this scrap for cash — it settles the order and is
+                      logged in Scrap. The drawer only moves by the cash actually
+                      received.
                     </p>
                   </div>
                 ) : null}

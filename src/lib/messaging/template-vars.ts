@@ -46,7 +46,11 @@ export const TEMPLATE_VARIABLES: ReadonlyArray<{
   // Owner 2026-09-01: price-per-gram on the customer invoice. Derived from the invoice
   // line items (single rate) or "Mixed Rates" when they differ. An optional line —
   // a Fixed-Price order drops the grams/rate lines rather than sending them blank.
-  { token: '{price_per_gram}', description: 'Price per gram', sample: '₱7,300' },
+  {
+    token: '{price_per_gram}',
+    description: 'Price per gram (with /g)',
+    sample: '₱7,300/g',
+  },
   { token: '{payment_status}', description: 'Payment status', sample: 'Partially paid' },
   { token: '{shop_name}', description: 'Your shop name', sample: 'A.V. Jewelry' },
   {

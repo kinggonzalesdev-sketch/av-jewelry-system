@@ -4,6 +4,7 @@ import { sortByCodeRank } from '@/lib/inventory/code-number';
 import { listInventory } from '@/lib/inventory/service';
 import { getOrderBalances } from '@/lib/payments/balances';
 import { createClient } from '@/lib/supabase/server';
+import { isMissingColumn } from '@/lib/supabase/missing-schema';
 
 /**
  * Official Orders list (Bible §7, §22.9).
@@ -196,7 +197,8 @@ export async function listOrdersPage(opts: {
     .map((row) => toOrderListRow(row, balanceById))
     .sort(
       (a, b) =>
-        (orderIndex.get(a.officialOrderId) ?? 0) - (orderIndex.get(b.officialOrderId) ?? 0),
+        (orderIndex.get(a.officialOrderId) ?? 0) -
+        (orderIndex.get(b.officialOrderId) ?? 0),
     );
 
   return { ok: true, rows, total, cardCounts };
@@ -409,6 +411,16 @@ export type OrderLineItem = {
   gramsPerPiece: string | null;
   quantity: number;
   unitPrice: string | null;
+  /** How the line was priced when it was added (Owner 2026-09-26). null = a legacy line saved
+   *  before pricing snapshots existed, or a database without the migration yet. */
+  pricingMode?: 'per_gram' | 'fixed' | null;
+  /** The EXACT Price Per Gram entered for the line (per_gram lines only). */
+  pricePerGramSnapshot?: string | null;
+  /** The grams the line was priced at (per_gram lines only). */
+  gramsSnapshot?: string | null;
+  /** When the line joined the order (official_order_claims.added_at) — tells whether an invoice
+   *  message predates an item added later. */
+  addedAt?: string | null;
 };
 
 /**
@@ -417,13 +429,38 @@ export type OrderLineItem = {
  * Used by the Order Details drawer to show what item(s) the order is for and how
  * many grams.
  */
-const LINE_ITEM_SELECT = `claim_id,
+const LINE_ITEM_SELECT_LEGACY = `claim_id, added_at,
        claims (
          quantity, claim_reference,
          inventory_items ( item_name, item_code, grams_per_piece, total_price_per_piece )
        )`;
+/** + the line's pricing snapshot (migration 20260926090000). */
+const LINE_ITEM_SELECT = `claim_id, added_at,
+       claims (
+         quantity, claim_reference, pricing_mode, price_per_gram, grams_snapshot,
+         inventory_items ( item_name, item_code, grams_per_piece, total_price_per_piece )
+       )`;
 
-type LineItemRow = { claim_id: string; claims: unknown };
+type LineItemRow = { claim_id: string; added_at?: string | null; claims: unknown };
+
+/** Until when this server instance reads line items WITHOUT the snapshot columns (they were found
+ *  missing: migration 20260926090000 not applied yet). Re-checked every 5 minutes, so the columns
+ *  are picked up soon after the migration without a redeploy and without failing every read. */
+let snapshotColumnsMissingUntil = 0;
+
+/** Read line items with the pricing snapshot, or exactly as before on a database without it. */
+async function readLineItems(
+  read: (select: string) => PromiseLike<{
+    data: unknown;
+    error: { code?: string; message: string } | null;
+  }>,
+): Promise<{ data: unknown; error: { code?: string; message: string } | null }> {
+  if (Date.now() < snapshotColumnsMissingUntil) return read(LINE_ITEM_SELECT_LEGACY);
+  const res = await read(LINE_ITEM_SELECT);
+  if (!isMissingColumn(res.error)) return res;
+  snapshotColumnsMissingUntil = Date.now() + 5 * 60_000;
+  return read(LINE_ITEM_SELECT_LEGACY);
+}
 
 /** One official_order_claims row → its OrderLineItem (the ONE mapping for single and batch). */
 function toOrderLineItem(row: LineItemRow): OrderLineItem {
@@ -436,12 +473,22 @@ function toOrderLineItem(row: LineItemRow): OrderLineItem {
   type ClaimShape = {
     quantity: string | number | null;
     claim_reference: string | null;
+    pricing_mode?: string | null;
+    price_per_gram?: string | number | null;
+    grams_snapshot?: string | number | null;
     inventory_items: ItemShape | ItemShape[] | null;
   };
   const claim = one<ClaimShape>(row.claims);
   const item = one<ItemShape>(claim?.inventory_items);
+  const text = (v: string | number | null | undefined) =>
+    v === null || v === undefined ? null : String(v);
+  const mode = claim?.pricing_mode;
   return {
+    pricingMode: mode === 'per_gram' || mode === 'fixed' ? mode : null,
+    pricePerGramSnapshot: text(claim?.price_per_gram),
+    gramsSnapshot: text(claim?.grams_snapshot),
     claimId: row.claim_id,
+    addedAt: row.added_at ?? null,
     claimReference: claim?.claim_reference ?? '—',
     itemName: item?.item_name ?? null,
     itemCode: item?.item_code ?? null,
@@ -462,13 +509,15 @@ export async function getOrderLineItems(
 ): Promise<OrderLineItem[]> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
-    .from('official_order_claims')
-    .select(LINE_ITEM_SELECT)
-    .eq('official_order_id', officialOrderId);
+  const { data, error } = await readLineItems((select) =>
+    supabase
+      .from('official_order_claims')
+      .select(select)
+      .eq('official_order_id', officialOrderId),
+  );
 
   if (error || !data) return [];
-  return (data as LineItemRow[]).map(toOrderLineItem);
+  return (data as unknown as LineItemRow[]).map(toOrderLineItem);
 }
 
 /**
@@ -478,15 +527,21 @@ export async function getOrderLineItems(
 export async function getOrderLineItemsByOrder(
   officialOrderIds: ReadonlyArray<string>,
 ): Promise<Map<string, OrderLineItem[]>> {
-  const byOrder = new Map<string, OrderLineItem[]>(officialOrderIds.map((id) => [id, []]));
+  const byOrder = new Map<string, OrderLineItem[]>(
+    officialOrderIds.map((id) => [id, []]),
+  );
   if (officialOrderIds.length === 0) return byOrder;
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from('official_order_claims')
-    .select(`official_order_id, ${LINE_ITEM_SELECT}`)
-    .in('official_order_id', [...officialOrderIds]);
+  const { data, error } = await readLineItems((select) =>
+    supabase
+      .from('official_order_claims')
+      .select(`official_order_id, ${select}`)
+      .in('official_order_id', [...officialOrderIds]),
+  );
   if (error || !data) return byOrder;
-  for (const row of data as Array<LineItemRow & { official_order_id: string }>) {
+  for (const row of data as unknown as Array<
+    LineItemRow & { official_order_id: string }
+  >) {
     byOrder.get(row.official_order_id)?.push(toOrderLineItem(row));
   }
   return byOrder;

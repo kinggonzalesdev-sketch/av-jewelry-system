@@ -87,6 +87,12 @@ export type OrderLineItemDetail = {
   gramsPerPiece: string | null;
   quantity: number;
   unitPrice: string | null;
+  /** The line's transaction-time pricing snapshot (Owner 2026-09-26); null = a legacy line. */
+  pricingMode?: 'per_gram' | 'fixed' | null;
+  pricePerGramSnapshot?: string | null;
+  gramsSnapshot?: string | null;
+  /** When the line joined the order — tells whether the invoice predates an added item. */
+  addedAt?: string | null;
 };
 
 export type OrderDetail = {

@@ -14,7 +14,7 @@ const add = vi.fn((..._a: unknown[]) =>
   Promise.resolve({ ok: true as const, total: '2000.00' }),
 );
 const search = vi.fn((): Promise<CaptureItem[]> => Promise.resolve([]));
-const requestEdit = vi.fn(() => Promise.resolve({ ok: true as const }));
+const requestEdit = vi.fn((..._a: unknown[]) => Promise.resolve({ ok: true as const }));
 // Paid-order removal (Owner 2026-09-03). Forwards its args so a test can assert the exact
 // (orderId, claimId, reason) sent, and returns a snapshot with an overpayment so the note path runs.
 const paidRemove = vi.fn((..._a: unknown[]) =>
@@ -33,9 +33,9 @@ const paidRemove = vi.fn((..._a: unknown[]) =>
 vi.mock('@/lib/orders/actions', () => ({
   removeOrderItemAction: () => remove(),
   splitOrderItemAction: () => split(),
-  addOrderItemAction: (...a: unknown[]) => add(...a),
+  addOrderItemsAction: (...a: unknown[]) => add(...a),
   searchCaptureItemsAction: () => search(),
-  requestOrderEditAction: () => requestEdit(),
+  requestOrderEditAction: (...a: unknown[]) => requestEdit(...a),
   removePaidOrderItemAction: (...a: unknown[]) => paidRemove(...a),
 }));
 
@@ -185,11 +185,19 @@ describe('OrderItemEditControls — Edit Items (Super Admin)', () => {
     expect(screen.getByTestId('add-item-line-0')).toHaveTextContent('₱1,500');
     expect(screen.getByTestId('add-item-total')).toHaveTextContent('₱1,500');
 
-    // Confirm → addOrderItemAction(orderId, itemId, unitPrice, qty). The unit price is the
-    // computed grams × rate ('1500.00'), not the '1000.00' Fixed prefill.
+    // Confirm → ONE all-or-nothing addOrderItemsAction(orderId, rows). The unit price is the
+    // computed grams × rate ('1500.00'), not the '1000.00' Fixed prefill, and the row carries
+    // its pricing snapshot — the exact rate and grams (Owner 2026-09-26).
     fireEvent.click(screen.getByTestId('order-add-item-confirm'));
     await vi.waitFor(() => expect(add).toHaveBeenCalledTimes(1));
-    expect(add).toHaveBeenCalledWith('o1', 'inv-1', '1500.00', 1);
+    expect(add).toHaveBeenCalledWith('o1', [
+      {
+        itemId: 'inv-1',
+        price: '1500.00',
+        quantity: 1,
+        pricing: { mode: 'per_gram', price_per_gram: '750.00', grams: '2.000' },
+      },
+    ]);
   });
 });
 
@@ -239,7 +247,11 @@ describe('OrderItemEditControls — Remove Paid Item (locked / settled order)', 
     fireEvent.click(screen.getByTestId('order-paid-remove-confirm'));
     await vi.waitFor(() => expect(paidRemove).toHaveBeenCalledTimes(1));
     // Exact (orderId, claimId, reason) reaches the server action.
-    expect(paidRemove).toHaveBeenCalledWith('o1', 'claim-a', 'customer returned the ring');
+    expect(paidRemove).toHaveBeenCalledWith(
+      'o1',
+      'claim-a',
+      'customer returned the ring',
+    );
     // The success note reports the recalculated total + the overpayment CREDIT wording.
     const note = await screen.findByTestId('order-paid-remove-note');
     expect(note).toHaveTextContent(/overpaid/i);

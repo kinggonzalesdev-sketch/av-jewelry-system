@@ -2,7 +2,10 @@ import 'server-only';
 
 import { recordAuditEvent } from '@/lib/audit/log';
 import { AuthorizationError, requireOwner } from '@/lib/authz/guard';
+import type { LinePricing } from '@/lib/orders/item-pricing';
+import { validLinePricing } from '@/lib/orders/line-pricing';
 import { createClient } from '@/lib/supabase/server';
+import { isMissingFunction } from '@/lib/supabase/missing-schema';
 
 /**
  * Edit Items (Owner request 2026-08-09) — the SUPER ADMIN (owner) may change an
@@ -82,8 +85,7 @@ export type PaidRemovalSnapshot = {
   outstandingBalance: string;
 };
 export type RemovePaidItemResult =
-  | { ok: true; snapshot: PaidRemovalSnapshot }
-  | { ok: false; error: string };
+  { ok: true; snapshot: PaidRemovalSnapshot } | { ok: false; error: string };
 
 /** The jsonb `remove_paid_order_item` returns — money arrives as numeric or text, never an object. */
 type RemovePaidOrderItemRow = {
@@ -128,7 +130,10 @@ export async function removePaidOrderItem(
 
   const trimmed = (reason ?? '').trim();
   if (trimmed.length === 0) {
-    return { ok: false, error: 'A reason is required to remove an item from a paid order.' };
+    return {
+      ok: false,
+      error: 'A reason is required to remove an item from a paid order.',
+    };
   }
 
   const supabase = await createClient();
@@ -231,7 +236,9 @@ export async function splitOrderItem(
 
 export type AddOrderItemResult =
   | { ok: true; total: string }
-  | { ok: false; error: string };
+  /** `addedCount` > 0 only on a database without migration 20260926090000, where items are added
+   *  one by one: that many WERE added before the failure. */
+  | { ok: false; error: string; addedCount?: number };
 
 /**
  * Add an item to an existing order (Owner request 2026-08-13). Owner-gated; the DB
@@ -286,6 +293,133 @@ export async function addOrderItem(
     entityType: 'official_order',
     entityId: orderId,
     context: { itemId },
+  });
+  const total = response.data?.total;
+  return { ok: true, total: total != null ? String(total) : '0' };
+}
+
+export type AddOrderItemInput = {
+  itemId: string;
+  /** The line price (grams × rate, or the fixed price) as a string. */
+  price: string;
+  quantity?: number;
+  /** How the price was entered — saved on the line as its transaction-time snapshot. */
+  pricing?: LinePricing;
+};
+
+const PRICE_TEXT_RE = /^\d{1,12}(\.\d{1,2})?$/;
+
+/**
+ * Edit → Add Item (Owner 2026-09-26): add one or more Active Inventory items to an existing
+ * order — For Invoice included — ALL OR NOTHING. The DB `add_order_items_priced` locks the order,
+ * adds each item through the unchanged `add_order_item` (which locks the inventory row, so the
+ * same piece can never land on two orders) and saves each line's pricing snapshot, in one
+ * transaction: a refused row adds nothing. Owner-gated here and in the database. Never prints.
+ *
+ * Before migration 20260926090000 is applied that function does not exist: the items are added
+ * one by one through `add_order_item` exactly as before (no snapshot).
+ */
+export async function addOrderItems(
+  orderId: string,
+  items: ReadonlyArray<AddOrderItemInput>,
+): Promise<AddOrderItemResult> {
+  try {
+    await requireOwner();
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) {
+      await recordAuditEvent({
+        action: 'order.add_item',
+        entityType: 'official_order',
+        entityId: orderId,
+        outcome: 'denied',
+        reason: cause.message,
+      });
+      return { ok: false, error: cause.message };
+    }
+    throw cause;
+  }
+
+  if (items.length === 0) return { ok: false, error: 'Pick at least one item.' };
+  const seen = new Set<string>();
+  for (const it of items) {
+    if (!it.itemId) return { ok: false, error: 'Pick an item from Active Inventory.' };
+    if (seen.has(it.itemId)) {
+      return {
+        ok: false,
+        error: 'The same item was added more than once. Remove the duplicate.',
+      };
+    }
+    seen.add(it.itemId);
+    if (!PRICE_TEXT_RE.test(it.price) || Number(it.price) <= 0) {
+      return { ok: false, error: 'Enter a price greater than zero for every item.' };
+    }
+    if (it.pricing && !validLinePricing(it.pricing, it.price)) {
+      return {
+        ok: false,
+        error:
+          'An item’s price does not match its grams × Price Per Gram. Check the row.',
+      };
+    }
+  }
+
+  const supabase = await createClient();
+  const payload = items.map((it) => ({
+    id: it.itemId,
+    price: it.price,
+    qty: Math.max(1, it.quantity ?? 1),
+    ...(it.pricing ? { pricing: it.pricing } : {}),
+  }));
+  type Rpc = {
+    data: { total?: number | string } | null;
+    error: { code?: string; message: string } | null;
+  };
+  let response = (await supabase.rpc('add_order_items_priced', {
+    p_order_id: orderId,
+    p_items: payload,
+  })) as Rpc;
+
+  let addedBeforeFailure = 0;
+  if (isMissingFunction(response.error)) {
+    // Legacy database: one add per item, as before this change — NOT all-or-nothing, so a
+    // failure part-way is reported with how many were already added.
+    for (const p of payload) {
+      response = (await supabase.rpc('add_order_item', {
+        p_order_id: orderId,
+        p_item_id: p.id,
+        p_price: p.price,
+        p_qty: p.qty,
+      })) as Rpc;
+      if (response.error) break;
+      addedBeforeFailure += 1;
+    }
+  }
+
+  if (response.error) {
+    await recordAuditEvent({
+      action: 'order.add_item',
+      entityType: 'official_order',
+      entityId: orderId,
+      outcome: 'failed',
+      reason: response.error.message,
+      context: { addedBeforeFailure },
+    });
+    return addedBeforeFailure > 0
+      ? {
+          ok: false,
+          addedCount: addedBeforeFailure,
+          error: `Added ${addedBeforeFailure} of ${payload.length} items, then one failed: ${cleanError(response.error.message)}`,
+        }
+      : { ok: false, error: cleanError(response.error.message) };
+  }
+
+  await recordAuditEvent({
+    action: 'order.add_item',
+    entityType: 'official_order',
+    entityId: orderId,
+    context: {
+      itemIds: items.map((i) => i.itemId),
+      pricing: items.map((i) => i.pricing ?? null),
+    },
   });
   const total = response.data?.total;
   return { ok: true, total: total != null ? String(total) : '0' };

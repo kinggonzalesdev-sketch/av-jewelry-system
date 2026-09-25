@@ -2,7 +2,10 @@ import 'server-only';
 
 import { createCustomer } from '@/lib/customers/create';
 import { createClient } from '@/lib/supabase/server';
+import { isMissingFunction } from '@/lib/supabase/missing-schema';
 import { resolveAdminName } from '@/lib/authz/admin-name';
+import { validLinePricing } from '@/lib/orders/line-pricing';
+import type { LinePricing } from '@/lib/orders/item-pricing';
 
 /**
  * New Order manual entry (Bible §12, §13) — MULTI-ITEM.
@@ -23,6 +26,9 @@ export type ManualOrderItemInput = {
   /** Unit price (string, never a float) — the entered selling price for the item. */
   unitPrice: string;
   quantity: number;
+  /** How the price was entered (Owner 2026-09-26): saved on the order line as the
+   *  transaction-time snapshot Send Invoice reads. Omitted = a legacy line. */
+  pricing?: LinePricing;
 };
 
 export type ManualOrderInput = {
@@ -80,6 +86,13 @@ export async function captureManualOrder(
     if (!PRICE_RE.test(price) || Number(price) <= 0) {
       return { ok: false, error: 'Enter a unit price greater than zero for every item.' };
     }
+    if (it.pricing && !validLinePricing(it.pricing, price)) {
+      return {
+        ok: false,
+        error:
+          'An item’s price does not match its grams × Price Per Gram. Check the row.',
+      };
+    }
   }
 
   // ---- Resolve the customer: chosen id, or create from the typed name -------
@@ -100,15 +113,27 @@ export async function captureManualOrder(
     id: it.inventoryItemId.trim(),
     price: it.unitPrice.trim(),
     qty: Math.max(1, it.quantity),
+    ...(it.pricing ? { pricing: it.pricing } : {}),
   }));
 
   const supabase = await createClient();
-  const res = (await supabase.rpc('create_new_order_multi', {
+  const args = {
     p_customer_id: customerId,
     p_customer_name: customerName || null,
     p_items: payload,
     p_admin_id: await resolveAdminName(input.adminId ?? null),
-  })) as { data: CreateOrderRow | null; error: { message: string } | null };
+  };
+  type RpcResult = {
+    data: CreateOrderRow | null;
+    error: { code?: string; message: string } | null;
+  };
+  // The order AND each line's pricing snapshot in ONE transaction (migration 20260926090000).
+  // Before that migration is applied the function does not exist: save exactly as before
+  // (create_new_order_multi ignores the extra "pricing" key), so the order is never lost.
+  let res = (await supabase.rpc('create_new_order_multi_priced', args)) as RpcResult;
+  if (isMissingFunction(res.error)) {
+    res = (await supabase.rpc('create_new_order_multi', args)) as RpcResult;
+  }
 
   if (res.error) {
     return { ok: false, error: res.error.message.replace(/^ERROR:\s*/i, '').trim() };

@@ -70,3 +70,25 @@ export function rowTotalCentavos(r: PricingRow, item: GramsCarrier): bigint {
     ? perGramTotalCentavos(effectiveGrams(r, item), r.perGram)
     : priceCentavos(r.price);
 }
+
+/**
+ * The transaction-time pricing snapshot saved with an order line (Owner 2026-09-26): how the row
+ * was priced, and for a per-gram row the EXACT rate and grams its total was computed from. The
+ * database stores it on the line and refuses a per-gram line whose price is not
+ * round(grams × rate, 2) — the same rounding as perGramTotalCentavos. A fixed-price row carries
+ * no grams and no rate.
+ */
+export type LinePricing =
+  { mode: 'per_gram'; price_per_gram: string; grams: string } | { mode: 'fixed' };
+
+export function linePricing(r: PricingRow, item: GramsCarrier): LinePricing {
+  if (r.priceMode !== 'per_gram') return { mode: 'fixed' };
+  // Grams exactly as perGramTotalCentavos reads them: whole milligrams (extra digits dropped).
+  const [gw = '0', gf = ''] = effectiveGrams(r, item).trim().split('.');
+  const gramsMilli = BigInt(gw || '0') * 1000n + BigInt(`${gf}000`.slice(0, 3) || '0');
+  return {
+    mode: 'per_gram',
+    price_per_gram: centavosToStr(priceCentavos(r.perGram)),
+    grams: `${gramsMilli / 1000n}.${String(gramsMilli % 1000n).padStart(3, '0')}`,
+  };
+}

@@ -146,7 +146,12 @@ async function deliverOrderMessageViaPancake(
       }
     }
     if (!conversationId) {
-      return { attempted: false, delivered: false, error: null, reason: 'no_conversation' };
+      return {
+        attempted: false,
+        delivered: false,
+        error: null,
+        reason: 'no_conversation',
+      };
     }
     // Attach the item screenshot/photo ONLY for non-invoice sends that opt in. Send Invoice
     // is TEXT ONLY (attachOrderPhoto=false): the mined screenshot belongs to the Capture
@@ -246,6 +251,12 @@ export type OrderInvoiceMessage = {
   sentAt: string | null;
   sentByName: string | null;
   preparedByName: string | null;
+  /** When the message was last written — every edit and every send refreshes it (trigger). */
+  updatedAt: string | null;
+  /** When it last actually reached the customer (Pancake send, or a manual-sent attestation),
+   *  or null. An edit after sending does NOT move this — so "sent before an item was added"
+   *  stays true until the invoice is really sent again. */
+  lastSentAt: string | null;
 };
 
 function one<T>(value: unknown): T | undefined {
@@ -267,7 +278,7 @@ export async function getOrderInvoiceMessage(
   const { data, error } = await supabase
     .from('customer_messages')
     .select(
-      `body, status, manually_sent_at,
+      `body, status, manually_sent_at, auto_sent_at, updated_at,
        sent_by:staff_profiles!manually_sent_by ( full_name ),
        prepared_by:staff_profiles!created_by ( full_name )`,
     )
@@ -286,8 +297,23 @@ export async function getOrderInvoiceMessage(
       sentAt: (r.manually_sent_at as string | null) ?? null,
       sentByName: one<{ full_name: string }>(r.sent_by)?.full_name ?? null,
       preparedByName: one<{ full_name: string }>(r.prepared_by)?.full_name ?? null,
+      updatedAt: (r.updated_at as string | null) ?? null,
+      lastSentAt: latestOf(
+        r.auto_sent_at as string | null | undefined,
+        r.manually_sent_at as string | null | undefined,
+      ),
     },
   };
+}
+
+/** The later of two timestamps, or whichever exists, or null. */
+function latestOf(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): string | null {
+  if (!a) return b ?? null;
+  if (!b) return a;
+  return Date.parse(a) >= Date.parse(b) ? a : b;
 }
 
 /**
@@ -351,10 +377,15 @@ export async function resendOrderInvoice(orderId: string): Promise<ForInvoiceRes
   const supabase = await createClient();
   // Same rules as Send Invoice: TEXT ONLY, stored conversation_id only (no name guess, no
   // capture screenshot).
-  const pancake = await deliverOrderMessageViaPancake(supabase, orderId, rendered.message, {
-    attachOrderPhoto: false,
-    resolveConversationByName: false,
-  });
+  const pancake = await deliverOrderMessageViaPancake(
+    supabase,
+    orderId,
+    rendered.message,
+    {
+      attachOrderPhoto: false,
+      resolveConversationByName: false,
+    },
+  );
   if (!pancake.attempted) {
     return {
       ok: false,
@@ -578,10 +609,15 @@ export async function sendOrderReminder(
   // the order's/customer's STORED chat, exactly like Send Invoice (Owner 2026-09-25): no photo
   // (with a photo attached Pancake sends the photo alone and drops the reminder text) and never
   // a customer guessed by Facebook name.
-  const pancake = await deliverOrderMessageViaPancake(supabase, officialOrderId, trimmed, {
-    attachOrderPhoto: false,
-    resolveConversationByName: false,
-  });
+  const pancake = await deliverOrderMessageViaPancake(
+    supabase,
+    officialOrderId,
+    trimmed,
+    {
+      attachOrderPhoto: false,
+      resolveConversationByName: false,
+    },
+  );
 
   await recordAuditEvent({
     action: 'order.reminder_sent',

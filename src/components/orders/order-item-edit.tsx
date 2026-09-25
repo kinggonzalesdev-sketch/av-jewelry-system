@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 
 import {
-  addOrderItemAction,
+  addOrderItemsAction,
   removeOrderItemAction,
   removePaidOrderItemAction,
   splitOrderItemAction,
@@ -12,7 +12,8 @@ import {
 } from '@/lib/orders/actions';
 import type { OrderLineItemDetail } from '@/lib/orders/detail-types';
 import type { CaptureItem } from '@/lib/orders/service';
-import { centavosToStr, rowTotalCentavos } from '@/lib/orders/item-pricing';
+import { centavosToStr, linePricing, rowTotalCentavos } from '@/lib/orders/item-pricing';
+import { parseInventoryCode } from '@/lib/inventory/code-parser';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { MoneyInput } from '@/components/ui/money-input';
@@ -387,7 +388,10 @@ function PaidOrderRemovalControls({
 
   if (items.length <= 1) {
     return (
-      <div className="rounded-lg border border-destructive/40 p-3" data-testid="order-paid-remove">
+      <div
+        className="rounded-lg border border-destructive/40 p-3"
+        data-testid="order-paid-remove"
+      >
         {header}
         <p className="mt-1 text-[11px] text-muted-foreground">
           This paid order has one item — use Cancel Order to void the whole order instead.
@@ -397,14 +401,21 @@ function PaidOrderRemovalControls({
   }
 
   return (
-    <div className="rounded-lg border border-destructive/40 p-3" data-testid="order-paid-remove">
+    <div
+      className="rounded-lg border border-destructive/40 p-3"
+      data-testid="order-paid-remove"
+    >
       {header}
       <p className="mb-2 mt-0.5 text-[11px] text-muted-foreground">
-        This order is settled/paid. Removing a piece returns it to Active inventory and recalculates
-        the total — payments stay (any overpayment shows as a credit, never auto-refunded).
+        This order is settled/paid. Removing a piece returns it to Active inventory and
+        recalculates the total — payments stay (any overpayment shows as a credit, never
+        auto-refunded).
       </p>
       {note ? (
-        <p className="mb-2 text-xs font-medium text-emerald-600" data-testid="order-paid-remove-note">
+        <p
+          className="mb-2 text-xs font-medium text-emerald-600"
+          data-testid="order-paid-remove-note"
+        >
           {note}
         </p>
       ) : null}
@@ -441,7 +452,12 @@ function PaidOrderRemovalControls({
         title="Remove paid item?"
         footer={
           <>
-            <Button type="button" variant="outline" onClick={() => setTarget(null)} disabled={busy}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setTarget(null)}
+              disabled={busy}
+            >
               Cancel
             </Button>
             <Button
@@ -459,9 +475,9 @@ function PaidOrderRemovalControls({
         <div className="space-y-2 text-sm">
           <p className="font-mono">{target ? label(target) : ''}</p>
           <p className="text-muted-foreground">
-            This item will return to available Inventory. Existing payment records will remain
-            unchanged and the order totals will be recalculated. If that leaves the order overpaid, it
-            shows a credit — never auto-refunded.
+            This item will return to available Inventory. Existing payment records will
+            remain unchanged and the order totals will be recalculated. If that leaves the
+            order overpaid, it shows a credit — never auto-refunded.
           </p>
           <div>
             <label className="text-xs text-muted-foreground" htmlFor="paid-remove-reason">
@@ -588,7 +604,9 @@ export function AddItemSearchRow({
   }, [q, row.picked]);
 
   // Per-row line total via the SHARED centavo math (identical to New Order Entry).
-  const itemTotal = formatPeso(centavosToStr(rowTotalCentavos(row, pickedGrams(row.picked))));
+  const itemTotal = formatPeso(
+    centavosToStr(rowTotalCentavos(row, pickedGrams(row.picked))),
+  );
   const perGram = row.priceMode === 'per_gram';
 
   const modeBtn = (m: 'fixed' | 'per_gram', label: string) => (
@@ -772,15 +790,18 @@ function AddItemPanel({
   const patch = (key: string, next: Partial<AddRow>) =>
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...next } : r)));
   // Select an item → prefill Fixed price from the catalogue and grams from the item's
-  // per-piece weight (like New Entry), so switching to Per Gram already has grams. A null
-  // clears the row back to an unpicked, Fixed-price blank.
+  // per-piece weight — or, when that is blank (almost every item), the grams in its code, the
+  // SAME rule as New Entry (Owner 2026-09-26) — so switching to Per Gram already has grams. A
+  // null clears the row back to an unpicked, Fixed-price blank.
   const pick = (key: string, item: CaptureItem | null) =>
     patch(key, {
       picked: item,
       priceMode: 'fixed',
       price: item?.unitPrice ?? '',
       perGram: '',
-      grams: item?.gramsPerPiece ?? '',
+      grams: item
+        ? (item.gramsPerPiece ?? parseInventoryCode(item.itemCode).grams ?? '')
+        : '',
     });
 
   const pickedRows = rows.filter((r) => r.picked);
@@ -823,31 +844,60 @@ function AddItemPanel({
 
     setBusy(true);
     setErr(null);
+    // The unit price IS the row's computed total (Fixed Price, or grams × price-per-gram) — the
+    // SAME value the New-Order form sends — and its pricing (mode, exact rate, exact grams) is
+    // saved with the line so Send Invoice prints the rate that was typed (Owner 2026-09-26).
+    const lines = pickedRows.map((r) => ({
+      row: r,
+      itemId: r.picked!.id,
+      price: centavosToStr(rowTotalCentavos(r, pickedGrams(r.picked))),
+      pricing: linePricing(r, pickedGrams(r.picked)),
+    }));
     const done: string[] = [];
-    for (const r of pickedRows) {
-      // The unit price IS the row's computed total (Fixed Price, or grams × price-per-gram)
-      // — the SAME value the New-Order form sends, so the two forms never disagree.
-      const unitPrice = centavosToStr(rowTotalCentavos(r, pickedGrams(r.picked)));
-      const res = isRequest
-        ? await requestOrderEditAction(
-            'order_add_item',
-            orderId,
-            { item_id: r.picked!.id, price: unitPrice },
-            reason,
-          )
-        : await addOrderItemAction(orderId, r.picked!.id, unitPrice, 1);
+    if (!isRequest) {
+      // Owner: every row in ONE all-or-nothing save — a refused row adds nothing.
+      const res = await addOrderItemsAction(
+        orderId,
+        lines.map((l) => ({
+          itemId: l.itemId,
+          price: l.price,
+          quantity: 1,
+          pricing: l.pricing,
+        })),
+      );
       if (!res.ok) {
         setBusy(false);
-        // Some rows before this one may already be added (each add is its own action);
-        // report which failed so the operator sees exactly where it stopped.
-        setErr(
-          done.length > 0
-            ? `Added ${done.join(', ')}, but ${r.picked!.itemCode} failed: ${res.error}`
-            : `${r.picked!.itemCode}: ${res.error}`,
-        );
+        if (res.addedCount) {
+          // Only before the database update (items added one by one): some WERE added — say so
+          // and refresh, so a retry does not trip over them.
+          onDone(res.error);
+          setRows([newAddRow()]);
+          return;
+        }
+        setErr(res.error);
         return;
       }
-      done.push(r.picked!.itemCode);
+      done.push(...lines.map((l) => l.row.picked!.itemCode));
+    } else {
+      for (const l of lines) {
+        const res = await requestOrderEditAction(
+          'order_add_item',
+          orderId,
+          { item_id: l.itemId, price: l.price, pricing: l.pricing },
+          reason,
+        );
+        if (!res.ok) {
+          setBusy(false);
+          // Each request is its own approval item; report which one failed.
+          setErr(
+            done.length > 0
+              ? `Requested ${done.join(', ')}, but ${l.row.picked!.itemCode} failed: ${res.error}`
+              : `${l.row.picked!.itemCode}: ${res.error}`,
+          );
+          return;
+        }
+        done.push(l.row.picked!.itemCode);
+      }
     }
     setBusy(false);
     onDone(

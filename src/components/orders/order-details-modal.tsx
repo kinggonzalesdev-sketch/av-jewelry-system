@@ -16,6 +16,7 @@ import { CopyButton } from '@/components/ui/copy-button';
 import { parseInventoryCode } from '@/lib/inventory/code-parser';
 import { isHKItem } from '@/lib/inventory/hk-item';
 import { computeOrderGramsPricing, formatTotalGrams } from '@/lib/orders/grams-pricing';
+import { invoiceEditState, latestItemAddedAt } from '@/lib/orders/invoice-staleness';
 import type { OrderDetail, OrderDetailResult } from '@/lib/orders/detail-types';
 import type { CustomerMatchInfo } from '@/lib/orders/customer-match-types';
 import type { PaymentStatus } from '@/lib/orders/service';
@@ -430,7 +431,8 @@ function HeaderActions({
  * For Invoice view (Owner request 2026-07-27) — the WHOLE modal body when an order
  * is in the For Invoice state ('invoiced'). Deliberately minimal: six read-only
  * facts (Order Number, Customer Name, Total Price, Total Grams, Date Created,
- * Status) and three actions — Open FB Chat, View / Edit Message, Send Invoice.
+ * Status), Edit Items (Add / Remove / Split — Owner 2026-09-26), and three actions —
+ * Open FB Chat, View / Edit Message, Send Invoice.
  *
  * Rules honoured:
  *   - Opening FB Chat NEVER changes status (it only opens the saved Messenger link,
@@ -486,11 +488,13 @@ function ForInvoiceView({
   // Price per gram = the invoice's own per-line rate (total ÷ grams), shown only when the
   // lines agree on ONE rate; different rates show "Mixed Rates" (never a fabricated single
   // number), and a fixed-price order (no grams) shows "—".
-  const pricePerGramNode: React.ReactNode = gp.mixedRates
-    ? 'Mixed Rates'
-    : gp.pricePerGram != null
-      ? <Money amount={String(gp.pricePerGram)} />
-      : '—';
+  const pricePerGramNode: React.ReactNode = gp.mixedRates ? (
+    'Mixed Rates'
+  ) : gp.pricePerGram != null ? (
+    <Money amount={String(gp.pricePerGram)} />
+  ) : (
+    '—'
+  );
 
   // Open FB Chat — opens the saved Messenger link in a new tab, or reports it is
   // not available. Never mutates the order.
@@ -519,6 +523,43 @@ function ForInvoiceView({
   // other customers, or no Pancake conversation is linked. Never trust the FB name.
   const [matchInfo, setMatchInfo] = useState<CustomerMatchInfo | null>(null);
 
+  // Was the saved/sent invoice written BEFORE an item was added? (Owner 2026-09-26.) Read from the
+  // SERVER when the view opens and again after every save / send / resend here (server times
+  // only — never this PC's clock). Nothing is re-sent by itself: an outdated draft is rebuilt when
+  // opened, an outdated sent invoice is flagged for a new Send Invoice.
+  const [msgProbe, setMsgProbe] = useState<{
+    status: string | null;
+    updatedAt: string | null;
+    lastSentAt: string | null;
+  } | null>(null);
+  const reprobe = useCallback(() => {
+    void loadOrderInvoiceMessageAction(orderId)
+      .then((res) => {
+        if (res.ok) {
+          setMsgProbe(
+            res.message
+              ? {
+                  status: res.message.status,
+                  updatedAt: res.message.updatedAt,
+                  lastSentAt: res.message.lastSentAt,
+                }
+              : null,
+          );
+        }
+      })
+      .catch(() => undefined);
+  }, [orderId]);
+  useEffect(() => {
+    reprobe();
+  }, [reprobe]);
+  const itemsChangedAt = latestItemAddedAt(detail.items);
+  const editState = invoiceEditState(itemsChangedAt, msgProbe);
+  // The item state the open editor's text was built for. If an item is added while it is open,
+  // that text describes an older order: it can no longer be saved or sent (Send then builds the
+  // invoice fresh from the current order) until the editor is rebuilt.
+  const [editorItemsAt, setEditorItemsAt] = useState<string | null>(null);
+  const editorCurrent = editorItemsAt === itemsChangedAt;
+
   const resendInvoice = async () => {
     if (resending) return;
     setResending(true);
@@ -533,6 +574,7 @@ function ForInvoiceView({
     }
     setMsgStatus('direct_sent');
     setResendNote('Sent to the customer through Pancake.');
+    reprobe();
   };
 
   const toggleMessage = async () => {
@@ -540,6 +582,10 @@ function ForInvoiceView({
       setMsgState('idle');
       return;
     }
+    await openMessage();
+  };
+
+  const openMessage = async () => {
     setMsgState('loading');
     setMsgError(null);
     const res = await loadOrderInvoiceMessageAction(orderId);
@@ -552,14 +598,28 @@ function ForInvoiceView({
     // A message the operator already prepared WINS — it is a real saved record and
     // must never be silently replaced by a template. Only when none exists yet do
     // we seed the editor from the Invoice template in Settings, so the shop's own
-    // wording is what actually goes out.
-    let body = res.message?.body ?? '';
+    // wording is what actually goes out. EXCEPTION (Owner 2026-09-26): a message written
+    // before an item was added describes an older order, so the editor is rebuilt from the
+    // current order instead (the old text stays saved until this one is saved or sent).
+    const outdated =
+      invoiceEditState(
+        itemsChangedAt,
+        res.message
+          ? {
+              status: res.message.status,
+              updatedAt: res.message.updatedAt,
+              lastSentAt: res.message.lastSentAt,
+            }
+          : null,
+      ) !== 'current';
+    let body = outdated ? '' : (res.message?.body ?? '');
     if (!body.trim()) {
       const rendered = await renderOrderMessageAction(orderId, 'invoice');
       if (rendered.ok) body = rendered.message;
     }
 
     setMsgBody(body);
+    setEditorItemsAt(itemsChangedAt);
     setMsgStatus(res.message?.status ?? null);
     setSavedMsg(false);
     setMsgState('open');
@@ -571,6 +631,10 @@ function ForInvoiceView({
   };
 
   const saveMessage = async () => {
+    if (!editorCurrent) {
+      setMsgError('Items changed after this message was built — rebuild it first.');
+      return;
+    }
     setSavingMsg(true);
     setMsgError(null);
     setSavedMsg(false);
@@ -581,6 +645,7 @@ function ForInvoiceView({
       return;
     }
     setSavedMsg(true);
+    reprobe();
   };
 
   // Send Invoice — the ONLY action that advances the order (For Invoice → For
@@ -598,7 +663,12 @@ function ForInvoiceView({
     if (sending) return;
     setSending(true);
     setSendError(null);
-    const res = await sendInvoiceMessageAction(orderId, msgBody.trim() || null);
+    // Text built before an item was added is NEVER sent: without current editor text the server
+    // builds the invoice fresh from the current order (Owner 2026-09-26).
+    const res = await sendInvoiceMessageAction(
+      orderId,
+      editorCurrent ? msgBody.trim() || null : null,
+    );
     setSending(false);
     if (!res.ok) {
       setSendError(res.error);
@@ -606,6 +676,7 @@ function ForInvoiceView({
     }
     setConfirming(false);
     const delivered = res.pancake?.delivered;
+    reprobe();
     setSentNote(
       delivered
         ? `✅ Invoice sent to ${detail.customer.displayName}'s Facebook chat. The order stays in For Invoice — transfer it to a destination when ready.`
@@ -716,6 +787,41 @@ function ForInvoiceView({
           ]}
         />
 
+        {/* The invoice predates an added item (Owner 2026-09-26): say so plainly. Nothing sends by
+            itself — the Owner decides when to Send Invoice again. */}
+        {editState === 'sent_outdated' ? (
+          <div
+            className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs"
+            role="status"
+            data-testid="invoice-sent-outdated"
+          >
+            <strong>Items changed after the invoice was sent.</strong> The customer’s
+            message does not include them — open View / Edit Message and Send Invoice
+            again when ready.
+          </div>
+        ) : editState === 'draft_outdated' ? (
+          <div
+            className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs"
+            role="status"
+            data-testid="invoice-draft-outdated"
+          >
+            <strong>Items changed after the saved message was written.</strong> View /
+            Edit Message rebuilds it from the current order.
+          </div>
+        ) : null}
+
+        {/* Edit Items (Owner 2026-09-26): Add / Remove / Split on a For Invoice order, the same
+            controls and rules as the full order view — the Owner edits directly, an approval-capable
+            admin requests the edit, everyone else sees nothing. Saving never prints. */}
+        <OrderItemEditControls
+          orderId={detail.officialOrderId}
+          status={detail.status}
+          items={detail.items}
+          isOwner={detail.permissions.isOwner}
+          canRequestEdit={detail.permissions.canRequestApproval}
+          onRefresh={onDone}
+        />
+
         {/* Actions. */}
         <div className="no-print space-y-2 rounded-lg border border-gold/40 bg-gold/5 p-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -772,7 +878,25 @@ function ForInvoiceView({
           {msgState === 'loading' ? (
             <p className="text-xs text-muted-foreground">Loading message…</p>
           ) : null}
-          {msgState === 'open' ? (
+          {msgState === 'open' && !editorCurrent ? (
+            <div
+              className="space-y-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs"
+              data-testid="order-message-outdated"
+            >
+              <p>
+                Items changed while this message was open, so its text is out of date. It
+                will not be saved or sent — Send Invoice builds the invoice from the
+                current order.
+              </p>
+              <button
+                type="button"
+                onClick={() => void openMessage()}
+                className={actionBtn}
+              >
+                ↻ Rebuild message
+              </button>
+            </div>
+          ) : msgState === 'open' ? (
             <div className="space-y-1.5" data-testid="order-message-panel">
               <label className="block text-[10px] uppercase tracking-wide text-muted-foreground">
                 Invoice message (editable)
@@ -967,11 +1091,11 @@ function ForInvoiceView({
                   className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-800"
                   data-testid="order-send-no-chat"
                 >
-                  ⚠ No chat is linked to this order yet. If{' '}
-                  {detail.customer.displayName} commented or messaged on a recent live,
-                  Send Invoice will still deliver it <strong>automatically</strong> (the
-                  system now resolves the chat from Pancake). If not, it only advances the
-                  order — you can link a chat above to be certain.
+                  ⚠ No chat is linked to this order yet. If {detail.customer.displayName}{' '}
+                  commented or messaged on a recent live, Send Invoice will still deliver
+                  it <strong>automatically</strong> (the system now resolves the chat from
+                  Pancake). If not, it only advances the order — you can link a chat above
+                  to be certain.
                 </p>
               )}
               <p className="text-[11px] text-muted-foreground">

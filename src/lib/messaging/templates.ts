@@ -248,11 +248,7 @@ export async function renderOrderMessage(
   // lines are suppressed below.
   const gp = computeOrderGramsPricing(d.items);
   const gramsValue = gramsTokenValue(gp);
-  const rateValue = gp.mixedRates
-    ? 'Mixed Rates'
-    : gp.pricePerGram != null
-      ? formatPeso(String(gp.pricePerGram))
-      : '';
+  const rateValue = invoiceRateValue(gp);
 
   const values: Record<string, string> = {
     '{customer_name}': d.customer.displayName,
@@ -283,6 +279,19 @@ export async function renderOrderMessage(
 }
 
 /**
+ * The {price_per_gram} value of an invoice/reminder (Owner 2026-09-26): the rate WITH its unit,
+ * "₱6,800/g" (so a template line "Price Per gram: {price_per_gram}" reads "Price Per gram:
+ * ₱6,800/g"); "Mixed Rates" when the lines were priced at different rates — never one invented
+ * number; '' when there is no grams line (the line is then dropped).
+ */
+export function invoiceRateValue(
+  gp: ReturnType<typeof computeOrderGramsPricing>,
+): string {
+  if (gp.mixedRates) return 'Mixed Rates';
+  return gp.pricePerGram != null ? `${formatPeso(String(gp.pricePerGram))}/g` : '';
+}
+
+/**
  * BLOCK signal (Owner 2026-09-01): a GRAMS-BASED invoice must not be sent with a blank grams or
  * rate. Only these two count as "missing" — every other optional token (a full-payment order has
  * no {due_date}, etc.) renders/suppresses without blocking. A fixed-price order (no grams)
@@ -296,11 +305,7 @@ export function invoiceMissingTokens(
   const missing: string[] = [];
   if (!gp.hasGrams) return missing;
   const gramsValue = gramsTokenValue(gp);
-  const rateValue = gp.mixedRates
-    ? 'Mixed Rates'
-    : gp.pricePerGram != null
-      ? formatPeso(String(gp.pricePerGram))
-      : '';
+  const rateValue = invoiceRateValue(gp);
   const used = tokensUsed(body);
   if (used.includes('{grams}') && !gramsValue) missing.push('{grams}');
   if (used.includes('{price_per_gram}') && !rateValue) missing.push('{price_per_gram}');
