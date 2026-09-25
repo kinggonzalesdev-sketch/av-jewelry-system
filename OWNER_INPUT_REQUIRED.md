@@ -1,72 +1,71 @@
-# Owner Input Required — Compliance Pass (2026-09-08)
+# Owner Input Required — Compliance Pass (2026-09-08, updated 2026-09-25)
 
-These are the facts and decisions **only you (the business owner)** can supply. I did **not** invent
-any of them. Each maps to a `[OWNER INPUT REQUIRED]` placeholder in the new legal pages or to a flag
-in `LEGAL_COMPLIANCE_AUDIT.md`. Fill these in, then have a Philippine lawyer review the legal pages
-before go-live.
+These are the facts and decisions **only you (the business owner)** can supply. None of them was
+invented. On 2026-09-25 the Owner supplied the business details and answered the 12 open questions;
+the legal pages were rewritten from those answers and published, and **no `[OWNER INPUT REQUIRED]`
+placeholder remains on the website**. The details and where each answer is used are in
+`docs/LEGAL-PAGES-CHECKLIST.md`. A final review by a Philippine lawyer is still recommended.
 
-## A. Verify the public claims on your landing page (do this first — highest risk)
-Your homepage (`src/app/page.tsx`) shows these as credibility badges. Each must be **true and
-provable**, or it should be removed:
+## A. Public claims on the landing page
 
-- [ ] **"DTI Registered"** — true? Provide the DTI Business Name Registration number.
-- [ ] **"BIR Registered"** — true? Provide the BIR registration / TIN (do not publish more than needed).
-- [ ] **"AMLC Compliant"** — confirm whether you are a "covered person" (dealers in precious
-      metals/stones can be) and are actually registered/compliant. If unsure, remove until confirmed.
-- [x] **"Best Price Gold Buyers"** — DONE: softened to **"Fair Gold Buying Prices"** (defensible,
-      matches your tagline). Only restore "Best Price" if you can actually substantiate the
-      superlative.
+- [x] **"DTI Registered"** — DTI Registration No. 3510095 (Owner, 2026-09-25).
+- [x] **"BIR Registered"** — TIN 717-116-304-00000 (Owner, 2026-09-25).
+- [x] **"AMLC Compliant"** — the Owner confirmed compliance (2026-09-25); stated in Terms §1 and
+      Privacy §5.
+- [x] **"Best Price Gold Buyers"** — softened to **"Fair Gold Buying Prices"** (2026-09-08).
+- [x] **"Credit Card Payment"** — the Owner confirmed credit cards are accepted (2026-09-25).
 
-## B. Business identity (for the footer + legal pages + Internet Transactions Act)
-- [ ] Registered/trade business name (exact).
-- [ ] Business registration numbers (DTI and/or SEC; BIR).
-- [ ] Official customer-facing **email address** (currently `[OWNER INPUT REQUIRED]` in the footer,
-      Privacy, Terms, Refund).
-- [ ] Confirm the public address `#84 Violeta Ave., Violeta Village, Sta. Cruz, Guiguinto, Bulacan`.
-- [ ] A complaint/redress contact or process (phone is shown; confirm email/hours).
+## B. Business identity (footer, legal pages, Internet Transactions Act)
+
+- [x] Registered name: A.V DE ASIS JEWELRY SHOP; trading name A.V. Jewelry.
+- [x] Registration numbers: DTI 3510095; BIR TIN 717-116-304-00000.
+- [x] Official email: aprilvergeldeasis1980@yahoo.com.ph (footer and every legal page).
+- [x] Address: #84 Violeta Ave., Violeta Village, Sta. Cruz, Guiguinto, Bulacan.
+- [x] Complaint contact: the three phone numbers (confirmed current), Messenger, the official email,
+      and the store (8:00 AM – 5:00 PM); DTI named as the outside channel.
 
 ## C. Data Privacy (Privacy Policy)
-- [ ] **Data Protection Officer / privacy contact** name + email.
-- [ ] Your **email/SMTP provider** (configured in the Supabase dashboard — not visible in code; e.g.
-      Resend, SendGrid, Gmail SMTP). Needed for the "email provider" disclosure.
-- [ ] **Retention periods** — how long you keep order/payment/layaway/accounting records (often tied
-      to BIR record-keeping rules — confirm with your accountant).
-- [ ] Confirm you are comfortable disclosing **international processing** (Supabase/Vercel may host in
-      Singapore). Lawyer/DPO to confirm wording.
-- [ ] Decision on a **storage-retention/erasure schedule** for stored images (proof-of-payment,
-      capture screenshots, attendance selfies) — currently kept indefinitely (see audit "Privacy
-      Risks").
 
-## D. Terms & Conditions
-- [ ] Quotation validity period and reservation rules.
-- [ ] Accepted payment methods; when an item is released vs. fully paid.
-- [ ] **Layaway terms:** down payment, schedule, interest/charges, and what happens to payments on
-      cancellation (must be fair + clearly disclosed at sign-up).
-- [ ] **Custom orders/repairs:** deposit amount/%, turnaround times, number of revisions.
-- [ ] **Gold/scrap buying:** basis and finality of an assessed offer.
-- [ ] **Delivery:** areas, fees, courier/COD terms, risk of loss.
-- [ ] Any voluntary warranty (e.g. on repairs).
-- [ ] Dispute venue / complaint contact.
+- [ ] **Data Protection Officer** name. The page directs privacy requests to the official email; no
+      DPO is named yet.
+- [x] Email / messaging providers — described generally as authorized third-party providers (§6).
+- [ ] **Retention periods** — the page uses general wording with no durations; an exact schedule
+      still needs to be set (often tied to BIR record-keeping rules; confirm with your accountant).
+- [x] International processing — disclosed in §7.
+- [ ] **Storage-retention / erasure schedule** for stored images (proof-of-payment, capture
+      screenshots, attendance selfies) — still kept indefinitely.
 
-## E. Refund & Cancellation Policy
-- [ ] Defect/return reporting process, assessment, and timeframe.
-- [ ] **Change-of-mind** policy: allowed? within how many days? item condition required?
-- [ ] **Custom-order deposit** refundability (before/after work begins) — must reflect actual
-      work/cost, not an arbitrary penalty.
-- [ ] **Layaway cancellation:** refund / store credit / forfeiture terms (fairness matters legally).
-- [ ] Service (repair/resize) warranty period and re-work terms.
-- [ ] Gold/scrap buying finality terms.
-- [ ] Refund **method and timeframe**.
+## D. Terms & Conditions — all answered (2026-09-25)
 
-## F. Image ownership (see IMAGE_ASSET_AUDIT.md)
+- [x] Prices: the price confirmed for the transaction applies.
+- [x] Payment methods (BDO, BPI, GCash, Credit Card, Remittance, COD) and release after verified
+      payment; COD needs at least ₱1,000 down payment.
+- [x] Layaway: 20% down, 3 months, 10-day grace; cancelled or unfinished layaway payments are
+      forfeited.
+- [x] Custom orders / repairs: deposit at least ₱2,000; time depends on the order; a cancelled
+      order's deposit can be refunded or moved to another item.
+- [x] Gold / scrap buying: daily 24-karat rate; final after agreement, payment and receipt.
+- [x] Delivery: nationwide (international possible), own riders / LBC / FedEx / DHL, no fixed fee.
+- [x] Repair / resizing re-work period: 2–3 weeks.
+- [x] Complaints: contact the shop first; DTI as the outside channel.
+
+## E. Refund & Cancellation Policy — all answered (2026-09-25)
+
+- [x] Defects: contact the shop; resolved as both sides agree.
+- [x] Change of mind: not accepted; the customer may sell the item instead.
+- [x] Custom-order deposit: can be refunded or moved to another item.
+- [x] Layaway cancellation: forfeited.
+- [x] Gold / scrap buying finality: as in the Terms.
+- [x] Refund method: GCash or cash, as the customer prefers; generally 2–3 business days.
+
+## F. Image ownership (see IMAGE_ASSET_AUDIT.md) — still open
+
 - [ ] Confirm `av-jewelry-hero.png` is your own or properly licensed (replace if not).
 - [ ] Confirm `av-jewelry-logo.png` ownership (and that any designer transferred rights).
 - [ ] Confirm `av-jewelry-signinbg.png` is your own or properly licensed.
 
-## G. Lawyer review (before go-live)
-- [ ] Full review of `/privacy`, `/terms`, `/refund-policy`, `/cookie-policy`.
-- [ ] Limitation-of-liability clause in Terms §12.
-- [ ] Layaway forfeiture (Terms §5 / Refund §4) and custom-deposit forfeiture (Refund §3).
-- [ ] Whether you are an AMLC "covered person" (dealers in precious metals/stones) and any
-      registration/reporting duties that follow.
-- [ ] Effective dates for all four documents.
+## G. Lawyer review (recommended)
+
+- [ ] Full review of `/privacy`, `/terms`, `/refund-policy`, `/cookie-policy`, in particular the
+      layaway forfeiture (Terms §7, Refund §4) and the AMLC statement.
+- [x] Effective Date: September 25, 2026, the day the pages were published.

@@ -8,8 +8,8 @@
 /**
  * Effective date shown on every legal page (ISO, YYYY-MM-DD).
  *
- * ⚠️ The pages are not yet published. When they go live, set this to the actual go-live date
- * (see docs/LEGAL-PAGES-CHECKLIST.md). Never back-date it.
+ * The pages went live on 2026-09-25, so that is the Effective Date. When the policies change, set it
+ * to the date the new version is published (see docs/LEGAL-PAGES-CHECKLIST.md). Never back-date it.
  */
 export const LEGAL_EFFECTIVE_DATE_ISO = '2026-09-25';
 

@@ -89,9 +89,9 @@ Owner's "pwede niyang ibenta" as selling it, including back to the shop. Confirm
 
 - [ ] **Data-retention schedule** (internal policy item). The Privacy Policy uses general retention
       wording with no durations; an exact schedule still needs to be set.
-- [ ] **Effective Date at go-live.** `LEGAL_EFFECTIVE_DATE_ISO` in `src/lib/legal/legal-info.ts` is
-      set to `2026-09-25` because the pages are not yet published. Change it to the actual go-live date
-      when they are published. Never back-date it.
+- [x] **Effective Date at go-live.** The pages went live on 2026-09-25, which is the Effective Date in
+      `LEGAL_EFFECTIVE_DATE_ISO` (`src/lib/legal/legal-info.ts`). When a policy changes, set it to the
+      date the new version is published. Never back-date it.
 
 ## Cookie and browser-storage audit (2026-09-25)
 
