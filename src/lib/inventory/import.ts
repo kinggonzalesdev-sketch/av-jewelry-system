@@ -2,7 +2,7 @@ import 'server-only';
 
 import { recordAuditEvent } from '@/lib/audit/log';
 import { AuthorizationError, requireOwner } from '@/lib/authz/guard';
-import { inventoryCodeNumber } from '@/lib/inventory/code-number';
+import { inventoryCodeKey } from '@/lib/inventory/code-number';
 import { parseInventoryCode } from '@/lib/inventory/code-parser';
 import { createClient } from '@/lib/supabase/server';
 
@@ -65,24 +65,17 @@ export async function importInventoryItems(
     ((existing ?? []) as Array<{ item_code: string }>).map((r) => r.item_code),
   );
 
+  // Only the same COMPLETE code is a duplicate (Owner 2026-09-26): two rows of this file with the
+  // same normalized code keep the first. A code the database already holds in another spelling is
+  // refused at insert by the trigger / unique index (20260926110000) — the row-by-row 23505
+  // fallback below then skips exactly those rows, so the batch still lands and "skipped" stays honest.
   const seen = new Set<string>();
-  // NUMERIC identity (Owner 2026-09-15): the sequence number is unique across prefixes, so two
-  // rows in the SAME file may not both claim it (first occurrence wins; the rest are skipped and
-  // counted). A number already held by a DIFFERENT code in the database is refused by the
-  // enforce_unique_inventory_code_number trigger at insert — the row-by-row 23505 fallback below
-  // then skips exactly those rows, so the batch still lands and "skipped" stays honest.
-  const seenNumbers = new Map<string, string>();
   const toInsert = clean
     .filter((i) => {
       const code = i.itemCode.trim();
-      if (existingCodes.has(code) || seen.has(code)) return false;
-      const num = inventoryCodeNumber(code);
-      if (num) {
-        const holder = seenNumbers.get(num);
-        if (holder && holder !== code) return false;
-        seenNumbers.set(num, code);
-      }
-      seen.add(code);
+      const key = inventoryCodeKey(code);
+      if (existingCodes.has(code) || seen.has(key)) return false;
+      seen.add(key);
       return true;
     })
     .map((i) => ({

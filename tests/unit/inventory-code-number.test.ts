@@ -4,7 +4,6 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
-  duplicateCodeNumberMessage,
   inventoryCodeCanonical,
   inventoryCodeNumber,
   rankInventoryCode,
@@ -12,16 +11,13 @@ import {
 } from '@/lib/inventory/code-number';
 
 /**
- * NUMERIC code identity + code-first search ranking (Owner 2026-09-15).
+ * Numeric code extraction + code-first search ranking (migration 20260915120000).
  *
- * THE RULE: the sequence number is the unique identity of an item across EVERY prefix. Once 8413
- * exists as SBA-E-8413, no SBA-P-8413 / K18-8413 / EF-8413 may be created. The Owner found
- * SBA-E-8413 (1.30g) and SBA-P-8413 (2.07g) both live because uniqueness was full-code only.
- *
- * The database enforces it (migration 20260915120000: trigger + expression index); this module is
- * the web-side mirror for friendly pre-checks and picker/list ranking. These tests pin BOTH sides:
- * the TypeScript behaviour, and (by reading the migration file) that the SQL carries the same
- * extraction, the same ranking tiers, and the Owner's exact duplicate message.
+ * The number is extracted for SEARCH RANKING only. Its 2026-09-15 uniqueness rule (one number
+ * across every prefix) was retired on 2026-09-26 by migration 20260926110000 — only the same
+ * complete code is a duplicate now (see inventory-full-code-uniqueness.test.ts). These tests pin
+ * the TypeScript behaviour and, by reading the 0915 migration, that the SQL extraction and ranking
+ * tiers match it.
  */
 
 const MIGRATION = readFileSync(
@@ -61,7 +57,7 @@ describe('migration privileges — the index expression stays executable by writ
   });
 });
 
-describe('inventoryCodeNumber — the numeric identity', () => {
+describe('inventoryCodeNumber — the sequence number (search ranking)', () => {
   it('extracts the sequence from a canonical code, with or without grams/size', () => {
     expect(inventoryCodeNumber('SBA-E-8413')).toBe('8413');
     expect(inventoryCodeNumber('SBA-E-8413 1.30g')).toBe('8413');
@@ -70,7 +66,7 @@ describe('inventoryCodeNumber — the numeric identity', () => {
     expect(inventoryCodeNumber('  sba-e-8413  ')).toBe('8413');
   });
 
-  it("covers the Owner's non-canonical prefixes too — K18-8413 and EF-8413 claim 8413", () => {
+  it('reads non-canonical prefixes too — K18-8413 and EF-8413 carry 8413', () => {
     expect(inventoryCodeNumber('K18-8413')).toBe('8413');
     expect(inventoryCodeNumber('EF-8413')).toBe('8413');
     expect(inventoryCodeNumber('EF-8413 2.07g')).toBe('8413');
@@ -82,7 +78,7 @@ describe('inventoryCodeNumber — the numeric identity', () => {
     expect(inventoryCodeNumber('GOLD NECKLACE 18K')).toBeNull();
   });
 
-  it('gives NO numeric identity to HK ITEM, PL- auto codes, or plain text', () => {
+  it('gives NO number to HK ITEM, PL- auto codes, or plain text', () => {
     expect(inventoryCodeNumber('HK ITEM')).toBeNull();
     expect(inventoryCodeNumber('PL-1757900000000')).toBeNull();
     expect(inventoryCodeNumber('PL-1757900000000-1234')).toBeNull(); // retry suffix stays exempt
@@ -93,14 +89,6 @@ describe('inventoryCodeNumber — the numeric identity', () => {
   it('ignores stray numbers shorter than 3 or longer than 6 digits outside a parsed code', () => {
     expect(inventoryCodeNumber('BN 12')).toBeNull();
     expect(inventoryCodeNumber('LOT 1234567')).toBeNull();
-  });
-});
-
-describe('duplicateCodeNumberMessage — the exact Owner wording', () => {
-  it('matches the specification verbatim', () => {
-    expect(duplicateCodeNumberMessage('8413', 'SBA-E-8413')).toBe(
-      'Code 8413 is already assigned to SBA-E-8413. Please use another code.',
-    );
   });
 });
 
@@ -166,28 +154,14 @@ describe('SQL ↔ TypeScript parity — the migration must carry the same rules'
     expect(MIGRATION).toContain(`like 'PL-%' then null`);
   });
 
-  it("raises the Owner's exact duplicate message as a unique_violation", () => {
-    expect(MIGRATION).toContain(
-      "'Code % is already assigned to %. Please use another code.'",
-    );
-    expect(MIGRATION).toContain("errcode = 'unique_violation'");
-  });
-
-  it('guards INSERT and code UPDATE with the trigger, and indexes the number', () => {
-    expect(MIGRATION).toContain('create trigger inventory_items_unique_code_number');
-    expect(MIGRATION).toContain('before insert or update of item_code on public.inventory_items');
-    expect(MIGRATION).toContain('inventory_items_code_number_idx');
-    // NOT a unique index — existing duplicates are grandfathered; the trigger stops NEW ones.
-    expect(MIGRATION).not.toMatch(/create unique index[^\n]*code_number/);
-  });
-
   it('ranks search with the same 0–4 tiers in BOTH paginated RPCs', () => {
     const rankCase = /when v_q ~ '\^\\d\+\$' and app_private\.inventory_code_number\((item_code|"itemCode")\) = v_q then 1/g;
     expect(MIGRATION.match(rankCase)?.length).toBe(2); // active + completed
     expect(MIGRATION.match(/order by code_rank/g)?.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('keeps a review path for existing duplicates instead of renaming them', () => {
-    expect(MIGRATION).toContain('inventory_duplicate_code_numbers');
+  it('indexes the number for search WITHOUT making it unique', () => {
+    expect(MIGRATION).toContain('inventory_items_code_number_idx');
+    expect(MIGRATION).not.toMatch(/create unique index[^\n]*code_number/);
   });
 });
