@@ -26,6 +26,8 @@ vi.mock('@/lib/orders/actions', async (importOriginal) => {
   return {
     ...actual,
     loadOrdersPageAction: vi.fn(() => Promise.resolve(H.result)),
+    // The details modal's own read never settles here: these tests only check that it opens.
+    loadOrderDetailAction: vi.fn(() => new Promise(() => undefined)),
   };
 });
 const loadMock = vi.mocked(loadOrdersPageAction);
@@ -86,7 +88,10 @@ describe('matchesCard — canonical card logic (mirrored by the SQL order_matche
       true,
     );
     expect(
-      matchesCard(row({ status: 'invoiced', fulfillmentDestination: 'shipping' }), 'for_invoice'),
+      matchesCard(
+        row({ status: 'invoiced', fulfillmentDestination: 'shipping' }),
+        'for_invoice',
+      ),
     ).toBe(false);
     expect(matchesCard(row({ status: 'for_preparation' }), 'for_invoice')).toBe(false);
   });
@@ -123,7 +128,9 @@ describe('matchesCard — canonical card logic (mirrored by the SQL order_matche
     expect(matchesCard(row({ status: 'completed' }), 'completed')).toBe(true);
     expect(matchesCard(row({ status: 'delivered' }), 'completed')).toBe(true);
     expect(matchesCard(row({ paymentStatus: 'awaiting' }), 'unverified_pay')).toBe(true);
-    expect(matchesCard(row({ paymentStatus: 'paid_in_full' }), 'unverified_pay')).toBe(false);
+    expect(matchesCard(row({ paymentStatus: 'paid_in_full' }), 'unverified_pay')).toBe(
+      false,
+    );
     expect(matchesCard(row({}), 'all')).toBe(true);
   });
 });
@@ -172,7 +179,9 @@ describe('OrdersView — honest states + server-driven rendering', () => {
     for (const key of ['for_reminder', 'for_prepare', 'for_shipping', 'for_cancel']) {
       expect(screen.queryByTestId(`orders-card-${key}`)).not.toBeInTheDocument();
     }
-    expect(within(screen.getByTestId('orders-card-all')).getByText('5')).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('orders-card-all')).getByText('5'),
+    ).toBeInTheDocument();
     expect(
       within(screen.getByTestId('orders-card-for_invoice')).getByText('3'),
     ).toBeInTheDocument();
@@ -189,14 +198,21 @@ describe('OrdersView — honest states + server-driven rendering', () => {
 
   it('shows an honest "no matches" note when the current filter has no rows', () => {
     // store is non-empty (cardCounts.all=5) but this page returned no rows.
-    render(<OrdersView initialPage={{ ok: true, rows: [], total: 0, cardCounts: { all: 5 } }} />);
+    render(
+      <OrdersView
+        initialPage={{ ok: true, rows: [], total: 0, cardCounts: { all: 5 } }}
+      />,
+    );
     expect(screen.getByText(/No orders match these filters/i)).toBeInTheDocument();
   });
 
   it('BUG-1: typing a SPACE/Enter in the Admin delete-reason does NOT open the order (For Invoice) modal', async () => {
     render(
       <OrdersView
-        initialPage={page([row({ status: 'invoiced', customerDisplayName: 'Bug Test' })], 1)}
+        initialPage={page(
+          [row({ status: 'invoiced', customerDisplayName: 'Bug Test' })],
+          1,
+        )}
         canManageOrders
         isOwner={false}
       />,
@@ -261,9 +277,13 @@ describe('OrdersView — server-side search / flow / date dispatch', () => {
   it('clicking a status card refetches with that card AND updates the dropdown', async () => {
     render(<OrdersView initialPage={page(sample, 5)} />);
     fireEvent.click(screen.getByTestId('orders-card-cancelled'));
-    expect(screen.getByTestId<HTMLSelectElement>('orders-filter-flow').value).toBe('cancelled');
+    expect(screen.getByTestId<HTMLSelectElement>('orders-filter-flow').value).toBe(
+      'cancelled',
+    );
     await waitFor(() =>
-      expect(loadMock).toHaveBeenCalledWith(expect.objectContaining({ card: 'cancelled' })),
+      expect(loadMock).toHaveBeenCalledWith(
+        expect.objectContaining({ card: 'cancelled' }),
+      ),
     );
   });
 
@@ -273,7 +293,9 @@ describe('OrdersView — server-side search / flow / date dispatch', () => {
       target: { value: 'completed' },
     });
     await waitFor(() =>
-      expect(loadMock).toHaveBeenCalledWith(expect.objectContaining({ card: 'completed' })),
+      expect(loadMock).toHaveBeenCalledWith(
+        expect.objectContaining({ card: 'completed' }),
+      ),
     );
   });
 
@@ -290,5 +312,27 @@ describe('OrdersView — server-side search / flow / date dispatch', () => {
         expect.objectContaining({ dateFrom: '2026-07-01', dateTo: '2026-07-10' }),
       ),
     );
+  });
+});
+
+describe('OrdersView — /orders?order=<id> opens that order (Owner 2026-09-26)', () => {
+  const id = '0b8f3c5e-1d2a-4b6c-9e7f-123456789abc';
+
+  it('opens the linked order on arrival, and closing it drops ?order= from the address', () => {
+    window.history.replaceState(null, '', `/orders?order=${id}`);
+    render(<OrdersView initialPage={page(sample)} initialOrderId={id} />);
+    expect(screen.getByRole('dialog', { name: 'Order details' })).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('order-modal-close'));
+    expect(
+      screen.queryByRole('dialog', { name: 'Order details' }),
+    ).not.toBeInTheDocument();
+    expect(window.location.search).toBe('');
+  });
+
+  it('opens nothing without a linked order', () => {
+    render(<OrdersView initialPage={page(sample)} />);
+    expect(
+      screen.queryByRole('dialog', { name: 'Order details' }),
+    ).not.toBeInTheDocument();
   });
 });

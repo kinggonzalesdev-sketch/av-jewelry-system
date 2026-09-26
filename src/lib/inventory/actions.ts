@@ -16,6 +16,7 @@ import {
   deleteInventoryItemDirect,
   forceDeleteInventoryItem,
   editInventoryItemDetails,
+  getItemDeleteLinks,
   getItemDependencies,
   permanentlyDeleteInventoryItem,
   restoreInventoryItem,
@@ -27,6 +28,7 @@ import {
   returnCompletedItemToReview,
 } from '@/lib/inventory/completed';
 import { createInventoryEntry } from '@/lib/inventory/create';
+import type { ItemDeleteLinksResult } from '@/lib/inventory/delete-links';
 import {
   getInventoryGramsTotals,
   type InventoryGramsTotals,
@@ -313,6 +315,15 @@ export async function checkItemDependenciesAction(
   inventoryItemId: string,
 ): Promise<{ ok: true; dependencies: ItemDependency[] } | { ok: false; error: string }> {
   return getItemDependencies(inventoryItemId);
+}
+
+/** Every record linked to an item, for the delete popup: what it is, the order or layaway account
+ *  to open, and whether it protects the item from a force delete. Read-only; the RPC re-checks the
+ *  role (Owner or Admin). */
+export async function checkItemDeleteLinksAction(
+  inventoryItemId: string,
+): Promise<ItemDeleteLinksResult> {
+  return getItemDeleteLinks(inventoryItemId);
 }
 
 /** Archive (soft delete) an incorrect / duplicate / test item (spec §2/§4). */

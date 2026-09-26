@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { OrderDetailsModal } from '@/components/orders/order-details-modal';
 import { OrderDelete } from '@/components/orders/cancelled-order-delete';
@@ -429,9 +429,14 @@ export function matchesCard(order: OrderListRow, key: CardKey): boolean {
   }
 }
 
+const noopSubscribe = () => () => undefined;
+const clientSnapshot = () => true;
+const serverSnapshot = () => false;
+
 export function OrdersView({
   initialPage,
   initialCard = 'all',
+  initialOrderId = null,
   syncNonce = '',
   keepLayaways = [],
   newOrderAction,
@@ -445,6 +450,8 @@ export function OrdersView({
   initialPage: OrdersPageResult;
   /** The flow card the initial page was loaded for (all | for_invoice). */
   initialCard?: string;
+  /** Open this order's details on arrival (`/orders?order=<id>`). */
+  initialOrderId?: string | null;
   /** Data-derived realtime signal — changes when orders change (via router.refresh) so the
    *  client refetches ONLY the current page, never the whole Orders table. */
   syncNonce?: string;
@@ -491,7 +498,27 @@ export function OrdersView({
   }, []);
   // The order whose details modal is open (null = closed). Opening it navigates
   // nowhere, so search/filters/scroll are preserved automatically.
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialOrderId);
+  // The details modal portals into document.body, so it renders on the client only: the server
+  // render of /orders?order=<id> (a new tab, a reload) shows the list, then the order opens.
+  const isClient = useSyncExternalStore(noopSubscribe, clientSnapshot, serverSnapshot);
+  // A later `?order=` link while this page is already open opens that order too (state adjusted
+  // during render, React's pattern for following a prop — no effect).
+  const [linkedOrderId, setLinkedOrderId] = useState<string | null>(initialOrderId);
+  if (initialOrderId !== linkedOrderId) {
+    setLinkedOrderId(initialOrderId);
+    if (initialOrderId) setSelectedId(initialOrderId);
+  }
+  const closeDetails = () => {
+    setSelectedId(null);
+    // Drop ?order= so a reload or refresh does not reopen the order that was just closed.
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('order')) {
+      url.searchParams.delete('order');
+      // null state, as Next documents: the router adopts the new URL, so a later refresh keeps it.
+      window.history.replaceState(null, '', `${url.pathname}${url.search}`);
+    }
+  };
   const [query, setQuery] = useState('');
   // Order-date RANGE (inclusive). Empty = open-ended on that side.
   const [dateFrom, setDateFrom] = useState('');
@@ -934,11 +961,11 @@ export function OrdersView({
         />
       ) : null}
       <OrderDetailsModal
-        orderId={selectedId}
+        orderId={isClient ? selectedId : null}
         // The active card decides the tab structure: only Total keeps a separate
         // Overview (§8).
         section={card}
-        onClose={() => setSelectedId(null)}
+        onClose={closeDetails}
         onMutated={() => router.refresh()}
       />
     </div>

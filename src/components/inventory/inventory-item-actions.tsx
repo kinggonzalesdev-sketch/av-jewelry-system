@@ -1,10 +1,19 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, useActionState, useTransition } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useActionState,
+  useTransition,
+} from 'react';
+import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 import {
-  checkItemDependenciesAction,
+  checkItemDeleteLinksAction,
   deleteInventoryItemAction,
   forceDeleteInventoryItemAction,
   editInventoryItemAction,
@@ -15,6 +24,14 @@ import {
   EMPTY_INVENTORY_STATE,
   type InventoryActionState,
 } from '@/lib/inventory/action-state';
+import {
+  forceDeleteAllowed,
+  linkKindLabel,
+  linkStateLabel,
+  orderHref,
+  type ItemDeleteLink,
+  type ItemDeleteLinksResult,
+} from '@/lib/inventory/delete-links';
 import type { InventoryRow } from '@/lib/inventory/service';
 import { detectInventoryCodeIssues } from '@/lib/inventory/code-parser';
 import { rowGramsDisplay } from '@/lib/inventory/grams-display';
@@ -41,6 +58,90 @@ function humanizeStatus(s: string): string {
 function fdStr(fd: FormData, key: string): string {
   const v = fd.get(key);
   return typeof v === 'string' ? v : '';
+}
+
+// The layaway account viewer loads only when a linked layaway account is actually listed.
+const LayawayLedgerViewModal = dynamic(
+  () =>
+    import('@/components/payments/layaway-ledger-view-modal').then(
+      (m) => m.LayawayLedgerViewModal,
+    ),
+  { ssr: false },
+);
+
+/**
+ * The records linked to an item (Owner 2026-09-26): what each one is, its status, whether it
+ * PROTECTS the item or is closed history, and a way to open it — an order opens on the Orders page,
+ * a layaway account opens in place.
+ */
+function LinkedRecords({
+  itemId,
+  links,
+  exact,
+}: {
+  itemId: string;
+  links: ItemDeleteLink[];
+  /** False = the older list (database update not applied): no statuses, no override. */
+  exact: boolean;
+}) {
+  return (
+    <div className="mt-3 space-y-1.5" data-testid={`inventory-delete-links-${itemId}`}>
+      <p className="text-xs font-semibold">Linked records ({links.length})</p>
+      {exact ? null : (
+        <p className="text-xs text-muted-foreground">
+          Record details and force delete become available after the database update.
+        </p>
+      )}
+      <ul className="divide-y divide-border rounded-md border border-border text-xs">
+        {links.map((l, i) => (
+          <li
+            key={`${l.kind}-${l.recordId ?? i}-${l.orderId ?? ''}`}
+            className="flex items-start justify-between gap-2 p-2"
+            data-testid={`inventory-delete-link-${itemId}-${i}`}
+          >
+            <div className="min-w-0">
+              <p className="font-medium break-words">
+                {linkKindLabel(l.kind)}
+                <span className="text-muted-foreground"> · </span>
+                {l.label}
+              </p>
+              {l.state || l.reason ? (
+                <p className="text-muted-foreground">
+                  {l.state ? linkStateLabel(l.state) : null}
+                  {l.state && l.reason ? ' — ' : null}
+                  {l.reason}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              {exact ? (
+                <span
+                  className={
+                    l.blocks
+                      ? 'rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-semibold text-destructive'
+                      : 'rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground'
+                  }
+                >
+                  {l.blocks ? 'Protected' : 'Closed'}
+                </span>
+              ) : null}
+              {l.orderId ? (
+                <Link
+                  href={orderHref(l.orderId)}
+                  className="rounded-md border border-border px-1.5 py-0.5 text-[11px] hover:bg-accent"
+                  data-testid={`inventory-delete-link-open-${itemId}-${i}`}
+                >
+                  Open order
+                </Link>
+              ) : l.ledgerId ? (
+                <LayawayLedgerViewModal ledgerId={l.ledgerId} />
+              ) : null}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -77,6 +178,8 @@ export function InventoryItemActions({
   const [view, setView] = useState(false);
   const [edit, setEdit] = useState(false);
   const [del, setDel] = useState(false);
+  // Counts openings of the Delete popup, so the linked-records list is re-read each time.
+  const [delOpenCount, setDelOpenCount] = useState(0);
   const [confirm, setConfirm] = useState('');
   // Admin request-flow state (edit/delete "Submit for Approval").
   const [requesting, startRequest] = useTransition();
@@ -135,44 +238,46 @@ export function InventoryItemActions({
     }
   }, [forceState.success, router, onMutated]);
 
-  // FORCE-DELETE ELIGIBILITY (Owner 2026-09-08 fix). The override used to appear for ANY Owner the
-  // moment a normal delete failed with "linked to…", WITHOUT ever checking whether the linking
-  // records were actually RESOLVED — so it offered a "Force delete" button the database then refused
-  // (the confusing "held only by resolved records" panel over the "linked to an active order…"
-  // refusal). Now we read the item's REAL dependencies and offer the override ONLY when every link is
-  // resolved (inactive). A force attempt the DB still refuses proves a live link the preview did not
-  // flag, so we mark the item ineligible and show an actionable "resolve the record first" note.
+  // LINKED RECORDS + FORCE-DELETE ELIGIBILITY (Owner 2026-09-26). When a normal delete is refused
+  // with "linked to N business record(s)", the popup lists WHICH records — each order opens on the
+  // Orders page, each layaway account opens in place — and marks every one Protected or Closed. The
+  // database decides both (inventory_item_delete_links) and the force delete re-checks the same
+  // list, so the override is offered ONLY when every record is closed history (a cancelled order
+  // with no payment, a withdrawn claim, a finished review). A force attempt the database still
+  // refuses (something changed meanwhile) switches the popup to the Protected note.
   const blockedByLink =
     isOwner && canForceDelete && !!delState.error && /linked to/i.test(delState.error);
-  // The item's real dependency resolution, fetched once per blocked item. Stored WITH its item id so
-  // a stale result from a previous item is never trusted. Set only inside the async callback (no
-  // synchronous set-state-in-effect); everything else below is derived during render.
-  const [depCheck, setDepCheck] = useState<{ itemId: string; resolvedOnly: boolean } | null>(null);
+  // Fetched once per blocked item, and stored WITH its item id so a stale result from a previous
+  // item is never trusted. Set only inside the async callback (no synchronous set-state-in-effect).
+  const [linkCheck, setLinkCheck] = useState<{
+    itemId: string;
+    result: ItemDeleteLinksResult;
+  } | null>(null);
   useEffect(() => {
     if (!blockedByLink) return;
     let cancelled = false;
-    void checkItemDependenciesAction(row.inventoryItemId).then((res) => {
-      if (cancelled) return;
-      // Held ONLY by resolved records (every link inactive) → force-delete is genuinely available.
-      // Any active link (a real order/payment/hold/layaway/sale) → the DB will refuse, so hide it.
-      setDepCheck({
-        itemId: row.inventoryItemId,
-        resolvedOnly:
-          res.ok && res.dependencies.length > 0 && res.dependencies.every((d) => !d.isActive),
-      });
+    void checkItemDeleteLinksAction(row.inventoryItemId).then((result) => {
+      if (!cancelled) setLinkCheck({ itemId: row.inventoryItemId, result });
     });
     return () => {
       cancelled = true;
     };
-  }, [blockedByLink, row.inventoryItemId]);
+    // Re-read on every open of the popup (delOpenCount) and after every delete / force attempt, so
+    // the list always shows the records as they are now — never a stale list from before.
+  }, [blockedByLink, row.inventoryItemId, delOpenCount, delState, forceState]);
 
-  // Derived during render (no extra effect). The dep result counts only for the CURRENT item; a
-  // force attempt the DB refused (forceState.error) proves a live link the preview missed, so it
-  // forces the "protected" branch.
-  const resolvedOnly =
-    depCheck && depCheck.itemId === row.inventoryItemId ? depCheck.resolvedOnly : null;
-  const showForce = blockedByLink && resolvedOnly === true && !forceState.error;
-  const showProtected = blockedByLink && (resolvedOnly === false || !!forceState.error);
+  // Derived during render. The result counts only for the CURRENT item.
+  const linksResult =
+    linkCheck && linkCheck.itemId === row.inventoryItemId ? linkCheck.result : null;
+  const links = linksResult?.ok ? linksResult.links : null;
+  const exact = linksResult?.ok === true && linksResult.exact;
+  // Only the database's own list (exact) may offer the override — never the older fallback list.
+  const canForce = links !== null && exact && forceDeleteAllowed(links);
+  const showLinks = blockedByLink && links !== null && links.length > 0;
+  const showForce = blockedByLink && canForce && !forceState.error;
+  const showProtected =
+    blockedByLink &&
+    ((links !== null && links.length > 0 && !canForce) || !!forceState.error);
 
   // --- Admin request submitters (Edit/Delete → Approval) ---------------------
   const submitEditRequest = (e: React.FormEvent<HTMLFormElement>) => {
@@ -213,7 +318,10 @@ export function InventoryItemActions({
       if (res.ok) {
         // Keep the modal OPEN and confirm inside it — the item stays until a Super Admin
         // approves, so nothing in the table changes (and the row height never shifts).
-        setNote({ ok: true, text: 'Deletion request submitted for Super Admin approval.' });
+        setNote({
+          ok: true,
+          text: 'Deletion request submitted for Super Admin approval.',
+        });
         router.refresh();
         onMutated?.();
       } else {
@@ -272,6 +380,7 @@ export function InventoryItemActions({
           onClick={() => {
             setConfirm('');
             setNote(null);
+            setDelOpenCount((n) => n + 1);
             setDel(true);
           }}
           data-testid={`inventory-delete-${row.inventoryItemId}`}
@@ -289,7 +398,10 @@ export function InventoryItemActions({
             value={<span className="font-mono">{row.itemCode}</span>}
           />
           <DetailRow label="Status" value={humanizeStatus(row.availabilityStatus)} />
-          <DetailRow label="Grams" value={rowGramsDisplay(row.itemCode, row.gramsPerPiece, row.itemName)} />
+          <DetailRow
+            label="Grams"
+            value={rowGramsDisplay(row.itemCode, row.gramsPerPiece, row.itemName)}
+          />
           <DetailRow label="Date Encoded" value={dateEncoded} />
         </dl>
       </Modal>
@@ -347,138 +459,138 @@ export function InventoryItemActions({
             Super Admin approves.
           </div>
         ) : (
-        <form
-          id={`inventory-edit-form-${row.inventoryItemId}`}
-          action={isOwner ? editAction : undefined}
-          onSubmit={isOwner ? undefined : submitEditRequest}
-          className="space-y-3"
-        >
-          <input type="hidden" name="inventoryItemId" value={row.inventoryItemId} />
-          {isOwner ? (
-            <div>
-              <Label htmlFor={`ed-code-${row.inventoryItemId}`} className="text-xs">
-                Item Code
-              </Label>
-              <Input
-                id={`ed-code-${row.inventoryItemId}`}
-                name="itemCode"
-                required
-                value={codeVal}
-                onChange={(e) => setCodeVal(e.target.value)}
-                className="mt-1 h-9 font-mono"
-                autoComplete="off"
-              />
-              {/* Same save-time corruption guard as New Entry — warns LIVE about likely typos; the
-                  operator can still "Save anyway". Only enforced server-side when the code changes. */}
-              {codeIssues.length > 0 ? (
-                <div
-                  role="alert"
-                  className="mt-1 rounded-md border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200"
-                >
-                  <p className="font-medium">Double-check this code:</p>
-                  <ul className="mt-1 list-disc space-y-0.5 pl-4">
-                    {codeIssues.map((msg) => (
-                      <li key={msg}>{msg}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-              <input
-                type="hidden"
-                name="acknowledgeWarning"
-                value={codeIssues.length > 0 ? '1' : ''}
-              />
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              Code <span className="font-mono">{row.itemCode}</span>
-              {' · your change is submitted to a Super Admin for approval.'}
-            </p>
-          )}
-          <ModalFormGrid>
-            <ModalFieldFull>
-              <Label htmlFor={`ed-name-${row.inventoryItemId}`} className="text-xs">
-                Item name
-              </Label>
-              <Input
-                id={`ed-name-${row.inventoryItemId}`}
-                name="itemName"
-                required
-                defaultValue={row.itemName ?? ''}
-                className="mt-1 h-9"
-              />
-            </ModalFieldFull>
-            <input type="hidden" name="facebookName" value={row.facebookName ?? ''} />
-            <div>
-              <Label htmlFor={`ed-grams-${row.inventoryItemId}`} className="text-xs">
-                Grams
-              </Label>
-              {isHk ? (
-                // BR2: an HK ITEM is Fixed Price — grams do not apply. The input is replaced by a
-                // locked indicator and a hidden empty value, so saving keeps grams NULL (never a number).
-                <>
-                  <div className="mt-1 flex h-9 items-center rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground">
-                    Fixed Price — no grams
-                  </div>
-                  <input type="hidden" name="grams" value="" />
-                </>
-              ) : (
-                <Input
-                  id={`ed-grams-${row.inventoryItemId}`}
-                  name="grams"
-                  inputMode="decimal"
-                  defaultValue={row.gramsPerPiece ?? ''}
-                  className="mt-1 h-9"
-                />
-              )}
-            </div>
-            <div>
-              <Label htmlFor={`ed-size-${row.inventoryItemId}`} className="text-xs">
-                Size
-              </Label>
-              <Input
-                id={`ed-size-${row.inventoryItemId}`}
-                name="size"
-                defaultValue={row.size ?? ''}
-                className="mt-1 h-9"
-              />
-            </div>
-            <ModalFieldFull>
-              <Label htmlFor={`ed-supplier-${row.inventoryItemId}`} className="text-xs">
-                Supplier name
-              </Label>
-              <Input
-                id={`ed-supplier-${row.inventoryItemId}`}
-                name="supplierName"
-                defaultValue={row.supplierName ?? ''}
-                className="mt-1 h-9"
-              />
-            </ModalFieldFull>
-            {isOwner ? null : (
-              <ModalFieldFull>
-                <Label htmlFor={`ed-reason-${row.inventoryItemId}`} className="text-xs">
-                  Reason for the Super Admin (optional)
+          <form
+            id={`inventory-edit-form-${row.inventoryItemId}`}
+            action={isOwner ? editAction : undefined}
+            onSubmit={isOwner ? undefined : submitEditRequest}
+            className="space-y-3"
+          >
+            <input type="hidden" name="inventoryItemId" value={row.inventoryItemId} />
+            {isOwner ? (
+              <div>
+                <Label htmlFor={`ed-code-${row.inventoryItemId}`} className="text-xs">
+                  Item Code
                 </Label>
                 <Input
-                  id={`ed-reason-${row.inventoryItemId}`}
-                  name="reason"
-                  placeholder="e.g. wrong grams encoded"
+                  id={`ed-code-${row.inventoryItemId}`}
+                  name="itemCode"
+                  required
+                  value={codeVal}
+                  onChange={(e) => setCodeVal(e.target.value)}
+                  className="mt-1 h-9 font-mono"
+                  autoComplete="off"
+                />
+                {/* Same save-time corruption guard as New Entry — warns LIVE about likely typos; the
+                  operator can still "Save anyway". Only enforced server-side when the code changes. */}
+                {codeIssues.length > 0 ? (
+                  <div
+                    role="alert"
+                    className="mt-1 rounded-md border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200"
+                  >
+                    <p className="font-medium">Double-check this code:</p>
+                    <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                      {codeIssues.map((msg) => (
+                        <li key={msg}>{msg}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                <input
+                  type="hidden"
+                  name="acknowledgeWarning"
+                  value={codeIssues.length > 0 ? '1' : ''}
+                />
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Code <span className="font-mono">{row.itemCode}</span>
+                {' · your change is submitted to a Super Admin for approval.'}
+              </p>
+            )}
+            <ModalFormGrid>
+              <ModalFieldFull>
+                <Label htmlFor={`ed-name-${row.inventoryItemId}`} className="text-xs">
+                  Item name
+                </Label>
+                <Input
+                  id={`ed-name-${row.inventoryItemId}`}
+                  name="itemName"
+                  required
+                  defaultValue={row.itemName ?? ''}
                   className="mt-1 h-9"
                 />
               </ModalFieldFull>
-            )}
-          </ModalFormGrid>
-          {editState.error ? (
-            <p role="alert" className="text-sm text-destructive">
-              {editState.error}
-            </p>
-          ) : null}
-          {note && !note.ok ? (
-            <p role="alert" className="text-sm text-destructive">
-              {note.text}
-            </p>
-          ) : null}
-        </form>
+              <input type="hidden" name="facebookName" value={row.facebookName ?? ''} />
+              <div>
+                <Label htmlFor={`ed-grams-${row.inventoryItemId}`} className="text-xs">
+                  Grams
+                </Label>
+                {isHk ? (
+                  // BR2: an HK ITEM is Fixed Price — grams do not apply. The input is replaced by a
+                  // locked indicator and a hidden empty value, so saving keeps grams NULL (never a number).
+                  <>
+                    <div className="mt-1 flex h-9 items-center rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground">
+                      Fixed Price — no grams
+                    </div>
+                    <input type="hidden" name="grams" value="" />
+                  </>
+                ) : (
+                  <Input
+                    id={`ed-grams-${row.inventoryItemId}`}
+                    name="grams"
+                    inputMode="decimal"
+                    defaultValue={row.gramsPerPiece ?? ''}
+                    className="mt-1 h-9"
+                  />
+                )}
+              </div>
+              <div>
+                <Label htmlFor={`ed-size-${row.inventoryItemId}`} className="text-xs">
+                  Size
+                </Label>
+                <Input
+                  id={`ed-size-${row.inventoryItemId}`}
+                  name="size"
+                  defaultValue={row.size ?? ''}
+                  className="mt-1 h-9"
+                />
+              </div>
+              <ModalFieldFull>
+                <Label htmlFor={`ed-supplier-${row.inventoryItemId}`} className="text-xs">
+                  Supplier name
+                </Label>
+                <Input
+                  id={`ed-supplier-${row.inventoryItemId}`}
+                  name="supplierName"
+                  defaultValue={row.supplierName ?? ''}
+                  className="mt-1 h-9"
+                />
+              </ModalFieldFull>
+              {isOwner ? null : (
+                <ModalFieldFull>
+                  <Label htmlFor={`ed-reason-${row.inventoryItemId}`} className="text-xs">
+                    Reason for the Super Admin (optional)
+                  </Label>
+                  <Input
+                    id={`ed-reason-${row.inventoryItemId}`}
+                    name="reason"
+                    placeholder="e.g. wrong grams encoded"
+                    className="mt-1 h-9"
+                  />
+                </ModalFieldFull>
+              )}
+            </ModalFormGrid>
+            {editState.error ? (
+              <p role="alert" className="text-sm text-destructive">
+                {editState.error}
+              </p>
+            ) : null}
+            {note && !note.ok ? (
+              <p role="alert" className="text-sm text-destructive">
+                {note.text}
+              </p>
+            ) : null}
+          </form>
         )}
       </Modal>
 
@@ -488,7 +600,9 @@ export function InventoryItemActions({
         onClose={() => setDel(false)}
         title={isOwner ? 'Permanently delete item' : 'Request item deletion'}
         description={
-          isOwner ? 'This cannot be undone.' : 'A Super Admin must approve before it deletes.'
+          isOwner
+            ? 'This cannot be undone.'
+            : 'A Super Admin must approve before it deletes.'
         }
         size="sm"
         critical
@@ -536,68 +650,80 @@ export function InventoryItemActions({
             Admin approves.
           </div>
         ) : (
-        <form
-          id={`inventory-delete-form-${row.inventoryItemId}`}
-          action={isOwner ? delAction : undefined}
-          onSubmit={isOwner ? undefined : submitDeleteRequest}
-          className="space-y-3"
-        >
-          <input type="hidden" name="inventoryItemId" value={row.inventoryItemId} />
-          <p className="text-sm">
-            {isOwner ? 'Permanently delete ' : 'Request deletion of '}
-            <span className="font-mono">{row.itemCode}</span>?
-            {isOwner ? ' This cannot be undone.' : ' The item stays until a Super Admin approves.'}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            An item linked to any order, claim, or reservation cannot be deleted — its
-            records are protected (re-checked at approval time).
-          </p>
-          <div>
-            <Label htmlFor={`del-confirm-${row.inventoryItemId}`} className="text-xs">
-              Type <span className="font-mono font-semibold">DELETE</span> to confirm
-            </Label>
-            <Input
-              id={`del-confirm-${row.inventoryItemId}`}
-              name="confirm"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              autoComplete="off"
-              placeholder="DELETE"
-              className="mt-1 h-9"
-            />
-          </div>
-          {isOwner ? null : (
+          <form
+            id={`inventory-delete-form-${row.inventoryItemId}`}
+            action={isOwner ? delAction : undefined}
+            onSubmit={isOwner ? undefined : submitDeleteRequest}
+            className="space-y-3"
+          >
+            <input type="hidden" name="inventoryItemId" value={row.inventoryItemId} />
+            <p className="text-sm">
+              {isOwner ? 'Permanently delete ' : 'Request deletion of '}
+              <span className="font-mono">{row.itemCode}</span>?
+              {isOwner
+                ? ' This cannot be undone.'
+                : ' The item stays until a Super Admin approves.'}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              An item linked to any order, claim, or reservation cannot be deleted — its
+              records are protected (re-checked at approval time).
+            </p>
             <div>
-              <Label htmlFor={`del-reason-${row.inventoryItemId}`} className="text-xs">
-                Reason for the Super Admin (optional)
+              <Label htmlFor={`del-confirm-${row.inventoryItemId}`} className="text-xs">
+                Type <span className="font-mono font-semibold">DELETE</span> to confirm
               </Label>
               <Input
-                id={`del-reason-${row.inventoryItemId}`}
-                name="reason"
-                placeholder="e.g. duplicate / mis-encoded"
+                id={`del-confirm-${row.inventoryItemId}`}
+                name="confirm"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                autoComplete="off"
+                placeholder="DELETE"
                 className="mt-1 h-9"
               />
             </div>
-          )}
-          {delState.error ? (
-            <p role="alert" className="text-sm text-destructive">
-              {delState.error}
-            </p>
-          ) : null}
-          {note && !note.ok ? (
-            <p role="alert" className="text-sm text-destructive">
-              {note.text}
-            </p>
-          ) : null}
-        </form>
+            {isOwner ? null : (
+              <div>
+                <Label htmlFor={`del-reason-${row.inventoryItemId}`} className="text-xs">
+                  Reason for the Super Admin (optional)
+                </Label>
+                <Input
+                  id={`del-reason-${row.inventoryItemId}`}
+                  name="reason"
+                  placeholder="e.g. duplicate / mis-encoded"
+                  className="mt-1 h-9"
+                />
+              </div>
+            )}
+            {delState.error ? (
+              <p role="alert" className="text-sm text-destructive">
+                {delState.error}
+              </p>
+            ) : null}
+            {note && !note.ok ? (
+              <p role="alert" className="text-sm text-destructive">
+                {note.text}
+              </p>
+            ) : null}
+          </form>
         )}
+
+        {showLinks && links ? (
+          <LinkedRecords itemId={row.inventoryItemId} links={links} exact={exact} />
+        ) : null}
+        {blockedByLink && linksResult && !linksResult.ok ? (
+          <p role="alert" className="mt-3 text-xs text-destructive">
+            The linked records could not be loaded: {linksResult.error}
+          </p>
+        ) : null}
 
         {showForce ? (
           <div className="mt-3 space-y-2 rounded-md border border-destructive/40 bg-destructive/5 p-2.5">
             <p className="text-xs text-muted-foreground">
               <span className="font-semibold text-foreground">Super Admin override.</span>{' '}
-              This item is held only by resolved records. You can force-delete it — items
-              tied to a real order, payment, active hold, layaway, or sale stay protected.
+              Every record above is closed history. Force delete removes this item and its
+              line on those cancelled orders; the orders, customers, and payments stay. An
+              item tied to a live order, layaway, payment, hold, or sale stays protected.
             </p>
             <form
               id={`inventory-force-delete-form-${row.inventoryItemId}`}
@@ -629,10 +755,11 @@ export function InventoryItemActions({
             data-testid={`inventory-force-protected-${row.inventoryItemId}`}
           >
             <p className="text-xs text-muted-foreground">
-              <span className="font-semibold text-foreground">Protected.</span> This item is
-              tied to an active order, payment, hold, layaway, or sale, so it can’t be deleted —
-              even by a Super Admin. Resolve that record first (remove the item from its order,
-              or void the sale / layaway), then delete.
+              <span className="font-semibold text-foreground">Protected.</span> A record
+              marked Protected above is still live — an order, payment, hold, layaway, or
+              sale — so this item can’t be deleted, even by a Super Admin. Resolve that
+              record first (for example, remove the item from its order), then delete.
+              Nothing was changed.
             </p>
             {forceState.error ? (
               <p role="alert" className="text-sm text-destructive">

@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react';
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { InventoryItemActions } from '@/components/inventory/inventory-item-actions';
@@ -21,7 +21,63 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 const emptyState = () => Promise.resolve({ error: null, success: null });
 // Controllable delete result so a test can simulate the DB's "linked to a business
 // record" refusal — that refusal is what reveals the Super Admin force-delete.
-const h = vi.hoisted(() => ({ deleteLinked: false, depsActive: false }));
+const h = vi.hoisted(() => ({
+  deleteLinked: false,
+  depsActive: false,
+  layaway: false,
+  legacy: false,
+  linkReads: 0,
+}));
+// The in-place layaway viewer (loaded with next/dynamic) — a stub that shows which account it opens.
+vi.mock('@/components/payments/layaway-ledger-view-modal', () => ({
+  LayawayLedgerViewModal: ({ ledgerId }: { ledgerId: string }) => (
+    <button type="button">View layaway {ledgerId}</button>
+  ),
+}));
+// The records the database lists for the item (inventory_item_delete_links). Closed history by
+// default — WBN-E-3759's real pair: its line on a cancelled order + a finished return review.
+const closedLinks = [
+  {
+    kind: 'order',
+    recordId: 'o-1',
+    orderId: 'o-1',
+    ledgerId: null,
+    label: 'MARIA LYZZA · 2026-08-07',
+    state: 'cancelled',
+    blocks: false,
+    reason: 'Cancelled order with no payment.',
+  },
+  {
+    kind: 'return_review',
+    recordId: 'r-1',
+    orderId: null,
+    ledgerId: null,
+    label: 'Return to stock · 2026-08-15',
+    state: 'approved_return',
+    blocks: false,
+    reason: 'Finished return review.',
+  },
+];
+const liveLink = {
+  kind: 'order',
+  recordId: 'o-live',
+  orderId: 'o-live',
+  ledgerId: null,
+  label: 'JOSE CRUZ · 2026-09-20',
+  state: 'for_preparation',
+  blocks: true,
+  reason: 'Live order.',
+};
+const layawayLink = {
+  kind: 'layaway',
+  recordId: 'l-1',
+  orderId: null,
+  ledgerId: 'l-1',
+  label: 'LAY-0042 · ANA REYES',
+  state: 'active',
+  blocks: true,
+  reason: 'Active layaway.',
+};
 vi.mock('@/lib/inventory/actions', () => ({
   deleteInventoryItemAction: () =>
     Promise.resolve(
@@ -32,14 +88,35 @@ vi.mock('@/lib/inventory/actions', () => ({
           }
         : { error: null, success: null },
     ),
-  // The force override is now gated on the item's REAL dependency resolution: an ACTIVE link keeps
-  // the override hidden (depsActive=true), a resolved link reveals it (depsActive=false, default).
+  // The force override is gated on the item's REAL linked records: a PROTECTED record keeps the
+  // override hidden (depsActive=true), closed history only reveals it (depsActive=false, default).
+  checkItemDeleteLinksAction: () => {
+    h.linkReads += 1;
+    return Promise.resolve({
+      ok: true,
+      // legacy = the older list, read before the migration is applied (always protected).
+      exact: !h.legacy,
+      links: h.legacy
+        ? closedLinks.map((l) => ({ ...l, orderId: null, blocks: true, reason: null }))
+        : h.layaway
+          ? [layawayLink]
+          : h.depsActive
+            ? [liveLink]
+            : closedLinks,
+    });
+  },
   checkItemDependenciesAction: () =>
     Promise.resolve({
       ok: true,
       dependencies: h.depsActive
         ? [{ kind: 'official_order', label: 'Order #1', isActive: true }]
-        : [{ kind: 'inventory_reservation', label: 'Released reservation', isActive: false }],
+        : [
+            {
+              kind: 'inventory_reservation',
+              label: 'Released reservation',
+              isActive: false,
+            },
+          ],
     }),
   forceDeleteInventoryItemAction: () => emptyState(),
   editInventoryItemAction: () => emptyState(),
@@ -96,7 +173,13 @@ describe('InventoryItemActions — role-independent geometry (Owner request 2026
     return data;
   }
   const owner = () =>
-    measure({ row: row({}), canEdit: true, canDelete: true, isOwner: true, canForceDelete: true });
+    measure({
+      row: row({}),
+      canEdit: true,
+      canDelete: true,
+      isOwner: true,
+      canForceDelete: true,
+    });
   const admin = () => measure({ row: row({}), canEdit: true, canDelete: true });
   const staff = () => measure({ row: row({}), canEdit: false, canDelete: false });
 
@@ -280,11 +363,103 @@ describe('InventoryItemActions — per-permission Edit / Delete', () => {
     expect(
       await screen.findByTestId('inventory-force-protected-item-1'),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByTestId('inventory-force-delete-item-1'),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId('inventory-force-delete-item-1')).not.toBeInTheDocument();
     h.deleteLinked = false;
     h.depsActive = false; // reset for later tests
+  });
+
+  // Owner 2026-09-26: "show me which record … it should be clickable".
+  async function blockedDelete() {
+    render(
+      <InventoryItemActions
+        row={row({})}
+        canEdit={true}
+        canDelete={true}
+        isOwner={true}
+        canForceDelete={true}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('inventory-delete-item-1'));
+    fireEvent.change(screen.getByPlaceholderText('DELETE'), {
+      target: { value: 'DELETE' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Delete permanently/i }));
+    return screen.findByTestId('inventory-delete-links-item-1');
+  }
+
+  it('lists WHICH records link the item, each order opening that exact order', async () => {
+    h.deleteLinked = true;
+    const list = await blockedDelete();
+    expect(list).toHaveTextContent('Linked records (2)');
+    expect(list).toHaveTextContent('Order · MARIA LYZZA · 2026-08-07');
+    expect(list).toHaveTextContent('Cancelled — Cancelled order with no payment.');
+    expect(list).toHaveTextContent('Return review · Return to stock · 2026-08-15');
+    expect(list).toHaveTextContent('Approved Return — Finished return review.');
+    const open = screen.getByRole('link', { name: 'Open order' });
+    expect(open).toHaveAttribute('href', '/orders?order=o-1');
+    // Only the order has a page to open; the review shows no dead link.
+    expect(screen.getAllByRole('link')).toHaveLength(1);
+    expect(screen.getAllByText('Closed')).toHaveLength(2);
+    // Closed history only → the Super Admin override is offered.
+    expect(screen.getByTestId('inventory-force-delete-item-1')).toBeInTheDocument();
+    h.deleteLinked = false;
+  });
+
+  it('marks a live order Protected, still links to it, and offers no override', async () => {
+    h.deleteLinked = true;
+    h.depsActive = true;
+    const list = await blockedDelete();
+    expect(list).toHaveTextContent('Order · JOSE CRUZ · 2026-09-20');
+    expect(list).toHaveTextContent('For Preparation — Live order.');
+    expect(screen.getByText('Protected', { selector: 'span' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open order' })).toHaveAttribute(
+      'href',
+      '/orders?order=o-live',
+    );
+    expect(screen.getByTestId('inventory-force-protected-item-1')).toBeInTheDocument();
+    expect(screen.queryByTestId('inventory-force-delete-item-1')).not.toBeInTheDocument();
+    h.deleteLinked = false;
+    h.depsActive = false;
+  });
+
+  it('a layaway account opens in place and keeps the item protected', async () => {
+    h.deleteLinked = true;
+    h.layaway = true;
+    const list = await blockedDelete();
+    expect(list).toHaveTextContent('Layaway · LAY-0042 · ANA REYES');
+    expect(
+      await screen.findByRole('button', { name: 'View layaway l-1' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('inventory-force-delete-item-1')).not.toBeInTheDocument();
+    expect(screen.getByTestId('inventory-force-protected-item-1')).toBeInTheDocument();
+    h.deleteLinked = false;
+    h.layaway = false;
+  });
+
+  it('before the database update, the older list never offers the override or calls anything Closed', async () => {
+    h.deleteLinked = true;
+    h.legacy = true;
+    const list = await blockedDelete();
+    expect(list).toHaveTextContent(
+      'Record details and force delete become available after the database update.',
+    );
+    expect(screen.queryByText('Closed')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('inventory-force-delete-item-1')).not.toBeInTheDocument();
+    h.deleteLinked = false;
+    h.legacy = false;
+  });
+
+  it('re-reads the records every time the popup opens, never showing a stale list', async () => {
+    h.deleteLinked = true;
+    h.linkReads = 0;
+    await blockedDelete();
+    const afterFirst = h.linkReads;
+    expect(afterFirst).toBeGreaterThanOrEqual(1);
+    // Close and reopen: the list is read again.
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(screen.getByTestId('inventory-delete-item-1'));
+    await waitFor(() => expect(h.linkReads).toBeGreaterThan(afterFirst));
+    h.deleteLinked = false;
   });
 
   it('an Admin submits Delete for approval — never a direct delete or force override', () => {
@@ -338,7 +513,9 @@ describe('InventoryItemActions — Owner/Admin geometry parity', () => {
   it('an Admin edit request confirms INSIDE the modal (not an inline cell note) and offers Done', async () => {
     render(<InventoryItemActions row={row({})} canEdit canDelete />);
     fireEvent.click(screen.getByTestId('inventory-edit-item-1'));
-    fireEvent.submit(document.getElementById('inventory-edit-form-item-1') as HTMLFormElement);
+    fireEvent.submit(
+      document.getElementById('inventory-edit-form-item-1') as HTMLFormElement,
+    );
     expect(
       await screen.findByText(/submitted for Super Admin approval/i),
     ).toBeInTheDocument();
@@ -352,8 +529,12 @@ describe('InventoryItemActions — Owner/Admin geometry parity', () => {
   it('an Admin delete request confirms INSIDE the modal and offers Done', async () => {
     render(<InventoryItemActions row={row({})} canEdit canDelete />);
     fireEvent.click(screen.getByTestId('inventory-delete-item-1'));
-    fireEvent.change(screen.getByPlaceholderText('DELETE'), { target: { value: 'DELETE' } });
-    fireEvent.submit(document.getElementById('inventory-delete-form-item-1') as HTMLFormElement);
+    fireEvent.change(screen.getByPlaceholderText('DELETE'), {
+      target: { value: 'DELETE' },
+    });
+    fireEvent.submit(
+      document.getElementById('inventory-delete-form-item-1') as HTMLFormElement,
+    );
     expect(
       await screen.findByText(/Deletion request submitted for Super Admin approval/i),
     ).toBeInTheDocument();

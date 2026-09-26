@@ -1,16 +1,13 @@
 import 'server-only';
 
 import { recordAuditEvent } from '@/lib/audit/log';
-import {
-  AuthorizationError,
-  requireOwner,
-  requirePermission,
-} from '@/lib/authz/guard';
+import { AuthorizationError, requireOwner, requirePermission } from '@/lib/authz/guard';
 import {
   duplicateCodeNumberMessage,
   inventoryCodeNumber,
 } from '@/lib/inventory/code-number';
 import { detectInventoryCodeIssues } from '@/lib/inventory/code-parser';
+import type { ItemDeleteLink, ItemDeleteLinksResult } from '@/lib/inventory/delete-links';
 import { createClient } from '@/lib/supabase/server';
 
 /**
@@ -136,6 +133,67 @@ export async function getItemDependencies(
   }));
 
   return { ok: true, dependencies };
+}
+
+function textOrNull(v: unknown): string | null {
+  return typeof v === 'string' && v !== '' ? v : null;
+}
+
+/**
+ * Every record linked to an item, for the delete popup (Owner 2026-09-26): what it is, its status,
+ * the order or layaway account to open, and whether it PROTECTS the item from a force delete. The
+ * database decides all of it (inventory_item_delete_links, migration 20260926120000) and the force
+ * delete reads the same list. Before that migration is applied the function does not exist, so
+ * the older dependency list is shown instead — without links or reasons.
+ */
+export async function getItemDeleteLinks(
+  inventoryItemId: string,
+): Promise<ItemDeleteLinksResult> {
+  const supabase = await createClient();
+  const response = await supabase.rpc('inventory_item_delete_links', {
+    p_item_id: inventoryItemId,
+  });
+
+  if (!response.error) {
+    const links: ItemDeleteLink[] = (
+      (response.data ?? []) as Array<Record<string, unknown>>
+    ).map((r) => ({
+      kind: textOrNull(r.kind) ?? 'record',
+      recordId: textOrNull(r.record_id),
+      orderId: textOrNull(r.order_id),
+      ledgerId: textOrNull(r.ledger_id),
+      label: textOrNull(r.label) ?? '—',
+      state: textOrNull(r.state) ?? '',
+      blocks: r.blocks === true,
+      reason: textOrNull(r.reason),
+    }));
+    return { ok: true, links, exact: true };
+  }
+
+  // PGRST202 = the function is not in the schema yet (migration not applied). Any other error is
+  // reported as it is — never silently replaced by the older list.
+  if (response.error.code === 'PGRST202') {
+    const legacy = await getItemDependencies(inventoryItemId);
+    if (!legacy.ok) return legacy;
+    return {
+      ok: true,
+      exact: false,
+      links: legacy.dependencies.map((d) => ({
+        kind: d.kind,
+        recordId: null,
+        orderId: null,
+        ledgerId: null,
+        label: d.label,
+        state: '',
+        // The older list cannot tell a completed sale from closed history, so nothing it shows is
+        // ever presented as closed: the popup offers no force delete until the migration is in.
+        blocks: true,
+        reason: null,
+      })),
+    };
+  }
+
+  return { ok: false, error: response.error.message.replace(/^ERROR:\s*/i, '').trim() };
 }
 
 /**
@@ -360,15 +418,15 @@ export async function deleteInventoryItemDirect(
 /**
  * SUPER ADMIN (owner) force-delete (Owner request 2026-08-09).
  *
- * The normal delete refuses an item linked to ANY business record — including
- * resolved ones (an approved/rejected return review, a released reservation, a
- * past live-batch row). Those are just clutter once the item is back in
- * available stock, but they left the Owner unable to remove the item. This path
- * clears that clutter and deletes the item — while the database function still
- * REFUSES the moment a real or active link exists (a claim → order/capture, a
- * committed/provisional hold, an OPEN return review, a layaway ledger line, a
- * miner position, or an item that was itself sold/released). Owner only, and the
- * SECURITY DEFINER function re-checks the role — the database is the real gate.
+ * The normal delete refuses an item linked to ANY business record, including closed history (a
+ * cancelled order with no payment, a withdrawn claim, a finished return review, a released hold).
+ * This path removes that closed history and the item — and the database function REFUSES while any
+ * link still protects the item: the item is not in stock, any order that is not cancelled (live or
+ * completed), a cancelled order with a payment, an open claim, an active hold, an open return
+ * review, any layaway account, a miner position, an open live batch, a capture that is not on a
+ * cancelled order, a pending capture review, or an active waitlist entry (Owner 2026-09-26,
+ * migration 20260926120000 — the popup lists the same records). Owner only, and the SECURITY
+ * DEFINER function re-checks the role — the database is the real gate.
  * Irreversible; the audit row survives the delete (no FK to the item).
  */
 export async function forceDeleteInventoryItem(
@@ -390,6 +448,20 @@ export async function forceDeleteInventoryItem(
     throw cause;
   }
 
+  // Read the linked records first so the audit trail says exactly which closed history the delete
+  // removed (e.g. the item's line on a cancelled order). Best-effort: the database function below
+  // re-checks the same list and refuses on its own while anything protects the item.
+  const before = await getItemDeleteLinks(inventoryItemId);
+  const removedHistory =
+    before.ok && before.exact
+      ? before.links.map((l) => ({
+          kind: l.kind,
+          state: l.state,
+          record_id: l.recordId,
+          order_id: l.orderId,
+        }))
+      : undefined;
+
   const supabase = await createClient();
   const { error } = await supabase.rpc('delete_inventory_item_force', {
     p_item_id: inventoryItemId,
@@ -410,7 +482,7 @@ export async function forceDeleteInventoryItem(
     action: 'inventory_item.force_delete',
     entityType: 'inventory_item',
     entityId: inventoryItemId,
-    context: { permanent: true, forced: true },
+    context: { permanent: true, forced: true, removed_history: removedHistory },
   });
   return { ok: true };
 }
@@ -590,7 +662,10 @@ export async function editInventoryItemDetails(input: {
         .neq('id', input.inventoryItemId)
         .limit(1);
       if (dup && dup.length > 0) {
-        return { ok: false, error: `The code “${newCode}” is already used by another item.` };
+        return {
+          ok: false,
+          error: `The code “${newCode}” is already used by another item.`,
+        };
       }
       updates.item_code = newCode;
       codeChange = { from: currentCode, to: newCode };

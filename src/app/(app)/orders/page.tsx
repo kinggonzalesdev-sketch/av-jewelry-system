@@ -11,6 +11,7 @@ import {
 } from '@/lib/authz/guard';
 import { listPendingCaptureReviews } from '@/lib/capture/review';
 import { countPendingCaptures } from '@/lib/capture/pending';
+import { orderIdFromParam } from '@/lib/orders/deep-link';
 import { listOrdersPage } from '@/lib/orders/service';
 import { listKeepLayawayAccounts } from '@/lib/payments/layaway-ledger';
 
@@ -44,6 +45,8 @@ export default async function OrdersPage({
   const params = await searchParams;
   const openForInvoice = params.view === 'invoice';
   const initialCard = openForInvoice ? 'for_invoice' : 'all';
+  // ?order=<id> opens that order's details directly (e.g. "Open order" in the Inventory delete popup).
+  const initialOrderId = orderIdFromParam(params.order);
 
   // NOTE: the New Order form's data (~4,500 inventory rows: capture items, walk-in
   // items, customers, admin-name context) is NO LONGER loaded here. It is fetched ON
@@ -92,6 +95,7 @@ export default async function OrdersPage({
           title="Orders"
           initialPage={result}
           initialCard={initialCard}
+          initialOrderId={initialOrderId}
           syncNonce={syncNonce}
           openForInvoice={openForInvoice}
           keepLayaways={keepLayaways}
