@@ -3,8 +3,9 @@ import 'server-only';
 import { recordAuditEvent } from '@/lib/audit/log';
 import { AuthorizationError, requirePermission } from '@/lib/authz/guard';
 import {
-  duplicateCodeNumberMessage,
-  inventoryCodeNumber,
+  duplicateInventoryCodeMessage,
+  inventoryCodeKey,
+  inventoryCodeKeyPattern,
 } from '@/lib/inventory/code-number';
 import { detectInventoryCodeIssues } from '@/lib/inventory/code-parser';
 import { createClient } from '@/lib/supabase/server';
@@ -231,39 +232,21 @@ export async function createInventoryEntry(
 
   const supabase = await createClient();
 
-  // Item code must be UNIQUE (case-insensitive). Escape LIKE wildcards so a code
-  // containing % or _ is matched literally.
-  const pattern = itemCode.replace(/[%_\\]/g, (c) => `\\${c}`);
-  const { data: existing } = await supabase
+  // Only the same COMPLETE code is a duplicate (Owner 2026-09-26) — the number may repeat across
+  // prefixes, grams and sizes. Friendly pre-check: fetch the few codes that could match and compare
+  // their normalized keys exactly. Archived items count, as they always have. The database trigger
+  // and unique index (20260926110000) are the authoritative, race-proof guard.
+  const key = inventoryCodeKey(itemCode);
+  const { data: candidates } = await supabase
     .from('inventory_items')
-    .select('id')
-    .ilike('item_code', pattern)
-    .limit(1);
-  if (existing && existing.length > 0) {
-    return {
-      ok: false,
-      error: `The code “${itemCode}” is already used. Enter a unique code.`,
-    };
-  }
-
-  // NUMERIC identity check (Owner 2026-09-15): once 8413 exists as SBA-E-8413, no other prefix
-  // may reuse 8413. Friendly pre-check here; the DB trigger (20260915120000) is the authoritative
-  // backstop for any path that skips this form. The trigram index keeps the candidate fetch
-  // cheap; the exact sequence comparison runs on the few candidates it returns.
-  const codeNumber = inventoryCodeNumber(itemCode);
-  if (codeNumber) {
-    const { data: numHits } = await supabase
-      .from('inventory_items')
-      .select('item_code')
-      .eq('is_archived', false)
-      .like('item_code', `%${codeNumber}%`)
-      .limit(25);
-    const clash = ((numHits ?? []) as Array<{ item_code: string }>).find(
-      (r) => inventoryCodeNumber(r.item_code) === codeNumber,
-    );
-    if (clash) {
-      return { ok: false, error: duplicateCodeNumberMessage(codeNumber, clash.item_code) };
-    }
+    .select('item_code')
+    .ilike('item_code', inventoryCodeKeyPattern(key))
+    .limit(50);
+  const clash = ((candidates ?? []) as Array<{ item_code: string }>).find(
+    (r) => inventoryCodeKey(r.item_code) === key,
+  );
+  if (clash) {
+    return { ok: false, error: duplicateInventoryCodeMessage(clash.item_code) };
   }
 
   const insert: Record<string, unknown> = {
@@ -291,17 +274,17 @@ export async function createInventoryEntry(
       outcome: 'failed',
       reason: error?.message ?? 'insert returned no row',
     });
-    // The DB's unique lower(item_code) index is the final backstop — even a code
-    // the visible check missed (e.g. an archived item) is refused here, never saved.
+    // The database is the final backstop — a code the pre-check missed (or a simultaneous save of
+    // the same code) is refused here, never saved.
     if (error?.code === '23505' || /duplicate key|unique/i.test(error?.message ?? '')) {
-      // The numeric-identity trigger names the exact conflicting item — surface it verbatim.
-      if (error?.message && /already assigned to/.test(error.message)) {
+      // The trigger names the exact conflicting item — surface it verbatim.
+      if (
+        error?.message &&
+        /This exact Inventory Code already exists|already assigned to/.test(error.message)
+      ) {
         return { ok: false, error: error.message.replace(/^ERROR:\s*/i, '').trim() };
       }
-      return {
-        ok: false,
-        error: `The code “${itemCode}” is already used. Enter a unique code.`,
-      };
+      return { ok: false, error: duplicateInventoryCodeMessage(itemCode) };
     }
     return { ok: false, error: 'The item could not be created.' };
   }
